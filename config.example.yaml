@@ -1,0 +1,56 @@
+# Example Pexels CLI Configuration
+# Copy this to ~/.config/pexels.yaml and customize
+
+# Your Pexels API key (get from https://www.pexels.com/api/)
+api_key: "your-pexels-api-key-here"
+
+# File paths configuration
+paths:
+  logfile: "$HOME/.local/share/pexels/pexels.log"
+  database: "$HOME/.local/share/pexels/pexels.db"
+  videos_new: "$HOME/.cache/pexels/videos"
+  images_new: "$HOME/.cache/pexels/images"
+  videos_kept: "$HOME/.local/share/pexels/videos"
+  images_kept: "$HOME/.local/share/pexels/images"
+  videos_local: "$HOME/.local/share/pexels/videos_local"
+  images_local: "$HOME/.local/share/pexels/images_local"
+  playlists: "$HOME/.local/share/pexels/playlists"
+
+# Default search parameters for images
+search_images:
+  per_page: 80                    # Results per page (15-80)
+  orientation: ""                 # landscape, portrait, square, or empty
+  min_size: "large"              # large, medium, small
+  color: ""                      # Color name or hex code
+
+# Default search parameters for videos
+search_videos:
+  per_page: 80                    # Results per page (15-80)
+  min_size: ""                   # large, medium, small, or empty
+
+# Integration hooks for wallpaper management
+# These are REQUIRED - customize for your wallpaper system
+hooks:
+  get-name: "echo /path/to/current/wallpaper.jpg"     # Command to get current wallpaper filename
+  play-prev: "wallpaper-changer --previous"          # Command to go to previous wallpaper
+  play-next: "wallpaper-changer --next"              # Command to go to next wallpaper
+
+# Example hooks for different wallpaper managers:
+
+# For feh:
+# hooks:
+#   get-name: "cat ~/.fehbg | grep -o '/[^']*' | tail -1"
+#   play-prev: "feh --bg-scale $(find ~/wallpapers -name '*.jpg' | shuf -n 1)"
+#   play-next: "feh --bg-scale $(find ~/wallpapers -name '*.jpg' | shuf -n 1)"
+
+# For nitrogen:
+# hooks:
+#   get-name: "grep file ~/.config/nitrogen/bg-saved.cfg | cut -d'=' -f2"
+#   play-prev: "nitrogen --set-zoom-fill --random ~/wallpapers"
+#   play-next: "nitrogen --set-zoom-fill --random ~/wallpapers"
+
+# For wallpaper-daemon (hypothetical):
+# hooks:
+#   get-name: "wallpaper-daemon --current-file"
+#   play-prev: "wallpaper-daemon --previous"
+#   play-next: "wallpaper-daemon --next"

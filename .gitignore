@@ -1,0 +1,16 @@
+### single files ###
+*.log
+
+### folders ###
+
+# project dependencies
+node_modules
+
+# build folders
+dist
+build
+
+# code coverage
+.nyc_output/
+.coveralls.yml
+reports/coverage

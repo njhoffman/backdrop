@@ -1,0 +1,37 @@
+{
+  "name": "pexels-cli",
+  "version": "1.1.1",
+  "description": "CLI tool for searching, downloading, and managing Pexels wallpapers",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "pexels": "./src/index.js"
+  },
+  "scripts": {
+    "test": "mocha test/**/*.test.js",
+    "start": "node src/index.js"
+  },
+  "keywords": ["pexels", "wallpaper", "cli", "images", "videos"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pexels": "^1.4.0",
+    "sqlite3": "^5.1.6",
+    "yaml": "^2.3.4",
+    "commander": "^11.1.0",
+    "chalk": "^4.1.2",
+    "inquirer": "^8.2.6",
+    "progress": "^2.0.3",
+    "axios": "^1.6.2",
+    "fs-extra": "^11.2.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10",
+    "sinon": "^17.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
