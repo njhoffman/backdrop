@@ -18,7 +18,9 @@ npm link                 # install the `backdrop` binary globally
 ```
 
 To run the CLI without touching your real config or data, point the XDG variables at a scratch
-directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`.
+directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`. Keep `XDG_RUNTIME_DIR`
+short: mpv socket paths must fit in 107 bytes. `test/display/mpv.integration.test.js` runs a headless mpv
+and is skipped when mpv or ffmpeg is missing.
 
 Requires Node.js 22.13+ (built-in `node:sqlite`).
 
@@ -33,8 +35,13 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
+- **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
+  runtime dir; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
+  `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
+  (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
-  The existing files use the old schema and config; `docs/specs/legacy-pexels-cli.md` describes their behavior.
+  `DisplayCommand` is registered; the other files use the old schema and config and are not registered yet;
+  `docs/specs/legacy-pexels-cli.md` describes their behavior.
 
 ## Conventions
 

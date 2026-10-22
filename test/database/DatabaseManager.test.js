@@ -34,7 +34,7 @@ describe('DatabaseManager', () => {
         SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
       `).all().map(t => t.name);
 
-      expect(tables).to.include.members(['media', 'ratings', 'searches', 'search_results', 'sequences']);
+      expect(tables).to.include.members(['media', 'ratings', 'searches', 'search_results', 'sequences', 'settings']);
       expect(db.db.prepare('PRAGMA user_version').get().user_version).to.equal(SCHEMA_VERSION);
     });
 
@@ -63,6 +63,24 @@ describe('DatabaseManager', () => {
         const second = new DatabaseManager();
         second.initialize(dbPath);
         expect(second.getMediaBySource('pexels', 123)).to.not.be.null;
+        second.close();
+      });
+
+      it('upgrades a version 1 database in place, keeping its data', () => {
+        const dbPath = path.join(tempDir, 'backdrop.db');
+        const first = new DatabaseManager();
+        first.initialize(dbPath);
+        first.addMedia(video());
+        first.db.exec('DROP TABLE settings');
+        first.db.exec('PRAGMA user_version = 1');
+        first.close();
+
+        const second = new DatabaseManager();
+        second.initialize(dbPath);
+        expect(second.db.prepare('PRAGMA user_version').get().user_version).to.equal(SCHEMA_VERSION);
+        expect(second.getMediaBySource('pexels', 123)).to.not.be.null;
+        second.setSetting('mode', 'image');
+        expect(second.getSetting('mode')).to.equal('image');
         second.close();
       });
 
@@ -352,6 +370,22 @@ describe('DatabaseManager', () => {
       db.addSearchResult(searchId, a, 2);
 
       expect(db.getSearchResults(searchId)[0].rank).to.equal(2);
+    });
+  });
+
+  describe('settings', () => {
+    it('returns the default for missing keys', () => {
+      expect(db.getSetting('mode')).to.be.null;
+      expect(db.getSetting('mode', 'video')).to.equal('video');
+    });
+
+    it('stores and overwrites JSON values', () => {
+      db.setSetting('mode', 'image');
+      db.setSetting('last', { id: 3 });
+      db.setSetting('mode', 'video');
+
+      expect(db.getSetting('mode')).to.equal('video');
+      expect(db.getSetting('last')).to.deep.equal({ id: 3 });
     });
   });
 

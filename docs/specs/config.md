@@ -20,6 +20,8 @@ display:
   monitors: auto           # auto (xrandr) or a list of output names
   image_duration: 300      # seconds per image in a slideshow
   allow_upscale: false     # true allows media smaller than the monitor
+  xwinwrap_args: [-b, -s, -st, -sp, -nf, -ov, -fdt, -ni]  # -g <geometry> is added per monitor
+  mpv_args: []             # extra mpv options; mpv runs with --no-config, so mpv.conf is not read
 
 screensaver:
   idle_minutes: 10

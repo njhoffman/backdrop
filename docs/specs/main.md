@@ -34,13 +34,36 @@ in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open w
 | Unreviewed downloads | `$XDG_CACHE_HOME/backdrop/inbox/` |
 | mpv sockets, PID file | `$XDG_RUNTIME_DIR/backdrop/` (mode 0700) |
 
+## Display
+
+`backdrop daemon` (foreground) or `backdrop start` (background) launches one
+`xwinwrap -g <geometry> -- mpv -wid WID --no-config --input-ipc-server=<runtime>/<output>.sock ...` per active
+monitor (`xrandr --listactivemonitors`, filtered by `display.monitors`) and writes `state.json` (pid, monitors,
+sockets) to the runtime dir. mpv runs with `--no-config` because a personal mpv.conf (ontop, fullscreen, its own
+IPC socket) would break a wallpaper.
+
+- **Modes:** `video` (videos and GIFs, each looping until `next`) or `image` (slideshow every
+  `display.image_duration` seconds). Only one mode plays at a time, on all monitors. `backdrop mode` toggles,
+  `backdrop mode video|image` sets it; the mode is stored in the database and survives restarts.
+- **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), written
+  as `<output>.m3u` and loaded with `loadlist`. The item last shown in the mode on that monitor goes first, so
+  startup and toggling back resume it.
+- **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown and, for
+  videos, sets mpv's `speed` to the stored value.
+- **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>` connect to the socket of the monitor
+  under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` applies immediately and is saved.
+- **Supervision:** an mpv that exits is relaunched after 1s, at most 5 times a minute per monitor. `stop` sends
+  `quit`, then SIGTERM to each xwinwrap process group, SIGKILL after 2s, and removes sockets, playlists and state.
+
 ## Architecture
 
 - `src/index.js` - `BackdropApp`: loads config, creates directories, opens the logger and database, registers commands.
 - `src/config/ConfigManager.js` - YAML config with XDG defaults, deep merge, path expansion, env credentials.
 - `src/database/DatabaseManager.js` - synchronous `node:sqlite` access; owns status transitions and rating history.
-- `src/commands/` - one class per command, constructed with `(config, database, logger)`. The files there today
-  are the pre-rename commands; none are registered until ported to the new layer.
+- `src/display/` - `MpvClient` (JSON IPC), `Monitors` (xrandr/xdotool), `Playlist` (modes, eligibility, loading),
+  `Daemon` (process supervision), `DisplayControl` (CLI side of the socket commands).
+- `src/commands/` - one class per command, constructed with `(config, database, logger)`. `DisplayCommand` is
+  registered; the other files are pre-rename commands, not registered until ported.
 
 ## Item lifecycle
 

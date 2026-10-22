@@ -29,7 +29,7 @@ dependency order.
 
 - [x] **Rename project and repo to backdrop.** (p1) [chore] Package, bin, CLI name, README, CLAUDE.md and specs renamed; GitHub repo renamed to `njhoffman/backdrop` and origin updated.
       `SETUP_GUIDE.md` removed; the old spec is kept as `docs/specs/legacy-pexels-cli.md`. Breaking change, so this ships as 2.0.0.
-- [ ] **Move the local checkout.** (p2) [chore] `mv ~/ghq/github.com/njhoffman/pexels-cli ~/ghq/github.com/njhoffman/backdrop` outside a session in this directory.
+- [x] **Move the local checkout.** (p2) [chore] Moved to `~/ghq/github.com/njhoffman/backdrop`; `~/git/backdrop` symlink replaces `~/git/pexels-cli`.
 - [x] **Decouple config and paths from Pexels.** (p1) [refactor] Move `~/.config/pexels.yaml` to `~/.config/backdrop/config.yaml` and `~/.local/share/pexels`, `~/.cache/pexels` to `backdrop`.
       Put source credentials under a `sources:` map (`sources.pexels.api_key`, `sources.unsplash.access_key`), keep `PEXELS_API` as a fallback.
       Done: XDG paths (`paths` not written to the file), `sources`/`library`/`display`/`screensaver` sections; see `docs/specs/config.md`.
@@ -39,20 +39,27 @@ dependency order.
       Port each (or replace it via projects 3-5) and delete the old file: Search/Download (project 4), List, Stats, Rating/Hook (project 3), Import (project 5).
       `docs/specs/legacy-pexels-cli.md` describes their old behavior.
 - [ ] **Trash purge.** (p2) [feature] Delete files and rows from `DatabaseManager.getExpiredTrash(library.trash_days)`; run on startup or from the daemon.
-- [ ] **Unknown commands exit 0 silently.** (p3) [bug] With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
+- [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
       Commander rejects unknown subcommands once any are registered; add a test for this when the first command is ported.
 
 ## 3. Display engine on mpv sockets
 
-- [ ] **mpv IPC display backend.** (p1) [feature] Replace the external `get-name` / `play-prev` / `play-next` hooks with a backend that owns mpv and talks JSON IPC over `--input-ipc-server`.
+- [x] **mpv IPC display backend.** (p1) [feature] Replace the external `get-name` / `play-prev` / `play-next` hooks with a backend that owns mpv and talks JSON IPC over `--input-ipc-server`.
       Reference the existing scripts: `~/bin/wallvideo` (xwinwrap + `mpv -wid WID --loop --no-audio --input-ipc-server`), `~/bin/scratch.sh` (`wallvideo` with `--speed`), `~/bin/bg.sh` (per-geometry xwinwrap and cleanup).
       Current file and next/prev become `get_property path` and `loadfile`/`playlist-next`.
-- [ ] **One socket per monitor.** (p2) [feature] Spawn one xwinwrap+mpv per output with its geometry (as `bg.sh` does with `-g`) and a socket like `$XDG_RUNTIME_DIR/backdrop/<output>.sock`.
+- [x] **One socket per monitor.** (p2) [feature] Spawn one xwinwrap+mpv per output with its geometry (as `bg.sh` does with `-g`) and a socket like `$XDG_RUNTIME_DIR/backdrop/<output>.sock`.
       X11 only via xwinwrap; Wayland is out of scope (decided 2026-10-21).
-- [ ] **Static images and GIFs through mpv.** (p2) [feature] Show images with `--image-display-duration=inf` (or a slideshow interval) and GIFs with `--loop-file=inf`, so all media uses one code path (the `wall` / `wall.gif` cases).
-- [ ] **Per-video playback speed, persisted.** (p1) [feature] Commands to slow down / speed up the current video (`set_property speed`), saved per media item in the DB and applied on the next play.
-- [ ] **Daemon lifecycle.** (p2) [feature] `backdrop start|stop|status`, a PID/state file, and recovery when mpv or xwinwrap dies (bg.sh currently uses `kill -9`).
-- [ ] **Rate the current item via the socket.** (p2) [refactor] Rework `keep` / `skip` / `undo` / `go-next` (`RatingCommand`, `HookCommand`) to read the current path from mpv instead of a shell hook.
+- [x] **Static images and GIFs through mpv.** (p2) [feature] Show images with `--image-display-duration=inf` (or a slideshow interval) and GIFs with `--loop-file=inf`, so all media uses one code path (the `wall` / `wall.gif` cases).
+- [x] **Per-video playback speed, persisted.** (p1) [feature] Commands to slow down / speed up the current video (`set_property speed`), saved per media item in the DB and applied on the next play.
+- [x] **Daemon lifecycle.** (p2) [feature] `backdrop start|stop|status`, a PID/state file, and recovery when mpv or xwinwrap dies (bg.sh currently uses `kill -9`).
+- [ ] **Rate the current item via the socket.** (p1) [refactor] Rework `keep` / `skip` / `undo` / `go-next` (`RatingCommand`, `HookCommand`) to read the current path from mpv instead of a shell hook.
+      Use `DisplayControl.current()` for the target; on skip, `playlist-remove current` and move the file to trash; undo moves it back.
+- [ ] **Playlists go stale while the daemon runs.** (p2) [feature] Media imported or downloaded after start only appears after `backdrop mode` or a restart.
+      Rebuild the monitor's playlist when the library changes (e.g. after import/download, or when mpv wraps around via `playlist-pos` returning to 0).
+- [ ] **Missing files can make mpv spin.** (p2) [bug] If every playlist entry fails to load (files moved or deleted outside backdrop), `--loop-playlist=inf` keeps retrying.
+      Watch `end-file` events with `reason: error` in `Daemon`, drop those entries, and stop on an empty playlist.
+- [ ] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. Add a periodic `get_property pid` health check.
+- [ ] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
 
 ## 4. Media sources
 

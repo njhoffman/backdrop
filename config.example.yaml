@@ -18,6 +18,7 @@ display:
   monitors: auto                     # or a list of xrandr output names, e.g. [DP-1, HDMI-1]
   image_duration: 300                # seconds per image
   allow_upscale: false               # never show media smaller than the monitor
+  mpv_args: [--hwdec=vaapi]          # extra mpv options (your mpv.conf is not loaded)
 
 screensaver:
   idle_minutes: 10

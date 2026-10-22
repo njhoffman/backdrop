@@ -70,7 +70,9 @@ export class ConfigManager {
       display: {
         monitors: 'auto',
         image_duration: 300,
-        allow_upscale: false
+        allow_upscale: false,
+        xwinwrap_args: ['-b', '-s', '-st', '-sp', '-nf', '-ov', '-fdt', '-ni'],
+        mpv_args: []
       },
       screensaver: {
         idle_minutes: 10,

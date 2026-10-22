@@ -63,6 +63,8 @@ describe('ConfigManager', () => {
       expect(config.library.default_import_rating).to.equal(2);
       expect(config.library.trash_days).to.equal(30);
       expect(config.display.allow_upscale).to.be.false;
+      expect(config.display.xwinwrap_args).to.include.members(['-ni', '-ov', '-b']);
+      expect(config.display.mpv_args).to.deep.equal([]);
       expect(config.screensaver.idle_minutes).to.equal(10);
     });
 

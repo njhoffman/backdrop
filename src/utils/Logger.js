@@ -3,8 +3,19 @@ import path from 'path';
 
 export class Logger {
   constructor(logPath = null) {
-    this.logPath = logPath || path.join(process.cwd(), 'pexels.log');
+    this.logPath = logPath || path.join(process.cwd(), 'backdrop.log');
     this.logger = this.createLogger();
+  }
+
+  // Off by default so CLI commands print their own messages; the foreground daemon turns it on
+  enableConsole(level = 'info') {
+    this.logger.add(new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      ),
+      level
+    }));
   }
 
   createLogger() {
@@ -20,13 +31,6 @@ export class Logger {
           filename: this.logPath,
           maxsize: 5242880, // 5MB
           maxFiles: 5
-        }),
-        new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple()
-          ),
-          level: 'error'
         })
       ]
     });

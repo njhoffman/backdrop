@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
 
@@ -17,7 +17,8 @@ const MEDIA_FIELDS = [
 ];
 const JSON_FIELDS = ['tags', 'variants'];
 
-const SCHEMA = `
+// MIGRATIONS[n] upgrades a database from schema version n to n + 1
+const MIGRATIONS = [`
   CREATE TABLE media (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'gif')),
@@ -73,7 +74,12 @@ const SCHEMA = `
     name TEXT PRIMARY KEY,
     value INTEGER NOT NULL
   );
-`;
+`, `
+  CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`];
 
 export function orientationOf(resolution) {
   const match = /^(\d+)x(\d+)$/.exec(resolution || '');
@@ -135,10 +141,10 @@ export class DatabaseManager {
     if (version > SCHEMA_VERSION) {
       throw new Error(`Database schema v${version} is newer than this version of backdrop supports (v${SCHEMA_VERSION})`);
     }
-    if (version === 0) {
+    for (let next = version; next < SCHEMA_VERSION; next++) {
       this.transaction(() => {
-        this.db.exec(SCHEMA);
-        this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+        this.db.exec(MIGRATIONS[next]);
+        this.db.exec(`PRAGMA user_version = ${next + 1}`);
       });
     }
   }
@@ -387,6 +393,19 @@ export class DatabaseManager {
       WHERE sr.search_id = ?
       ORDER BY sr.rank
     `).all(searchId).map(parseMedia);
+  }
+
+  // Persistent key/value state such as the display mode; values are stored as JSON
+  getSetting(key, defaultValue = null) {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    return row ? JSON.parse(row.value) : defaultValue;
+  }
+
+  setSetting(key, value) {
+    this.db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+    `).run(key, JSON.stringify(value));
   }
 
   getStats() {

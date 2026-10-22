@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-21
+
+### Added
+- Display daemon: `backdrop daemon` (foreground) and `backdrop start|stop|status` run one mpv wallpaper per
+  monitor via xwinwrap, controlled over mpv IPC sockets, and restart mpv if it exits.
+- `backdrop mode` toggles between video and image wallpapers (or `mode video|image`); the mode and the item
+  last shown in each mode are remembered, so startup and toggling resume where you left off.
+- `backdrop next`, `prev` and `current` act on the monitor under the mouse pointer, or `--monitor <name>`.
+- `backdrop speed <0.8|+0.1|-0.1|reset>` changes the playing video's speed and remembers it for future plays.
+- Only media at least as large as the monitor is shown, unless `display.allow_upscale` is set.
+- `display.xwinwrap_args` and `display.mpv_args` config options. mpv runs without your mpv.conf.
+
+### Changed
+- Errors from commands print as one-line messages; full details go to the log file.
+- Unknown commands now fail with an error instead of exiting silently.
+
 ## [2.0.0] - 2026-10-21
 
 ### Added
