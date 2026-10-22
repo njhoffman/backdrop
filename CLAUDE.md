@@ -2,88 +2,43 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project
+
+backdrop (formerly pexels-cli): an X11 wallpaper and screensaver manager that collects media from
+API-based sources and local folders and displays it through mpv IPC sockets. It is mid-rewrite: the
+config and database layer is new, and the commands in `src/commands/` are pre-rename code that is not
+registered until ported. Design decisions are in `docs/specs/main.md`; the roadmap is `TODO.md`.
+
 ## Development Commands
 
-**Run tests:**
 ```bash
-npm test
-# Uses Mocha test runner for config and database tests
+npm test                 # Mocha, test/**/*.test.js
+node src/index.js --help # run the CLI
+npm link                 # install the `backdrop` binary globally
 ```
 
-**Start application:**
-```bash
-npm start
-# or
-node src/index.js
-```
+To run the CLI without touching your real config or data, point the XDG variables at a scratch
+directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`.
 
-**Link for global use:**
-```bash
-npm link
-pexels help
-```
+Requires Node.js 22.13+ (built-in `node:sqlite`).
 
-**Test specific functionality:**
-```bash
-node src/index.js stats
-node src/index.js search-images "test query"
-```
+## Architecture
 
-## Project Architecture
+- **BackdropApp** (`src/index.js`) - loads config, creates directories, opens logger and database, registers
+  commands. Commander's exits go through `exitOverride()` so the database always closes.
+- **ConfigManager** (`src/config/ConfigManager.js`) - YAML at `$XDG_CONFIG_HOME/backdrop/config.yaml`.
+  Sections: `sources`, `library`, `display`, `screensaver`, plus `paths` that default to XDG locations and
+  are not written to the file. `save()` writes only user-set values (`userConfig`), never env credentials.
+- **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
+  `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
+  (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
+- **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
+- **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
+  The existing files use the old schema and config; `docs/specs/legacy-pexels-cli.md` describes their behavior.
 
-### Core Application Structure
-The application is built around a central `PexelsApp` class in `src/index.js` that coordinates three main managers:
+## Conventions
 
-- **ConfigManager** (`src/config/ConfigManager.js`) - Handles YAML configuration loading, defaults, and environment variable integration
-- **DatabaseManager** (`src/database/DatabaseManager.js`) - SQLite3 operations with promisified interface for search history, downloads, and ratings
-- **Logger** (`src/utils/Logger.js`) - Winston-based logging system
-
-### Command Pattern Architecture
-Each CLI command is implemented as a separate class in `src/commands/`:
-
-- **SearchCommand** - Pexels API integration for searching images/videos with pagination
-- **DownloadCommand** - File download management with progress tracking
-- **ListCommand** - Database queries for filtering and displaying content
-- **StatsCommand** - API usage and download statistics
-- **RatingCommand** - Content rating system (keep/skip/undo)
-- **HookCommand** - External wallpaper manager integration
-
-All commands receive the same three dependencies: `config`, `database`, and `logger`.
-
-### Database Schema
-Uses SQLite3 with four main tables:
-- `search` - Search history tracking
-- `videos` - Video metadata with JSON fields for searches, downloads, ratings
-- `images` - Image metadata with JSON fields for searches, downloads, ratings  
-- `ratings` - Rating events for analytics
-
-### Configuration Management
-- Default config: `~/.config/pexels.yaml`
-- Environment variable support: `PEXELS_API`
-- Automatic directory creation for cache and data paths
-- Required hooks for wallpaper manager integration
-
-### External Dependencies
-- **Pexels API client** - Primary data source
-- **Commander.js** - CLI argument parsing
-- **Inquirer.js** - Interactive prompts
-- **Chalk** - Terminal colors
-- **fs-extra** - File system operations
-- **YAML** - Configuration parsing
-
-### Hook System
-The application integrates with external wallpaper managers through configurable shell commands:
-- `get-name` - Get current wallpaper filename
-- `play-prev` - Navigate to previous wallpaper
-- `play-next` - Navigate to next wallpaper
-
-### File Organization Pattern
-Content is organized into directory pairs:
-- `*_new` directories for fresh downloads
-- `*_kept` directories for rated content
-- `*_skip` directories (auto-created) for rejected content
-
-### Error Handling
-- Application initialization validates API keys and required hooks
-- Database operations use promisified SQLite3 with proper error propagation
-- File operations ensure directory existence before writes
+- File status lives in the database; files sit in `media/`, `trash/` or the inbox, never in per-status folders.
+- Only sources with a public API; no scraping.
+- Never select media smaller than the target monitor unless `display.allow_upscale` is set.
+- One playback speed per video, regardless of orientation.

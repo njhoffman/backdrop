@@ -1,46 +1,51 @@
-## Config
+# Configuration
 
-:- The cli program will have a config file called `config.yaml` in the followingcurrent directoryi :
-"HOME/.$config/pexels.yaml"
+File: `$XDG_CONFIG_HOME/backdrop/config.yaml` (default `~/.config/backdrop/config.yaml`). Created with the
+settings below on first run. Values in the file are deep merged over the defaults: objects merge key by
+key, arrays and scalars replace the default.
 
-It will contain the following properties and defaults, search queryies do not have config defaults
+```yaml
+sources:
+  pexels:
+    api_key: ""            # falls back to $PEXELS_API; never written back to the file
+    per_page: 80           # 15-80
+    image_min_size: large  # large (24MP), medium (12MP), small (4MP)
 
-```javascript
-api_key = '',   // if not set should try to read from PEXELS_API environment vvariable
-paths = {
-    logfile     : "$HOME/.local/share/pexels/wallpaper.sqlite3",
-    database    : "$HOME/.local/share/pexels/events.db",
-    videos_new  : "$HOME/.cache/pexels/images",
-    image__new  : "$HOME/.cache/pexels/videos",
-    videos_kept : "$HOME/.local/share/pexelsimages",
-    images_kept : "$HOME/.local/share/pexels/images",
-    playlists   : "$HOME/.local/share/pexels/playlist",
-},
+library:
+  import_dirs: []          # folders scanned by import; files there are already approved
+  default_import_rating: 2 # rating (1-3) given to imported files
+  trash_days: 30           # skipped files are purged from trash after this many days
 
-search_images = {        // photo search options with defaults, query is required
-  query       : "",      // The search query. Ocean, Tigers, Pears, etc. (no default config setting)
-  per_page    : 80,      // The number of results you are requesting per page. (min 15, max 80)
-  orientation : '',      // Desired photo orientation. Can be: "landndscape, portrait, square"
-  min_size    : 'large', // Minimum photo size. Can be: "large(24MP), medium(12MP), small(4MP)".
-  color       : '',      // Desired photo color to match general color to. Can be: any hexadecimal (i.e. #ffffff)
-                         // or color name: red, orange, yellow, green, turquoise, blue, violet, pink, brown, black, gray, white
-},
+display:
+  monitors: auto           # auto (xrandr) or a list of output names
+  image_duration: 300      # seconds per image in a slideshow
+  allow_upscale: false     # true allows media smaller than the monitor
 
-search_videos = {  // video search options with defaults, query is required
-  query     : "",  // The search query. Ocean, Tigers, Pears, etc. (no default config setting)
-  min_size  : '',  // Minimum photo size. Can be: "large(24MP), medium(12MP), small(4MP)".
-  per_page  : 80,  // The number of results you are requesting per page. (min 15, max 80)
-},
+screensaver:
+  idle_minutes: 10
+  sources: [rated_videos]  # what the screensaver draws from
+  streams: []              # URLs played through mpv/yt-dlp, e.g. YouTube links
+```
 
-// integrastion hooks, can can be a string command patb of a shell script, all are required
-// these should take into account multiple monitor setups
-hooks = {
-    get-name   : '', // cmd or script to get filename of currently playing item,
-    play-prevt : '', // cmd or script to go to the next video/image,
-    play-next  : '',  // cmd or script to go to the next video/image
-},
+Other sources go under `sources.<name>` with their own credentials; unknown keys are preserved.
 
+## Paths
 
- The app should prevent execution if required fields aren't set: api_key, any of the hooks
- The query is required for both searches, and does not have config defaults, so if is
-    not set in the command line lin it must be asked interactively
+`paths` is not written to a new file; each entry defaults to an XDG location and can be overridden
+individually:
+
+| Key | Default |
+| --- | --- |
+| `database` | `$XDG_DATA_HOME/backdrop/backdrop.db` |
+| `logfile` | `$XDG_DATA_HOME/backdrop/backdrop.log` |
+| `media` | `$XDG_DATA_HOME/backdrop/media` |
+| `trash` | `$XDG_DATA_HOME/backdrop/trash` |
+| `inbox` | `$XDG_CACHE_HOME/backdrop/inbox` |
+| `runtime` | `$XDG_RUNTIME_DIR/backdrop`, or `$TMPDIR/backdrop-<uid>` without it |
+
+Paths and `library.import_dirs` expand a leading `~`, `$VAR` and `${VAR}`; unknown variables are left as-is.
+
+## Saving
+
+`ConfigManager.save()` writes only what came from the file plus values changed with `set()`, so
+environment credentials and derived paths never end up on disk.

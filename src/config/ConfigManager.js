@@ -3,64 +3,96 @@ import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
 
+const APP_NAME = 'backdrop';
+
+function xdgDir(envVar, fallback) {
+  return path.join(process.env[envVar] || path.join(os.homedir(), fallback), APP_NAME);
+}
+
+function runtimeDir() {
+  if (process.env.XDG_RUNTIME_DIR) {
+    return path.join(process.env.XDG_RUNTIME_DIR, APP_NAME);
+  }
+  return path.join(os.tmpdir(), `${APP_NAME}-${os.userInfo().uid}`);
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Objects merge recursively; arrays and scalars from the override replace the default
+function deepMerge(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override || {})) {
+    result[key] = isPlainObject(value) && isPlainObject(base[key])
+      ? deepMerge(base[key], value)
+      : value;
+  }
+  return result;
+}
+
 export class ConfigManager {
-  constructor() {
-    this.configPath = path.join(os.homedir(), '.config', 'pexels.yaml');
+  constructor(configPath = null) {
+    this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
     this.config = null;
+    this.userConfig = null;
   }
 
-  getDefaultConfig() {
-    const homeDir = os.homedir();
-    
+  getDefaultPaths() {
+    const dataDir = xdgDir('XDG_DATA_HOME', path.join('.local', 'share'));
+    const cacheDir = xdgDir('XDG_CACHE_HOME', '.cache');
+
     return {
-      api_key: process.env.PEXELS_API || '',
-      paths: {
-        logfile: path.join(homeDir, '.local', 'share', 'pexels', 'pexels.log'),
-        database: path.join(homeDir, '.local', 'share', 'pexels', 'pexels.db'),
-        videos_new: path.join(homeDir, '.cache', 'pexels', 'videos'),
-        images_new: path.join(homeDir, '.cache', 'pexels', 'images'),
-        videos_kept: path.join(homeDir, '.local', 'share', 'pexels', 'videos'),
-        images_kept: path.join(homeDir, '.local', 'share', 'pexels', 'images'),
-        videos_local: path.join(homeDir, '.local', 'share', 'pexels', 'videos_local'),
-        images_local: path.join(homeDir, '.local', 'share', 'pexels', 'images_local'),
-        playlists: path.join(homeDir, '.local', 'share', 'pexels', 'playlists')
+      database: path.join(dataDir, 'backdrop.db'),
+      logfile: path.join(dataDir, 'backdrop.log'),
+      media: path.join(dataDir, 'media'),
+      trash: path.join(dataDir, 'trash'),
+      inbox: path.join(cacheDir, 'inbox'),
+      runtime: runtimeDir()
+    };
+  }
+
+  // Settings written to a new config file; paths are left out so XDG locations apply
+  getUserDefaults() {
+    return {
+      sources: {
+        pexels: {
+          api_key: '',
+          per_page: 80,
+          image_min_size: 'large'
+        }
       },
-      search_images: {
-        query: '',
-        per_page: 80,
-        orientation: '',
-        min_size: 'large',
-        color: ''
+      library: {
+        import_dirs: [],
+        default_import_rating: 2,
+        trash_days: 30
       },
-      search_videos: {
-        query: '',
-        min_size: '',
-        per_page: 80
+      display: {
+        monitors: 'auto',
+        image_duration: 300,
+        allow_upscale: false
       },
-      hooks: {
-        'get-name': '',
-        'play-prev': '',
-        'play-next': ''
+      screensaver: {
+        idle_minutes: 10,
+        sources: ['rated_videos'],
+        streams: []
       }
     };
   }
 
+  getDefaultConfig() {
+    return { ...this.getUserDefaults(), paths: this.getDefaultPaths() };
+  }
+
   async initialize() {
     try {
-      // Ensure config directory exists
       await fs.ensureDir(path.dirname(this.configPath));
-      
+
       if (await fs.pathExists(this.configPath)) {
         await this.loadConfig();
       } else {
         await this.createDefaultConfig();
       }
-      
-      // Ensure log and database directories exist
-      const config = this.get();
-      await fs.ensureDir(path.dirname(config.paths.logfile));
-      await fs.ensureDir(path.dirname(config.paths.database));
-      
     } catch (error) {
       throw new Error(`Failed to initialize config: ${error.message}`);
     }
@@ -69,16 +101,8 @@ export class ConfigManager {
   async loadConfig() {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf8');
-      const loadedConfig = YAML.parse(configContent);
-      
-      // Merge with defaults to ensure all required fields exist
-      this.config = this.mergeWithDefaults(loadedConfig);
-      
-      // Update API key from environment if not set in config
-      if (!this.config.api_key && process.env.PEXELS_API) {
-        this.config.api_key = process.env.PEXELS_API;
-      }
-      
+      this.userConfig = YAML.parse(configContent) || {};
+      this.config = this.normalize(deepMerge(this.getDefaultConfig(), this.userConfig));
     } catch (error) {
       throw new Error(`Failed to load config: ${error.message}`);
     }
@@ -86,29 +110,28 @@ export class ConfigManager {
 
   async createDefaultConfig() {
     try {
-      this.config = this.getDefaultConfig();
-      const yamlContent = YAML.stringify(this.config);
-      await fs.writeFile(this.configPath, yamlContent);
-      
+      this.userConfig = this.getUserDefaults();
+      await fs.writeFile(this.configPath, YAML.stringify(this.userConfig));
+      this.config = this.normalize(this.getDefaultConfig());
+
       console.log(`Created default config file at: ${this.configPath}`);
-      console.log('Please edit the config file to set your API key and hooks.');
-      
     } catch (error) {
       throw new Error(`Failed to create default config: ${error.message}`);
     }
   }
 
-  mergeWithDefaults(loadedConfig) {
-    const defaults = this.getDefaultConfig();
-    
-    return {
-      ...defaults,
-      ...loadedConfig,
-      paths: { ...defaults.paths, ...loadedConfig.paths },
-      search_images: { ...defaults.search_images, ...loadedConfig.search_images },
-      search_videos: { ...defaults.search_videos, ...loadedConfig.search_videos },
-      hooks: { ...defaults.hooks, ...loadedConfig.hooks }
-    };
+  // Expands paths and fills credentials from the environment without writing them back to disk
+  normalize(config) {
+    for (const key of Object.keys(config.paths)) {
+      config.paths[key] = this.expandPath(config.paths[key]);
+    }
+    config.library.import_dirs = config.library.import_dirs.map(dir => this.expandPath(dir));
+
+    if (!config.sources.pexels.api_key && process.env.PEXELS_API) {
+      config.sources.pexels.api_key = process.env.PEXELS_API;
+    }
+
+    return config;
   }
 
   get() {
@@ -118,10 +141,10 @@ export class ConfigManager {
     return this.config;
   }
 
+  // Writes only what the user set, so environment credentials and XDG defaults stay out of the file
   async save() {
     try {
-      const yamlContent = YAML.stringify(this.config);
-      await fs.writeFile(this.configPath, yamlContent);
+      await fs.writeFile(this.configPath, YAML.stringify(this.userConfig));
     } catch (error) {
       throw new Error(`Failed to save config: ${error.message}`);
     }
@@ -131,26 +154,36 @@ export class ConfigManager {
     if (!this.config) {
       throw new Error('Config not initialized');
     }
-    
-    const keys = key.split('.');
-    let current = this.config;
-    
-    for (let i = 0; i < keys.length - 1; i++) {
-      if (!(keys[i] in current)) {
-        current[keys[i]] = {};
+
+    for (const target of [this.config, this.userConfig]) {
+      const keys = key.split('.');
+      let current = target;
+
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!isPlainObject(current[keys[i]])) {
+          current[keys[i]] = {};
+        }
+        current = current[keys[i]];
       }
-      current = current[keys[i]];
+
+      current[keys[keys.length - 1]] = value;
     }
-    
-    current[keys[keys.length - 1]] = value;
   }
 
   getPath(key) {
-    const paths = this.get().paths;
-    return paths[key];
+    return this.get().paths[key];
+  }
+
+  getSource(name) {
+    return this.get().sources[name];
   }
 
   expandPath(pathStr) {
-    return pathStr.replace(/^\$HOME/, os.homedir());
+    if (typeof pathStr !== 'string') {
+      return pathStr;
+    }
+    return pathStr
+      .replace(/^~(?=$|\/)/, os.homedir())
+      .replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (match, name) => process.env[name] ?? match);
   }
 }

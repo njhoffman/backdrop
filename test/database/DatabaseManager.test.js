@@ -1,331 +1,394 @@
 import { expect } from 'chai';
-import sinon from 'sinon';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { DatabaseManager } from '../../src/database/DatabaseManager.js';
+import { DatabaseManager, SCHEMA_VERSION, orientationOf } from '../../src/database/DatabaseManager.js';
+
+function video(overrides = {}) {
+  return {
+    kind: 'video',
+    source: 'pexels',
+    source_id: 123,
+    width: 3840,
+    height: 2160,
+    duration: 30,
+    ...overrides
+  };
+}
 
 describe('DatabaseManager', () => {
-  let dbManager;
-  let tempDir;
-  let dbPath;
+  let db;
 
-  beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pexels-db-test-'));
-    dbPath = path.join(tempDir, 'test.db');
-    dbManager = new DatabaseManager();
-    await dbManager.initialize(dbPath);
+  beforeEach(() => {
+    db = new DatabaseManager();
+    db.initialize(':memory:');
   });
 
-  afterEach(async () => {
-    if (dbManager) {
-      await dbManager.close();
-    }
-    await fs.remove(tempDir);
+  afterEach(() => {
+    db.close();
   });
 
   describe('initialization', () => {
-    it('should create database file and tables', async () => {
-      expect(await fs.pathExists(dbPath)).to.be.true;
-      
-      // Verify tables were created
-      const tables = await dbManager.db.all(`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name NOT LIKE 'sqlite_%'
-      `);
-      
-      const tableNames = tables.map(t => t.name);
-      expect(tableNames).to.include.members(['search', 'pexel_videos', 'pexel_images', 'ratings', 'local_videos', 'local_images']);
-    it('should filter downloaded videos by rating orientation', async () => {
-      const searchId = await dbManager.addSearch('test search');
-      
-      // Add test videos
-      const mockVideo1 = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video1',
-        image: 'https://example.com/image1.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
-      
-      const mockVideo2 = {
-        id: 124,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video2',
-        image: 'https://example.com/image2.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
+    it('creates the schema and records its version', () => {
+      const tables = db.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      `).all().map(t => t.name);
 
-      await dbManager.addVideo(mockVideo1, searchId, 1);
-      await dbManager.addVideo(mockVideo2, searchId, 2);
-      
-      // Mark as downloaded
-      await dbManager.updateVideoDownloaded(123, [{ id: 789, quality: 'hd' }]);
-      await dbManager.updateVideoDownloaded(124, [{ id: 790, quality: 'hd' }]);
-      
-      // Add ratings with different orientations
-      await dbManager.addRating(123, 3, 'pexel-video', '1920x1080'); // landscape
-      await dbManager.addRating(124, 2, 'pexel-video', '1080x1920'); // portrait
-      
-      // Test landscape filter
-      const landscapeVideos = await dbManager.getDownloadedVideos({ 
-        rated: true, 
-        orientation: 'landscape' 
+      expect(tables).to.include.members(['media', 'ratings', 'searches', 'search_results', 'sequences']);
+      expect(db.db.prepare('PRAGMA user_version').get().user_version).to.equal(SCHEMA_VERSION);
+    });
+
+    it('enables foreign keys', () => {
+      expect(db.db.prepare('PRAGMA foreign_keys').get().foreign_keys).to.equal(1);
+    });
+
+    describe('on disk', () => {
+      let tempDir;
+
+      beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'backdrop-db-test-'));
       });
-      expect(landscapeVideos).to.have.length(1);
-      expect(landscapeVideos[0].id).to.equal(123);
-      
-      // Test portrait filter
-      const portraitVideos = await dbManager.getDownloadedVideos({ 
-        rated: true, 
-        orientation: 'portrait' 
+
+      afterEach(async () => {
+        await fs.remove(tempDir);
       });
-      expect(portraitVideos).to.have.length(1);
-      expect(portraitVideos[0].id).to.equal(124);
-      
-      // Test any filter (should return both)
-      const anyVideos = await dbManager.getDownloadedVideos({ 
-        rated: true, 
-        orientation: 'any' 
+
+      it('creates missing parent directories and reopens an existing database', () => {
+        const dbPath = path.join(tempDir, 'nested', 'backdrop.db');
+        const first = new DatabaseManager();
+        first.initialize(dbPath);
+        first.addMedia(video());
+        first.close();
+
+        const second = new DatabaseManager();
+        second.initialize(dbPath);
+        expect(second.getMediaBySource('pexels', 123)).to.not.be.null;
+        second.close();
       });
-      expect(anyVideos).to.have.length(2);
-    });
 
-  describe('search management', () => {
-    it('should add search records', async () => {
-      const searchId = await dbManager.addSearch('test keywords');
-      
-      expect(searchId).to.be.a('number');
-      expect(searchId).to.be.greaterThan(0);
-      
-      const search = await dbManager.db.get('SELECT * FROM search WHERE id = ?', [searchId]);
-      expect(search.keywords).to.equal('test keywords');
+      it('refuses a database from a newer schema version', () => {
+        const dbPath = path.join(tempDir, 'backdrop.db');
+        const first = new DatabaseManager();
+        first.initialize(dbPath);
+        first.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+        first.close();
+
+        expect(() => new DatabaseManager().initialize(dbPath)).to.throw(/newer than this version/);
+      });
     });
   });
 
-  describe('video management', () => {
-    let searchId;
-    
-    beforeEach(async () => {
-      searchId = await dbManager.addSearch('test search');
+  describe('media', () => {
+    it('adds media and returns its id', () => {
+      const id = db.addMedia(video({ tags: ['ocean'], variants: [{ url: 'u', width: 1920, height: 1080 }] }));
+      const media = db.getMedia(id);
+
+      expect(media.kind).to.equal('video');
+      expect(media.source_id).to.equal('123');
+      expect(media.status).to.equal('new');
+      expect(media.speed).to.equal(1);
+      expect(media.tags).to.deep.equal(['ocean']);
+      expect(media.variants).to.deep.equal([{ url: 'u', width: 1920, height: 1080 }]);
     });
 
-    it('should add new video', async () => {
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: {
-          id: 456,
-          url: 'https://example.com/user',
-          name: 'Test User'
-        },
-        video_files: [
-          {
-            id: 789,
-            quality: 'hd',
-            file_type: 'video/mp4',
-            width: 1920,
-            height: 1080,
-            link: 'https://example.com/video.mp4'
-          }
-        ]
-      };
-
-      const videoId = await dbManager.addVideo(mockVideo, searchId, 1);
-      
-      expect(videoId).to.equal(123);
-      
-      const video = await dbManager.getVideo(123);
-      expect(video).to.not.be.null;
-      expect(video.width).to.equal(1920);
-      expect(video.user_name).to.equal('Test User');
+    it('defaults JSON fields to empty arrays', () => {
+      const media = db.getMedia(db.addMedia(video()));
+      expect(media.tags).to.deep.equal([]);
+      expect(media.variants).to.deep.equal([]);
     });
 
-    it('should update existing video with new search info', async () => {
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: {
-          id: 456,
-          url: 'https://example.com/user',
-          name: 'Test User'
-        },
-        video_files: []
-      };
-
-      // Add video first time
-      await dbManager.addVideo(mockVideo, searchId, 1);
-      
-      // Add same video with different search
-      const newSearchId = await dbManager.addSearch('another search');
-      await dbManager.addVideo(mockVideo, newSearchId, 2);
-      
-      const video = await dbManager.getVideo(123);
-      const searches = JSON.parse(video.searches);
-      
-      expect(searches).to.have.length(2);
-      expect(searches[0].search_id).to.equal(searchId);
-      expect(searches[1].search_id).to.equal(newSearchId);
+    it('rejects invalid kinds and missing source fields', () => {
+      expect(() => db.addMedia(video({ kind: 'audio' }))).to.throw('Invalid media kind');
+      expect(() => db.addMedia(video({ source: undefined }))).to.throw('requires source');
+      expect(() => db.addMedia(video({ source_id: null }))).to.throw('requires source');
     });
 
-    it('should get videos for download', async () => {
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
-
-      await dbManager.addVideo(mockVideo, searchId, 1);
-      
-      const videos = await dbManager.getVideosForDownload(10);
-      expect(videos).to.have.length(1);
-      expect(videos[0].id).to.equal(123);
+    it('enforces one row per source item', () => {
+      db.addMedia(video());
+      expect(() => db.addMedia(video())).to.throw(/UNIQUE/);
     });
 
-    it('should update video downloaded status', async () => {
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
+    it('enforces unique paths and hashes', () => {
+      db.addMedia(video({ source_id: 1, path: '/m/a.mp4', sha256: 'h1' }));
+      expect(() => db.addMedia(video({ source_id: 2, path: '/m/a.mp4' }))).to.throw(/UNIQUE/);
+      expect(() => db.addMedia(video({ source_id: 3, sha256: 'h1' }))).to.throw(/UNIQUE/);
+    });
 
-      await dbManager.addVideo(mockVideo, searchId, 1);
-      
-      const downloadedFiles = [{ id: 789, quality: 'hd' }];
-      await dbManager.updateVideoDownloaded(123, downloadedFiles);
-      
-      const video = await dbManager.getVideo(123);
-      const downloaded = JSON.parse(video.downloaded);
-      
-      expect(downloaded).to.deep.equal(downloadedFiles);
+    it('looks media up by source, path and hash', () => {
+      const id = db.addMedia(video({ path: '/m/a.mp4', sha256: 'abc' }));
+
+      expect(db.getMediaBySource('pexels', '123').id).to.equal(id);
+      expect(db.getMediaByPath('/m/a.mp4').id).to.equal(id);
+      expect(db.getMediaBySha256('abc').id).to.equal(id);
+      expect(db.getMedia(999)).to.be.null;
+      expect(db.getMediaByPath('/nope')).to.be.null;
+    });
+
+    it('upserts source metadata without touching local state', () => {
+      const id = db.addMedia(video({ path: '/m/a.mp4', speed: 0.5 }));
+      db.addRating(id, 2);
+
+      const again = db.upsertMedia(video({ width: 7680, height: 4320, tags: ['new'], path: '/other.mp4', speed: 3 }));
+      const media = db.getMedia(again);
+
+      expect(again).to.equal(id);
+      expect(media.width).to.equal(7680);
+      expect(media.tags).to.deep.equal(['new']);
+      expect(media.path).to.equal('/m/a.mp4');
+      expect(media.speed).to.equal(0.5);
+      expect(media.status).to.equal('kept');
+    });
+
+    it('upserts new items by inserting them', () => {
+      const id = db.upsertMedia(video({ source_id: 'fresh' }));
+      expect(db.getMedia(id).source_id).to.equal('fresh');
+    });
+
+    it('updates allowed fields and rejects managed ones', () => {
+      const id = db.addMedia(video());
+      db.updateMedia(id, { path: '/m/b.mp4', sha256: 'x' });
+
+      expect(db.getMedia(id).path).to.equal('/m/b.mp4');
+      expect(() => db.updateMedia(id, { status: 'kept' })).to.throw('Cannot update media fields: status');
+      expect(() => db.updateMedia(id, { id: 5 })).to.throw('Cannot update');
+    });
+
+    it('deletes media together with its ratings and search results', () => {
+      const id = db.addMedia(video());
+      db.addRating(id, 1);
+      db.addSearchResult(db.addSearch('pexels', 'ocean'), id, 1);
+
+      db.deleteMedia(id);
+
+      expect(db.getMedia(id)).to.be.null;
+      expect(db.db.prepare('SELECT COUNT(*) AS c FROM ratings').get().c).to.equal(0);
+      expect(db.db.prepare('SELECT COUNT(*) AS c FROM search_results').get().c).to.equal(0);
     });
   });
 
-  describe('image management', () => {
-    let searchId;
-    
-    beforeEach(async () => {
-      searchId = await dbManager.addSearch('test search');
+  describe('speed', () => {
+    it('stores one speed per media item', () => {
+      const id = db.addMedia(video());
+      db.setSpeed(id, 0.75);
+      expect(db.getMedia(id).speed).to.equal(0.75);
     });
 
-    it('should add new image', async () => {
-      const mockImage = {
-        id: 456,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/image',
-        photographer: 'Test Photographer',
-        photographer_url: 'https://example.com/photographer',
-        photographer_id: 789,
-        avg_color: '#FF0000',
-        alt: 'Test image',
-        src: {
-          original: 'https://example.com/original.jpg',
-          large: 'https://example.com/large.jpg'
-        }
-      };
-
-      const imageId = await dbManager.addImage(mockImage, searchId, 1);
-      
-      expect(imageId).to.equal(456);
-      
-      const image = await dbManager.getImage(456);
-      expect(image).to.not.be.null;
-      expect(image.photographer).to.equal('Test Photographer');
-      expect(image.avg_color).to.equal('#FF0000');
+    it('rejects speeds outside the mpv range or non-numbers', () => {
+      const id = db.addMedia(video());
+      for (const bad of [0, -1, 0.001, 101, NaN, Infinity, '1.5']) {
+        expect(() => db.setSpeed(id, bad), String(bad)).to.throw('Speed must be');
+      }
+      expect(() => db.addMedia(video({ source_id: 9, speed: 0 }))).to.throw('Speed must be');
     });
   });
 
-  describe('rating management', () => {
-    it('should add rating with orientation detection', async () => {
-      const searchId = await dbManager.addSearch('test search');
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
-
-      await dbManager.addVideo(mockVideo, searchId, 1);
-      
-      // Test landscape orientation
-      await dbManager.addRating(123, 3, 'pexel-video', '1920x1080');
-      
-      const landscapeRating = await dbManager.db.get('SELECT * FROM ratings WHERE item_id = ? AND resolution = ?', [123, '1920x1080']);
-      expect(landscapeRating.rating).to.equal(3);
-      expect(landscapeRating.orientation).to.equal('landscape');
-      
-      // Test portrait orientation
-      await dbManager.addRating(123, 2, 'pexel-video', '1080x1920');
-      
-      const portraitRating = await dbManager.db.get('SELECT * FROM ratings WHERE item_id = ? AND resolution = ?', [123, '1080x1920']);
-      expect(portraitRating.rating).to.equal(2);
-      expect(portraitRating.orientation).to.equal('portrait');
+  describe('sequences', () => {
+    it('counts up per name starting at 1', () => {
+      expect(db.nextSequence('local')).to.equal(1);
+      expect(db.nextSequence('local')).to.equal(2);
+      expect(db.nextSequence('other')).to.equal(1);
     });
 
-    it('should detect orientation correctly', () => {
-      expect(dbManager.getOrientationFromResolution('1920x1080')).to.equal('landscape');
-      expect(dbManager.getOrientationFromResolution('1080x1920')).to.equal('portrait');
-      expect(dbManager.getOrientationFromResolution('1920x1920')).to.equal('landscape'); // square = landscape
-      expect(dbManager.getOrientationFromResolution(null)).to.equal('landscape'); // default
-      expect(dbManager.getOrientationFromResolution('invalid')).to.equal('landscape'); // invalid format
+    it('never reuses a value after the media using it is deleted', () => {
+      const n = db.nextSequence('local');
+      const id = db.addMedia(video({ source: 'local', source_id: n }));
+      db.deleteMedia(id);
+
+      expect(db.nextSequence('local')).to.equal(n + 1);
     });
   });
 
-  describe('statistics', () => {
-    it('should return correct statistics', async () => {
-      const searchId = await dbManager.addSearch('test search');
-      
-      // Add some test data
-      const mockVideo = {
-        id: 123,
-        width: 1920,
-        height: 1080,
-        url: 'https://example.com/video',
-        image: 'https://example.com/image.jpg',
-        duration: 30,
-        user: { id: 456, url: 'https://example.com/user', name: 'Test User' },
-        video_files: []
-      };
+  describe('ratings', () => {
+    let id;
 
-      await dbManager.addVideo(mockVideo, searchId, 1);
-      await dbManager.updateVideoDownloaded(123, [{ id: 789, quality: 'hd' }]);
-      await dbManager.addRating(123, 3, 'pexel-video');
-      
-      const stats = await dbManager.getStats();
-      
-      expect(stats.totalVideos).to.equal(1);
-      expect(stats.downloadedVideos).to.equal(1);
-      expect(stats.ratedItems).to.equal(1);
-      expect(stats.skippedItems).to.equal(0);
+    beforeEach(() => {
+      id = db.addMedia(video());
+    });
+
+    it('keeps an item on ratings 1-3 and skips it on 0', () => {
+      db.addRating(id, 3);
+      expect(db.getMedia(id).status).to.equal('kept');
+
+      db.addRating(id, 0);
+      expect(db.getMedia(id).status).to.equal('skipped');
+    });
+
+    it('records orientation from the monitor resolution', () => {
+      db.addRating(id, 2, '1080x1920');
+      expect(db.getLatestRating(id)).to.include({ orientation: 'portrait', resolution: '1080x1920' });
+
+      db.addRating(id, 2, '1920x1080');
+      expect(db.getLatestRating(id).orientation).to.equal('landscape');
+    });
+
+    it('validates the rating and media', () => {
+      for (const bad of [-1, 4, 1.5, '2']) {
+        expect(() => db.addRating(id, bad), String(bad)).to.throw('Rating must be');
+      }
+      expect(() => db.addRating(999, 1)).to.throw('Media 999 not found');
+    });
+
+    it('undo removes the latest rating and restores the previous status', () => {
+      db.addRating(id, 2);
+      db.addRating(id, 0);
+
+      const undone = db.undoLastRating();
+
+      expect(undone.rating.rating).to.equal(0);
+      expect(undone.media.status).to.equal('kept');
+      expect(db.getLatestRating(id).rating).to.equal(2);
+    });
+
+    it('undo of the only rating returns the item to new', () => {
+      db.addRating(id, 1);
+      expect(db.undoLastRating().media.status).to.equal('new');
+      expect(db.getLatestRating(id)).to.be.null;
+    });
+
+    it('undo applies to the most recent rating across all media', () => {
+      const other = db.addMedia(video({ source_id: 456 }));
+      db.addRating(id, 1);
+      db.addRating(other, 0);
+
+      expect(db.undoLastRating().media.id).to.equal(other);
+      expect(db.getMedia(id).status).to.equal('kept');
+    });
+
+    it('undo with no ratings returns null', () => {
+      expect(db.undoLastRating()).to.be.null;
+    });
+  });
+
+  describe('findMedia', () => {
+    let fourK;
+    let hd;
+    let image;
+
+    beforeEach(() => {
+      fourK = db.addMedia(video({ source_id: 1, width: 3840, height: 2160, path: '/m/1.mp4' }));
+      hd = db.addMedia(video({ source_id: 2, width: 1920, height: 1080 }));
+      image = db.addMedia({ kind: 'image', source: 'local', source_id: 1, width: 2560, height: 1440, path: '/m/1.jpg' });
+    });
+
+    const ids = rows => rows.map(row => row.id);
+
+    it('returns everything without filters', () => {
+      expect(ids(db.findMedia())).to.deep.equal([fourK, hd, image]);
+    });
+
+    it('filters by kind, source and status (single value or list)', () => {
+      db.addRating(hd, 0);
+
+      expect(ids(db.findMedia({ kind: 'image' }))).to.deep.equal([image]);
+      expect(ids(db.findMedia({ source: 'pexels' }))).to.deep.equal([fourK, hd]);
+      expect(ids(db.findMedia({ status: ['new', 'kept'] }))).to.deep.equal([fourK, image]);
+    });
+
+    it('applies a resolution floor so nothing is upscaled', () => {
+      expect(ids(db.findMedia({ minWidth: 2560, minHeight: 1440 }))).to.deep.equal([fourK, image]);
+      expect(ids(db.findMedia({ minWidth: 3000 }))).to.deep.equal([fourK]);
+    });
+
+    it('excludes media with unknown dimensions from a resolution floor', () => {
+      const unknown = db.addMedia(video({ source_id: 3, width: undefined, height: undefined }));
+      expect(ids(db.findMedia({ minWidth: 1 }))).to.not.include(unknown);
+    });
+
+    it('filters by downloaded state', () => {
+      expect(ids(db.findMedia({ downloaded: true }))).to.deep.equal([fourK, image]);
+      expect(ids(db.findMedia({ downloaded: false }))).to.deep.equal([hd]);
+    });
+
+    it('filters by the latest rating and its orientation', () => {
+      db.addRating(fourK, 3, '1920x1080');
+      db.addRating(hd, 3, '1080x1920');
+      db.addRating(hd, 1, '1920x1080');
+
+      expect(ids(db.findMedia({ minRating: 2 }))).to.deep.equal([fourK]);
+      expect(ids(db.findMedia({ minRating: 1 }))).to.deep.equal([fourK, hd]);
+      expect(ids(db.findMedia({ orientation: 'portrait' }))).to.deep.equal([]);
+      expect(ids(db.findMedia({ orientation: 'landscape', minRating: 1 }))).to.deep.equal([fourK, hd]);
+    });
+
+    it('limits results', () => {
+      expect(ids(db.findMedia({ limit: 2 }))).to.deep.equal([fourK, hd]);
+    });
+  });
+
+  describe('trash expiry', () => {
+    it('returns skipped items older than the retention period', () => {
+      const old = db.addMedia(video({ source_id: 1 }));
+      const recent = db.addMedia(video({ source_id: 2 }));
+      const kept = db.addMedia(video({ source_id: 3 }));
+      db.addRating(old, 0);
+      db.addRating(recent, 0);
+      db.addRating(kept, 2);
+      db.db.prepare(`UPDATE media SET status_changed_at = datetime('now', '-31 days') WHERE id IN (?, ?)`).run(old, kept);
+
+      expect(db.getExpiredTrash(30).map(m => m.id)).to.deep.equal([old]);
+      expect(db.getExpiredTrash(0).map(m => m.id)).to.deep.equal([old, recent]);
+    });
+  });
+
+  describe('searches', () => {
+    it('records searches and ranked results', () => {
+      const a = db.addMedia(video({ source_id: 1 }));
+      const b = db.addMedia(video({ source_id: 2 }));
+      const searchId = db.addSearch('pexels', 'ocean', { per_page: 80 });
+
+      db.addSearchResult(searchId, b, 1);
+      db.addSearchResult(searchId, a, 2);
+
+      const results = db.getSearchResults(searchId);
+      expect(results.map(r => [r.id, r.rank])).to.deep.equal([[b, 1], [a, 2]]);
+      expect(JSON.parse(db.db.prepare('SELECT params FROM searches WHERE id = ?').get(searchId).params))
+        .to.deep.equal({ per_page: 80 });
+    });
+
+    it('updates the rank when the same result is recorded twice', () => {
+      const a = db.addMedia(video());
+      const searchId = db.addSearch('pexels', 'ocean');
+      db.addSearchResult(searchId, a, 5);
+      db.addSearchResult(searchId, a, 2);
+
+      expect(db.getSearchResults(searchId)[0].rank).to.equal(2);
+    });
+  });
+
+  describe('stats', () => {
+    it('counts media by kind and status, plus searches and ratings', () => {
+      const a = db.addMedia(video({ source_id: 1 }));
+      db.addMedia(video({ source_id: 2 }));
+      db.addMedia({ kind: 'gif', source: 'local', source_id: 1 });
+      db.addRating(a, 2);
+      db.addSearch('pexels', 'ocean');
+
+      const stats = db.getStats();
+      expect(stats.media.video).to.deep.equal({ new: 1, kept: 1, skipped: 0 });
+      expect(stats.media.gif.new).to.equal(1);
+      expect(stats.media.image).to.deep.equal({ new: 0, kept: 0, skipped: 0 });
+      expect(stats.searches).to.equal(1);
+      expect(stats.ratings).to.equal(1);
+    });
+  });
+
+  describe('orientationOf', () => {
+    it('is portrait only when height exceeds width', () => {
+      expect(orientationOf('1080x1920')).to.equal('portrait');
+      expect(orientationOf('1920x1080')).to.equal('landscape');
+      expect(orientationOf('1000x1000')).to.equal('landscape');
+    });
+
+    it('defaults to landscape for missing or malformed input', () => {
+      expect(orientationOf(null)).to.equal('landscape');
+      expect(orientationOf('wide')).to.equal('landscape');
+    });
+  });
+
+  describe('close', () => {
+    it('is safe to call twice', () => {
+      db.close();
+      expect(() => db.close()).to.not.throw();
     });
   });
 });

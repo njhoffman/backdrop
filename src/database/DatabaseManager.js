@@ -1,7 +1,106 @@
-import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
+
+export const SCHEMA_VERSION = 1;
+export const MEDIA_KINDS = ['image', 'video', 'gif'];
+export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
+
+// mpv accepts playback speeds in this range
+const MIN_SPEED = 0.01;
+const MAX_SPEED = 100;
+
+// Columns callers may write through addMedia/updateMedia; id, status and timestamps are managed here
+const MEDIA_FIELDS = [
+  'kind', 'source', 'source_id', 'path', 'original_name', 'width', 'height', 'duration',
+  'sha256', 'speed', 'tags', 'variants', 'author', 'page_url'
+];
+const JSON_FIELDS = ['tags', 'variants'];
+
+const SCHEMA = `
+  CREATE TABLE media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'gif')),
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    path TEXT UNIQUE,
+    original_name TEXT,
+    width INTEGER,
+    height INTEGER,
+    duration REAL,
+    sha256 TEXT UNIQUE,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'kept', 'skipped')),
+    status_changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    speed REAL NOT NULL DEFAULT 1.0,
+    tags TEXT NOT NULL DEFAULT '[]',
+    variants TEXT NOT NULL DEFAULT '[]',
+    author TEXT,
+    page_url TEXT,
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source, source_id)
+  );
+
+  CREATE INDEX idx_media_kind_status ON media (kind, status);
+
+  CREATE TABLE ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 0 AND 3),
+    orientation TEXT NOT NULL CHECK (orientation IN ('landscape', 'portrait')),
+    resolution TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX idx_ratings_media ON ratings (media_id, id);
+
+  CREATE TABLE searches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    query TEXT NOT NULL,
+    params TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE search_results (
+    search_id INTEGER NOT NULL REFERENCES searches (id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    PRIMARY KEY (search_id, media_id)
+  );
+
+  CREATE TABLE sequences (
+    name TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+  );
+`;
+
+export function orientationOf(resolution) {
+  const match = /^(\d+)x(\d+)$/.exec(resolution || '');
+  if (!match) {
+    return 'landscape';
+  }
+  return Number(match[2]) > Number(match[1]) ? 'portrait' : 'landscape';
+}
+
+function statusForRating(rating) {
+  return rating === 0 ? 'skipped' : 'kept';
+}
+
+function serialize(field, value) {
+  return JSON_FIELDS.includes(field) ? JSON.stringify(value ?? []) : value ?? null;
+}
+
+function parseMedia(row) {
+  if (!row) {
+    return null;
+  }
+  const media = { ...row };
+  for (const field of JSON_FIELDS) {
+    media[field] = JSON.parse(media[field]);
+  }
+  return media;
+}
 
 export class DatabaseManager {
   constructor() {
@@ -9,428 +108,309 @@ export class DatabaseManager {
     this.dbPath = null;
   }
 
-  async initialize(dbPath) {
+  initialize(dbPath) {
     this.dbPath = dbPath;
-    
+
     try {
-      // Ensure database directory exists
-      await fs.ensureDir(path.dirname(dbPath));
-      
-      // Open database connection
-      this.db = new sqlite3.Database(dbPath);
-      
-      // Promisify database methods
-      this.db.run = promisify(this.db.run.bind(this.db));
-      this.db.get = promisify(this.db.get.bind(this.db));
-      this.db.all = promisify(this.db.all.bind(this.db));
-      
-      // Create tables if they don't exist
-      await this.createTables();
-      
+      if (dbPath !== ':memory:') {
+        fs.ensureDirSync(path.dirname(dbPath));
+      }
+
+      this.db = new DatabaseSync(dbPath);
+      this.db.exec('PRAGMA foreign_keys = ON');
+      this.db.exec('PRAGMA busy_timeout = 5000');
+      if (dbPath !== ':memory:') {
+        this.db.exec('PRAGMA journal_mode = WAL');
+      }
+
+      this.migrate();
     } catch (error) {
       throw new Error(`Failed to initialize database: ${error.message}`);
     }
   }
 
-  async createTables() {
-    const createSearchTable = `
-      CREATE TABLE IF NOT EXISTS search (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
-        keywords TEXT NOT NULL
-      )
-    `;
+  migrate() {
+    const { user_version: version } = this.db.prepare('PRAGMA user_version').get();
 
-    const createVideosTable = `
-      CREATE TABLE IF NOT EXISTS pexel_videos (
-        id INTEGER PRIMARY KEY,
-        width INTEGER,
-        height INTEGER,
-        url TEXT,
-        image TEXT,
-        duration INTEGER,
-        user_id INTEGER,
-        user_url TEXT,
-        user_name TEXT,
-        video_files TEXT,
-        searches TEXT,
-        downloaded TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    const createImagesTable = `
-      CREATE TABLE IF NOT EXISTS pexel_images (
-        id INTEGER PRIMARY KEY,
-        width INTEGER,
-        height INTEGER,
-        url TEXT,
-        photographer TEXT,
-        photographer_url TEXT,
-        photographer_id INTEGER,
-        avg_color TEXT,
-        alt TEXT,
-        src TEXT,
-        searches TEXT,
-        downloaded TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    const createRatingsTable = `
-      CREATE TABLE IF NOT EXISTS ratings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
-        rating INTEGER NOT NULL,
-        item_id INTEGER NOT NULL,
-        resolution TEXT,
-        orientation TEXT DEFAULT 'landscape',
-        source TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    const createLocalVideosTable = `
-      CREATE TABLE IF NOT EXISTS local_videos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        filename TEXT NOT NULL,
-        size TEXT NOT NULL,
-        duration INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    const createLocalImagesTable = `
-      CREATE TABLE IF NOT EXISTS local_images (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        filename TEXT NOT NULL,
-        size TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    await this.db.run(createSearchTable);
-    await this.db.run(createVideosTable);
-    await this.db.run(createImagesTable);
-    await this.db.run(createRatingsTable);
-    await this.db.run(createLocalVideosTable);
-    await this.db.run(createLocalImagesTable);
+    if (version > SCHEMA_VERSION) {
+      throw new Error(`Database schema v${version} is newer than this version of backdrop supports (v${SCHEMA_VERSION})`);
+    }
+    if (version === 0) {
+      this.transaction(() => {
+        this.db.exec(SCHEMA);
+        this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      });
+    }
   }
 
-  async addSearch(keywords) {
-    const query = `
-      INSERT INTO search (date, keywords)
-      VALUES (?, ?)
-    `;
-    
-    const result = await this.db.run(query, [new Date().toISOString(), keywords]);
-    return result.lastID;
+  transaction(fn) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
-  async addVideo(video, searchId, ranking) {
-    const existing = await this.getVideo(video.id);
-    
-    if (existing) {
-      // Update existing video with new search info
-      return await this.updateVideoSearch(video.id, searchId, ranking);
+  // Returns the next value of a named counter; values are never reused, even after rows are deleted
+  nextSequence(name) {
+    return this.db.prepare(`
+      INSERT INTO sequences (name, value) VALUES (?, 1)
+      ON CONFLICT (name) DO UPDATE SET value = value + 1
+      RETURNING value
+    `).get(name).value;
+  }
+
+  addMedia(item) {
+    if (!MEDIA_KINDS.includes(item.kind)) {
+      throw new Error(`Invalid media kind: ${item.kind}`);
+    }
+    if (!item.source || item.source_id === undefined || item.source_id === null) {
+      throw new Error('Media requires source and source_id');
+    }
+    if (item.speed !== undefined) {
+      this.validateSpeed(item.speed);
     }
 
-    const query = `
-      INSERT INTO videos (
-        id, width, height, url, image, duration, user_id, user_url, user_name,
-        video_files, searches, downloaded, ratings
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    const fields = MEDIA_FIELDS.filter(field => item[field] !== undefined);
+    const values = fields.map(field => field === 'source_id' ? String(item[field]) : serialize(field, item[field]));
 
-    const searches = JSON.stringify([{ search_id: searchId, ranking }]);
-    const downloaded = JSON.stringify([]);
+    const result = this.db.prepare(`
+      INSERT INTO media (${fields.join(', ')})
+      VALUES (${fields.map(() => '?').join(', ')})
+    `).run(...values);
 
-    await this.db.run(query, [
-      video.id, video.width, video.height, video.url, video.image, video.duration,
-      video.user.id, video.user.url, video.user.name,
-      JSON.stringify(video.video_files), searches, downloaded
-    ]);
-
-    return video.id;
+    return Number(result.lastInsertRowid);
   }
 
-  async addImage(image, searchId, ranking) {
-    const existing = await this.getImage(image.id);
-    
-    if (existing) {
-      // Update existing image with new search info
-      return await this.updateImageSearch(image.id, searchId, ranking);
+  // Inserts a media item or refreshes the source metadata of an existing one,
+  // leaving local state (path, status, speed, sha256) untouched
+  upsertMedia(item) {
+    const existing = this.getMediaBySource(item.source, item.source_id);
+    if (!existing) {
+      return this.addMedia(item);
     }
 
-    const query = `
-      INSERT INTO images (
-        id, width, height, url, photographer, photographer_url, photographer_id,
-        avg_color, alt, src, searches, downloaded
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const searches = JSON.stringify([{ search_id: searchId, ranking }]);
-    const downloaded = JSON.stringify([]);
-
-    await this.db.run(query, [
-      image.id, image.width, image.height, image.url, image.photographer,
-      image.photographer_url, image.photographer_id, image.avg_color, image.alt,
-      JSON.stringify(image.src), searches, downloaded
-    ]);
-
-    return image.id;
+    const metadata = {};
+    for (const field of ['width', 'height', 'duration', 'tags', 'variants', 'author', 'page_url']) {
+      if (item[field] !== undefined) {
+        metadata[field] = item[field];
+      }
+    }
+    this.updateMedia(existing.id, metadata);
+    return existing.id;
   }
 
-  async updateVideoSearch(videoId, searchId, ranking) {
-    const video = await this.getVideo(videoId);
-    if (!video) return false;
+  updateMedia(id, changes) {
+    const fields = Object.keys(changes);
+    const invalid = fields.filter(field => !MEDIA_FIELDS.includes(field));
+    if (invalid.length) {
+      throw new Error(`Cannot update media fields: ${invalid.join(', ')}`);
+    }
+    if (changes.speed !== undefined) {
+      this.validateSpeed(changes.speed);
+    }
+    if (!fields.length) {
+      return;
+    }
 
-    const searches = JSON.parse(video.searches || '[]');
-    searches.push({ search_id: searchId, ranking });
-
-    const query = `UPDATE pexel_videos SET searches = ? WHERE id = ?`;
-    await this.db.run(query, [JSON.stringify(searches), videoId]);
-    return true;
+    const assignments = fields.map(field => `${field} = ?`).join(', ');
+    const values = fields.map(field => serialize(field, changes[field]));
+    this.db.prepare(`
+      UPDATE media SET ${assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(...values, id);
   }
 
-  async updateImageSearch(imageId, searchId, ranking) {
-    const image = await this.getImage(imageId);
-    if (!image) return false;
-
-    const searches = JSON.parse(image.searches || '[]');
-    searches.push({ search_id: searchId, ranking });
-
-    const query = `UPDATE pexel_images SET searches = ? WHERE id = ?`;
-    await this.db.run(query, [JSON.stringify(searches), imageId]);
-    return true;
+  getMedia(id) {
+    return parseMedia(this.db.prepare('SELECT * FROM media WHERE id = ?').get(id));
   }
 
-  async getVideo(id) {
-    const query = `SELECT * FROM pexel_videos WHERE id = ?`;
-    return await this.db.get(query, [id]);
+  getMediaBySource(source, sourceId) {
+    return parseMedia(this.db.prepare('SELECT * FROM media WHERE source = ? AND source_id = ?')
+      .get(source, String(sourceId)));
   }
 
-  async getImage(id) {
-    const query = `SELECT * FROM pexel_images WHERE id = ?`;
-    return await this.db.get(query, [id]);
+  getMediaByPath(filePath) {
+    return parseMedia(this.db.prepare('SELECT * FROM media WHERE path = ?').get(filePath));
   }
 
-  async getVideosForDownload(limit = null) {
-    let query = `
-      SELECT * FROM pexel_videos 
-      WHERE downloaded = '[]' OR downloaded IS NULL
+  getMediaBySha256(sha256) {
+    return parseMedia(this.db.prepare('SELECT * FROM media WHERE sha256 = ?').get(sha256));
+  }
+
+  // Filters: kind, status, source, minWidth/minHeight (resolution floor), minRating,
+  // orientation (rated on a monitor of that orientation), downloaded, limit
+  findMedia(filters = {}) {
+    const conditions = [];
+    const params = [];
+
+    for (const [filter, column] of [['kind', 'kind'], ['status', 'status'], ['source', 'source']]) {
+      if (filters[filter] !== undefined) {
+        const values = [].concat(filters[filter]);
+        conditions.push(`m.${column} IN (${values.map(() => '?').join(', ')})`);
+        params.push(...values);
+      }
+    }
+    if (filters.minWidth) {
+      conditions.push('m.width >= ?');
+      params.push(filters.minWidth);
+    }
+    if (filters.minHeight) {
+      conditions.push('m.height >= ?');
+      params.push(filters.minHeight);
+    }
+    if (filters.downloaded !== undefined) {
+      conditions.push(filters.downloaded ? 'm.path IS NOT NULL' : 'm.path IS NULL');
+    }
+    if (filters.minRating !== undefined || filters.orientation !== undefined) {
+      const ratingConditions = ['r.media_id = m.id'];
+      if (filters.minRating !== undefined) {
+        ratingConditions.push('r.rating >= ?');
+        params.push(filters.minRating);
+      }
+      if (filters.orientation !== undefined) {
+        ratingConditions.push('r.orientation = ?');
+        params.push(filters.orientation);
+      }
+      // Only the latest rating counts, so an item re-rated lower drops out of higher filters
+      ratingConditions.push('r.id = (SELECT MAX(id) FROM ratings WHERE media_id = m.id)');
+      conditions.push(`EXISTS (SELECT 1 FROM ratings r WHERE ${ratingConditions.join(' AND ')})`);
+    }
+
+    let query = 'SELECT m.* FROM media m';
+    if (conditions.length) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ' ORDER BY m.id';
+    if (filters.limit) {
+      query += ' LIMIT ?';
+      params.push(filters.limit);
+    }
+
+    return this.db.prepare(query).all(...params).map(parseMedia);
+  }
+
+  deleteMedia(id) {
+    this.db.prepare('DELETE FROM media WHERE id = ?').run(id);
+  }
+
+  validateSpeed(speed) {
+    if (typeof speed !== 'number' || !Number.isFinite(speed) || speed < MIN_SPEED || speed > MAX_SPEED) {
+      throw new Error(`Speed must be a number between ${MIN_SPEED} and ${MAX_SPEED}`);
+    }
+  }
+
+  setSpeed(id, speed) {
+    this.updateMedia(id, { speed });
+  }
+
+  // rating 0 skips the item, 1-3 keeps it; status follows the latest rating
+  addRating(mediaId, rating, resolution = null) {
+    if (!Number.isInteger(rating) || rating < 0 || rating > 3) {
+      throw new Error('Rating must be an integer from 0 to 3');
+    }
+    if (!this.getMedia(mediaId)) {
+      throw new Error(`Media ${mediaId} not found`);
+    }
+
+    return this.transaction(() => {
+      const result = this.db.prepare(`
+        INSERT INTO ratings (media_id, rating, orientation, resolution) VALUES (?, ?, ?, ?)
+      `).run(mediaId, rating, orientationOf(resolution), resolution);
+
+      this.setStatus(mediaId, statusForRating(rating));
+      return Number(result.lastInsertRowid);
+    });
+  }
+
+  getLatestRating(mediaId) {
+    return this.db.prepare('SELECT * FROM ratings WHERE media_id = ? ORDER BY id DESC LIMIT 1').get(mediaId) ?? null;
+  }
+
+  // Removes the most recent rating across all media and restores the item's previous status.
+  // Returns { rating, media } so the caller can move the file back, or null if nothing to undo.
+  undoLastRating() {
+    return this.transaction(() => {
+      const rating = this.db.prepare('SELECT * FROM ratings ORDER BY id DESC LIMIT 1').get();
+      if (!rating) {
+        return null;
+      }
+
+      this.db.prepare('DELETE FROM ratings WHERE id = ?').run(rating.id);
+      const previous = this.getLatestRating(rating.media_id);
+      this.setStatus(rating.media_id, previous ? statusForRating(previous.rating) : 'new');
+
+      return { rating: { ...rating }, media: this.getMedia(rating.media_id) };
+    });
+  }
+
+  setStatus(mediaId, status) {
+    if (!MEDIA_STATUSES.includes(status)) {
+      throw new Error(`Invalid media status: ${status}`);
+    }
+    this.db.prepare(`
+      UPDATE media
+      SET status = ?, status_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(status, mediaId);
+  }
+
+  // Skipped items whose status is older than the trash retention period
+  getExpiredTrash(days) {
+    return this.db.prepare(`
+      SELECT * FROM media
+      WHERE status = 'skipped' AND status_changed_at <= datetime('now', ?)
       ORDER BY id
-    `;
-    
-    if (limit) {
-      query += ` LIMIT ${limit}`;
-    }
-    
-    return await this.db.all(query);
+    `).all(`-${Number(days)} days`).map(parseMedia);
   }
 
-  async getImagesForDownload(limit = null) {
-    let query = `
-      SELECT * FROM pexel_images 
-      WHERE downloaded = '[]' OR downloaded IS NULL
-      ORDER BY id
-    `;
-    
-    if (limit) {
-      query += ` LIMIT ${limit}`;
-    }
-    
-    return await this.db.all(query);
+  addSearch(source, query, params = {}) {
+    const result = this.db.prepare('INSERT INTO searches (source, query, params) VALUES (?, ?, ?)')
+      .run(source, query, JSON.stringify(params));
+    return Number(result.lastInsertRowid);
   }
 
-  async updateVideoDownloaded(videoId, downloadedFiles) {
-    const query = `UPDATE pexel_videos SET downloaded = ? WHERE id = ?`;
-    await this.db.run(query, [JSON.stringify(downloadedFiles), videoId]);
+  addSearchResult(searchId, mediaId, rank) {
+    this.db.prepare(`
+      INSERT INTO search_results (search_id, media_id, rank) VALUES (?, ?, ?)
+      ON CONFLICT (search_id, media_id) DO UPDATE SET rank = excluded.rank
+    `).run(searchId, mediaId, rank);
   }
 
-  async updateImageDownloaded(imageId, downloadedSizes) {
-    const query = `UPDATE pexel_images SET downloaded = ? WHERE id = ?`;
-    await this.db.run(query, [JSON.stringify(downloadedSizes), imageId]);
+  getSearchResults(searchId) {
+    return this.db.prepare(`
+      SELECT m.*, sr.rank FROM search_results sr
+      JOIN media m ON m.id = sr.media_id
+      WHERE sr.search_id = ?
+      ORDER BY sr.rank
+    `).all(searchId).map(parseMedia);
   }
 
-  async addRating(itemId, rating, source, resolution = null) {
-    const orientation = this.getOrientationFromResolution(resolution);
-    
-    const query = `
-      INSERT INTO ratings (date, rating, item_id, resolution, orientation, source)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    
-    await this.db.run(query, [
-      new Date().toISOString(), rating, itemId, resolution, orientation, source
-    ]);
+  getStats() {
+    const byKindStatus = this.db.prepare(`
+      SELECT kind, status, COUNT(*) AS count FROM media GROUP BY kind, status
+    `).all();
+    const media = {};
+    for (const kind of MEDIA_KINDS) {
+      media[kind] = Object.fromEntries(MEDIA_STATUSES.map(status => [status, 0]));
+    }
+    for (const row of byKindStatus) {
+      media[row.kind][row.status] = row.count;
+    }
+
+    const { count: searches } = this.db.prepare('SELECT COUNT(*) AS count FROM searches').get();
+    const { count: ratings } = this.db.prepare('SELECT COUNT(*) AS count FROM ratings').get();
+
+    return { media, searches, ratings };
   }
 
-  getOrientationFromResolution(resolution) {
-    if (!resolution) return 'landscape';
-    
-    const match = resolution.match(/(\d+)x(\d+)/);
-    if (!match) return 'landscape';
-    
-    const width = parseInt(match[1]);
-    const height = parseInt(match[2]);
-    
-    return height > width ? 'portrait' : 'landscape';
-  }
-
-  async addLocalVideo(filename, size, duration) {
-    const query = `
-      INSERT INTO local_videos (filename, size, duration)
-      VALUES (?, ?, ?)
-    `;
-    
-    const result = await this.db.run(query, [filename, size, duration]);
-    return result.lastID;
-  }
-
-  async addLocalImage(filename, size) {
-    const query = `
-      INSERT INTO local_images (filename, size)
-      VALUES (?, ?)
-    `;
-    
-    const result = await this.db.run(query, [filename, size]);
-    return result.lastID;
-  }
-
-  async getLocalVideos(filters = {}) {
-    let query = `SELECT * FROM local_videos`;
-    const params = [];
-
-    if (filters.rated) {
-      let ratingCondition = ` WHERE id IN (SELECT DISTINCT item_id FROM ratings WHERE source = 'local-video' AND rating > 0`;
-      
-      if (filters.orientation && filters.orientation !== 'any') {
-        ratingCondition += ` AND orientation = ?`;
-        params.push(filters.orientation);
-      }
-      
-      ratingCondition += `)`;
-      query += ratingCondition;
+  close() {
+    if (this.db?.isOpen) {
+      this.db.close();
     }
-
-    if (filters.limit) {
-      query += ` LIMIT ?`;
-      params.push(filters.limit);
-    }
-
-    return await this.db.all(query, params);
-  }
-
-  async getLocalImages(filters = {}) {
-    let query = `SELECT * FROM local_images`;
-    const params = [];
-
-    if (filters.rated) {
-      let ratingCondition = ` WHERE id IN (SELECT DISTINCT item_id FROM ratings WHERE source = 'local-image' AND rating > 0`;
-      
-      if (filters.orientation && filters.orientation !== 'any') {
-        ratingCondition += ` AND orientation = ?`;
-        params.push(filters.orientation);
-      }
-      
-      ratingCondition += `)`;
-      query += ratingCondition;
-    }
-
-    if (filters.limit) {
-      query += ` LIMIT ?`;
-      params.push(filters.limit);
-    }
-
-    return await this.db.all(query, params);
-  }
-
-  async getStats() {
-    const videoCount = await this.db.get(`SELECT COUNT(*) as count FROM pexel_videos`);
-    const imageCount = await this.db.get(`SELECT COUNT(*) as count FROM pexel_images`);
-    const downloadedVideos = await this.db.get(`SELECT COUNT(*) as count FROM pexel_videos WHERE downloaded != '[]'`);
-    const downloadedImages = await this.db.get(`SELECT COUNT(*) as count FROM pexel_images WHERE downloaded != '[]'`);
-    const ratedItems = await this.db.get(`SELECT COUNT(*) as count FROM ratings WHERE rating > 0`);
-    const skippedItems = await this.db.get(`SELECT COUNT(*) as count FROM ratings WHERE rating = 0`);
-
-    return {
-      totalVideos: videoCount.count,
-      totalImages: imageCount.count,
-      downloadedVideos: downloadedVideos.count,
-      downloadedImages: downloadedImages.count,
-      ratedItems: ratedItems.count,
-      skippedItems: skippedItems.count
-    };
-  }
-
-  async getDownloadedVideos(filters = {}) {
-    let query = `SELECT * FROM pexel_videos WHERE downloaded != '[]' AND downloaded IS NOT NULL`;
-    const params = [];
-
-    if (filters.rated) {
-      let ratingCondition = ` AND id IN (SELECT DISTINCT item_id FROM ratings WHERE source = 'pexel-video' AND rating > 0`;
-      
-      if (filters.orientation && filters.orientation !== 'any') {
-        ratingCondition += ` AND orientation = ?`;
-        params.push(filters.orientation);
-      }
-      
-      ratingCondition += `)`;
-      query += ratingCondition;
-    }
-
-    if (filters.limit) {
-      query += ` LIMIT ?`;
-      params.push(filters.limit);
-    }
-
-    let results = await this.db.all(query, params);
-    
-    // Include local videos if rated filter is used and no-local is not specified
-    if (filters.rated && !filters.noLocal) {
-      const localVideos = await this.getLocalVideos(filters);
-      results = results.concat(localVideos.map(v => ({ ...v, source: 'local' })));
-    }
-
-    return results;
-  }
-
-  async getDownloadedImages(filters = {}) {
-    let query = `SELECT * FROM pexel_images WHERE downloaded != '[]' AND downloaded IS NOT NULL`;
-    const params = [];
-
-    if (filters.rated) {
-      let ratingCondition = ` AND id IN (SELECT DISTINCT item_id FROM ratings WHERE source = 'pexel-image' AND rating > 0`;
-      
-      if (filters.orientation && filters.orientation !== 'any') {
-        ratingCondition += ` AND orientation = ?`;
-        params.push(filters.orientation);
-      }
-      
-      ratingCondition += `)`;
-      query += ratingCondition;
-    }
-
-    if (filters.limit) {
-      query += ` LIMIT ?`;
-      params.push(filters.limit);
-    }
-
-    let results = await this.db.all(query, params);
-    
-    // Include local images if rated filter is used and no-local is not specified
-    if (filters.rated && !filters.noLocal) {
-      const localImages = await this.getLocalImages(filters);
-      results = results.concat(localImages.map(i => ({ ...i, source: 'local' })));
-    }
-
-    return results;
-  }
-
-  async close() {
-    if (this.db) {
-      await this.db.close();
-    }
+    this.db = null;
   }
 }
