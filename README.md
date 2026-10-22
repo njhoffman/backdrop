@@ -4,8 +4,8 @@ Wallpaper and screensaver manager for X11. Collects images and videos from free 
 more API-based sources planned) and your own folders, lets you rate them while they play, and displays
 them through mpv with one IPC socket per monitor.
 
-> **Status:** mid-rewrite from `pexels-cli`. The display daemon works; import, sources, rating and the
-> screensaver are being ported. See [TODO.md](TODO.md) for the roadmap and
+> **Status:** mid-rewrite from `pexels-cli`. The display daemon and local import work; sources, rating
+> and the screensaver are being ported. See [TODO.md](TODO.md) for the roadmap and
 > [docs/specs/main.md](docs/specs/main.md) for the design.
 
 ## Planned features
@@ -42,6 +42,8 @@ backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1)
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop current
+backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
+backdrop import ~/walls     # or specific folders
 backdrop stop
 ```
 

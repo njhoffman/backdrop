@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
+export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
 
@@ -79,6 +80,17 @@ const MIGRATIONS = [`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+`, `
+  CREATE TABLE imported_files (
+    source_path TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    mtime_ms INTEGER NOT NULL,
+    sha256 TEXT,
+    media_id INTEGER REFERENCES media (id) ON DELETE SET NULL,
+    status TEXT NOT NULL CHECK (status IN ('imported', 'duplicate', 'too_small', 'unsupported', 'failed')),
+    detail TEXT,
+    checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `];
 
 export function orientationOf(resolution) {
@@ -112,6 +124,7 @@ export class DatabaseManager {
   constructor() {
     this.db = null;
     this.dbPath = null;
+    this.transactionDepth = 0;
   }
 
   initialize(dbPath) {
@@ -149,14 +162,19 @@ export class DatabaseManager {
     }
   }
 
+  // Nested calls join the outermost transaction through savepoints
   transaction(fn) {
-    this.db.exec('BEGIN IMMEDIATE');
+    const savepoint = `sp${this.transactionDepth}`;
+    this.db.exec(this.transactionDepth === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${savepoint}`);
+    this.transactionDepth++;
     try {
       const result = fn();
-      this.db.exec('COMMIT');
+      this.transactionDepth--;
+      this.db.exec(this.transactionDepth === 0 ? 'COMMIT' : `RELEASE ${savepoint}`);
       return result;
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.transactionDepth--;
+      this.db.exec(this.transactionDepth === 0 ? 'ROLLBACK' : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`);
       throw error;
     }
   }
@@ -406,6 +424,25 @@ export class DatabaseManager {
       INSERT INTO settings (key, value) VALUES (?, ?)
       ON CONFLICT (key) DO UPDATE SET value = excluded.value
     `).run(key, JSON.stringify(value));
+  }
+
+  // Outcome of the last import attempt for a source file, keyed by its path
+  getImportedFile(sourcePath) {
+    return this.db.prepare('SELECT * FROM imported_files WHERE source_path = ?').get(sourcePath) ?? null;
+  }
+
+  recordImportedFile({ source_path, size, mtime_ms, sha256 = null, media_id = null, status, detail = null }) {
+    if (!IMPORT_STATUSES.includes(status)) {
+      throw new Error(`Invalid import status: ${status}`);
+    }
+    this.db.prepare(`
+      INSERT INTO imported_files (source_path, size, mtime_ms, sha256, media_id, status, detail)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (source_path) DO UPDATE SET
+        size = excluded.size, mtime_ms = excluded.mtime_ms, sha256 = excluded.sha256,
+        media_id = excluded.media_id, status = excluded.status, detail = excluded.detail,
+        checked_at = CURRENT_TIMESTAMP
+    `).run(source_path, size, Math.trunc(mtime_ms), sha256, media_id, status, detail);
   }
 
   getStats() {

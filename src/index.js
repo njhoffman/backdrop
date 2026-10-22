@@ -7,6 +7,7 @@ import { ConfigManager } from './config/ConfigManager.js';
 import { DatabaseManager } from './database/DatabaseManager.js';
 import { Logger } from './utils/Logger.js';
 import { DisplayCommand } from './commands/DisplayCommand.js';
+import { ImportCommand } from './commands/ImportCommand.js';
 import chalk from 'chalk';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
@@ -59,6 +60,7 @@ class BackdropApp {
   // Commands are registered here as they are ported to the new config and database layer
   setupCommands() {
     const display = new DisplayCommand(this.config, this.database, this.logger);
+    const importer = new ImportCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
 
     program
@@ -112,6 +114,12 @@ class BackdropApp {
       .option(...monitorOption)
       .allowUnknownOption()
       .action(this.action((value, options) => display.speed(value, options)));
+
+    program
+      .command('import')
+      .description('Copy approved local media into the library (default: library.import_dirs)')
+      .argument('[dirs...]', 'Directories to import from')
+      .action(this.action(dirs => importer.import(dirs)));
 
     program
       .command('mode')

@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 1); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 3); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -42,6 +42,20 @@ across all items and restores the status from the previous rating, or `new` if n
 
 `searches` records each query with its source and parameters as JSON. `search_results` links a search to
 the media it returned with its rank; recording the same pair again updates the rank.
+
+## imported_files
+
+One row per source file the importer has looked at: `source_path` (primary key), `size`, `mtime_ms`,
+`sha256`, `media_id` (set null if the media is deleted), `status` (`imported`, `duplicate`, `too_small`,
+`unsupported`, `failed`), `detail`, `checked_at`. A file is re-examined only when its size or mtime changes.
+
+## settings
+
+JSON values by key: `mode` (`video` or `image`) and `last_media:<mode>:<monitor>` (media id).
+
+## Transactions
+
+`transaction(fn)` nests: inner calls use savepoints, so a caught inner failure rolls back only its own work.
 
 ## sequences
 

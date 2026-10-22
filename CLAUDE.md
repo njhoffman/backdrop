@@ -39,8 +39,10 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   runtime dir; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
+- **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
+  file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
-  `DisplayCommand` is registered; the other files use the old schema and config and are not registered yet;
+  `DisplayCommand` and `ImportCommand` are registered; the other files use the old schema and config and are not registered yet;
   `docs/specs/legacy-pexels-cli.md` describes their behavior.
 
 ## Conventions

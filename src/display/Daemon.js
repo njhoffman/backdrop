@@ -3,7 +3,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
-import { getMode, lastMediaKey, loadPlaylist, modeOfKind } from './Playlist.js';
+import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind } from './Playlist.js';
+import { Importer } from '../library/Importer.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -68,7 +69,8 @@ export class Daemon {
   constructor({
     config, database, logger,
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
-    restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS
+    restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
+    importer = new Importer({ config, database, logger })
   }) {
     this.config = config;
     this.database = database;
@@ -79,6 +81,8 @@ export class Daemon {
     this.kill = kill;
     this.restartDelay = restartDelay;
     this.stopGrace = stopGrace;
+    this.importer = importer;
+    this.importing = Promise.resolve();
     this.screens = new Map();
     this.stopping = false;
     this.stopped = null;
@@ -114,6 +118,36 @@ export class Daemon {
 
     await this.writeState();
     this.logger.info('Daemon started', { pid: process.pid, monitors: monitors.map(m => m.name) });
+
+    // Playback starts from the existing library; new imports are appended as they finish
+    this.importing = this.importDirs(monitors[0]);
+  }
+
+  async importDirs(monitor) {
+    const dirs = this.config.get().library.import_dirs;
+    if (!dirs.length) {
+      return;
+    }
+
+    try {
+      const { imported } = await this.importer.importDirs(dirs, {
+        resolution: `${monitor.width}x${monitor.height}`,
+        shouldStop: () => this.stopping
+      });
+      if (!imported.length || this.stopping) {
+        return;
+      }
+
+      const mode = getMode(this.database);
+      for (const screen of this.screens.values()) {
+        const added = await appendToPlaylist(screen.client, {
+          database: this.database, config: this.config.get(), mode, monitor: screen.monitor, mediaIds: imported
+        });
+        this.logger.info('Added imported media to playlist', { monitor: screen.monitor.name, added });
+      }
+    } catch (error) {
+      this.logger.error('Import on startup failed', { error: error.message });
+    }
   }
 
   async startScreen(monitor) {
@@ -213,6 +247,7 @@ export class Daemon {
 
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();
+    await this.importing;
     await fs.remove(statePath(this.runtimeDir));
 
     this.logger.info('Daemon stopped');

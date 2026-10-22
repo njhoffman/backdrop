@@ -36,7 +36,7 @@ dependency order.
 - [x] **Source-neutral database schema.** (p1) [refactor] `media`, `ratings`, `searches`, `search_results`, `sequences` on built-in `node:sqlite`; see `docs/specs/database.md`.
       No data migration: backdrop starts with an empty database (decided 2026-10-21).
 - [ ] **Port old commands onto the new layer.** (p1) [refactor] `src/commands/*.js` still use the old schema and `hooks` config and are not registered in `src/index.js`.
-      Port each (or replace it via projects 3-5) and delete the old file: Search/Download (project 4), List, Stats, Rating/Hook (project 3), Import (project 5).
+      Port each (or replace it via projects 3-5) and delete the old file: Search/Download (project 4), List, Stats, Rating/Hook (project 3). Import is done.
       `docs/specs/legacy-pexels-cli.md` describes their old behavior.
 - [ ] **Trash purge.** (p2) [feature] Delete files and rows from `DatabaseManager.getExpiredTrash(library.trash_days)`; run on startup or from the daemon.
 - [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
@@ -71,11 +71,13 @@ dependency order.
 
 ## 5. Local library import
 
-- [ ] **Auto-import local files as pre-approved.** (p1) [feature] Scan configured directories (and `backdrop import <dir>`), add files directly to the kept library with rating 2/3 and no review step.
-      Rewrite of the empty `src/commands/ImportCommand.js`. Dedupe by content hash so re-runs are idempotent.
-- [ ] **Consistent names for imports.** (p2) [feature] Rename imported files to a sequential `local-<n>.<ext>` (no category detection, decided 2026-10-21).
+- [x] **Auto-import local files as pre-approved.** (p1) [feature] Scan configured directories (and `backdrop import <dir>`), add files directly to the kept library with rating 2/3 and no review step.
+      Done: `backdrop import`, rescanned on every daemon start; copies (originals untouched), dedupes by SHA-256, skips unchanged files by size/mtime, rejects < 1024x768.
+- [x] **Consistent names for imports.** (p2) [feature] Rename imported files to a sequential `local-<n>.<ext>` (no category detection, decided 2026-10-21).
       Keep the original filename and path in the DB; never reuse a number after deletion.
-- [ ] **Watch mode for import directories.** (p3) [feature] Optionally pick up new files automatically instead of on manual runs.
+- [ ] **Watch mode for import directories.** (p3) [feature] Pick up new files while the daemon runs (fs.watch / inotify) instead of only on start or `backdrop import`.
+- [ ] **Animated WebP imports as a still image.** (p3) [bug] ffprobe cannot decode animated WebP, so `probe.js` classifies it as `image`; detect the ANIM chunk and treat it as `gif`.
+- [ ] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
 - [ ] **Edit rating during playback.** (p2) [feature] Imported items start at 2/3; ensure `keep N` on the current item overwrites rather than appends a rating.
 
 ## 6. Resolution-aware quality filter

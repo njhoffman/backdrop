@@ -5,7 +5,7 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
-  modeProperties, loadPlaylist
+  modeProperties, loadPlaylist, appendToPlaylist
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
 
@@ -116,6 +116,32 @@ describe('Playlist', () => {
   it('sets per-mode mpv properties', () => {
     expect(modeProperties('video', 300)).to.deep.equal({ 'loop-file': 'inf' });
     expect(modeProperties('image', 60)).to.deep.equal({ 'loop-file': 'no', 'image-display-duration': 60 });
+  });
+
+  describe('appendToPlaylist', () => {
+    const config = makeConfig().get();
+
+    it('appends only the given items that fit the mode and monitor', async () => {
+      const client = new FakeMpvClient();
+      const fits = add('video', 1);
+      add('video', 2);
+      const small = add('video', 3, { width: 640, height: 480 });
+      const image = add('image', 4);
+
+      const added = await appendToPlaylist(client, {
+        database: db, config, mode: 'video', monitor: MONITOR, mediaIds: [fits, small, image]
+      });
+
+      expect(added).to.equal(1);
+      expect(client.commands).to.deep.equal([['loadfile', '/m/1', 'append-play']]);
+    });
+
+    it('does nothing for an empty list', async () => {
+      const client = new FakeMpvClient();
+      add('video', 1);
+      expect(await appendToPlaylist(client, { database: db, config, mode: 'video', monitor: MONITOR, mediaIds: [] })).to.equal(0);
+      expect(client.commands).to.deep.equal([]);
+    });
   });
 
   describe('loadPlaylist', () => {

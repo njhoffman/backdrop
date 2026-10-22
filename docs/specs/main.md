@@ -17,7 +17,8 @@ in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open w
 | Database | `node:sqlite` (built in, Node >= 22.13); new schema, no migration from pexels-cli data |
 | Item state | Status (`new`/`kept`/`skipped`) lives in the database, files stay in one folder per kind |
 | Skipped files | Moved to a trash folder and purged after `library.trash_days` (default 30) |
-| Local imports | Pre-approved: status `kept`, rating `library.default_import_rating` (default 2), renamed `local-<n>.<ext>` with numbers never reused |
+| Local imports | Copied (originals untouched), pre-approved: status `kept`, rating `library.default_import_rating` (default 2), named `local-<n>.<ext>` with numbers never reused; rescanned on every daemon start |
+| Minimum quality | Nothing below `library.min_width` x `library.min_height` (1024x768, either orientation) enters the library; media below the current monitor is kept but never shown |
 | Resolution | Never upscale: only media at least as large as the target monitor is selected, unless `display.allow_upscale` |
 | Playback speed | One speed per video, independent of monitor orientation, applied on every play |
 | Screensaver streams | YouTube and other links live in `screensaver.streams` in config, not in the media library |
@@ -75,5 +76,15 @@ IPC socket) would break a wallpaper.
    `skipped` and moves it to trash. `undo` deletes the latest rating, restores the previous status, and
    moves the file back.
 4. Trash purge deletes files and rows whose skipped status is older than `trash_days`.
-5. Local import hashes each file, skips known hashes, copies it to `media/` as `local-<n>.<ext>`, and adds a
-   rating of `default_import_rating`.
+5. Local import (`backdrop import [dirs...]`, and on every daemon start for `library.import_dirs`):
+   - Walks the directories recursively, skipping hidden paths, non-media extensions and backdrop's own
+     `media/` and `trash/`.
+   - Skips files whose size and mtime match the last attempt (`imported_files`), so rescans only stat files.
+   - Hashes the rest (SHA-256); known content is recorded as a duplicate.
+   - Probes with ffprobe for kind (image, gif, video), dimensions (rotation-corrected) and duration; files
+     without a picture are unsupported, files below the minimum are too_small.
+   - Copies the file to `media/local-<n>.<ext>` and adds the media row plus a `default_import_rating`
+     rating in one transaction.
+   - Every outcome is recorded per source path, so deleting an item from the library does not bring it
+     back on the next scan. The daemon runs the scan in the background after playback starts and
+     appends new items to running playlists with `append-play`.

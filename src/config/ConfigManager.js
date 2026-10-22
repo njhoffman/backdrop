@@ -65,6 +65,8 @@ export class ConfigManager {
       library: {
         import_dirs: [],
         default_import_rating: 2,
+        min_width: 1024,
+        min_height: 768,
         trash_days: 30
       },
       display: {

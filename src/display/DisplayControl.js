@@ -1,7 +1,7 @@
 import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
-import { MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist } from './Playlist.js';
+import { MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
 
@@ -105,6 +105,22 @@ export class DisplayControl {
     this.database.setSpeed(media.id, speed);
     await this.withClient(monitor, client => client.setProperty('speed', speed));
     return { monitor, media, speed };
+  }
+
+  // Appends media to every running monitor's playlist; returns { [monitor]: count }, empty when not running
+  async appendMedia(mediaIds) {
+    const state = await this.state({ required: false });
+    const counts = {};
+    if (!mediaIds.length) {
+      return counts;
+    }
+    const mode = getMode(this.database);
+    for (const monitor of state?.monitors ?? []) {
+      counts[monitor.name] = await this.withClient(monitor, client => appendToPlaylist(client, {
+        database: this.database, config: this.config.get(), mode, monitor, mediaIds
+      }));
+    }
+    return counts;
   }
 
   // Sets the mode ('video', 'image' or 'toggle') and reloads every monitor if the daemon is running

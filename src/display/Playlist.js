@@ -96,3 +96,16 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ru
   await client.command('loadlist', playlistPath, 'replace');
   return media.length;
 }
+
+// Adds newly added media to a running playlist without interrupting what is playing;
+// append-play starts playback if the monitor was idle. Returns how many items were added.
+export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds }) {
+  const wanted = new Set(mediaIds);
+  const media = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale })
+    .filter(item => wanted.has(item.id));
+
+  for (const item of shuffle(media)) {
+    await client.command('loadfile', item.path, 'append-play');
+  }
+  return media.length;
+}

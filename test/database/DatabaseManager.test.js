@@ -34,7 +34,9 @@ describe('DatabaseManager', () => {
         SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
       `).all().map(t => t.name);
 
-      expect(tables).to.include.members(['media', 'ratings', 'searches', 'search_results', 'sequences', 'settings']);
+      expect(tables).to.include.members([
+        'media', 'ratings', 'searches', 'search_results', 'sequences', 'settings', 'imported_files'
+      ]);
       expect(db.db.prepare('PRAGMA user_version').get().user_version).to.equal(SCHEMA_VERSION);
     });
 
@@ -72,6 +74,7 @@ describe('DatabaseManager', () => {
         first.initialize(dbPath);
         first.addMedia(video());
         first.db.exec('DROP TABLE settings');
+        first.db.exec('DROP TABLE imported_files');
         first.db.exec('PRAGMA user_version = 1');
         first.close();
 
@@ -370,6 +373,60 @@ describe('DatabaseManager', () => {
       db.addSearchResult(searchId, a, 2);
 
       expect(db.getSearchResults(searchId)[0].rank).to.equal(2);
+    });
+  });
+
+  describe('transactions', () => {
+    it('commits nested transactions with the outer one', () => {
+      db.transaction(() => {
+        db.addMedia(video({ source_id: 1 }));
+        db.transaction(() => db.addMedia(video({ source_id: 2 })));
+      });
+      expect(db.findMedia()).to.have.length(2);
+    });
+
+    it('rolls back only the inner work when an inner transaction fails and is caught', () => {
+      db.transaction(() => {
+        db.addMedia(video({ source_id: 1 }));
+        expect(() => db.transaction(() => {
+          db.addMedia(video({ source_id: 2 }));
+          throw new Error('inner');
+        })).to.throw('inner');
+      });
+      expect(db.findMedia().map(m => m.source_id)).to.deep.equal(['1']);
+    });
+
+    it('rolls back everything when the outer transaction fails', () => {
+      expect(() => db.transaction(() => {
+        db.transaction(() => db.addMedia(video({ source_id: 1 })));
+        throw new Error('outer');
+      })).to.throw('outer');
+      expect(db.findMedia()).to.have.length(0);
+      expect(db.transactionDepth).to.equal(0);
+    });
+  });
+
+  describe('imported files', () => {
+    it('records and updates the outcome per source path', () => {
+      db.recordImportedFile({ source_path: '/src/a.jpg', size: 10, mtime_ms: 1000.7, status: 'too_small', detail: '320x240' });
+      expect(db.getImportedFile('/src/a.jpg')).to.include({ size: 10, mtime_ms: 1000, status: 'too_small', detail: '320x240' });
+
+      const id = db.addMedia(video());
+      db.recordImportedFile({ source_path: '/src/a.jpg', size: 20, mtime_ms: 2000, sha256: 'h', media_id: id, status: 'imported' });
+      expect(db.getImportedFile('/src/a.jpg')).to.include({ size: 20, media_id: id, status: 'imported', detail: null });
+      expect(db.getImportedFile('/src/other.jpg')).to.be.null;
+    });
+
+    it('rejects unknown statuses', () => {
+      expect(() => db.recordImportedFile({ source_path: '/a', size: 1, mtime_ms: 1, status: 'maybe' }))
+        .to.throw('Invalid import status');
+    });
+
+    it('keeps the record but clears the link when the media is deleted', () => {
+      const id = db.addMedia(video());
+      db.recordImportedFile({ source_path: '/src/a.mp4', size: 1, mtime_ms: 1, media_id: id, status: 'imported' });
+      db.deleteMedia(id);
+      expect(db.getImportedFile('/src/a.mp4').media_id).to.be.null;
     });
   });
 

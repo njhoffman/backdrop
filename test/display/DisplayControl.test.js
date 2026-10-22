@@ -171,6 +171,20 @@ describe('DisplayControl', () => {
       });
     });
 
+    describe('appendMedia', () => {
+      it('appends to every monitor in the current mode', async () => {
+        const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', width: 4000, height: 4000 });
+
+        expect(await control.appendMedia([id])).to.deep.equal({ 'DP-1': 1, 'HDMI-1': 1 });
+        expect(clientFor('DP-1').commands).to.deep.equal([['loadfile', '/m/v.mp4', 'append-play']]);
+      });
+
+      it('skips connecting when there is nothing to add', async () => {
+        expect(await control.appendMedia([])).to.deep.equal({});
+        expect(clients.size).to.equal(0);
+      });
+    });
+
     describe('mode', () => {
       it('toggles and reloads every monitor', async () => {
         db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png', width: 4000, height: 4000 });
@@ -217,6 +231,10 @@ describe('DisplayControl', () => {
     afterEach(async () => {
       db.close();
       await fs.remove(tempDir);
+    });
+
+    it('has nothing to append to', async () => {
+      expect(await control.appendMedia([1])).to.deep.equal({});
     });
 
     it('still stores the mode', async () => {

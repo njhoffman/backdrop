@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-21
+
+### Added
+- `backdrop import [dirs...]` copies local wallpapers into the library as `local-1.jpg`, `local-2.mp4`, ...,
+  already approved with a 2/3 rating (`library.default_import_rating`). With no folders it uses
+  `library.import_dirs`, which the daemon also scans in the background on every start, adding new items to
+  the running playlists without interrupting playback.
+- Imports skip duplicates by content, files below 1024x768 (`library.min_width` / `min_height`, either
+  orientation), hidden folders and non-media files. Unchanged files are not re-read on later scans, and items
+  you delete from the library are not imported again.
+- Rotated phone videos get their real width and height.
+
 ## [2.1.0] - 2026-10-21
 
 ### Added

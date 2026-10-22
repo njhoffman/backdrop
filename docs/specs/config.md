@@ -14,6 +14,8 @@ sources:
 library:
   import_dirs: []          # folders scanned by import; files there are already approved
   default_import_rating: 2 # rating (1-3) given to imported files
+  min_width: 1024          # nothing smaller is imported; long side vs the larger value,
+  min_height: 768          #   short side vs the smaller, so portrait media qualifies too
   trash_days: 30           # skipped files are purged from trash after this many days
 
 display:

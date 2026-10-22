@@ -43,6 +43,7 @@ describe('Daemon', () => {
       kill: (pid, signal) => kills.push([pid, signal]),
       restartDelay: 0,
       stopGrace: 20,
+      importer: { importDirs: async () => ({ imported: [] }) },
       ...overrides
     });
   }
@@ -180,6 +181,81 @@ describe('Daemon', () => {
       } catch (error) {
         expect(error.message).to.include('shorten paths.runtime');
       }
+    });
+  });
+
+  describe('import on start', () => {
+    it('imports configured directories and appends new media to every monitor', async () => {
+      config.set('library.import_dirs', ['/walls']);
+      const fits = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/1.mp4', width: 2560, height: 1920 });
+      const calls = [];
+      const daemon = makeDaemon({
+        importer: {
+          importDirs: async (dirs, options) => {
+            calls.push({ dirs, resolution: options.resolution, stopping: options.shouldStop() });
+            return { imported: [fits] };
+          }
+        }
+      });
+
+      await daemon.start();
+      await daemon.importing;
+
+      expect(calls).to.deep.equal([{ dirs: ['/walls'], resolution: '2560x1440', stopping: false }]);
+      const appended = clients.map(c => c.client.commands.filter(cmd => cmd[0] === 'loadfile'));
+      expect(appended).to.deep.equal([[['loadfile', '/m/1.mp4', 'append-play']], [['loadfile', '/m/1.mp4', 'append-play']]]);
+      await daemon.stop();
+    });
+
+    it('skips importing when no directories are configured', async () => {
+      let called = false;
+      const daemon = makeDaemon({ importer: { importDirs: async () => { called = true; return { imported: [] }; } } });
+      await daemon.start();
+      await daemon.importing;
+
+      expect(called).to.be.false;
+      await daemon.stop();
+    });
+
+    it('does not block startup, and stop waits for the import to wind down', async () => {
+      config.set('library.import_dirs', ['/walls']);
+      let release;
+      let sawStop = false;
+      const daemon = makeDaemon({
+        importer: {
+          importDirs: async (dirs, { shouldStop }) => {
+            await new Promise(resolve => { release = resolve; });
+            sawStop = shouldStop();
+            return { imported: [1] };
+          }
+        }
+      });
+
+      await daemon.start();
+      expect(await readState(tempDir)).to.not.be.null;
+
+      const stopping = daemon.stop();
+      release();
+      await stopping;
+
+      expect(sawStop).to.be.true;
+      expect(clients.every(c => !c.client.commands.some(cmd => cmd[0] === 'loadfile'))).to.be.true;
+    });
+
+    it('logs import failures without stopping the daemon', async () => {
+      config.set('library.import_dirs', ['/walls']);
+      const errors = [];
+      const daemon = makeDaemon({
+        logger: { ...silentLogger, error: (message, meta) => errors.push(meta.error) },
+        importer: { importDirs: async () => { throw new Error('disk gone'); } }
+      });
+
+      await daemon.start();
+      await daemon.importing;
+
+      expect(errors).to.deep.equal(['disk gone']);
+      expect(await readState(tempDir)).to.not.be.null;
+      await daemon.stop();
     });
   });
 
