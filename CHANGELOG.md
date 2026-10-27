@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-27
+
+### Added
+- Progress bars for `backdrop import` and `backdrop download`, with a color gradient, rate, time remaining
+  and the current file (bytes received for downloads). They draw on stderr only in a terminal. Colors come
+  from `output.progress_gradient`.
+- Interactive runs print a dim `backdrop vX.Y.Z` line first; the daemon logs its version at startup.
+- The daemon's startup import logs the file count and progress every 30 seconds.
+- `output.symbols` chooses status symbols: `auto` (Unicode on a UTF-8 terminal, else ASCII), `nerd`,
+  `unicode` or `ascii`.
+
+### Changed
+- Consistent colors and status symbols across all commands. Piped output, M3U exports and scripts get
+  the same plain text as before; `NO_COLOR` and `FORCE_COLOR` are honored.
+
+### Removed
+- Unused `chalk`, `pexels` and `progress` dependencies and the legacy progress bar.
+
 ## [2.4.2] - 2026-10-27
 
 ### Changed

@@ -27,6 +27,17 @@ describe('CLI command registration', function () {
     expect(result.stderr).to.equal('');
   });
 
+  it('keeps piped output free of escape codes, symbols and the version line unless FORCE_COLOR is set', () => {
+    const plain = run('stats');
+    expect(plain.stdout).to.not.include('\x1b[');
+    expect(plain.stdout).to.match(/^image: /m);
+    expect(plain.stderr).to.equal('');
+    env.FORCE_COLOR = '3';
+    const forced = run('stats');
+    expect(forced.stdout).to.include('\x1b[');
+    expect(forced.stderr).to.equal('');
+  });
+
   it('runs offline commands and rejects unknown commands with a failing exit code', () => {
     expect(run('stats').status).to.equal(0);
     expect(run('list-images', '--rated', 'portrait', '--no-local').status).to.equal(0);

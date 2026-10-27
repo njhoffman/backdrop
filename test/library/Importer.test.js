@@ -48,6 +48,16 @@ describe('Importer', () => {
 
   const run = (options) => importer.importDirs([source], options);
 
+  it('reports the file total before importing and a running count after each file', async () => {
+    await write('a.jpg', 'image 2560x1440');
+    await write('b.jpg', 'image 2560x1440');
+    const events = [];
+
+    await run({ onStart: total => events.push(['start', total]), onFile: (file, outcome, done) => events.push([path.basename(file), done]) });
+
+    expect(events).to.deep.equal([['start', 2], ['a.jpg', 1], ['b.jpg', 2]]);
+  });
+
   it('copies files into the library as local-<n> with the original name kept', async () => {
     const original = await write('Beach Sunset.JPG', 'image 2560x1440');
 

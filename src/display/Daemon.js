@@ -1,4 +1,5 @@
 import { spawn as spawnProcess } from 'child_process';
+import { createRequire } from 'module';
 import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
@@ -15,6 +16,10 @@ const STOP_GRACE_MS = 2000;
 const HEALTH_INTERVAL_MS = 30_000;
 const HEALTH_FAILURES = 2;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// The startup import logs how far it is at most this often
+const IMPORT_PROGRESS_MS = 30_000;
+
+const { version } = createRequire(import.meta.url)('../../package.json');
 // sockaddr_un.sun_path is 108 bytes including the terminating NUL
 const MAX_SOCKET_PATH = 107;
 
@@ -75,7 +80,7 @@ export class Daemon {
     config, database, logger,
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
     restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
-    healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS,
+    healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger })
   }) {
@@ -92,6 +97,7 @@ export class Daemon {
     this.importing = Promise.resolve();
     this.healthInterval = healthInterval;
     this.purgeInterval = purgeInterval;
+    this.importProgressInterval = importProgressInterval;
     this.purge = purge;
     this.timers = [];
     this.screens = new Map();
@@ -128,7 +134,7 @@ export class Daemon {
     }
 
     await this.writeState();
-    this.logger.info('Daemon started', { pid: process.pid, monitors: monitors.map(m => m.name) });
+    this.logger.info('Daemon started', { version, pid: process.pid, monitors: monitors.map(m => m.name) });
 
     // Playback starts from the existing library; new imports are appended as they finish
     this.importing = this.importDirs(monitors[0]);
@@ -184,9 +190,21 @@ export class Daemon {
     }
 
     try {
+      let total = 0;
+      let lastReport = Date.now();
       const { imported } = await this.importer.importDirs(dirs, {
         resolution: `${monitor.width}x${monitor.height}`,
-        shouldStop: () => this.stopping
+        shouldStop: () => this.stopping,
+        onStart: count => {
+          total = count;
+          this.logger.info('Import started', { files: total });
+        },
+        onFile: (file, outcome, done) => {
+          if (Date.now() - lastReport >= this.importProgressInterval && done < total) {
+            lastReport = Date.now();
+            this.logger.info('Import progress', { done, total });
+          }
+        }
       });
       if (!imported.length || this.stopping) {
         return;

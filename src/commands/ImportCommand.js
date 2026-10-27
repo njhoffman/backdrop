@@ -1,15 +1,16 @@
 import path from 'path';
-import chalk from 'chalk';
 import { Importer } from '../library/Importer.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { listMonitors } from '../display/Monitors.js';
+import { out, fmt, ProgressBar } from '../utils/output.js';
 
+// Evaluated per call so colors follow the current output settings
 const OUTCOME_LABELS = {
-  imported: chalk.green('imported'),
-  duplicate: chalk.gray('duplicate'),
-  too_small: chalk.yellow('too small'),
-  unsupported: chalk.yellow('unsupported'),
-  failed: chalk.red('failed')
+  imported: () => fmt.green('imported'),
+  duplicate: () => fmt.gray('duplicate'),
+  too_small: () => fmt.yellow('too small'),
+  unsupported: () => fmt.yellow('unsupported'),
+  failed: () => fmt.red('failed')
 };
 
 export class ImportCommand {
@@ -42,17 +43,25 @@ export class ImportCommand {
     }
 
     const { min_width: minWidth, min_height: minHeight } = this.config.get().library;
-    const summary = await this.importer.importDirs(targets, {
-      resolution: await this.ratingResolution(),
-      onFile: (file, outcome) => {
-        if (outcome.status !== 'unchanged') {
-          const detail = outcome.detail ? chalk.gray(` (${outcome.detail})`) : '';
-          console.log(`${OUTCOME_LABELS[outcome.status]} ${file}${detail}`);
+    let bar = null;
+    let summary;
+    try {
+      summary = await this.importer.importDirs(targets, {
+        resolution: await this.ratingResolution(),
+        onStart: total => { bar = new ProgressBar({ label: 'Importing', total }); },
+        onFile: (file, outcome, done) => {
+          bar?.update(done, path.basename(file));
+          if (outcome.status !== 'unchanged') {
+            const detail = outcome.detail ? fmt.gray(` (${outcome.detail})`) : '';
+            out.print(`${OUTCOME_LABELS[outcome.status]()} ${file}${detail}`);
+          }
         }
-      }
-    });
+      });
+    } finally {
+      bar?.stop();
+    }
 
-    console.log([
+    out.print([
       `Scanned ${summary.scanned}`,
       `imported ${summary.imported.length}`,
       `unchanged ${summary.unchanged}`,
@@ -64,7 +73,7 @@ export class ImportCommand {
 
     const counts = await this.control.appendMedia(summary.imported);
     for (const [name, count] of Object.entries(counts)) {
-      console.log(`  ${name}: added ${count} to the playlist`);
+      out.detail(`${name}: added ${count} to the playlist`);
     }
     if (summary.failed) {
       process.exitCode = 1;

@@ -16,7 +16,7 @@ library:
   default_import_rating: 2 # rating (1-3) given to imported files
   min_width: 1024          # nothing smaller is imported; long side vs the larger value,
   min_height: 768          #   short side vs the smaller, so portrait media qualifies too
-  trash_days: 30           # skipped files are purged from trash after this many days
+  trash_days: 30           # skipped files are purged from trash after this many days; 0 disables
 
 display:
   monitors: auto           # auto (xrandr) or a list of output names
@@ -29,7 +29,15 @@ screensaver:
   idle_minutes: 10
   sources: [rated_videos]  # what the screensaver draws from
   streams: []              # URLs played through mpv/yt-dlp, e.g. YouTube links
+
+output:
+  symbols: auto            # auto, nerd, unicode or ascii; auto is unicode on a UTF-8 terminal, else ascii
+  progress_gradient: ['#00c8ff', '#a050ff']  # two or more #rrggbb stops for progress bars
 ```
+
+Colors and symbols appear only when output goes to a terminal; piped output stays plain. `NO_COLOR`
+turns colors off and `FORCE_COLOR` turns them on for pipes. Nerd Font glyphs cannot be detected, so
+`nerd` must be chosen explicitly.
 
 Other sources go under `sources.<name>` with their own credentials; unknown keys are preserved.
 

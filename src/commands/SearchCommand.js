@@ -1,6 +1,7 @@
 import inquirer from 'inquirer';
 import { SourceRegistry } from '../sources/SourceRegistry.js';
 import { targetResolution, positiveInteger, selectVariant } from '../library/quality.js';
+import { out, fmt } from '../utils/output.js';
 
 export class SearchCommand {
   constructor(config, database, logger, { sources, monitors, prompt = inquirer.prompt } = {}) {
@@ -36,7 +37,7 @@ export class SearchCommand {
       } catch (error) {
         if (error.status !== 429) throw error;
         summary.rateLimited = true;
-        console.error(`${source.name}: rate limit reached; saved results are available for download`);
+        out.warn(`${source.name}: rate limit reached; saved results are available for download`);
         break;
       }
       if (result.rateLimit) this.database.setSetting(`source_rate_limit:${source.name}`, result.rateLimit);
@@ -55,14 +56,14 @@ export class SearchCommand {
         }
       });
       summary.pages++;
-      console.log(`Page ${page}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+      out.detail(`Page ${page}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
       if (result.nextPage !== null && result.nextPage !== undefined && (!Number.isInteger(result.nextPage) || result.nextPage <= page)) {
         throw new Error(`${source.name}: invalid next page`);
       }
       page = result.items.length ? (result.nextPage ?? null) : null;
     }
-    console.log(`Search #${searchId}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
-    if (source.name === 'pexels') console.log('Photos and videos provided by Pexels: https://www.pexels.com');
+    out.success(`Search #${searchId}: ${fmt.bold(summary.added)} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+    if (source.name === 'pexels') out.detail('Photos and videos provided by Pexels: https://www.pexels.com');
     this.logger.info('Search finished', summary);
     return summary;
   }

@@ -46,6 +46,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
+- **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`.
+  Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
+  Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
   runtime dir; it restarts mpv on exit or on failed IPC health checks, drops entries that fail to load, and
   purges expired trash daily (`src/library/purge.js`); `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;

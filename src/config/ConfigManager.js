@@ -80,6 +80,10 @@ export class ConfigManager {
         idle_minutes: 10,
         sources: ['rated_videos'],
         streams: []
+      },
+      output: {
+        symbols: 'auto',
+        progress_gradient: ['#00c8ff', '#a050ff']
       }
     };
   }

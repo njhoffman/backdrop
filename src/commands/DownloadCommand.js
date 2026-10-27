@@ -8,6 +8,7 @@ import { DisplayControl } from '../display/DisplayControl.js';
 import { hashFile } from '../library/Importer.js';
 import { probeMedia } from '../library/probe.js';
 import { targetResolution, positiveInteger, selectVariant, fits } from '../library/quality.js';
+import { out, fmt, ProgressBar, formatBytes } from '../utils/output.js';
 
 const EXTENSIONS = { 'video/mp4': '.mp4', 'video/webm': '.webm', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
 
@@ -23,8 +24,15 @@ export class DownloadCommand {
     this.transfer = transfer ?? this.downloadFile.bind(this);
   }
 
-  async downloadFile(url, file) {
+  // onBytes(received, total) reports transfer progress; total is null without a Content-Length
+  async downloadFile(url, file, onBytes = () => {}) {
     const response = await axios.get(url, { responseType: 'stream', timeout: 30000 });
+    const total = Number(response.headers?.['content-length']) || null;
+    let received = 0;
+    response.data.on('data', chunk => {
+      received += chunk.length;
+      onBytes(received, total);
+    });
     await pipeline(response.data, fs.createWriteStream(file, { flags: 'wx' }));
   }
 
@@ -37,34 +45,43 @@ export class DownloadCommand {
     const target = await targetResolution(this.config, options.resolution, this.monitors);
     const items = this.database.findMedia({ downloaded: false, status: 'new', kind, ...(options.source ? { source: options.source } : {}) });
     const summary = { downloaded: [], skipped: 0, failed: 0 };
-    for (const media of items) {
-      if (summary.downloaded.length >= total) break;
-      try {
-        const source = this.sources.get(media.source);
-        const variant = selectVariant(await source.downloadVariants(media), target, this.config);
-        if (!variant) { summary.skipped++; continue; }
-        const downloaded = await this.downloadItem(media, variant, target);
-        summary.downloaded.push(downloaded.id);
-        console.log(`Downloaded #${media.id}: ${downloaded.path}`);
-        if (media.author || media.page_url) console.log(`  ${media.author ?? media.source} ${media.page_url ?? ''}`);
-      } catch (error) {
-        summary.failed++;
-        this.logger.error('Download failed', { mediaId: media.id, error: error.message });
-        console.error(`#${media.id}: ${error.message}`);
+    const bar = new ProgressBar({ label: 'Downloading', total: Math.min(total, items.length) });
+    try {
+      for (const media of items) {
+        if (summary.downloaded.length >= total) break;
+        try {
+          const source = this.sources.get(media.source);
+          const variant = selectVariant(await source.downloadVariants(media), target, this.config);
+          if (!variant) { summary.skipped++; continue; }
+          bar.setDetail(`#${media.id}`);
+          const downloaded = await this.downloadItem(media, variant, target, (received, size) => {
+            bar.setDetail(`#${media.id} ${formatBytes(received)}${size ? ` / ${formatBytes(size)}` : ''}`);
+          });
+          summary.downloaded.push(downloaded.id);
+          out.success(`Downloaded ${fmt.bold(`#${media.id}`)}: ${downloaded.path}`);
+          if (media.author || media.page_url) out.detail(`${media.author ?? media.source} ${media.page_url ?? ''}`.trim());
+          bar.update(summary.downloaded.length, '');
+        } catch (error) {
+          summary.failed++;
+          this.logger.error('Download failed', { mediaId: media.id, error: error.message });
+          out.error(`#${media.id}: ${error.message}`);
+        }
       }
+    } finally {
+      bar.stop();
     }
     try {
       await this.control.appendMedia(summary.downloaded);
     } catch (error) {
       this.logger.warn('Downloads saved but playlist update failed', { error: error.message });
-      console.error(`Downloads saved; playlist update failed: ${error.message}`);
+      out.warn(`Downloads saved; playlist update failed: ${error.message}`);
     }
-    console.log(`Downloaded ${summary.downloaded.length}, no suitable variant ${summary.skipped}, failed ${summary.failed}`);
+    out.print(`Downloaded ${summary.downloaded.length}, no suitable variant ${summary.skipped}, failed ${summary.failed}`);
     if (summary.failed) process.exitCode = 1;
     return summary;
   }
 
-  async downloadItem(media, variant, target) {
+  async downloadItem(media, variant, target, onBytes) {
     const extension = EXTENSIONS[variant.mime];
     if (!extension) throw new Error(`Unsupported download format: ${variant.mime}`);
     const directory = this.config.get().paths.inbox;
@@ -73,7 +90,7 @@ export class DownloadCommand {
     const partial = `${file}.${randomUUID()}.partial`;
     let moved = false;
     try {
-      await this.transfer(variant.url, partial);
+      await this.transfer(variant.url, partial, onBytes);
       const info = await this.probe(partial);
       if (!info || !fits(info, target, this.config)) throw new Error('Downloaded file does not meet the required dimensions');
       const sha256 = await hashFile(partial);

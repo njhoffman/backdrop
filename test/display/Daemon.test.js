@@ -212,6 +212,33 @@ describe('Daemon', () => {
       await daemon.stop();
     });
 
+    it('logs the file total and periodic progress for long startup imports', async () => {
+      config.set('library.import_dirs', ['/walls']);
+      const infos = [];
+      const daemon = makeDaemon({
+        importProgressInterval: 0,
+        logger: { ...silentLogger, info: (message, meta) => infos.push([message, meta]) },
+        importer: {
+          importDirs: async (dirs, { onStart, onFile }) => {
+            onStart(3);
+            for (let done = 1; done <= 3; done++) onFile(`/walls/${done}.jpg`, { status: 'imported' }, done);
+            return { imported: [] };
+          }
+        }
+      });
+
+      await daemon.start();
+      await daemon.importing;
+
+      expect(infos.find(([message]) => message === 'Daemon started')[1]).to.have.property('version');
+      expect(infos.filter(([message]) => message.startsWith('Import')).map(([message, meta]) => [message, meta])).to.deep.equal([
+        ['Import started', { files: 3 }],
+        ['Import progress', { done: 1, total: 3 }],
+        ['Import progress', { done: 2, total: 3 }]
+      ]);
+      await daemon.stop();
+    });
+
     it('skips importing when no directories are configured', async () => {
       let called = false;
       const daemon = makeDaemon({ importer: { importDirs: async () => { called = true; return { imported: [] }; } } });

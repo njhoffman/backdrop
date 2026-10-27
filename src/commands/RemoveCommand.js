@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import { DisplayControl } from '../display/DisplayControl.js';
+import { out, fmt } from '../utils/output.js';
 
 export class RemoveCommand {
   constructor(config, database, logger, { control } = {}) {
@@ -45,7 +46,7 @@ export class RemoveCommand {
     // Foreign keys retain imported_files with a null media_id and cascade ratings.
     this.database.deleteMedia(media.id);
     this.logger.info('Media removed', { mediaId: media.id, path: media.path });
-    console.log(`Removed #${media.id}${media.path ? `: ${media.path}` : ''}`);
+    out.success(`Removed #${media.id}${media.path ? `: ${media.path}` : ''}`);
     return media;
   }
 }

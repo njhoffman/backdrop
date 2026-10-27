@@ -95,7 +95,8 @@ dependency order.
 - [x] **No command to remove an item from the library.** (p2) [feature] `backdrop remove <id>` or `backdrop remove --current [--monitor <name>]`
       deletes the file and media row after removing all playlist references. `imported_files` keeps the source record so unchanged originals are not re-imported.
 - [ ] **Animated WebP imports as a still image.** (p3) [bug] ffprobe cannot decode animated WebP, so `probe.js` classifies it as `image`; detect the ANIM chunk and treat it as `gif`.
-- [ ] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
+- [x] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
+      Done: the daemon logs the file total and progress every 30s; `backdrop import` shows a progress bar.
 - [x] **Edit rating during playback.** (p2) [feature] `keep N` changes the effective current rating for imported items;
       prior ratings remain as undo history, and repeated ratings do not duplicate playlist entries or restart media already in the library.
 
@@ -119,18 +120,21 @@ dependency order.
 
 ## 8. CLI experience and packaging
 
-- [ ] **Consistent output styling.** (p2) [feature] Commands print plain `console.log` lines with ad hoc chalk in a few places (`index.js`, `DisplayCommand`, `ImportCommand`).
+- [x] **Consistent output styling.** (p2) [feature] Commands print plain `console.log` lines with ad hoc chalk in a few places (`index.js`, `DisplayCommand`, `ImportCommand`).
       Add one small output module (headings, key/value rows, success/warn/error colors, dim secondary text) and use it in every command.
       Respect `NO_COLOR` and non-TTY stdout so lists, `--playlist` and scripts get plain text; consider `--json` for `current`, `status` and lists.
-- [ ] **Gradient progress bars for long tasks.** (p3) [feature] Import hashing/copying, downloads (bytes per file and items overall) and purge need live progress.
+      Done: `src/utils/output.js` on Node's own color detection (chalk removed), with `output.symbols` (auto/nerd/unicode/ascii).
+      `--json` moved to the rofi item.
+- [x] **Gradient progress bars for long tasks.** (p3) [feature] Import hashing/copying, downloads (bytes per file and items overall) and purge need live progress.
       `src/utils/ProgressBar.js` is unused legacy code and the `progress` dependency is unused; replace both with one TTY-only bar that draws a truecolor gradient
       (falling back to 256/16 colors), writes to stderr, and stays silent when not a TTY. Covers "Import progress for large first runs" in project 5.
-- [ ] **Show the version on every run.** (p3) [feature] Print `backdrop vX.Y.Z` as a dim first line on stderr for interactive runs only, so piped output and
+      Done for import and download (with per-file bytes); colors from `output.progress_gradient`. Purge is fast enough without one.
+- [x] **Show the version on every run.** (p3) [feature] Print `backdrop vX.Y.Z` as a dim first line on stderr for interactive runs only, so piped output and
       M3U exports stay clean; `--version` already exists. Skip it for `daemon` logs, where the version should go in the startup log entry instead.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
 - [ ] **Rofi control menu.** (p2) [feature] `backdrop menu` (or a shipped script) opens rofi with the current item (name, rating, monitor) and actions:
       keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
-      Needs machine-readable `backdrop current` output (see the `--json` note above); add an i3 keybinding example to `GETTING_STARTED.md`.
-- [ ] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item.
+      Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
+- [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.

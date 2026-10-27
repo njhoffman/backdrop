@@ -3,6 +3,7 @@ import path from 'path';
 import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
+import { out, fmt } from '../utils/output.js';
 
 export class ListCommand {
   constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
@@ -34,8 +35,9 @@ export class ListCommand {
     const items = this.database.findMedia(filters);
     for (const item of items) {
       const rating = this.database.getLatestRating(item.id);
-      console.log(`#${item.id} ${item.kind} ${item.width}x${item.height} ${item.source} ${rating ? `${rating.rating}/3 (${rating.orientation})` : 'unrated'} ${item.path}`);
-      if (item.author || item.page_url) console.log(`  ${item.author ?? ''} ${item.page_url ?? ''}`);
+      const rated = rating ? fmt.green(`${rating.rating}/3 (${rating.orientation})`) : fmt.yellow('unrated');
+      out.print(`${fmt.bold(`#${item.id}`)} ${item.kind} ${fmt.dim(`${item.width}x${item.height} ${item.source}`)} ${rated} ${item.path}`);
+      if (item.author || item.page_url) out.detail(`${item.author ?? ''} ${item.page_url ?? ''}`.trim());
       if (options.interactive) {
         const { action } = await this.prompt([{ type: 'list', name: 'action', message: 'Action:',
           choices: [{ name: 'Next', value: 'next' }, { name: 'Keep 1', value: 1 }, { name: 'Keep 2', value: 2 },
@@ -44,14 +46,14 @@ export class ListCommand {
         if (Number.isInteger(action)) Object.assign(item, await this.rating.rate(item, action));
       }
     }
-    if (!items.length) console.log('No matching downloaded media');
+    if (!items.length) out.info('No matching downloaded media');
     if (options.playlist) {
       const file = path.resolve(this.config.expandPath(options.playlist));
       const paths = [];
       for (const item of items) if (await fs.pathExists(item.path)) paths.push(item.path);
       if (paths.some(filePath => /[\r\n]/.test(filePath))) throw new Error('Cannot export paths containing line breaks');
       await fs.outputFile(file, `#EXTM3U\n${paths.join('\n')}${paths.length ? '\n' : ''}`);
-      console.log(`Playlist: ${file}`);
+      out.success(`Playlist: ${file}`);
     }
     return items;
   }

@@ -56,16 +56,19 @@ export class Importer {
 
   // resolution: the monitor the default rating is recorded against (e.g. '2304x1296'), or null.
   // shouldStop: checked between files so a stopping daemon does not wait for a long import.
-  async importDirs(dirs, { resolution = null, shouldStop = () => false, onFile = () => {} } = {}) {
+  // onStart(total) runs once the file list is known; onFile(file, outcome, done) after each file.
+  async importDirs(dirs, { resolution = null, shouldStop = () => false, onStart = () => {}, onFile = () => {} } = {}) {
     const summary = emptySummary();
+    const files = await this.findFiles(dirs);
+    onStart(files.length);
 
-    for (const file of await this.findFiles(dirs)) {
+    for (const file of files) {
       if (shouldStop()) {
         break;
       }
       summary.scanned++;
       const outcome = await this.importFile(file, resolution);
-      onFile(file, outcome);
+      onFile(file, outcome, summary.scanned);
 
       if (outcome.status === 'unchanged') summary.unchanged++;
       else if (outcome.status === 'imported') summary.imported.push(outcome.mediaId);

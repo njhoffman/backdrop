@@ -15,7 +15,7 @@ import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
 import { ListCommand } from './commands/ListCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
-import chalk from 'chalk';
+import { configureOutput, out, printVersion } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
 
@@ -29,6 +29,7 @@ class BackdropApp {
   async initialize() {
     try {
       await this.config.initialize();
+      configureOutput({ config: this.config });
 
       const config = this.config.get();
       await this.ensureDirectories();
@@ -37,7 +38,7 @@ class BackdropApp {
 
       this.logger.info('Application initialized successfully');
     } catch (error) {
-      console.error(chalk.red('Failed to initialize application:'), error.message);
+      out.error(`Failed to initialize application: ${error.message}`);
       process.exit(1);
     }
   }
@@ -58,7 +59,7 @@ class BackdropApp {
         await handler(...args);
       } catch (error) {
         this.logger.error(error.message, { stack: error.stack });
-        console.error(chalk.red(error.message));
+        out.error(error.message);
         process.exitCode = 1;
       }
     };
@@ -207,6 +208,9 @@ class BackdropApp {
   async run() {
     await this.initialize();
     this.setupCommands();
+    // The daemon logs its version at startup instead; --version prints it already
+    const args = process.argv.slice(2);
+    if (!args.some(arg => ['-V', '--version', 'daemon'].includes(arg))) printVersion(version);
     try {
       await program.parseAsync();
     } catch (error) {
@@ -224,7 +228,7 @@ class BackdropApp {
 const app = new BackdropApp();
 app.run()
   .catch(error => {
-    console.error(chalk.red('Application error:'), error);
+    out.error(`Application error: ${error.stack ?? error}`);
     process.exitCode = 1;
   })
   .finally(() => app.database.close());

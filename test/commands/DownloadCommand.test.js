@@ -93,6 +93,21 @@ describe('DownloadCommand', () => {
     expect(command.transfer.called).to.be.false;
   });
 
+  it('reports received bytes against Content-Length while writing the file', async () => {
+    sinon.stub(axios, 'get').resolves({ data: Readable.from([Buffer.alloc(3), Buffer.alloc(5)]), headers: { 'content-length': '8' } });
+    const progress = [];
+    const file = path.join(dir, 'partial');
+    await command.downloadFile('https://example.com/v', file, (received, total) => progress.push([received, total]));
+    expect(progress).to.deep.equal([[3, 8], [8, 8]]);
+    expect((await fs.stat(file)).size).to.equal(8);
+  });
+
+  it('passes a byte progress callback to the transfer', async () => {
+    add();
+    await command.download({ total: 1 });
+    expect(command.transfer.firstCall.args[2]).to.be.a('function');
+  });
+
   it('propagates response stream errors rather than leaving a hung download', async () => {
     const stream = new Readable({ read() { this.destroy(new Error('stream failed')); } });
     sinon.stub(axios, 'get').resolves({ data: stream });

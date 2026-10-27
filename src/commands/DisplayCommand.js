@@ -1,9 +1,9 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import chalk from 'chalk';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode } from '../display/Playlist.js';
+import { out, fmt } from '../utils/output.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const START_TIMEOUT_MS = 15_000;
@@ -31,7 +31,7 @@ export class DisplayCommand {
   async start() {
     const running = await readState(this.runtimeDir);
     if (running) {
-      console.log(chalk.yellow(`Already running (pid ${running.pid})`));
+      out.info(`Already running (pid ${running.pid})`);
       return;
     }
 
@@ -42,7 +42,7 @@ export class DisplayCommand {
     while (Date.now() < deadline) {
       const state = await readState(this.runtimeDir);
       if (state) {
-        console.log(chalk.green(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}`));
+        out.success(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}`);
         return;
       }
       if (child.exitCode !== null) {
@@ -56,7 +56,7 @@ export class DisplayCommand {
   async stop() {
     const state = await readState(this.runtimeDir);
     if (!state) {
-      console.log(chalk.yellow('Not running'));
+      out.info('Not running');
       return;
     }
 
@@ -68,36 +68,36 @@ export class DisplayCommand {
     if (await readState(this.runtimeDir)) {
       throw new Error(`Daemon (pid ${state.pid}) did not stop`);
     }
-    console.log(chalk.green('Stopped'));
+    out.success('Stopped');
   }
 
   async status() {
     const state = await readState(this.runtimeDir);
-    console.log(`Mode: ${getMode(this.database)}`);
+    out.row('Mode', fmt.cyan(getMode(this.database)));
     if (!state) {
-      console.log('Daemon: not running');
+      out.row('Daemon', fmt.yellow('not running'));
       return;
     }
 
-    console.log(`Daemon: running (pid ${state.pid})`);
+    out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid})`)}`);
     for (const monitor of state.monitors) {
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
-      const playing = path ? `${path}${media ? ` (speed ${media.speed})` : ''}` : 'nothing playing';
-      console.log(`  ${monitor.name} ${monitor.width}x${monitor.height}: ${playing}`);
+      const playing = path ? `${path}${media ? fmt.dim(` (speed ${media.speed})`) : ''}` : fmt.yellow('nothing playing');
+      out.print(`  ${fmt.bold(monitor.name)} ${fmt.dim(`${monitor.width}x${monitor.height}`)}: ${playing}`);
     }
   }
 
   async current(options) {
     const { monitor, path, media, rating } = await this.control.current(options.monitor);
     if (!path) {
-      console.log(`${monitor.name}: nothing playing`);
+      out.info(`${monitor.name}: nothing playing`);
       return;
     }
 
-    console.log(path);
+    out.print(path);
     if (media) {
       const stars = rating ? (rating.rating === 0 ? 'skipped' : `${rating.rating}/3`) : 'unrated';
-      console.log(chalk.gray(`#${media.id} ${media.kind} ${media.width}x${media.height} ${media.source} ${stars} speed ${media.speed}`));
+      out.detail(`#${media.id} ${media.kind} ${media.width}x${media.height} ${media.source} ${stars} speed ${media.speed}`);
     }
   }
 
@@ -111,15 +111,15 @@ export class DisplayCommand {
 
   async speed(value, options) {
     const { monitor, speed } = await this.control.speed(value, options.monitor);
-    console.log(`${monitor.name}: speed ${speed}`);
+    out.print(`${monitor.name}: speed ${fmt.cyan(speed)}`);
   }
 
   async mode(requested) {
     const { mode, running, counts } = await this.control.mode(requested);
-    console.log(`Mode: ${mode}`);
+    out.row('Mode', fmt.cyan(mode));
     if (running) {
       for (const [name, count] of Object.entries(counts)) {
-        console.log(`  ${name}: ${count ? `${count} items` : chalk.yellow(`no ${mode}s at this resolution`)}`);
+        out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
       }
     }
   }

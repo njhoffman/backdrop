@@ -28,6 +28,10 @@ screensaver:
   streams:
     - https://www.youtube.com/watch?v=example
 
+output:
+  symbols: auto                      # auto, nerd, unicode or ascii (Nerd Fonts must be chosen explicitly)
+  progress_gradient: ['#00c8ff', '#a050ff']
+
 # Every path defaults to an XDG location; override individually if needed.
 # paths:
 #   database: ~/.local/share/backdrop/backdrop.db

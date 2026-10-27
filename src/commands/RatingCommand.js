@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
+import { out, fmt } from '../utils/output.js';
 
 export class RatingCommand {
   constructor(config, database, logger, { control } = {}) {
@@ -45,7 +46,8 @@ export class RatingCommand {
       throw error;
     }
     await this.syncPlayback(media, target, rating === 0);
-    console.log(`#${media.id}: ${rating === 0 ? 'skipped' : `kept ${rating}/3`}`);
+    if (rating === 0) out.warn(`#${media.id}: skipped`);
+    else out.success(`#${media.id}: kept ${rating}/3`);
     this.logger.info('Media rated', { mediaId: media.id, rating });
     return this.database.getMedia(media.id);
   }
@@ -76,13 +78,13 @@ export class RatingCommand {
   playbackWarning(error) {
     // A disconnected display must not suggest retrying a rating change that already committed.
     this.logger.warn('Rating change saved but playlist update failed', { error: error.message });
-    console.error(`Rating change saved; playlist update failed: ${error.message}`);
+    out.warn(`Rating change saved; playlist update failed: ${error.message}`);
   }
 
   async undo() {
     const rating = this.database.getLastRating();
     if (!rating) {
-      console.log('No rating to undo');
+      out.info('No rating to undo');
       return null;
     }
     const previous = this.database.getMedia(rating.media_id);
@@ -107,7 +109,7 @@ export class RatingCommand {
     } else {
       await this.syncPlayback(previous, target);
     }
-    console.log(`Undid rating for #${previous.id}`);
+    out.success(`Undid rating for #${previous.id}`);
     return this.database.getMedia(previous.id);
   }
 
