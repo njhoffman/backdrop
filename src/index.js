@@ -30,6 +30,7 @@ class BackdropApp {
     try {
       await this.config.initialize();
       configureOutput({ config: this.config });
+      if (this.config.created) out.notice(`Created default config file at: ${this.config.configPath}`);
 
       const config = this.config.get();
       await this.ensureDirectories();
@@ -131,6 +132,14 @@ class BackdropApp {
       .action(this.action((value, options) => display.speed(value, options)));
 
     program
+      .command('dim')
+      .description('Darken the playing item and remember it (0-100, e.g. 30, +10, -10, reset)')
+      .argument('<value>', 'Absolute amount, relative step, or reset')
+      .option(...monitorOption)
+      .allowUnknownOption()
+      .action(this.action((value, options) => display.dim(value, options)));
+
+    program
       .command('import')
       .description('Copy approved local media into the library (default: library.import_dirs)')
       .argument('[dirs...]', 'Directories to import from')
@@ -187,6 +196,7 @@ class BackdropApp {
       .option('--type <type>', 'images, videos or both', 'both')
       .option('--source <name>', 'Restrict to one source')
       .option('--resolution <WIDTHxHEIGHT>', 'Override detected monitor dimensions')
+      .option('--upgrade', 'Replace downloaded media smaller than the monitors with a larger variant')
       .action(this.action(options => download.download(options)));
     for (const [name, method] of [['list-images', 'listImages'], ['list-videos', 'listVideos']]) {
       program.command(name).description('List downloaded media and their current ratings')

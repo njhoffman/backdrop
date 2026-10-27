@@ -50,8 +50,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
   Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
-  runtime dir; it restarts mpv on exit or on failed IPC health checks, drops entries that fail to load, and
-  purges expired trash daily (`src/library/purge.js`); `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
+  runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
+  xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
+  trash daily (`src/library/purge.js`); `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
@@ -61,7 +62,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
-  undo (schema v4); failed database writes restore the file. The obsolete shell-hook command has been removed.
+  undo (schema v4; v5 adds per-item `dim`); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline.
 
 ## Conventions
@@ -69,4 +70,4 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - File status lives in the database; files sit in `media/`, `trash/` or the inbox, never in per-status folders.
 - Only sources with a public API; no scraping.
 - Never select media smaller than the target monitor unless `display.allow_upscale` is set.
-- One playback speed per video, regardless of orientation.
+- One playback speed per video and one dim level per item, regardless of orientation.

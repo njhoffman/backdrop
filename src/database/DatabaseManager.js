@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -14,7 +14,7 @@ const MAX_SPEED = 100;
 // Columns callers may write through addMedia/updateMedia; id, status and timestamps are managed here
 const MEDIA_FIELDS = [
   'kind', 'source', 'source_id', 'path', 'original_name', 'width', 'height', 'duration',
-  'sha256', 'speed', 'tags', 'variants', 'author', 'page_url'
+  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url'
 ];
 const JSON_FIELDS = ['tags', 'variants'];
 
@@ -94,6 +94,8 @@ const MIGRATIONS = [`
 `, `
   ALTER TABLE ratings ADD COLUMN previous_path TEXT;
   ALTER TABLE ratings ADD COLUMN rated_path TEXT;
+`, `
+  ALTER TABLE media ADD COLUMN dim INTEGER NOT NULL DEFAULT 0;
 `];
 
 export function orientationOf(resolution) {
@@ -241,6 +243,9 @@ export class DatabaseManager {
     if (changes.speed !== undefined) {
       this.validateSpeed(changes.speed);
     }
+    if (changes.dim !== undefined) {
+      this.validateDim(changes.dim);
+    }
     if (!fields.length) {
       return;
     }
@@ -341,6 +346,17 @@ export class DatabaseManager {
 
   setSpeed(id, speed) {
     this.updateMedia(id, { speed });
+  }
+
+  // 0 (full brightness) to 100 (black); applied as mpv brightness -dim
+  validateDim(dim) {
+    if (!Number.isInteger(dim) || dim < 0 || dim > 100) {
+      throw new Error('Dim must be a whole number from 0 to 100');
+    }
+  }
+
+  setDim(id, dim) {
+    this.updateMedia(id, { dim });
   }
 
   // rating 0 skips the item, 1-3 keeps it; status follows the latest rating

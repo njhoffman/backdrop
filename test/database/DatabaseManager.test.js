@@ -77,6 +77,7 @@ describe('DatabaseManager', () => {
         first.db.exec('DROP TABLE imported_files');
         first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
+        first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('PRAGMA user_version = 1');
         first.close();
 
@@ -86,6 +87,20 @@ describe('DatabaseManager', () => {
         expect(second.getMediaBySource('pexels', 123)).to.not.be.null;
         second.setSetting('mode', 'image');
         expect(second.getSetting('mode')).to.equal('image');
+        second.close();
+      });
+
+      it('upgrades v4 media with an undimmed default and validates dim', () => {
+        const dbPath = path.join(tempDir, 'v4.db');
+        const first = new DatabaseManager(); first.initialize(dbPath);
+        const id = first.addMedia(video());
+        first.db.exec('ALTER TABLE media DROP COLUMN dim');
+        first.db.exec('PRAGMA user_version = 4'); first.close();
+        const second = new DatabaseManager(); second.initialize(dbPath);
+        expect(second.getMedia(id).dim).to.equal(0);
+        second.setDim(id, 40);
+        expect(second.getMedia(id).dim).to.equal(40);
+        for (const bad of [-1, 101, 2.5, '10']) expect(() => second.setDim(id, bad)).to.throw('Dim');
         second.close();
       });
 
@@ -105,6 +120,7 @@ describe('DatabaseManager', () => {
         const id = first.addMedia(video()); first.addRating(id, 2, '1920x1080');
         first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
+        first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });

@@ -108,6 +108,76 @@ describe('DownloadCommand', () => {
     expect(command.transfer.firstCall.args[2]).to.be.a('function');
   });
 
+  describe('--upgrade', () => {
+    let media, file;
+    const upgradeVariants = [variant(1280, 720), variant(1920, 1080), variant(3840, 2160)];
+    beforeEach(async () => {
+      file = path.join(dir, 'media', 'remote-1.mp4');
+      await fs.outputFile(file, 'small original');
+      const id = db.addMedia({ source: 'fake', source_id: 1, kind: 'video', width: 1280, height: 720, path: file,
+        speed: 0.7, dim: 20, variants: upgradeVariants });
+      db.addRating(id, 3, '1920x1080');
+      media = db.getMedia(id);
+      control.refreshMedia = sinon.stub().resolves();
+    });
+
+    it('replaces a too-small file with the smallest fitting variant and keeps its history', async () => {
+      const result = await command.download({ upgrade: true });
+
+      expect(result.upgraded).to.deep.equal([media.id]);
+      expect(command.transfer.firstCall.args[0]).to.equal('https://example.com/1920');
+      expect(await fs.readFile(file, 'utf8')).to.equal('https://example.com/1920');
+      expect(db.getMedia(media.id)).to.include({ path: file, width: 1920, height: 1080, speed: 0.7, dim: 20, status: 'kept' });
+      expect(db.getLatestRating(media.id).rating).to.equal(3);
+      expect(control.refreshMedia.calledOnceWith(sinon.match({ id: media.id, path: file }))).to.be.true;
+      expect(control.appendMedia.calledOnceWithExactly([media.id])).to.be.true;
+      expect((await fs.readdir(path.dirname(file))).sort()).to.deep.equal(['remote-1.mp4']);
+    });
+
+    it('skips media that already fits, local and skipped items, and items without a larger variant', async () => {
+      const local = db.addMedia({ source: 'local', source_id: 9, kind: 'video', width: 640, height: 360, path: '/m/local-9.mp4' });
+      const big = db.addMedia({ source: 'fake', source_id: 2, kind: 'video', width: 1920, height: 1080, path: '/m/big.mp4', variants: upgradeVariants });
+      const skipped = db.addMedia({ source: 'fake', source_id: 3, kind: 'video', width: 640, height: 360, path: '/t/s.mp4', variants: upgradeVariants });
+      db.addRating(skipped, 0);
+      db.updateMedia(media.id, { variants: [variant(1280, 720)] });
+
+      const result = await command.download({ upgrade: true });
+
+      expect(result).to.deep.include({ upgraded: [], skipped: 1, failed: 0 });
+      expect(command.transfer.called).to.be.false;
+      expect([local, big].map(id => db.getMedia(id).width)).to.deep.equal([640, 1920]);
+    });
+
+    it('keeps the original file and row when the new file is too small or the item changed', async () => {
+      command.probe = async () => ({ kind: 'video', width: 1280, height: 720, duration: 12 });
+      let result = await command.download({ upgrade: true });
+      expect(result.failed).to.equal(1);
+      expect(await fs.readFile(file, 'utf8')).to.equal('small original');
+
+      command.probe = async () => ({ kind: 'video', width: 1920, height: 1080, duration: 12 });
+      command.transfer = async (url, partial) => {
+        await fs.writeFile(partial, url);
+        db.updateMedia(media.id, { path: path.join(dir, 'moved.mp4') });
+      };
+      result = await command.download({ upgrade: true });
+      expect(result.failed).to.equal(1);
+      expect(await fs.readFile(file, 'utf8')).to.equal('small original');
+      expect((await fs.readdir(path.dirname(file))).sort()).to.deep.equal(['remote-1.mp4']);
+    });
+
+    it('renames the file when the larger variant has another format', async () => {
+      db.updateMedia(media.id, { kind: 'image', variants: [{ ...variant(1920, 1080), mime: 'image/png' }] });
+      command.probe = async () => ({ kind: 'image', width: 1920, height: 1080, duration: null });
+
+      await command.download({ upgrade: true, type: 'images' });
+
+      const upgraded = db.getMedia(media.id);
+      expect(upgraded.path).to.equal(path.join(dir, 'media', 'remote-1.png'));
+      expect(await fs.pathExists(file)).to.be.false;
+      expect(await fs.pathExists(upgraded.path)).to.be.true;
+    });
+  });
+
   it('propagates response stream errors rather than leaving a hung download', async () => {
     const stream = new Readable({ read() { this.destroy(new Error('stream failed')); } });
     sinon.stub(axios, 'get').resolves({ data: stream });

@@ -10,6 +10,7 @@ import { probeMedia } from '../library/probe.js';
 import { targetResolution, positiveInteger, selectVariant, fits } from '../library/quality.js';
 import { out, fmt, ProgressBar, formatBytes } from '../utils/output.js';
 
+const KINDS = { both: ['image', 'video', 'gif'], images: ['image'], videos: ['video', 'gif'] };
 const EXTENSIONS = { 'video/mp4': '.mp4', 'video/webm': '.webm', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
 
 export class DownloadCommand {
@@ -36,13 +37,18 @@ export class DownloadCommand {
     await pipeline(response.data, fs.createWriteStream(file, { flags: 'wx' }));
   }
 
-  async download(options = {}) {
+  async filters(options) {
     const total = positiveInteger(options.total ?? 50, 'Total');
-    const kinds = { both: ['image', 'video', 'gif'], images: ['image'], videos: ['video', 'gif'] };
-    const kind = kinds[options.type ?? 'both'];
+    const kind = KINDS[options.type ?? 'both'];
     if (!kind) throw new Error('Type must be images, videos or both');
     if (options.source) this.sources.get(options.source);
     const target = await targetResolution(this.config, options.resolution, this.monitors);
+    return { total, kind, target };
+  }
+
+  async download(options = {}) {
+    if (options.upgrade) return this.upgrade(options);
+    const { total, kind, target } = await this.filters(options);
     const items = this.database.findMedia({ downloaded: false, status: 'new', kind, ...(options.source ? { source: options.source } : {}) });
     const summary = { downloaded: [], skipped: 0, failed: 0 };
     const bar = new ProgressBar({ label: 'Downloading', total: Math.min(total, items.length) });
@@ -107,6 +113,87 @@ export class DownloadCommand {
       return this.database.getMedia(media.id);
     } catch (error) {
       if (moved) await fs.unlink(file);
+      throw error;
+    } finally {
+      await fs.remove(partial);
+    }
+  }
+
+  // Replaces downloaded remote media that is smaller than the current target (e.g. after attaching
+  // a larger monitor) with a larger stored variant. Ratings, speed, dim and history stay with the item.
+  async upgrade(options = {}) {
+    const { total, kind, target } = await this.filters(options);
+    const items = this.database.findMedia({
+      downloaded: true, status: ['new', 'kept'], kind, excludeLocal: true, ...(options.source ? { source: options.source } : {})
+    }).filter(media => !fits(media, target, this.config));
+    const summary = { upgraded: [], skipped: 0, failed: 0 };
+    const bar = new ProgressBar({ label: 'Upgrading', total: Math.min(total, items.length) });
+    try {
+      for (const media of items) {
+        if (summary.upgraded.length >= total) break;
+        try {
+          const source = this.sources.get(media.source);
+          const variant = selectVariant(await source.downloadVariants(media), target, this.config);
+          if (!variant || variant.width * variant.height <= media.width * media.height) { summary.skipped++; continue; }
+          const upgraded = await this.upgradeItem(media, variant, target, (received, size) => {
+            bar.setDetail(`#${media.id} ${formatBytes(received)}${size ? ` / ${formatBytes(size)}` : ''}`);
+          });
+          summary.upgraded.push(upgraded.id);
+          out.success(`Upgraded ${fmt.bold(`#${media.id}`)}: ${media.width}x${media.height} -> ${upgraded.width}x${upgraded.height}`);
+          bar.update(summary.upgraded.length, '');
+          try {
+            await this.control.refreshMedia(media);
+            await this.control.appendMedia([media.id]);
+          } catch (error) {
+            out.warn(`#${media.id} upgraded; playlist update failed: ${error.message}`);
+          }
+        } catch (error) {
+          summary.failed++;
+          this.logger.error('Upgrade failed', { mediaId: media.id, error: error.message });
+          out.error(`#${media.id}: ${error.message}`);
+        }
+      }
+    } finally {
+      bar.stop();
+    }
+    out.print(`Upgraded ${summary.upgraded.length}, no larger variant ${summary.skipped}, failed ${summary.failed}`);
+    if (summary.failed) process.exitCode = 1;
+    return summary;
+  }
+
+  // The old file is set aside until the database update commits, so a failure leaves the item as it was
+  async upgradeItem(media, variant, target, onBytes) {
+    const extension = EXTENSIONS[variant.mime];
+    if (!extension) throw new Error(`Unsupported download format: ${variant.mime}`);
+    const { dir, name } = path.parse(media.path);
+    const file = path.join(dir, `${name}${extension}`);
+    const partial = `${media.path}.${randomUUID()}.partial`;
+    const backup = `${media.path}.${randomUUID()}.previous`;
+    let state = 'downloading';
+    try {
+      await this.transfer(variant.url, partial, onBytes);
+      const info = await this.probe(partial);
+      if (!info || !fits(info, target, this.config)) throw new Error('Downloaded file does not meet the required dimensions');
+      const sha256 = await hashFile(partial);
+      const duplicate = this.database.getMediaBySha256(sha256);
+      if (duplicate && duplicate.id !== media.id) throw new Error(`Duplicate content of #${duplicate.id}`);
+      if (file !== media.path && await fs.pathExists(file)) throw new Error(`${file} already exists`);
+      await fs.move(media.path, backup);
+      state = 'set-aside';
+      await fs.move(partial, file);
+      state = 'replaced';
+      this.database.transaction(() => {
+        const latest = this.database.getMedia(media.id);
+        if (!latest || latest.path !== media.path) throw new Error('Media changed during upgrade');
+        this.database.updateMedia(media.id, { path: file, sha256, kind: info.kind,
+          width: info.width, height: info.height, duration: info.duration });
+      });
+      state = 'committed';
+      await fs.remove(backup).catch(error => this.logger.warn('Could not remove replaced file', { path: backup, error: error.message }));
+      return this.database.getMedia(media.id);
+    } catch (error) {
+      if (state === 'replaced') await fs.remove(file);
+      if (state === 'set-aside' || state === 'replaced') await fs.move(backup, media.path);
       throw error;
     } finally {
       await fs.remove(partial);

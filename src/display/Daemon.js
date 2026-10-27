@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
-import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry } from './Playlist.js';
+import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 
@@ -16,6 +16,8 @@ const STOP_GRACE_MS = 2000;
 const HEALTH_INTERVAL_MS = 30_000;
 const HEALTH_FAILURES = 2;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Monitor layout changes (hotplug, xrandr) are picked up this often
+const MONITOR_POLL_MS = 5000;
 // The startup import logs how far it is at most this often
 const IMPORT_PROGRESS_MS = 30_000;
 
@@ -81,6 +83,7 @@ export class Daemon {
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
     restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
     healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
+    monitorInterval = MONITOR_POLL_MS,
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger })
   }) {
@@ -98,6 +101,8 @@ export class Daemon {
     this.healthInterval = healthInterval;
     this.purgeInterval = purgeInterval;
     this.importProgressInterval = importProgressInterval;
+    this.monitorInterval = monitorInterval;
+    this.reconciling = null;
     this.purge = purge;
     this.timers = [];
     this.screens = new Map();
@@ -143,6 +148,72 @@ export class Daemon {
     this.runPurge();
     this.every(this.purgeInterval, () => this.runPurge());
     this.every(this.healthInterval, () => this.checkHealth());
+    this.every(this.monitorInterval, () => this.checkMonitors());
+  }
+
+  // Active monitors to manage now. Unlike startup, a configured monitor that is missing is not an
+  // error here: it was unplugged, and is picked up again when it returns.
+  filterConfigured(active) {
+    const setting = this.config.get().display.monitors;
+    if (setting === 'auto' || setting === undefined || setting === null) return active;
+    const wanted = [].concat(setting);
+    return active.filter(monitor => wanted.includes(monitor.name));
+  }
+
+  // Starts, stops or respawns monitor instances to match the current layout; concurrent calls share one run
+  checkMonitors() {
+    if (this.stopping) return Promise.resolve();
+    this.reconciling ??= this.reconcileMonitors().finally(() => { this.reconciling = null; });
+    return this.reconciling;
+  }
+
+  async reconcileMonitors() {
+    let reported;
+    try {
+      reported = await listMonitors(this.exec);
+    } catch (error) {
+      this.logger.warn('Cannot read monitor layout', { error: error.message });
+      return;
+    }
+    // xrandr briefly reports nothing during some mode switches; keep playing rather than tear everything down
+    if (!reported.length) {
+      this.logger.warn('No active monitors reported, keeping the current layout');
+      return;
+    }
+    const active = this.filterConfigured(reported);
+
+    const byName = new Map(active.map(monitor => [monitor.name, monitor]));
+    let changed = false;
+    for (const screen of [...this.screens.values()]) {
+      const next = byName.get(screen.monitor.name);
+      if (next && geometry(next) === geometry(screen.monitor)) continue;
+      if (this.stopping) return;
+      // A crash restart may have replaced this entry since the snapshot; the next poll handles it
+      if (this.screens.get(screen.monitor.name) !== screen) continue;
+      this.logger.info(next ? 'Monitor changed, restarting it' : 'Monitor removed', {
+        monitor: screen.monitor.name, from: geometry(screen.monitor), to: next ? geometry(next) : null
+      });
+      // Removed from the map first so handleExit does not treat the exit as a crash
+      this.screens.delete(screen.monitor.name);
+      await this.stopScreen(screen);
+      changed = true;
+    }
+    for (const monitor of active) {
+      if (this.screens.has(monitor.name) || this.stopping) continue;
+      this.logger.info('Monitor added', { monitor: monitor.name, geometry: geometry(monitor) });
+      try {
+        await this.startScreen(monitor);
+      } catch (error) {
+        this.logger.error('Failed to start monitor', { monitor: monitor.name, error: error.message });
+        const screen = this.screens.get(monitor.name);
+        if (screen) {
+          this.screens.delete(monitor.name);
+          await this.stopScreen(screen);
+        }
+      }
+      changed = true;
+    }
+    if (changed && !this.stopping) await this.writeState();
   }
 
   every(interval, fn) {
@@ -266,9 +337,15 @@ export class Daemon {
     }
   }
 
-  // Applies the stored speed and remembers the item so a restart resumes it
+  // Applies the stored speed and dim and remembers the item so a restart resumes it.
+  // Brightness is set on every load because mpv keeps it from the previous file.
   async onFileLoaded(screen, filePath) {
     const media = this.database.getMediaByPath(filePath);
+    try {
+      await screen.client.setProperty('brightness', brightnessFor(media?.dim ?? 0));
+    } catch (error) {
+      this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
+    }
     if (!media) {
       this.logger.warn('Playing file not in library', { monitor: screen.monitor.name, path: filePath });
       return;
@@ -316,7 +393,8 @@ export class Daemon {
 
     this.logger.warn('mpv exited, restarting', { monitor: screen.monitor.name, code, signal });
     await sleep(this.restartDelay);
-    if (this.stopping) {
+    // Hotplug may have removed or replaced the monitor during the delay
+    if (this.stopping || this.screens.get(screen.monitor.name) !== screen) {
       return;
     }
     try {
@@ -339,6 +417,7 @@ export class Daemon {
     this.stopping = true;
     this.timers.forEach(clearInterval);
     this.timers = [];
+    await this.reconciling;
 
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();

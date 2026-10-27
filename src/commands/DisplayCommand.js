@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { getMode } from '../display/Playlist.js';
+import { getMode, eligibleMedia } from '../display/Playlist.js';
 import { out, fmt } from '../utils/output.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
@@ -80,11 +80,27 @@ export class DisplayCommand {
     }
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid})`)}`);
+    const mode = getMode(this.database);
+    const { allow_upscale: allowUpscale } = this.config.get().display;
     for (const monitor of state.monitors) {
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
-      const playing = path ? `${path}${media ? fmt.dim(` (speed ${media.speed})`) : ''}` : fmt.yellow('nothing playing');
-      out.print(`  ${fmt.bold(monitor.name)} ${fmt.dim(`${monitor.width}x${monitor.height}`)}: ${playing}`);
+      const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
+      const playing = path ? `${path}${media ? fmt.dim(` (speed ${media.speed}${media.dim ? `, dim ${media.dim}` : ''})`) : ''}` : fmt.yellow('nothing playing');
+      out.print(`  ${fmt.bold(monitor.name)} ${fmt.dim(`${monitor.width}x${monitor.height}, ${eligible} ${mode}s eligible`)}: ${playing}`);
+      if (!path) out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
     }
+  }
+
+  // Why a monitor shows nothing, with the likely fix
+  blankReason(mode, monitor, eligible, allowUpscale) {
+    if (eligible) {
+      return `${eligible} ${mode}s fit but none loaded; check the log for unplayable files, or run \`backdrop mode ${mode}\` to reload`;
+    }
+    if (allowUpscale) {
+      return `No ${mode}s in the library; import or download some, or switch with \`backdrop mode\``;
+    }
+    return `No ${mode}s at least ${monitor.width}x${monitor.height}; download for this size, `
+      + 'switch with `backdrop mode`, or set display.allow_upscale';
   }
 
   async current(options) {
@@ -97,7 +113,7 @@ export class DisplayCommand {
     out.print(path);
     if (media) {
       const stars = rating ? (rating.rating === 0 ? 'skipped' : `${rating.rating}/3`) : 'unrated';
-      out.detail(`#${media.id} ${media.kind} ${media.width}x${media.height} ${media.source} ${stars} speed ${media.speed}`);
+      out.detail(`#${media.id} ${media.kind} ${media.width}x${media.height} ${media.source} ${stars} speed ${media.speed}${media.dim ? ` dim ${media.dim}` : ''}`);
     }
   }
 
@@ -112,6 +128,11 @@ export class DisplayCommand {
   async speed(value, options) {
     const { monitor, speed } = await this.control.speed(value, options.monitor);
     out.print(`${monitor.name}: speed ${fmt.cyan(speed)}`);
+  }
+
+  async dim(value, options) {
+    const { monitor, dim } = await this.control.dim(value, options.monitor);
+    out.print(`${monitor.name}: dim ${fmt.cyan(dim)}`);
   }
 
   async mode(requested) {

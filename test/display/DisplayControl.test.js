@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { DisplayControl, parseSpeed } from '../../src/display/DisplayControl.js';
+import { DisplayControl, parseSpeed, parseDim } from '../../src/display/DisplayControl.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { getMode, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -34,6 +34,23 @@ describe('DisplayControl', () => {
     it('rejects anything else', () => {
       for (const bad of ['fast', '', '1.2.3', '+', '--1']) {
         expect(() => parseSpeed(bad, 1), bad).to.throw('Invalid speed');
+      }
+    });
+  });
+
+  describe('parseDim', () => {
+    it('accepts absolute amounts, clamped steps and reset', () => {
+      expect(parseDim('30', 0)).to.equal(30);
+      expect(parseDim('+10', 30)).to.equal(40);
+      expect(parseDim('-10', 30)).to.equal(20);
+      expect(parseDim('+50', 80)).to.equal(100);
+      expect(parseDim('-50', 20)).to.equal(0);
+      expect(parseDim('reset', 60)).to.equal(0);
+    });
+
+    it('rejects values outside 0-100 and anything else', () => {
+      for (const bad of ['101', '-', '1.5', 'dark', '', '+']) {
+        expect(() => parseDim(bad, 0), bad).to.throw('Invalid dim');
       }
     });
   });
@@ -168,6 +185,27 @@ describe('DisplayControl', () => {
         db.addMedia({ kind: 'gif', source: 'local', source_id: 1, path: '/m/g.gif' });
         clientFor('DP-1').properties.path = '/m/g.gif';
         expect((await control.speed('2')).speed).to.equal(2);
+      });
+    });
+
+    describe('dim', () => {
+      it('dims the playing image or video now as negative brightness and stores it', async () => {
+        const image = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png' });
+        clientFor('DP-1').properties.path = '/m/i.png';
+
+        expect((await control.dim('30')).dim).to.equal(30);
+        expect(db.getMedia(image).dim).to.equal(30);
+        expect(clientFor('DP-1').properties.brightness).to.equal(-30);
+
+        await control.dim('reset');
+        expect(clientFor('DP-1').properties.brightness).to.equal(0);
+        expect(db.getMedia(image).dim).to.equal(0);
+      });
+
+      it('refuses idle monitors', async () => {
+        let message;
+        try { await control.dim('10'); } catch (error) { message = error.message; }
+        expect(message).to.include('Nothing from the library is playing');
       });
     });
 

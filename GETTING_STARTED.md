@@ -84,6 +84,7 @@ images change at the configured `image_duration` interval, which defaults to 300
 | `backdrop speed 0.8` | Slow the current video; remembered for future playback |
 | `backdrop speed +0.1` / `backdrop speed -0.1` | Adjust playback speed |
 | `backdrop speed reset` | Restore normal speed |
+| `backdrop dim 30` / `backdrop dim +10` / `backdrop dim reset` | Darken the current image or video (0-100); remembered for that item |
 | `backdrop keep 3` | Change the current item's rating; accepts 1–3 |
 | `backdrop skip` | Move the item to trash and advance monitors playing it |
 | `backdrop undo` | Restore the last rating and file move, across CLI invocations |
@@ -134,6 +135,11 @@ Search and download select the smallest variant that fits all configured monitor
 probed and hashed before admission. For use without X, pass `--resolution 1920x1080` to search and
 download commands.
 
+If you later attach a larger monitor, `backdrop download --upgrade` refetches downloads that are now
+too small at a size that fits, keeping their ratings, speed and dim. Local imports cannot be upgraded;
+they keep playing on the monitors they fit. `backdrop status` shows how many items each monitor can show
+and why one is blank.
+
 Local wallpapers need no API key. The Pexels adapter has mocked tests but has not been verified
 against the live API. See [the source documentation](docs/specs/sources.md) for details and the
 [Pexels API documentation](https://www.pexels.com/api/documentation/) for its usage guidelines.
@@ -169,6 +175,7 @@ bindsym $mod+equal exec --no-startup-id backdrop speed +0.1
   are dropped from the running playlist (and logged), but stay in the database until you `remove` them.
 - An mpv that stops responding is restarted automatically; if it keeps failing, that monitor is given up
   on and the log says so.
+- Monitors you attach, remove or reconfigure are picked up within about 5 seconds, without restarting.
 
 If startup fails, run `backdrop daemon` in a terminal to see errors. If Backdrop is already running,
 stop it first with `backdrop stop`.

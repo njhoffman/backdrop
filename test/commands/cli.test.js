@@ -19,15 +19,17 @@ describe('CLI command registration', function () {
   const run = (...args) => spawnSync(process.execPath, [entry, ...args], { env, encoding: 'utf8', timeout: 10000 });
 
   it('registers every ported command and prints help without an API key', () => {
+    run('stats');
     const result = run('--help');
     expect(result.status).to.equal(0);
-    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge']) {
+    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge', 'dim']) {
       expect(result.stdout).to.include(command);
     }
     expect(result.stderr).to.equal('');
   });
 
   it('keeps piped output free of escape codes, symbols and the version line unless FORCE_COLOR is set', () => {
+    run('stats');
     const plain = run('stats');
     expect(plain.stdout).to.not.include('\x1b[');
     expect(plain.stdout).to.match(/^image: /m);
@@ -36,6 +38,13 @@ describe('CLI command registration', function () {
     const forced = run('stats');
     expect(forced.stdout).to.include('\x1b[');
     expect(forced.stderr).to.equal('');
+  });
+
+  it('reports a newly created config on stderr only, once', () => {
+    const first = run('stats');
+    expect(first.stderr).to.include('Created default config file at:');
+    expect(first.stdout).to.not.include('Created default config');
+    expect(run('stats').stderr).to.equal('');
   });
 
   it('runs offline commands and rejects unknown commands with a failing exit code', () => {

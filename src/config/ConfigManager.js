@@ -36,6 +36,8 @@ export class ConfigManager {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
     this.config = null;
     this.userConfig = null;
+    // True after initialize() wrote a new default file; the CLI reports it
+    this.created = false;
   }
 
   getDefaultPaths() {
@@ -121,8 +123,7 @@ export class ConfigManager {
       this.userConfig = this.getUserDefaults();
       await fs.writeFile(this.configPath, YAML.stringify(this.userConfig));
       this.config = this.normalize(this.getDefaultConfig());
-
-      console.log(`Created default config file at: ${this.configPath}`);
+      this.created = true;
     } catch (error) {
       throw new Error(`Failed to create default config: ${error.message}`);
     }

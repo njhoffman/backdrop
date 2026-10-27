@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 4); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 5); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -20,6 +20,7 @@ One row per item, from any source.
 | `status` | `new`, `kept` or `skipped`; follows the latest rating |
 | `status_changed_at` | drives trash expiry |
 | `speed` | mpv playback speed (0.01-100), one per item, default 1.0 |
+| `dim` | 0 (none) to 100 (black), applied as mpv `brightness` = -dim; added in v5, default 0 |
 | `tags`, `variants` | JSON arrays; `variants` holds download options `{url, width, height, ...}` |
 | `author`, `page_url` | attribution |
 | `added_at`, `updated_at` | timestamps (UTC) |

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-27
+
+### Added
+- `backdrop dim <0-100|+N|-N|reset>` darkens the playing image or video and remembers it for that item,
+  like `speed`. The database upgrades to schema v5 in place.
+- The daemon follows monitors being attached, removed or reconfigured, within about 5 seconds and without
+  a restart.
+- `backdrop download --upgrade` replaces downloads that are smaller than your current monitors with a
+  larger variant, keeping ratings, speed and dim. A failed upgrade leaves the original file in place.
+- `backdrop status` shows how many items each monitor can play and explains a blank monitor.
+
+### Changed
+- The first-run "Created default config file" notice goes to stderr, so it no longer mixes with command output.
+
 ## [2.5.0] - 2026-10-27
 
 ### Added

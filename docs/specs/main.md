@@ -49,10 +49,15 @@ IPC socket) would break a wallpaper.
 - **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), written
   as `<output>.m3u` and loaded with `loadlist`. The item last shown in the mode on that monitor goes first, so
   startup and toggling back resume it.
-- **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown and, for
-  videos, sets mpv's `speed` to the stored value.
-- **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>` connect to the socket of the monitor
-  under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` applies immediately and is saved.
+- **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown, sets mpv's
+  `brightness` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
+  `speed` to the stored value.
+- **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>`, `dim <0-100|+10|-10|reset>` connect to
+  the socket of the monitor under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` and
+  `dim` apply immediately and are saved per item.
+- **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
+  per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
+  current layout; a configured monitor that is unplugged is picked up again when it returns.
 - **Rating:** `keep [1-3]` and `skip` use the same monitor targeting. Keep moves inbox files into `media/`
   and changes the current rating; skip removes every playlist reference before moving the file to trash,
   advancing monitors playing it. `undo` works across CLI invocations, deletes the latest rating and restores

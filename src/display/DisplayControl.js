@@ -1,7 +1,7 @@
 import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
-import { MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist } from './Playlist.js';
+import { MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
 
@@ -22,6 +22,21 @@ export function parseSpeed(spec, current) {
   }
 
   return Math.round(speed * 100) / 100;
+}
+
+const DIM_STEP = /^([+-])(\d+)$/;
+
+// 'reset', an absolute amount from 0 to 100 ('30'), or a step from the current amount ('+10', '-5').
+// Steps are clamped to the range; an absolute value outside it is an error.
+export function parseDim(spec, current) {
+  const text = String(spec).trim();
+  if (text === 'reset') return 0;
+  if (DIM_STEP.test(text)) {
+    const [, sign, amount] = DIM_STEP.exec(text);
+    return Math.min(100, Math.max(0, current + (sign === '+' ? 1 : -1) * Number(amount)));
+  }
+  if (/^\d+$/.test(text) && Number(text) <= 100) return Number(text);
+  throw new Error(`Invalid dim: ${spec} (use 0-100, a step like +10 or -10, or reset)`);
 }
 
 // Talks to the running daemon's mpv instances; the target is the monitor under the pointer
@@ -105,6 +120,19 @@ export class DisplayControl {
     this.database.setSpeed(media.id, speed);
     await this.withClient(monitor, client => client.setProperty('speed', speed));
     return { monitor, media, speed };
+  }
+
+  // Dims the playing item now and stores it for future plays; images and videos alike
+  async dim(spec, monitorName) {
+    const { monitor, media } = await this.current(monitorName);
+    if (!media) {
+      throw new Error(`Nothing from the library is playing on ${monitor.name}`);
+    }
+
+    const dim = parseDim(spec, media.dim);
+    this.database.setDim(media.id, dim);
+    await this.withClient(monitor, client => client.setProperty('brightness', brightnessFor(dim)));
+    return { monitor, media, dim };
   }
 
   // Appends media to every running monitor's playlist; returns { [monitor]: count }, empty when not running

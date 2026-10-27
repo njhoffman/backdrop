@@ -21,13 +21,14 @@ describe('Daemon', () => {
   let kills;
   let connectError;
   let purges;
+  let layout;
 
   function makeDaemon(overrides = {}) {
     return new Daemon({
       config,
       database: db,
       logger: silentLogger,
-      exec: async () => LISTMONITORS_TWO,
+      exec: async () => { if (layout instanceof Error) throw layout; return layout; },
       spawn: (file, args, options) => {
         const child = new FakeChild(1000 + spawned.length);
         spawned.push({ file, args, options, child });
@@ -47,6 +48,7 @@ describe('Daemon', () => {
       importer: { importDirs: async () => ({ imported: [] }) },
       purge: async () => { purges++; },
       healthInterval: 0,
+      monitorInterval: 0,
       purgeInterval: 0,
       ...overrides
     });
@@ -62,6 +64,7 @@ describe('Daemon', () => {
     kills = [];
     connectError = null;
     purges = 0;
+    layout = LISTMONITORS_TWO;
   });
 
   afterEach(async () => {
@@ -325,6 +328,20 @@ describe('Daemon', () => {
       expect(db.getSetting(lastMediaKey('image', 'DP-1'))).to.equal(id);
     });
 
+    it('applies the stored dim to every load, resetting it for undimmed and unknown files', async () => {
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/dark.png', dim: 40 });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 2, path: '/m/plain.png' });
+      const { client } = clients[0];
+
+      await load(0, '/m/dark.png');
+      expect(client.properties.brightness).to.equal(-40);
+      await load(0, '/m/plain.png');
+      expect(client.properties.brightness).to.equal(0);
+      client.properties.brightness = -40;
+      await load(0, '/elsewhere.png');
+      expect(client.properties.brightness).to.equal(0);
+    });
+
     it('ignores files outside the library and other properties', async () => {
       await load(0, '/elsewhere.mp4');
       clients[0].client.emit('property-change', { name: 'speed', data: 2 });
@@ -470,6 +487,115 @@ describe('Daemon', () => {
       const after = checks();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(checks()).to.equal(after);
+    });
+  });
+
+  describe('monitor hotplug', () => {
+    // Children exit when signalled, as real ones do, instead of on a timer
+    const exitOnKill = { kill: (pid, signal) => {
+      kills.push([pid, signal]);
+      spawned.find(({ child }) => child.pid === -pid && child.exitCode === null)?.child.exit(0, signal);
+    } };
+    const THREE = LISTMONITORS_TWO.replace('Monitors: 2', 'Monitors: 3') + ' 2: +DP-2 3840/600x2160/340+3640+0  DP-2\n';
+    const sockets = async () => (await readState(tempDir)).monitors.map(m => m.name);
+
+    it('starts a newly attached monitor and records it in the state', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      layout = THREE;
+
+      await daemon.checkMonitors();
+
+      expect(spawned).to.have.length(3);
+      expect(spawned[2].args).to.include('3840x2160+3640+0');
+      expect(await sockets()).to.deep.equal(['DP-1', 'HDMI-1', 'DP-2']);
+      await daemon.stop();
+    });
+
+    it('stops a removed monitor without treating its exit as a crash', async () => {
+      const daemon = makeDaemon(exitOnKill);
+      await daemon.start();
+      layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
+
+      await daemon.checkMonitors();
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(kills).to.deep.include([-1001, 'SIGTERM']);
+      expect(spawned).to.have.length(2);
+      expect(await sockets()).to.deep.equal(['DP-1']);
+      await daemon.stop();
+    });
+
+    it('respawns a monitor whose resolution or position changed', async () => {
+      const daemon = makeDaemon(exitOnKill);
+      await daemon.start();
+      layout = LISTMONITORS_TWO.replace('2560/597x1440/336+0+0', '3840/597x2160/336+0+0').replace('+2560+0', '+3840+0');
+
+      await daemon.checkMonitors();
+
+      expect(spawned.slice(2).map(({ args }) => args.find(arg => /^\d+x\d+\+/.test(arg)))).to.deep.equal(['3840x2160+0+0', '1080x1920+3840+0']);
+      expect((await readState(tempDir)).monitors.find(m => m.name === 'DP-1')).to.include({ width: 3840, height: 2160 });
+      await daemon.stop();
+    });
+
+    it('leaves the layout alone on an empty or failed xrandr read, and when nothing changed', async () => {
+      const warnings = [];
+      const daemon = makeDaemon({ logger: { ...silentLogger, warn: message => warnings.push(message) } });
+      await daemon.start();
+
+      await daemon.checkMonitors();
+      layout = 'Monitors: 0\n';
+      await daemon.checkMonitors();
+      layout = new Error('Can\'t open display');
+      await daemon.checkMonitors();
+
+      expect(spawned).to.have.length(2);
+      expect(kills).to.deep.equal([]);
+      expect(warnings).to.include.members(['No active monitors reported, keeping the current layout', 'Cannot read monitor layout']);
+      await daemon.stop();
+    });
+
+    it('only manages configured monitors and picks one up again when it returns', async () => {
+      config.set('display.monitors', ['HDMI-1']);
+      const daemon = makeDaemon(exitOnKill);
+      await daemon.start();
+      layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
+      await daemon.checkMonitors();
+      expect(daemon.screens.size).to.equal(0);
+
+      layout = LISTMONITORS_TWO;
+      await daemon.checkMonitors();
+
+      expect(spawned).to.have.length(2);
+      expect(spawned[1].args).to.include('1080x1920+2560+0');
+      await daemon.stop();
+    });
+
+    it('does not let a crash restart and a layout change both manage the same monitor', async () => {
+      const daemon = makeDaemon({ ...exitOnKill, restartDelay: 10 });
+      await daemon.start();
+      spawned[1].child.exit(1);
+      layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
+
+      await daemon.checkMonitors();
+      await new Promise(resolve => setTimeout(resolve, 30));
+
+      expect(spawned).to.have.length(2);
+      expect([...daemon.screens.keys()]).to.deep.equal(['DP-1']);
+      await daemon.stop();
+    });
+
+    it('shares one reconciliation between overlapping checks and polls on a timer', async () => {
+      const daemon = makeDaemon({ monitorInterval: 5 });
+      await daemon.start();
+      layout = THREE;
+      await Promise.all([daemon.checkMonitors(), daemon.checkMonitors()]);
+      expect(spawned).to.have.length(3);
+
+      layout = LISTMONITORS_TWO.replace('Monitors: 2', 'Monitors: 4') + ' 2: +DP-2 3840/600x2160/340+3640+0  DP-2\n 3: +DP-3 1920/1x1080/1+7480+0  DP-3\n';
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(spawned).to.have.length(4);
+      await daemon.stop();
     });
   });
 

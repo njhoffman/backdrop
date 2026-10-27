@@ -116,6 +116,8 @@ export const out = {
   print: (line = '') => write('log', line),
   success: message => write('log', status('success', settings.stdout, message)),
   info: message => write('log', status('info', settings.stdout, message)),
+  // Informational messages that should not mix with a command's stdout, e.g. first-run notices
+  notice: message => write('error', status('info', settings.stderr, message)),
   warn: message => write('error', status('warn', settings.stderr, message)),
   error: message => write('error', status('error', settings.stderr, message)),
   // Secondary detail lines, dimmed and indented

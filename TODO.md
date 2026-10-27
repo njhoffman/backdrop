@@ -69,11 +69,20 @@ dependency order.
       Checked with mpv 0.40: an all-missing playlist goes idle on its own, but mixed playlists retried missing entries on every pass.
       The daemon now drops entries reported by `end-file` with `reason: error`; the database is not changed.
 - [x] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. The daemon now checks `get_property pid` every 30s and kills an mpv that misses two in a row; the normal restart budget applies.
-- [ ] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
+- [x] **Per-item dim command.** (p2) [feature] `backdrop dim <value>` (absolute, `+N`/`-N` steps, `reset`, `--monitor`) works like `speed`:
+      sets mpv `brightness` on the playing item over IPC and stores it per media item (schema v5 column, default 0), so it is reapplied on the next play.
+      Apply it in `Daemon.onFileLoaded` for images and videos alike, always setting the value (0 when unset) because mpv keeps the property across files.
+      Decide whether to accept a 0-100 dim amount mapped to negative brightness, or raw brightness -100 to 100; consider lowering `saturation` with it.
+      `backdrop current`/`status` should show non-zero dim. Cheaper than xwinwrap `-o` opacity, which needs a compositor blending every frame.
+      Done: `backdrop dim` takes a 0-100 amount (brightness = -dim), steps clamp to the range; schema v5 `media.dim`; saturation left alone.
+- [x] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
       Poll `xrandr --listactivemonitors` (or listen for RandR events) and start, stop or respawn per-monitor mpv instances on changes, then rewrite `state.json`.
-- [ ] **Status hides why a monitor is blank.** (p3) [feature] When no library item is at least as large as a monitor, it idles and only the log says "No media to show".
+      Done: the daemon polls xrandr every 5s; empty or failed reads keep the layout, and crash restarts cannot race a layout change.
+- [x] **Status hides why a monitor is blank.** (p3) [feature] When no library item is at least as large as a monitor, it idles and only the log says "No media to show".
       `backdrop status` should report per monitor how many items are eligible and suggest `display.allow_upscale` or a fresh download.
-- [ ] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
+      Done: `status` shows eligible counts per monitor and a reason and fix for blank ones.
+- [x] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
+      Done: ConfigManager sets `created`; the CLI prints the notice on stderr.
 
 ## 4. Media sources
 
@@ -109,8 +118,9 @@ dependency order.
 - [x] **Store measured dimensions.** (p2) [feature] Download/import probe real dimensions, kind and duration with ffprobe;
       a later source search preserves measurements for files already downloaded.
 
-- [ ] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
+- [x] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
       Add e.g. `backdrop download --upgrade`: for kept remote items below the current target, pick a larger stored variant, replace the file atomically and keep ratings, speed and history. Local imports cannot be upgraded.
+      Done: `download --upgrade` sets the old file aside until the database commits, and refreshes playlists afterwards.
 
 ## 7. Screensaver
 

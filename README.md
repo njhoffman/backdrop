@@ -13,7 +13,8 @@ them through mpv with one IPC socket per monitor.
 - Search and download from sources with a public API, picking the smallest file that still fills your monitor
 - Never upscale: media smaller than the target monitor is not shown
 - Rate the item on screen (keep 1-3 or skip); skipped files go to a trash that empties itself
-- Per-video playback speed, remembered for future plays
+- Per-video playback speed and per-item dimming, remembered for future plays
+- Monitors attached, removed or resized while running are picked up automatically
 - Automatic import of local wallpapers as approved items (`local-1.jpg`, `local-2.mp4`, ...)
 - Screensaver after a period of inactivity, from rated videos or stream links such as YouTube
 
@@ -41,6 +42,7 @@ backdrop status             # mode and what each monitor is playing
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1)
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
+backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
 backdrop import ~/walls     # or specific folders
@@ -50,6 +52,7 @@ backdrop undo               # undo the last rating and file move, across CLI inv
 backdrop go-next            # advance after checking the current item has a rating
 backdrop search-videos 'ocean waves'  # also search-images; requires the source API key
 backdrop download --total 10 --type videos
+backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
 backdrop list-videos --rated landscape
 backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
@@ -69,7 +72,8 @@ and preserves undo history. Keep moves new downloads from the inbox into the lib
 affected playlists and restarts the moved file. Re-rating a file already in the library keeps it playing.
 
 Search and download choose the smallest variant that fits all configured monitors, then probe and hash
-downloads before adding them to playback. For use without X, pass `--resolution 1920x1080`. Lists are plain
+downloads before adding them to playback. After attaching a larger monitor, `download --upgrade` replaces
+kept or new downloads that are now too small, keeping their ratings, speed and dim. For use without X, pass `--resolution 1920x1080`. Lists are plain
 text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--source` and `--number` filter them.
 See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.
 

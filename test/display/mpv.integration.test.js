@@ -154,6 +154,13 @@ describe('mpv integration', function () {
     expect(await waitFor(() => client.getProperty('path'))).to.equal(file);
   });
 
+  it('accepts the brightness values dim sets', async () => {
+    await client.setProperty('brightness', -40);
+    expect(await client.getProperty('brightness')).to.equal(-40);
+    await client.setProperty('brightness', 0);
+    expect(await client.getProperty('brightness')).to.equal(0);
+  });
+
   it('reports path changes through observed property events', async () => {
     const file = path.join(tempDir, 'a.mp4');
     makeVideo(file, '320x180');

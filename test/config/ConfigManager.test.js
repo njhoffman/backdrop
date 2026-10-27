@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
@@ -66,6 +67,17 @@ describe('ConfigManager', () => {
       expect(config.display.xwinwrap_args).to.include.members(['-ni', '-ov', '-b']);
       expect(config.display.mpv_args).to.deep.equal([]);
       expect(config.screensaver.idle_minutes).to.equal(10);
+      expect(configManager.created).to.be.true;
+    });
+
+    it('creates the file silently and leaves the notice to the CLI', async () => {
+      const log = sinon.stub(console, 'log');
+      try {
+        await configManager.initialize();
+      } finally {
+        log.restore();
+      }
+      expect(log.called).to.be.false;
     });
 
     it('does not write paths into a new config file', async () => {

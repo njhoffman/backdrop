@@ -66,6 +66,11 @@ export function orderPlaylist(media, lastMediaId, random = Math.random) {
   return shuffled;
 }
 
+// mpv brightness for a stored dim amount (0 rather than -0 when undimmed)
+export function brightnessFor(dim) {
+  return dim ? -dim : 0;
+}
+
 export function modeProperties(mode, imageDuration) {
   return mode === 'video'
     ? { 'loop-file': 'inf' }
