@@ -56,6 +56,7 @@ backdrop list-videos --playlist ~/walls.m3u
 backdrop stats              # local totals and last observed API quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
+backdrop purge --dry-run    # trash files older than library.trash_days (the daemon purges daily)
 backdrop stop
 ```
 

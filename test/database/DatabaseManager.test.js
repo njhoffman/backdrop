@@ -360,14 +360,14 @@ describe('DatabaseManager', () => {
   });
 
   describe('trash expiry', () => {
-    it('returns skipped items older than the retention period', () => {
-      const old = db.addMedia(video({ source_id: 1 }));
-      const recent = db.addMedia(video({ source_id: 2 }));
-      const kept = db.addMedia(video({ source_id: 3 }));
-      db.addRating(old, 0);
-      db.addRating(recent, 0);
+    it('returns skipped items with a file older than the retention period', () => {
+      const old = db.addMedia(video({ source_id: 1, path: '/trash/1.mp4' }));
+      const recent = db.addMedia(video({ source_id: 2, path: '/trash/2.mp4' }));
+      const kept = db.addMedia(video({ source_id: 3, path: '/media/3.mp4' }));
+      const purged = db.addMedia(video({ source_id: 4 }));
+      for (const id of [old, recent, purged]) db.addRating(id, 0);
       db.addRating(kept, 2);
-      db.db.prepare(`UPDATE media SET status_changed_at = datetime('now', '-31 days') WHERE id IN (?, ?)`).run(old, kept);
+      db.db.prepare(`UPDATE media SET status_changed_at = datetime('now', '-31 days') WHERE id IN (?, ?, ?)`).run(old, kept, purged);
 
       expect(db.getExpiredTrash(30).map(m => m.id)).to.deep.equal([old]);
       expect(db.getExpiredTrash(0).map(m => m.id)).to.deep.equal([old, recent]);

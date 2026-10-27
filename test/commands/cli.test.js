@@ -21,7 +21,7 @@ describe('CLI command registration', function () {
   it('registers every ported command and prints help without an API key', () => {
     const result = run('--help');
     expect(result.status).to.equal(0);
-    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats']) {
+    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge']) {
       expect(result.stdout).to.include(command);
     }
     expect(result.stderr).to.equal('');
@@ -31,6 +31,7 @@ describe('CLI command registration', function () {
     expect(run('stats').status).to.equal(0);
     expect(run('list-images', '--rated', 'portrait', '--no-local').status).to.equal(0);
     expect(run('undo').status).to.equal(0);
+    expect(run('purge', '--dry-run').status).to.equal(0);
     const result = run('bogus');
     expect(result.status).to.equal(1);
     expect(result.stderr).to.include('unknown command');

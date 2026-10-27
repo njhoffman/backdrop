@@ -9,6 +9,7 @@ import { Logger } from './utils/Logger.js';
 import { DisplayCommand } from './commands/DisplayCommand.js';
 import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
+import { PurgeCommand } from './commands/PurgeCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
 import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
@@ -68,6 +69,7 @@ class BackdropApp {
     const display = new DisplayCommand(this.config, this.database, this.logger);
     const importer = new ImportCommand(this.config, this.database, this.logger);
     const remover = new RemoveCommand(this.config, this.database, this.logger);
+    const purger = new PurgeCommand(this.config, this.database, this.logger);
     const rating = new RatingCommand(this.config, this.database, this.logger);
     const search = new SearchCommand(this.config, this.database, this.logger);
     const download = new DownloadCommand(this.config, this.database, this.logger);
@@ -140,6 +142,12 @@ class BackdropApp {
       .option('--current', 'Remove the item playing on the target monitor')
       .option(...monitorOption)
       .action(this.action((id, options) => remover.remove(id, options)));
+
+    program
+      .command('purge')
+      .description('Delete trash files skipped more than library.trash_days ago (the daemon also runs this daily)')
+      .option('--dry-run', 'List what would be purged without deleting anything')
+      .action(this.action(options => purger.purge(options)));
 
     program
       .command('mode')

@@ -3,13 +3,18 @@ import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
-import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind } from './Playlist.js';
+import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
+import { purgeTrash } from '../library/purge.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
 const RESTART_DELAY_MS = 1000;
 const STOP_GRACE_MS = 2000;
+// An mpv that misses this many IPC health checks in a row is killed and restarted
+const HEALTH_INTERVAL_MS = 30_000;
+const HEALTH_FAILURES = 2;
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // sockaddr_un.sun_path is 108 bytes including the terminating NUL
 const MAX_SOCKET_PATH = 107;
 
@@ -70,7 +75,9 @@ export class Daemon {
     config, database, logger,
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
     restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
-    importer = new Importer({ config, database, logger })
+    healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS,
+    importer = new Importer({ config, database, logger }),
+    purge = () => purgeTrash({ config, database, logger })
   }) {
     this.config = config;
     this.database = database;
@@ -83,6 +90,10 @@ export class Daemon {
     this.stopGrace = stopGrace;
     this.importer = importer;
     this.importing = Promise.resolve();
+    this.healthInterval = healthInterval;
+    this.purgeInterval = purgeInterval;
+    this.purge = purge;
+    this.timers = [];
     this.screens = new Map();
     this.stopping = false;
     this.stopped = null;
@@ -121,6 +132,49 @@ export class Daemon {
 
     // Playback starts from the existing library; new imports are appended as they finish
     this.importing = this.importDirs(monitors[0]);
+
+    // An interval of 0 turns the timer off (tests drive these directly)
+    this.runPurge();
+    this.every(this.purgeInterval, () => this.runPurge());
+    this.every(this.healthInterval, () => this.checkHealth());
+  }
+
+  every(interval, fn) {
+    if (interval > 0) {
+      this.timers.push(setInterval(fn, interval).unref());
+    }
+  }
+
+  async runPurge() {
+    try {
+      await this.purge();
+    } catch (error) {
+      this.logger.error('Trash purge failed', { error: error.message });
+    }
+  }
+
+  // Supervision otherwise only sees process exits; an mpv that stops answering IPC is killed,
+  // and handleExit restarts it within the usual restart budget
+  async checkHealth() {
+    await Promise.all([...this.screens.values()].map(async screen => {
+      if (this.stopping || screen.checking || screen.child.exitCode !== null || screen.child.signalCode !== null) {
+        return;
+      }
+      screen.checking = true;
+      try {
+        await screen.client.getProperty('pid');
+        screen.healthFailures = 0;
+      } catch (error) {
+        screen.healthFailures = (screen.healthFailures ?? 0) + 1;
+        this.logger.warn('mpv health check failed', { monitor: screen.monitor.name, failures: screen.healthFailures, error: error.message });
+        if (screen.healthFailures >= HEALTH_FAILURES && !this.stopping) {
+          this.logger.error('mpv is not responding, restarting', { monitor: screen.monitor.name });
+          this.killGroup(screen.child, 'SIGKILL');
+        }
+      } finally {
+        screen.checking = false;
+      }
+    }));
   }
 
   async importDirs(monitor) {
@@ -161,7 +215,7 @@ export class Daemon {
     const child = this.spawn(file, args, { detached: true, stdio: 'ignore' });
 
     const previous = this.screens.get(monitor.name);
-    const screen = { monitor, socketPath, child, client: null, restarts: previous?.restarts ?? [] };
+    const screen = { monitor, socketPath, child, client: null, restarts: previous?.restarts ?? [], failing: Promise.resolve() };
     this.screens.set(monitor.name, screen);
 
     child.on('error', error => this.logger.error('Failed to launch xwinwrap', { monitor: monitor.name, error: error.message }));
@@ -172,6 +226,12 @@ export class Daemon {
     screen.client.on('property-change', event => {
       if (event.name === 'path' && event.data) {
         this.onFileLoaded(screen, event.data);
+      }
+    });
+    screen.client.on('end-file', event => {
+      if (event.reason === 'error') {
+        // Serialized so concurrent failures do not remove entries by stale indexes
+        screen.failing = screen.failing.then(() => this.onLoadFailed(screen, event));
       }
     });
     await screen.client.observeProperty(1, 'path');
@@ -204,6 +264,21 @@ export class Daemon {
       } catch (error) {
         this.logger.warn('Failed to set speed', { monitor: screen.monitor.name, error: error.message });
       }
+    }
+  }
+
+  async onLoadFailed(screen, event) {
+    try {
+      const removed = await removeFailedEntry(screen.client, event.playlist_entry_id);
+      if (!removed) return;
+      this.logger.warn('Dropped unplayable file from playlist', {
+        monitor: screen.monitor.name, path: removed.filename, error: event.file_error
+      });
+      if (!removed.remaining) {
+        this.logger.warn('No playable media left', { monitor: screen.monitor.name });
+      }
+    } catch (error) {
+      this.logger.warn('Failed to drop unplayable file', { monitor: screen.monitor.name, error: error.message });
     }
   }
 
@@ -244,6 +319,8 @@ export class Daemon {
       return this.stopped;
     }
     this.stopping = true;
+    this.timers.forEach(clearInterval);
+    this.timers = [];
 
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();

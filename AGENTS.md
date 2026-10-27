@@ -47,7 +47,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
-  runtime dir; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
+  runtime dir; it restarts mpv on exit or on failed IPC health checks, drops entries that fail to load, and
+  purges expired trash daily (`src/library/purge.js`); `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source

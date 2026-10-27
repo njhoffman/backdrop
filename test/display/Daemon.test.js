@@ -20,6 +20,7 @@ describe('Daemon', () => {
   let clients;
   let kills;
   let connectError;
+  let purges;
 
   function makeDaemon(overrides = {}) {
     return new Daemon({
@@ -44,6 +45,9 @@ describe('Daemon', () => {
       restartDelay: 0,
       stopGrace: 20,
       importer: { importDirs: async () => ({ imported: [] }) },
+      purge: async () => { purges++; },
+      healthInterval: 0,
+      purgeInterval: 0,
       ...overrides
     });
   }
@@ -57,6 +61,7 @@ describe('Daemon', () => {
     clients = [];
     kills = [];
     connectError = null;
+    purges = 0;
   });
 
   afterEach(async () => {
@@ -328,6 +333,134 @@ describe('Daemon', () => {
       // 2 initial launches; the second monitor restarts 5 times, then stops
       expect(spawned).to.have.length(2 + 5);
       await daemon.stop();
+    });
+  });
+
+  describe('unplayable files', () => {
+    const playlist = [
+      { filename: '/media/a.mp4', id: 1 },
+      { filename: '/gone/b.mp4', id: 2 },
+      { filename: '/gone/c.mp4', id: 3, current: true }
+    ];
+    const settle = () => new Promise(resolve => setTimeout(resolve, 10));
+    const removals = client => client.commands.filter(cmd => cmd[0] === 'playlist-remove');
+
+    it('drops the failed entry by its playlist id and ignores normal ends', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      const { client } = clients[0];
+      client.properties.playlist = playlist;
+
+      client.emit('end-file', { event: 'end-file', reason: 'eof', playlist_entry_id: 1 });
+      client.emit('end-file', { event: 'end-file', reason: 'error', playlist_entry_id: 3, file_error: 'loading failed' });
+      await settle();
+
+      expect(removals(client)).to.deep.equal([['playlist-remove', 2]]);
+      expect(removals(clients[1].client)).to.deep.equal([]);
+      await daemon.stop();
+    });
+
+    it('serializes removals so later failures use fresh indexes', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      const { client } = clients[0];
+      client.properties.playlist = [...playlist];
+      const command = client.command.bind(client);
+      client.command = async (...args) => {
+        if (args[0] === 'playlist-remove') client.properties.playlist.splice(args[1], 1);
+        return command(...args);
+      };
+
+      client.emit('end-file', { event: 'end-file', reason: 'error', playlist_entry_id: 2 });
+      client.emit('end-file', { event: 'end-file', reason: 'error', playlist_entry_id: 3 });
+      client.emit('end-file', { event: 'end-file', reason: 'error', playlist_entry_id: 3 });
+      await settle();
+
+      expect(removals(client)).to.deep.equal([['playlist-remove', 1], ['playlist-remove', 1]]);
+      expect(client.properties.playlist.map(entry => entry.id)).to.deep.equal([1]);
+      await daemon.stop();
+    });
+
+    it('logs instead of throwing when the playlist cannot be read', async () => {
+      const warnings = [];
+      const daemon = makeDaemon({ logger: { ...silentLogger, warn: (message) => warnings.push(message) } });
+      await daemon.start();
+      delete clients[0].client.properties.playlist;
+
+      clients[0].client.emit('end-file', { event: 'end-file', reason: 'error', playlist_entry_id: 1 });
+      await settle();
+
+      expect(warnings).to.include('Failed to drop unplayable file');
+      await daemon.stop();
+    });
+  });
+
+  describe('health checks', () => {
+    it('kills an mpv that misses two checks in a row, and resets on success', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      const { client } = clients[0];
+
+      delete client.properties.pid;
+      await daemon.checkHealth();
+      client.properties.pid = 4242;
+      await daemon.checkHealth();
+      delete client.properties.pid;
+      await daemon.checkHealth();
+      expect(kills).to.deep.equal([]);
+
+      await daemon.checkHealth();
+      expect(kills).to.deep.equal([[-1000, 'SIGKILL']]);
+
+      // The kill makes mpv exit, and the normal restart path takes over
+      spawned[0].child.exit(null, 'SIGKILL');
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(spawned).to.have.length(3);
+      await daemon.stop();
+    });
+
+    it('skips monitors whose process already exited', async () => {
+      const daemon = makeDaemon({ restartDelay: 1000 });
+      await daemon.start();
+      delete clients[0].client.properties.pid;
+      spawned[0].child.exit(1);
+
+      await daemon.checkHealth();
+      await daemon.checkHealth();
+
+      expect(kills).to.deep.equal([]);
+      await daemon.stop();
+    });
+
+    it('runs on a timer that stop clears', async () => {
+      const daemon = makeDaemon({ healthInterval: 5 });
+      await daemon.start();
+      await new Promise(resolve => setTimeout(resolve, 30));
+      const checks = () => clients[0].client.commands.filter(cmd => cmd[1] === 'pid').length;
+      expect(checks()).to.be.greaterThan(1);
+
+      await daemon.stop();
+      const after = checks();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(checks()).to.equal(after);
+    });
+  });
+
+  describe('trash purge', () => {
+    it('purges once on start and then on its interval, logging failures', async () => {
+      const errors = [];
+      const daemon = makeDaemon({
+        purgeInterval: 5,
+        logger: { ...silentLogger, error: (message) => errors.push(message) },
+        purge: async () => { purges++; if (purges === 2) throw new Error('disk'); }
+      });
+      await daemon.start();
+      expect(purges).to.equal(1);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      await daemon.stop();
+
+      expect(purges).to.be.greaterThan(2);
+      expect(errors).to.include('Trash purge failed');
     });
   });
 

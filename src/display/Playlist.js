@@ -97,6 +97,16 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ru
   return media.length;
 }
 
+// Drops the entry an end-file error refers to, so a missing or unreadable file is not retried on every
+// pass of the playlist. Returns { filename, remaining }, or null if the entry is already gone.
+export async function removeFailedEntry(client, entryId) {
+  const playlist = await client.getProperty('playlist');
+  const index = playlist.findIndex(entry => entry.id === entryId);
+  if (index === -1) return null;
+  await client.command('playlist-remove', index);
+  return { filename: playlist[index].filename, remaining: playlist.length - 1 };
+}
+
 // Adds newly added media to a running playlist without interrupting what is playing;
 // append-play starts playback if the monitor was idle. Returns how many items were added.
 export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds }) {

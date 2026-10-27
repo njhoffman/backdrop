@@ -8,7 +8,7 @@ import { MpvClient } from '../../src/display/MpvClient.js';
 import { DisplayControl } from '../../src/display/DisplayControl.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
-import { loadPlaylist, lastMediaKey } from '../../src/display/Playlist.js';
+import { loadPlaylist, lastMediaKey, removeFailedEntry } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 function hasCommand(name) {
@@ -128,6 +128,30 @@ describe('mpv integration', function () {
     await control.removeMedia({ path: second });
     expect(await client.getProperty('playlist-count')).to.equal(0);
     await waitFor(() => client.getProperty('idle-active'));
+  });
+
+  it('drops missing files reported by end-file errors and keeps playing the rest', async () => {
+    const file = path.join(tempDir, 'a.mp4');
+    makeVideo(file, '320x180');
+    const missing = [path.join(tempDir, 'gone-1.mp4'), path.join(tempDir, 'gone-2.mp4')];
+    await client.setProperty('image-display-duration', 0.2);
+    const removed = [];
+    let pending = Promise.resolve();
+    client.on('end-file', event => {
+      if (event.reason === 'error') {
+        pending = pending.then(async () => removed.push(await removeFailedEntry(client, event.playlist_entry_id)));
+      }
+    });
+
+    await client.command('loadfile', missing[0], 'replace');
+    await client.command('loadfile', file, 'append');
+    await client.command('loadfile', missing[1], 'append');
+
+    await waitFor(async () => (await client.getProperty('playlist-count')) === 1);
+    await pending;
+    expect(removed.map(entry => entry.filename)).to.have.members(missing);
+    expect((await client.getProperty('playlist'))[0].filename).to.equal(file);
+    expect(await waitFor(() => client.getProperty('path'))).to.equal(file);
   });
 
   it('reports path changes through observed property events', async () => {

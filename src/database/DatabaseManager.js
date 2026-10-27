@@ -402,11 +402,11 @@ export class DatabaseManager {
     `).run(status, mediaId);
   }
 
-  // Skipped items whose status is older than the trash retention period
+  // Skipped items still holding a file whose status is older than the trash retention period
   getExpiredTrash(days) {
     return this.db.prepare(`
       SELECT * FROM media
-      WHERE status = 'skipped' AND status_changed_at <= datetime('now', ?)
+      WHERE status = 'skipped' AND path IS NOT NULL AND status_changed_at <= datetime('now', ?)
       ORDER BY id
     `).all(`-${Number(days)} days`).map(parseMedia);
   }

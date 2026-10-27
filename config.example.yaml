@@ -14,7 +14,7 @@ library:
   default_import_rating: 2           # 1-3, editable later while viewing
   min_width: 1024                    # smaller files are not imported (either orientation)
   min_height: 768
-  trash_days: 30                     # purge skipped files after this many days
+  trash_days: 30                     # purge skipped files after this many days; 0 disables
 
 display:
   monitors: auto                     # or a list of xrandr output names, e.g. [DP-1, HDMI-1]

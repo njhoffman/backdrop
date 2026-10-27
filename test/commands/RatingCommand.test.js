@@ -106,6 +106,13 @@ describe('RatingCommand', () => {
     expect(await fs.pathExists(original)).to.be.true;
   });
 
+  it('explains that a skip cannot be undone once its file was purged from trash', async () => {
+    await command.skip();
+    db.updateMedia(id, { path: null });
+    await fails(() => command.undo(), 'purged from trash');
+    expect(db.getMedia(id).status).to.equal('skipped');
+  });
+
   it('keeps the latest rating intact when undo cannot restore its file', async () => {
     const original = db.getMedia(id).path;
     await command.keep();

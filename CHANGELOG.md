@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-27
+
+### Added
+- `backdrop purge [--dry-run]` deletes trash files skipped more than `library.trash_days` ago; the daemon
+  also purges at start and every 24 hours. `trash_days: 0` disables purging. Purged items keep their
+  history, so later searches do not offer them again; undoing a purged skip explains why it cannot be restored.
+- The daemon checks every mpv over IPC every 30 seconds and restarts one that stops responding.
+
+### Fixed
+- Files that fail to load (moved or deleted outside backdrop) are dropped from the running playlist instead
+  of being retried on every pass.
+
 ## [2.3.0] - 2026-10-27
 
 ### Added

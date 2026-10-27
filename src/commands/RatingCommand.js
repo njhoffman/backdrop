@@ -86,7 +86,11 @@ export class RatingCommand {
       return null;
     }
     const previous = this.database.getMedia(rating.media_id);
-    if (!previous?.path) throw new Error('Rating item has no downloaded file to restore');
+    if (!previous?.path) {
+      throw new Error(previous?.status === 'skipped' && rating.rating === 0
+        ? `#${rating.media_id} was purged from trash; its file cannot be restored`
+        : 'Rating item has no downloaded file to restore');
+    }
     const preceding = this.database.getLatestRating(previous.id, rating.id);
     const { paths } = this.config.get();
     const directory = preceding ? (preceding.rating === 0 ? paths.trash : paths.media) : paths.inbox;

@@ -42,7 +42,8 @@ dependency order.
 - [x] **Port old commands onto the new layer.** (p1) [refactor] Search/Download, List, Stats and Rating use the new schema
       and are registered alongside Import and Display. HookCommand is removed; `go-next` uses mpv IPC.
       Lists default to text with optional interactive rating/M3U export; stats work offline. See `docs/specs/sources.md`.
-- [ ] **Trash purge.** (p2) [feature] Delete files and rows from `DatabaseManager.getExpiredTrash(library.trash_days)`; run on startup or from the daemon.
+- [x] **Trash purge.** (p2) [feature] `backdrop purge [--dry-run]` and the daemon (at start and every 24h) delete trash files older than `library.trash_days` (0 disables).
+      Rows and ratings stay with a null path so searches do not resurrect the item; only files inside `trash/` are touched.
 - [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
       Commander rejects unknown subcommands once any are registered; add a test for this when the first command is ported.
 
@@ -62,9 +63,10 @@ dependency order.
 - [x] **Playlists go stale while the daemon runs.** (p2) [feature] Import/download append eligible items immediately,
       rating moves refresh affected playlists, and skip/remove delete every matching entry. Appends avoid duplicate paths.
       External file changes remain covered by the separate missing-files/watch-mode tasks.
-- [ ] **Missing files can make mpv spin.** (p2) [bug] If every playlist entry fails to load (files moved or deleted outside backdrop), `--loop-playlist=inf` keeps retrying.
-      Watch `end-file` events with `reason: error` in `Daemon`, drop those entries, and stop on an empty playlist.
-- [ ] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. Add a periodic `get_property pid` health check.
+- [x] **Missing files can make mpv spin.** (p2) [bug] If every playlist entry fails to load (files moved or deleted outside backdrop), `--loop-playlist=inf` keeps retrying.
+      Checked with mpv 0.40: an all-missing playlist goes idle on its own, but mixed playlists retried missing entries on every pass.
+      The daemon now drops entries reported by `end-file` with `reason: error`; the database is not changed.
+- [x] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. The daemon now checks `get_property pid` every 30s and kills an mpv that misses two in a row; the normal restart budget applies.
 - [ ] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
 
 ## 4. Media sources

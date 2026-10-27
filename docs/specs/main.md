@@ -85,7 +85,10 @@ IPC socket) would break a wallpaper.
 3. Rating: `keep N` (1-3) sets status `kept` and moves the file into `media/`; `skip` (rating 0) sets
    `skipped` and moves it to trash. `undo` deletes the latest rating, restores the previous status, and
    moves the file back.
-4. Trash purge deletes files and rows whose skipped status is older than `trash_days`.
+4. Trash purge (`backdrop purge [--dry-run]`, and in the daemon at start and every 24 hours) deletes trash
+   files whose skipped status is older than `trash_days`; `0` disables it. The media row and ratings stay
+   with `path` set to null, so searches do not offer the item again and its skip can no longer be undone.
+   Only files inside `trash/` are deleted.
 5. Local import (`backdrop import [dirs...]`, and on every daemon start for `library.import_dirs`):
    - Walks the directories recursively, skipping hidden paths, non-media extensions and backdrop's own
      `media/` and `trash/`.

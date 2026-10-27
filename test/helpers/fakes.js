@@ -5,7 +5,7 @@ import { ConfigManager } from '../../src/config/ConfigManager.js';
 export class FakeMpvClient extends EventEmitter {
   constructor(properties = {}) {
     super();
-    this.properties = { playlist: [], ...properties };
+    this.properties = { playlist: [], pid: 4242, ...properties };
     this.commands = [];
     this.closed = false;
   }
