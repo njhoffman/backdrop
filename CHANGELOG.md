@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-10-27
+
+### Changed
+- Roadmap (`TODO.md`) adds monitor hotplug, upgrading downloads for larger monitors, clearer status for
+  blank monitors, and a CLI experience section: output styling, progress bars, version display, a release
+  binary and a rofi control menu.
+
 ## [2.4.1] - 2026-10-27
 
 ### Changed

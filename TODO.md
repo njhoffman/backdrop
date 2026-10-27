@@ -69,6 +69,10 @@ dependency order.
       Checked with mpv 0.40: an all-missing playlist goes idle on its own, but mixed playlists retried missing entries on every pass.
       The daemon now drops entries reported by `end-file` with `reason: error`; the database is not changed.
 - [x] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. The daemon now checks `get_property pid` every 30s and kills an mpv that misses two in a row; the normal restart budget applies.
+- [ ] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
+      Poll `xrandr --listactivemonitors` (or listen for RandR events) and start, stop or respawn per-monitor mpv instances on changes, then rewrite `state.json`.
+- [ ] **Status hides why a monitor is blank.** (p3) [feature] When no library item is at least as large as a monitor, it idles and only the log says "No media to show".
+      `backdrop status` should report per monitor how many items are eligible and suggest `display.allow_upscale` or a fresh download.
 - [ ] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
 
 ## 4. Media sources
@@ -104,8 +108,29 @@ dependency order.
 - [x] **Store measured dimensions.** (p2) [feature] Download/import probe real dimensions, kind and duration with ffprobe;
       a later source search preserves measurements for files already downloaded.
 
+- [ ] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
+      Add e.g. `backdrop download --upgrade`: for kept remote items below the current target, pick a larger stored variant, replace the file atomically and keep ratings, speed and history. Local imports cannot be upgraded.
+
 ## 7. Screensaver
 
 - [ ] **Idle-triggered screensaver.** (p2) [feature] After N minutes of inactivity (xprintidle or an xss-lock / xidlehook integration), play a configured set of media fullscreen through mpv; stop on activity.
 - [ ] **Screensaver playlists.** (p2) [feature] Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
+
+## 8. CLI experience and packaging
+
+- [ ] **Consistent output styling.** (p2) [feature] Commands print plain `console.log` lines with ad hoc chalk in a few places (`index.js`, `DisplayCommand`, `ImportCommand`).
+      Add one small output module (headings, key/value rows, success/warn/error colors, dim secondary text) and use it in every command.
+      Respect `NO_COLOR` and non-TTY stdout so lists, `--playlist` and scripts get plain text; consider `--json` for `current`, `status` and lists.
+- [ ] **Gradient progress bars for long tasks.** (p3) [feature] Import hashing/copying, downloads (bytes per file and items overall) and purge need live progress.
+      `src/utils/ProgressBar.js` is unused legacy code and the `progress` dependency is unused; replace both with one TTY-only bar that draws a truecolor gradient
+      (falling back to 256/16 colors), writes to stderr, and stays silent when not a TTY. Covers "Import progress for large first runs" in project 5.
+- [ ] **Show the version on every run.** (p3) [feature] Print `backdrop vX.Y.Z` as a dim first line on stderr for interactive runs only, so piped output and
+      M3U exports stay clean; `--version` already exists. Skip it for `daemon` logs, where the version should go in the startup log entry instead.
+- [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
+      attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
+      Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
+- [ ] **Rofi control menu.** (p2) [feature] `backdrop menu` (or a shipped script) opens rofi with the current item (name, rating, monitor) and actions:
+      keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
+      Needs machine-readable `backdrop current` output (see the `--json` note above); add an i3 keybinding example to `GETTING_STARTED.md`.
+- [ ] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item.
