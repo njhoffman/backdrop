@@ -1,279 +1,116 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import chalk from 'chalk';
-
-const execAsync = promisify(exec);
+import { DisplayControl } from '../display/DisplayControl.js';
 
 export class RatingCommand {
-  constructor(config, database, logger) {
+  constructor(config, database, logger, { control } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
-    this.lastRating = null; // Store last rating for undo functionality
+    this.control = control ?? new DisplayControl({ config, database });
   }
 
-  async keep(rating = 1) {
+  async current(options) {
+    const current = await this.control.current(options.monitor);
+    if (!current.media) throw new Error(`Nothing from the library is playing on ${current.monitor.name}`);
+    return current;
+  }
+
+  async keep(rating = 1, options = {}) {
+    if (!/^[1-3]$/.test(String(rating))) throw new Error('Rating must be an integer from 1 to 3');
+    const { media, monitor } = await this.current(options);
+    return this.rate(media, Number(rating), `${monitor.width}x${monitor.height}`);
+  }
+
+  async skip(options = {}) {
+    const { media, monitor } = await this.current(options);
+    return this.rate(media, 0, `${monitor.width}x${monitor.height}`);
+  }
+
+  async rate(media, rating, resolution = null) {
+    if (!Number.isInteger(rating) || rating < 0 || rating > 3) throw new Error('Rating must be an integer from 0 to 3');
+    if (!media.path) throw new Error('Download this item before rating it');
+    const { paths } = this.config.get();
+    const target = path.join(rating === 0 ? paths.trash : paths.media, path.basename(media.path));
+    if (rating === 0) await this.control.removeMedia(media);
     try {
-      const numRating = parseInt(rating);
-      
-      if (isNaN(numRating) || numRating < 1 || numRating > 3) {
-        console.error(chalk.red('❌ Rating must be between 1 and 3'));
-        return;
-      }
-
-      // Get current item from hook
-      const currentItem = await this.getCurrentItem();
-      
-      if (!currentItem) {
-        console.error(chalk.red('❌ No current item found'));
-        return;
-      }
-
-      // Add rating to database
-      await this.database.addRating(
-        currentItem.id,
-        numRating,
-        currentItem.type === 'video' ? 'pexel-video' : 'pexel-image',
-        await this.getCurrentResolution()
-      );
-
-      // Move file to keep directory
-      await this.moveFileToKeep(currentItem, numRating);
-
-      // Store for undo functionality
-      this.lastRating = {
-        item: currentItem,
-        rating: numRating,
-        action: 'keep',
-        timestamp: new Date().toISOString()
-      };
-
-      console.log(chalk.green(`✅ Item rated ${numRating}/3 and moved to keep directory`));
-      
-      this.logger.info('Item rated and kept', {
-        itemId: currentItem.id,
-        type: currentItem.type,
-        rating: numRating
+      await this.moveAndCommit(media.path, target, () => {
+        const latest = this.database.getMedia(media.id);
+        if (!latest || latest.path !== media.path) throw new Error('Media changed while rating; try again');
+        this.database.addRating(media.id, rating, resolution, { previousPath: media.path, ratedPath: target });
+        this.database.updateMedia(media.id, { path: target });
       });
-
     } catch (error) {
-      this.logger.error('Failed to keep item:', error);
-      console.error(chalk.red('❌ Failed to keep item:'), error.message);
+      if (rating === 0) await this.control.appendMedia([media.id]).catch(() => {});
+      throw error;
     }
+    await this.syncPlayback(media, target, rating === 0);
+    console.log(`#${media.id}: ${rating === 0 ? 'skipped' : `kept ${rating}/3`}`);
+    this.logger.info('Media rated', { mediaId: media.id, rating });
+    return this.database.getMedia(media.id);
   }
 
-  async skip() {
+  // File moves cannot join SQLite transactions. Restore the old path if the write fails.
+  async moveAndCommit(from, to, commit) {
+    const moved = from !== to;
+    if (moved) await fs.move(from, to, { overwrite: false });
+    else await fs.access(from);
     try {
-      // Get current item from hook
-      const currentItem = await this.getCurrentItem();
-      
-      if (!currentItem) {
-        console.error(chalk.red('❌ No current item found'));
-        return;
-      }
-
-      // Add rating (0 = skipped) to database
-      await this.database.addRating(
-        currentItem.id,
-        0,
-        currentItem.type === 'video' ? 'pexel-video' : 'pexel-image',
-        await this.getCurrentResolution()
-      );
-
-      // Move file to skip directory
-      await this.moveFileToSkip(currentItem);
-
-      // Store for undo functionality
-      this.lastRating = {
-        item: currentItem,
-        rating: 0,
-        action: 'skip',
-        timestamp: new Date().toISOString()
-      };
-
-      console.log(chalk.yellow('⏭️  Item skipped and moved to skip directory'));
-      
-      this.logger.info('Item skipped', {
-        itemId: currentItem.id,
-        type: currentItem.type
-      });
-
+      return this.database.transaction(commit);
     } catch (error) {
-      this.logger.error('Failed to skip item:', error);
-      console.error(chalk.red('❌ Failed to skip item:'), error.message);
-    }
-  }
-
-  async undo() {
-    try {
-      if (!this.lastRating) {
-        console.log(chalk.yellow('⚠️  No recent rating to undo'));
-        return;
-      }
-
-      const { item, rating, action } = this.lastRating;
-      
-      // Move file back to original directory
-      await this.moveFileBack(item, action);
-
-      // Remove rating from database (this would need a new method in DatabaseManager)
-      // For now, we'll just log that we should remove it
-      console.log(chalk.green(`✅ Undid ${action} for item ${item.id}`));
-      console.log(chalk.white('📝 Note: Rating entry remains in database for audit trail'));
-
-      this.lastRating = null;
-      
-      this.logger.info('Rating undone', {
-        itemId: item.id,
-        type: item.type,
-        previousAction: action,
-        previousRating: rating
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to undo rating:', error);
-      console.error(chalk.red('❌ Failed to undo rating:'), error.message);
-    }
-  }
-
-  async getCurrentItem() {
-    try {
-      const config = this.config.get();
-      const getNameCmd = config.hooks['get-name'];
-      
-      if (!getNameCmd) {
-        throw new Error('get-name hook not configured');
-      }
-
-      const { stdout } = await execAsync(getNameCmd);
-      const filename = stdout.trim();
-      
-      if (!filename) {
-        return null;
-      }
-
-      // Parse filename to get item ID and type
-      const basename = path.basename(filename, path.extname(filename));
-      const parts = basename.split('_');
-      
-      if (parts.length < 2) {
-        throw new Error(`Invalid filename format: ${filename}`);
-      }
-
-      const itemId = parseInt(parts[0]);
-      const isVideo = filename.includes('.mp4') || filename.includes('.mov') || filename.includes('.avi');
-      
-      // Get item from database
-      const item = isVideo 
-        ? await this.database.getVideo(itemId)
-        : await this.database.getImage(itemId);
-
-      if (!item) {
-        throw new Error(`Item not found in database: ${itemId}`);
-      }
-
-      return {
-        ...item,
-        type: isVideo ? 'video' : 'image',
-        filename
-      };
-
-    } catch (error) {
-      this.logger.error('Failed to get current item:', error);
+      if (moved) await fs.move(to, from, { overwrite: false });
       throw error;
     }
   }
 
-  async getCurrentResolution() {
+  async syncPlayback(previous, target, removed = false) {
     try {
-      // Try to get resolution from display info
-      // This is a simplified version - in practice you'd want to detect the actual resolution
-      const { stdout } = await execAsync('xrandr --current | grep primary').catch(() => ({ stdout: '' }));
-      
-      if (stdout) {
-        const match = stdout.match(/(\d+x\d+)/);
-        if (match) {
-          return match[1];
-        }
-      }
-      
-      return '1920x1080'; // Default fallback
-      
+      if (removed) return;
+      if (target !== previous.path) await this.control.refreshMedia(previous);
+      await this.control.appendMedia([previous.id]);
     } catch (error) {
-      this.logger.warn('Failed to get current resolution:', error);
-      return '1920x1080';
+      this.playbackWarning(error);
     }
   }
 
-  async moveFileToKeep(item, rating) {
-    const config = this.config.get();
-    const isVideo = item.type === 'video';
-    
-    const sourceDir = isVideo ? config.paths.videos_new : config.paths.images_new;
-    const targetDir = isVideo ? config.paths.videos_kept : config.paths.images_kept;
-    
-    await fs.ensureDir(targetDir);
-    
-    const sourcePath = path.join(sourceDir, item.filename);
-    const targetPath = path.join(targetDir, item.filename);
-    
-    if (await fs.pathExists(sourcePath)) {
-      await fs.move(sourcePath, targetPath);
-      this.logger.info(`Moved file to keep directory: ${targetPath}`);
-    } else {
-      this.logger.warn(`Source file not found: ${sourcePath}`);
-    }
+  playbackWarning(error) {
+    // A disconnected display must not suggest retrying a rating change that already committed.
+    this.logger.warn('Rating change saved but playlist update failed', { error: error.message });
+    console.error(`Rating change saved; playlist update failed: ${error.message}`);
   }
 
-  async moveFileToSkip(item) {
-    const config = this.config.get();
-    const isVideo = item.type === 'video';
-    
-    const sourceDir = isVideo ? config.paths.videos_new : config.paths.images_new;
-    
-    // Create skip directories (not in original spec, but needed for functionality)
-    const skipDir = isVideo 
-      ? path.join(path.dirname(config.paths.videos_kept), 'videos_skip')
-      : path.join(path.dirname(config.paths.images_kept), 'images_skip');
-    
-    await fs.ensureDir(skipDir);
-    
-    const sourcePath = path.join(sourceDir, item.filename);
-    const targetPath = path.join(skipDir, item.filename);
-    
-    if (await fs.pathExists(sourcePath)) {
-      await fs.move(sourcePath, targetPath);
-      this.logger.info(`Moved file to skip directory: ${targetPath}`);
-    } else {
-      this.logger.warn(`Source file not found: ${sourcePath}`);
+  async undo() {
+    const rating = this.database.getLastRating();
+    if (!rating) {
+      console.log('No rating to undo');
+      return null;
     }
+    const previous = this.database.getMedia(rating.media_id);
+    if (!previous?.path) throw new Error('Rating item has no downloaded file to restore');
+    const preceding = this.database.getLatestRating(previous.id, rating.id);
+    const { paths } = this.config.get();
+    const directory = preceding ? (preceding.rating === 0 ? paths.trash : paths.media) : paths.inbox;
+    const target = rating.previous_path ?? path.join(directory, path.basename(previous.path));
+    if (rating.rated_path && previous.path !== rating.rated_path) throw new Error('Media path changed since this rating');
+    let result;
+    await this.moveAndCommit(previous.path, target, () => {
+      if (this.database.getMedia(previous.id)?.path !== previous.path) throw new Error('Media changed while undoing; try again');
+      result = this.database.undoLastRating(rating.id);
+      this.database.updateMedia(previous.id, { path: target });
+    });
+    if (result.media.status === 'skipped') {
+      try { await this.control.removeMedia(previous); } catch (error) { this.playbackWarning(error); }
+    } else {
+      await this.syncPlayback(previous, target);
+    }
+    console.log(`Undid rating for #${previous.id}`);
+    return this.database.getMedia(previous.id);
   }
 
-  async moveFileBack(item, action) {
-    const config = this.config.get();
-    const isVideo = item.type === 'video';
-    
-    const originalDir = isVideo ? config.paths.videos_new : config.paths.images_new;
-    
-    let currentDir;
-    if (action === 'keep') {
-      currentDir = isVideo ? config.paths.videos_kept : config.paths.images_kept;
-    } else {
-      currentDir = isVideo 
-        ? path.join(path.dirname(config.paths.videos_kept), 'videos_skip')
-        : path.join(path.dirname(config.paths.images_kept), 'images_skip');
-    }
-    
-    const currentPath = path.join(currentDir, item.filename);
-    const originalPath = path.join(originalDir, item.filename);
-    
-    if (await fs.pathExists(currentPath)) {
-      await fs.move(currentPath, originalPath);
-      this.logger.info(`Moved file back to original directory: ${originalPath}`);
-    } else {
-      this.logger.warn(`Current file not found: ${currentPath}`);
-    }
+  async goNext(options = {}) {
+    const { media, monitor, rating } = await this.current(options);
+    if (!rating) throw new Error('Rate this item with keep or skip before go-next');
+    await this.control.next(monitor.name);
+    return media;
   }
 }

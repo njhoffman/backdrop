@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-27
+
+### Added
+- Restored `keep`, `skip`, `undo` and `go-next` through mpv sockets with monitor targeting. Ratings include
+  reversible file movements; undo works across CLI invocations. Skips remove all monitor playlist references.
+- Source adapter contract for search, metadata, resolution variants and quotas, with Pexels first.
+  Restored `search-images`, `search-videos` and `download`, choosing the smallest fitting variant and storing
+  measured dimensions and content hashes. Downloads update running playlists and clean up failed files.
+- Restored `list-images`, `list-videos` and offline `stats`; lists support current-rating and keyword filters,
+  interactive rating and M3U export. API credentials are required only for authenticated source requests.
+- `backdrop remove <id>` and `backdrop remove --current [--monitor <name>]` permanently delete an item
+  and its library file, removing every occurrence from running monitor playlists first. Original import
+  files and their scan records are preserved, so unchanged originals are not imported again.
+
+### Changed
+- Database schema v4 adds rating path history and upgrades existing databases in place.
+- Playlist appends avoid duplicates when re-rating or restoring an item.
+- Agent guidance moved to `AGENTS.md`, which `CLAUDE.md` imports, and now states the release workflow.
+
+### Removed
+- Legacy shell-hook implementation; display control uses mpv IPC exclusively.
+
 ## [2.2.0] - 2026-10-21
 
 ### Added

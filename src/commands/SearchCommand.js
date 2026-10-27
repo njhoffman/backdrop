@@ -1,291 +1,69 @@
-import { createClient } from 'pexels';
 import inquirer from 'inquirer';
-import chalk from 'chalk';
-import { ProgressBar } from '../utils/ProgressBar.js';
+import { SourceRegistry } from '../sources/SourceRegistry.js';
+import { targetResolution, positiveInteger, selectVariant } from '../library/quality.js';
 
 export class SearchCommand {
-  constructor(config, database, logger) {
+  constructor(config, database, logger, { sources, monitors, prompt = inquirer.prompt } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
-    this.client = createClient(config.get().api_key);
+    this.sources = sources ?? new SourceRegistry(config);
+    this.monitors = monitors;
+    this.prompt = prompt;
   }
 
-  async searchImages(query, options) {
-    try {
-      if (!query) {
-        const answer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'query',
-            message: 'Enter search keywords for images:',
-            validate: (input) => input.trim() !== '' || 'Query cannot be empty'
-          }
-        ]);
-        query = answer.query;
+  async searchImages(query, options = {}) { return this.search('image', query, options); }
+  async searchVideos(query, options = {}) { return this.search('video', query, options); }
+
+  async search(kind, query, options = {}) {
+    if (!query && process.stdin.isTTY) query = (await this.prompt([{ type: 'input', name: 'query', message: 'Search keywords:' }])).query;
+    query = query?.trim();
+    if (!query) throw new Error('Search query cannot be empty');
+    const source = this.sources.get(options.source ?? 'pexels');
+    const perPage = positiveInteger(options.perPage ?? this.config.get().sources[source.name]?.per_page ?? 80, 'Per-page', 80);
+    const orientation = options.portrait ? 'portrait' : options.orientation;
+    if (orientation && !['portrait', 'landscape', 'square'].includes(orientation)) throw new Error('Invalid orientation');
+    if (options.minSize && !['large', 'medium', 'small'].includes(options.minSize)) throw new Error('Invalid minimum size');
+    const target = await targetResolution(this.config, options.resolution, this.monitors);
+    const params = { kind, perPage, orientation, minSize: options.minSize, color: options.color, target };
+    const searchId = this.database.addSearch(source.name, query, params);
+    const summary = { searchId, fetched: 0, added: 0, updated: 0, filtered: 0, pages: 0, rateLimited: false };
+    let page = 1;
+    while (page !== null) {
+      let result;
+      try {
+        result = await source.search({ ...params, query, page });
+      } catch (error) {
+        if (error.status !== 429) throw error;
+        summary.rateLimited = true;
+        console.error(`${source.name}: rate limit reached; saved results are available for download`);
+        break;
       }
-
-      console.log(chalk.cyan(`🔍 Searching for images: "${query}"`));
-
-      const searchConfig = this.config.get().search_images;
-      const searchParams = {
-        query,
-        per_page: parseInt(options.perPage) || searchConfig.per_page,
-        orientation: options.orientation || searchConfig.orientation,
-        size: options.minSize || searchConfig.min_size,
-        color: options.color || searchConfig.color
-      };
-
-      // Remove empty parameters
-      Object.keys(searchParams).forEach(key => {
-        if (searchParams[key] === '') {
-          delete searchParams[key];
+      if (result.rateLimit) this.database.setSetting(`source_rate_limit:${source.name}`, result.rateLimit);
+      this.database.transaction(() => {
+        for (const [index, media] of result.items.entries()) {
+          summary.fetched++;
+          const rank = (page - 1) * perPage + index + 1;
+          if ((options.portrait && media.height <= media.width) || !selectVariant(media.variants, target, this.config)) {
+            summary.filtered++;
+            continue;
+          }
+          const existing = this.database.getMediaBySource(media.source, media.source_id);
+          const id = this.database.upsertMedia(media);
+          this.database.addSearchResult(searchId, id, rank);
+          if (existing) summary.updated++; else summary.added++;
         }
       });
-
-      const searchId = await this.database.addSearch(query);
-      let totalFetched = 0;
-      let totalAdded = 0;
-      let totalUpdated = 0;
-      let totalFiltered = 0; // Count of items filtered out by --portrait
-      let page = 1;
-      let hasMore = true;
-
-      const progress = new ProgressBar('Fetching images');
-
-      while (hasMore) {
-        try {
-          const response = await this.client.photos.search({
-            ...searchParams,
-            page
-          });
-
-          if (!response.photos || response.photos.length === 0) {
-            hasMore = false;
-            break;
-          }
-
-          for (let i = 0; i < response.photos.length; i++) {
-            const photo = response.photos[i];
-            
-            // Apply --portrait filter if specified
-            if (options.portrait && photo.height <= photo.width) {
-              totalFiltered++;
-              continue;
-            }
-            
-            const ranking = (page - 1) * searchParams.per_page + i + 1;
-            
-            const existing = await this.database.getImage(photo.id);
-            if (existing) {
-              await this.database.updateImageSearch(photo.id, searchId, ranking);
-              totalUpdated++;
-            } else {
-              await this.database.addImage(photo, searchId, ranking);
-              totalAdded++;
-            }
-            totalFetched++;
-          }
-
-          progress.update(page, `Page ${page} - ${totalFetched} images processed${options.portrait ? `, ${totalFiltered} filtered` : ''}`);
-
-          if (response.photos.length < searchParams.per_page) {
-            hasMore = false;
-          } else {
-            page++;
-          }
-
-          // Small delay to respect rate limits
-          await this.sleep(100);
-
-        } catch (error) {
-          this.logger.error('Error fetching page:', { page, error: error.message });
-          if (error.message.includes('rate limit')) {
-            console.log(chalk.yellow('⚠️  Rate limit reached, stopping search'));
-            break;
-          }
-          throw error;
-        }
+      summary.pages++;
+      console.log(`Page ${page}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+      if (result.nextPage !== null && result.nextPage !== undefined && (!Number.isInteger(result.nextPage) || result.nextPage <= page)) {
+        throw new Error(`${source.name}: invalid next page`);
       }
-
-      progress.complete();
-
-      console.log(chalk.green('\n✅ Search completed!'));
-      console.log(chalk.white(`📊 Summary:`));
-      console.log(chalk.white(`   • Total images fetched: ${totalFetched}`));
-      console.log(chalk.white(`   • New images added: ${totalAdded}`));
-      console.log(chalk.white(`   • Existing images updated: ${totalUpdated}`));
-      if (options.portrait) {
-        console.log(chalk.white(`   • Images filtered (not portrait): ${totalFiltered}`));
-      }
-
-      this.logger.info('Image search completed', {
-        query,
-        totalFetched,
-        totalAdded,
-        totalUpdated,
-        pages: page - 1
-      });
-
-      // Ask if user wants to proceed to download
-      const continueAnswer = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'download',
-          message: 'Would you like to download these images now?',
-          default: false
-        }
-      ]);
-
-      if (continueAnswer.download) {
-        const { DownloadCommand } = await import('./DownloadCommand.js');
-        const downloadCmd = new DownloadCommand(this.config, this.database, this.logger);
-        await downloadCmd.download({ type: 'images' });
-      }
-
-    } catch (error) {
-      this.logger.error('Image search failed:', error);
-      console.error(chalk.red('❌ Search failed:'), error.message);
+      page = result.items.length ? (result.nextPage ?? null) : null;
     }
-  }
-
-  async searchVideos(query, options) {
-    try {
-      if (!query) {
-        const answer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'query',
-            message: 'Enter search keywords for videos:',
-            validate: (input) => input.trim() !== '' || 'Query cannot be empty'
-          }
-        ]);
-        query = answer.query;
-      }
-
-      console.log(chalk.cyan(`🔍 Searching for videos: "${query}"`));
-
-      const searchConfig = this.config.get().search_videos;
-      const searchParams = {
-        query,
-        per_page: parseInt(options.perPage) || searchConfig.per_page,
-        min_size: options.minSize || searchConfig.min_size
-      };
-
-      // Remove empty parameters
-      Object.keys(searchParams).forEach(key => {
-        if (searchParams[key] === '') {
-          delete searchParams[key];
-        }
-      });
-
-      const searchId = await this.database.addSearch(query);
-      let totalFetched = 0;
-      let totalAdded = 0;
-      let totalUpdated = 0;
-      let totalFiltered = 0; // Count of items filtered out by --portrait
-      let page = 1;
-      let hasMore = true;
-
-      const progress = new ProgressBar('Fetching videos');
-
-      while (hasMore) {
-        try {
-          const response = await this.client.videos.search({
-            ...searchParams,
-            page
-          });
-
-          if (!response.videos || response.videos.length === 0) {
-            hasMore = false;
-            break;
-          }
-
-          for (let i = 0; i < response.videos.length; i++) {
-            const video = response.videos[i];
-            
-            // Apply --portrait filter if specified
-            if (options.portrait && video.height <= video.width) {
-              totalFiltered++;
-              continue;
-            }
-            
-            const ranking = (page - 1) * searchParams.per_page + i + 1;
-            
-            const existing = await this.database.getVideo(video.id);
-            if (existing) {
-              await this.database.updateVideoSearch(video.id, searchId, ranking);
-              totalUpdated++;
-            } else {
-              await this.database.addVideo(video, searchId, ranking);
-              totalAdded++;
-            }
-            totalFetched++;
-          }
-
-          progress.update(page, `Page ${page} - ${totalFetched} videos processed${options.portrait ? `, ${totalFiltered} filtered` : ''}`);
-
-          if (response.videos.length < searchParams.per_page) {
-            hasMore = false;
-          } else {
-            page++;
-          }
-
-          // Small delay to respect rate limits
-          await this.sleep(100);
-
-        } catch (error) {
-          this.logger.error('Error fetching page:', { page, error: error.message });
-          if (error.message.includes('rate limit')) {
-            console.log(chalk.yellow('⚠️  Rate limit reached, stopping search'));
-            break;
-          }
-          throw error;
-        }
-      }
-
-      progress.complete();
-
-      console.log(chalk.green('\n✅ Search completed!'));
-      console.log(chalk.white(`📊 Summary:`));
-      console.log(chalk.white(`   • Total videos fetched: ${totalFetched}`));
-      console.log(chalk.white(`   • New videos added: ${totalAdded}`));
-      console.log(chalk.white(`   • Existing videos updated: ${totalUpdated}`));
-      if (options.portrait) {
-        console.log(chalk.white(`   • Videos filtered (not portrait): ${totalFiltered}`));
-      }
-
-      this.logger.info('Video search completed', {
-        query,
-        totalFetched,
-        totalAdded,
-        totalUpdated,
-        pages: page - 1
-      });
-
-      // Ask if user wants to proceed to download
-      const continueAnswer = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'download',
-          message: 'Would you like to download these videos now?',
-          default: false
-        }
-      ]);
-
-      if (continueAnswer.download) {
-        const { DownloadCommand } = await import('./DownloadCommand.js');
-        const downloadCmd = new DownloadCommand(this.config, this.database, this.logger);
-        await downloadCmd.download({ type: 'videos' });
-      }
-
-    } catch (error) {
-      this.logger.error('Video search failed:', error);
-      console.error(chalk.red('❌ Search failed:'), error.message);
-    }
-  }
-
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    console.log(`Search #${searchId}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+    if (source.name === 'pexels') console.log('Photos and videos provided by Pexels: https://www.pexels.com');
+    this.logger.info('Search finished', summary);
+    return summary;
   }
 }

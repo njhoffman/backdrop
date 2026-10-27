@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -91,6 +91,9 @@ const MIGRATIONS = [`
     detail TEXT,
     checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+`, `
+  ALTER TABLE ratings ADD COLUMN previous_path TEXT;
+  ALTER TABLE ratings ADD COLUMN rated_path TEXT;
 `];
 
 export function orientationOf(resolution) {
@@ -211,7 +214,7 @@ export class DatabaseManager {
   }
 
   // Inserts a media item or refreshes the source metadata of an existing one,
-  // leaving local state (path, status, speed, sha256) untouched
+  // leaving local state and measured dimensions of downloaded files untouched
   upsertMedia(item) {
     const existing = this.getMediaBySource(item.source, item.source_id);
     if (!existing) {
@@ -220,6 +223,7 @@ export class DatabaseManager {
 
     const metadata = {};
     for (const field of ['width', 'height', 'duration', 'tags', 'variants', 'author', 'page_url']) {
+      if (existing.path && ['width', 'height', 'duration'].includes(field)) continue;
       if (item[field] !== undefined) {
         metadata[field] = item[field];
       }
@@ -289,6 +293,14 @@ export class DatabaseManager {
     if (filters.downloaded !== undefined) {
       conditions.push(filters.downloaded ? 'm.path IS NOT NULL' : 'm.path IS NULL');
     }
+    if (filters.excludeLocal) conditions.push("m.source <> 'local'");
+    for (const keyword of filters.keywords ?? []) {
+      conditions.push(`(instr(lower(COALESCE(m.original_name, '')), lower(?)) > 0
+        OR instr(lower(m.tags), lower(?)) > 0 OR EXISTS (
+          SELECT 1 FROM search_results sr JOIN searches s ON s.id = sr.search_id
+          WHERE sr.media_id = m.id AND instr(lower(s.query), lower(?)) > 0))`);
+      params.push(keyword, keyword, keyword);
+    }
     if (filters.minRating !== undefined || filters.orientation !== undefined) {
       const ratingConditions = ['r.media_id = m.id'];
       if (filters.minRating !== undefined) {
@@ -332,7 +344,7 @@ export class DatabaseManager {
   }
 
   // rating 0 skips the item, 1-3 keeps it; status follows the latest rating
-  addRating(mediaId, rating, resolution = null) {
+  addRating(mediaId, rating, resolution = null, { previousPath = null, ratedPath = null } = {}) {
     if (!Number.isInteger(rating) || rating < 0 || rating > 3) {
       throw new Error('Rating must be an integer from 0 to 3');
     }
@@ -342,23 +354,31 @@ export class DatabaseManager {
 
     return this.transaction(() => {
       const result = this.db.prepare(`
-        INSERT INTO ratings (media_id, rating, orientation, resolution) VALUES (?, ?, ?, ?)
-      `).run(mediaId, rating, orientationOf(resolution), resolution);
+        INSERT INTO ratings (media_id, rating, orientation, resolution, previous_path, rated_path)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(mediaId, rating, orientationOf(resolution), resolution, previousPath, ratedPath);
 
       this.setStatus(mediaId, statusForRating(rating));
       return Number(result.lastInsertRowid);
     });
   }
 
-  getLatestRating(mediaId) {
-    return this.db.prepare('SELECT * FROM ratings WHERE media_id = ? ORDER BY id DESC LIMIT 1').get(mediaId) ?? null;
+  getLatestRating(mediaId, beforeId = Number.MAX_SAFE_INTEGER) {
+    return this.db.prepare('SELECT * FROM ratings WHERE media_id = ? AND id < ? ORDER BY id DESC LIMIT 1').get(mediaId, beforeId) ?? null;
+  }
+
+  getLastRating() {
+    return this.db.prepare('SELECT * FROM ratings ORDER BY id DESC LIMIT 1').get() ?? null;
   }
 
   // Removes the most recent rating across all media and restores the item's previous status.
   // Returns { rating, media } so the caller can move the file back, or null if nothing to undo.
-  undoLastRating() {
+  undoLastRating(expectedId = null) {
     return this.transaction(() => {
-      const rating = this.db.prepare('SELECT * FROM ratings ORDER BY id DESC LIMIT 1').get();
+      const rating = this.getLastRating();
+      if (expectedId !== null && rating?.id !== expectedId) {
+        throw new Error('Rating changed while undoing; try again');
+      }
       if (!rating) {
         return null;
       }

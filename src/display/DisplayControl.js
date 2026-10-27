@@ -123,6 +123,40 @@ export class DisplayControl {
     return counts;
   }
 
+  // Drops every reference to a file, including the playing entry, on every monitor.
+  // Removing the current entry advances mpv; removing the final entry leaves it idle.
+  async removeMedia(media) {
+    if (!media.path) return;
+    const state = await this.state({ required: false });
+    for (const monitor of state?.monitors ?? []) {
+      await this.withClient(monitor, async client => {
+        const playlist = await client.getProperty('playlist');
+        for (let index = playlist.length - 1; index >= 0; index--) {
+          if (playlist[index].filename === media.path) {
+            await client.command('playlist-remove', index);
+          }
+        }
+      });
+    }
+  }
+
+  // Rebuild affected playlists after a file move, keeping the same item selected where possible.
+  async refreshMedia(previous) {
+    const state = await this.state({ required: false });
+    for (const monitor of state?.monitors ?? []) {
+      await this.withClient(monitor, async client => {
+        const playlist = await client.getProperty('playlist');
+        if (!playlist.some(entry => entry.filename === previous.path)) return;
+        const currentPath = await client.getProperty('path').catch(() => null);
+        const current = currentPath === previous.path ? previous : this.database.getMediaByPath(currentPath);
+        await loadPlaylist(client, {
+          database: this.database, config: this.config.get(), mode: getMode(this.database),
+          monitor, runtimeDir: this.config.get().paths.runtime, lastMediaId: current?.id
+        });
+      });
+    }
+  }
+
   // Sets the mode ('video', 'image' or 'toggle') and reloads every monitor if the daemon is running
   async mode(requested = 'toggle') {
     const mode = requested === 'toggle' ? otherMode(getMode(this.database)) : requested;

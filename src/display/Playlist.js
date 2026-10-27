@@ -73,11 +73,11 @@ export function modeProperties(mode, imageDuration) {
 }
 
 // Replaces the monitor's mpv playlist with the media for the mode; returns how many items were loaded
-export async function loadPlaylist(client, { database, config, mode, monitor, runtimeDir, random }) {
+export async function loadPlaylist(client, { database, config, mode, monitor, runtimeDir, random, lastMediaId }) {
   const { display } = config;
   const media = orderPlaylist(
     eligibleMedia(database, mode, monitor, { allowUpscale: display.allow_upscale }),
-    database.getSetting(lastMediaKey(mode, monitor.name)),
+    lastMediaId ?? database.getSetting(lastMediaKey(mode, monitor.name)),
     random
   );
 
@@ -101,8 +101,10 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ru
 // append-play starts playback if the monitor was idle. Returns how many items were added.
 export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds }) {
   const wanted = new Set(mediaIds);
+  if (!wanted.size) return 0;
+  const existing = new Set((await client.getProperty('playlist')).map(entry => entry.filename));
   const media = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale })
-    .filter(item => wanted.has(item.id));
+    .filter(item => wanted.has(item.id) && !existing.has(item.path));
 
   for (const item of shuffle(media)) {
     await client.command('loadfile', item.path, 'append-play');

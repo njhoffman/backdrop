@@ -4,11 +4,11 @@ Wallpaper and screensaver manager for X11. Collects images and videos from free 
 more API-based sources planned) and your own folders, lets you rate them while they play, and displays
 them through mpv with one IPC socket per monitor.
 
-> **Status:** mid-rewrite from `pexels-cli`. The display daemon and local import work; sources, rating
-> and the screensaver are being ported. See [TODO.md](TODO.md) for the roadmap and
+> **Status:** the display daemon, local import, Pexels search/download, rating, lists and stats work.
+> More sources and the screensaver are planned. See [TODO.md](TODO.md) for the roadmap and
 > [docs/specs/main.md](docs/specs/main.md) for the design.
 
-## Planned features
+## Features and roadmap
 
 - Search and download from sources with a public API, picking the smallest file that still fills your monitor
 - Never upscale: media smaller than the target monitor is not shown
@@ -44,8 +44,33 @@ backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop current
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
 backdrop import ~/walls     # or specific folders
+backdrop keep 3             # rate the current item on the monitor under the pointer
+backdrop skip               # move it to trash and advance all monitors playing it
+backdrop undo               # undo the last rating and file move, across CLI invocations
+backdrop go-next            # advance after checking the current item has a rating
+backdrop search-videos 'ocean waves'  # also search-images; requires the source API key
+backdrop download --total 10 --type videos
+backdrop list-videos --rated landscape
+backdrop list-images --interactive  # browse and rate downloaded images
+backdrop list-videos --playlist ~/walls.m3u
+backdrop stats              # local totals and last observed API quota; works offline
+backdrop remove --current   # permanently delete the playing library item (original import is preserved)
+backdrop remove 42          # or remove an item by its database id
 backdrop stop
 ```
+
+`remove --current` accepts `--monitor <name>`. Removal drops the file from all running monitor playlists,
+deletes its library copy and database record, and preserves its import record so an unchanged original
+is not imported again. It works by ID when the daemon is stopped, too.
+
+`keep`, `skip` and `go-next` accept `--monitor <name>`. Rating an imported item changes its current rating
+and preserves undo history. Keep moves new downloads from the inbox into the library; this refreshes
+affected playlists and restarts the moved file. Re-rating a file already in the library keeps it playing.
+
+Search and download choose the smallest variant that fits all configured monitors, then probe and hash
+downloads before adding them to playback. For use without X, pass `--resolution 1920x1080`. Lists are plain
+text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--source` and `--number` filter them.
+See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.
 
 i3 example:
 

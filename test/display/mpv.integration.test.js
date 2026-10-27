@@ -5,8 +5,11 @@ import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MpvClient } from '../../src/display/MpvClient.js';
+import { DisplayControl } from '../../src/display/DisplayControl.js';
+import { RatingCommand } from '../../src/commands/RatingCommand.js';
+import { statePath } from '../../src/display/Daemon.js';
 import { loadPlaylist, lastMediaKey } from '../../src/display/Playlist.js';
-import { makeConfig } from '../helpers/fakes.js';
+import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 function hasCommand(name) {
   try {
@@ -103,6 +106,30 @@ describe('mpv integration', function () {
     })).to.equal(files[0]);
   });
 
+  it('removes playing and repeated entries, advances, and idles when the playlist is empty', async () => {
+    const first = path.join(tempDir, 'a.mp4');
+    const second = path.join(tempDir, 'b.mp4');
+    makeVideo(first, '320x180');
+    makeVideo(second, '320x180');
+    await client.setProperty('loop-file', 'inf');
+    await client.command('loadfile', first, 'replace');
+    await client.command('loadfile', second, 'append');
+    await client.command('loadfile', first, 'append');
+    await waitFor(() => client.getProperty('path'));
+
+    const control = new DisplayControl({ config: makeConfig(), database: db });
+    // Reuse the test's live connection; production closes each temporary connection.
+    control.state = async () => ({ monitors: [{ name: 'TEST-1' }] });
+    control.withClient = async (monitor, fn) => fn(client);
+    await control.removeMedia({ path: first });
+
+    expect(await client.getProperty('playlist-count')).to.equal(1);
+    await waitFor(async () => (await client.getProperty('path')) === second);
+    await control.removeMedia({ path: second });
+    expect(await client.getProperty('playlist-count')).to.equal(0);
+    await waitFor(() => client.getProperty('idle-active'));
+  });
+
   it('reports path changes through observed property events', async () => {
     const file = path.join(tempDir, 'a.mp4');
     makeVideo(file, '320x180');
@@ -114,5 +141,42 @@ describe('mpv integration', function () {
 
     await waitFor(async () => paths.length > 0 || null);
     expect(paths[0]).to.equal(file);
+  });
+
+  it('keeps, re-rates, skips and undoes through real monitor sockets without duplicate entries', async () => {
+    const inbox = path.join(tempDir, 'inbox');
+    const mediaDir = path.join(tempDir, 'media');
+    await fs.ensureDir(inbox); await fs.ensureDir(mediaDir);
+    const first = path.join(inbox, 'ocean.waves.mp4');
+    const other = path.join(mediaDir, 'other.mp4');
+    makeVideo(first, '640x360'); makeVideo(other, '640x360');
+    const id = db.addMedia({ kind: 'video', source: 'pexels', source_id: 'video:1', path: first, width: 640, height: 360 });
+    db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: other, width: 640, height: 360 });
+    const monitor = { name: 'TEST-1', width: 640, height: 360, socket: path.join(tempDir, 'mpv.sock') };
+    const config = makeConfig({ 'paths.runtime': tempDir, 'paths.media': mediaDir,
+      'paths.inbox': inbox, 'paths.trash': path.join(tempDir, 'trash') });
+    await fs.writeJson(statePath(tempDir), { pid: process.pid, monitors: [monitor] });
+    await loadPlaylist(client, { database: db, config: config.get(), mode: 'video', monitor, runtimeDir: tempDir, lastMediaId: id });
+    await waitFor(async () => (await client.getProperty('path')) === first);
+    const control = new DisplayControl({ config, database: db });
+    const rating = new RatingCommand(config, db, silentLogger, { control });
+
+    await rating.keep(2, { monitor: monitor.name });
+    const kept = db.getMedia(id).path;
+    await waitFor(async () => (await client.getProperty('path')) === kept);
+    await rating.keep(3, { monitor: monitor.name });
+    expect(await client.getProperty('playlist-count')).to.equal(2);
+    expect(db.getLatestRating(id)).to.include({ rating: 3, resolution: '640x360' });
+
+    await rating.skip({ monitor: monitor.name });
+    expect(db.getMedia(id).status).to.equal('skipped');
+    await waitFor(async () => (await client.getProperty('path')) === other);
+    expect(await client.getProperty('playlist-count')).to.equal(1);
+
+    await new RatingCommand(config, db, silentLogger, { control }).undo();
+    expect(db.getMedia(id)).to.include({ path: kept, status: 'kept' });
+    expect(db.getLatestRating(id).rating).to.equal(3);
+    expect(await client.getProperty('playlist-count')).to.equal(2);
+    expect(await client.getProperty('path')).to.equal(other);
   });
 });

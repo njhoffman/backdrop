@@ -1,0 +1,74 @@
+import { expect } from 'chai';
+import fs from 'fs-extra';
+import path from 'path';
+import os from 'os';
+import sinon from 'sinon';
+import { DatabaseManager } from '../../src/database/DatabaseManager.js';
+import { ListCommand } from '../../src/commands/ListCommand.js';
+import { StatsCommand } from '../../src/commands/StatsCommand.js';
+import { makeConfig, silentLogger } from '../helpers/fakes.js';
+
+describe('ListCommand and StatsCommand', () => {
+  let dir, db, config, command, rating;
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-list-'));
+    db = new DatabaseManager(); db.initialize(':memory:'); config = makeConfig();
+    rating = { rate: sinon.stub().resolves() };
+    command = new ListCommand(config, db, silentLogger, { rating });
+    sinon.stub(console, 'log');
+  });
+  afterEach(async () => { sinon.restore(); db.close(); await fs.remove(dir); });
+  async function add(kind, source, n) {
+    const file = path.join(dir, `${n}.png`); await fs.writeFile(file, 'media');
+    return db.addMedia({ kind, source, source_id: n, path: file, width: 3840, height: 2160 });
+  }
+
+  it('filters current ratings, monitor orientation, source, keywords and limit together', async () => {
+    const first = await add('image', 'pexels', 1);
+    const second = await add('image', 'local', 2);
+    db.addRating(first, 3, '1080x1920'); db.addRating(first, 1, '1920x1080');
+    db.addRating(second, 2, '1080x1920');
+    const search = db.addSearch('pexels', 'Ocean Waves'); db.addSearchResult(search, first, 1);
+    expect((await command.listImages({ rated: 'portrait' })).map(m => m.id)).to.deep.equal([second]);
+    expect((await command.listImages({ rated: true, local: false, keywords: ['ocean', 'waves'], number: 1 })).map(m => m.id)).to.deep.equal([first]);
+    expect(await command.listImages({ minRating: 3 })).to.deep.equal([]);
+  });
+
+  it('lists GIFs in video mode and excludes undownloaded rows', async () => {
+    const gif = await add('gif', 'local', 1);
+    db.addMedia({ kind: 'video', source: 'pexels', source_id: 2 });
+    expect((await command.listVideos()).map(m => m.id)).to.deep.equal([gif]);
+  });
+
+  it('exports existing matching files to an explicit M3U path', async () => {
+    const id = await add('image', 'local', 1); const missing = await add('image', 'local', 2);
+    await fs.unlink(db.getMedia(missing).path);
+    const file = path.join(dir, 'playlists', 'images.m3u');
+    await command.listImages({ playlist: file });
+    expect(await fs.readFile(file, 'utf8')).to.equal(`#EXTM3U\n${db.getMedia(id).path}\n`);
+  });
+
+  it('routes interactive rating through the same lifecycle as the playback commands', async () => {
+    const id = await add('image', 'local', 1);
+    command.prompt = async () => ({ action: 0 });
+    await command.listImages({ interactive: true });
+    expect(rating.rate.calledOnce).to.be.true;
+    expect(rating.rate.firstCall.args[0].id).to.equal(id);
+    expect(rating.rate.firstCall.args[1]).to.equal(0);
+  });
+
+  it('rejects invalid filters', async () => {
+    for (const options of [{ number: '2abc' }, { minRating: '4' }, { rated: 'diagonal' }, { status: 'bad' }]) {
+      let caught; try { await command.listImages(options); } catch (error) { caught = error; }
+      expect(caught).to.be.instanceOf(Error);
+    }
+  });
+
+  it('prints accurate offline statistics and labels cached quota information', async () => {
+    const id = await add('image', 'local', 1); db.addRating(id, 2);
+    db.setSetting('source_rate_limit:pexels', { limit: 20000, remaining: 123, reset: 2000000000 });
+    const stats = await new StatsCommand(config, db, silentLogger).showStats();
+    expect(stats.media.image.kept).to.equal(1);
+    expect(console.log.args.flat().join('\n')).to.include('last response').and.include('123 / 20000');
+  });
+});

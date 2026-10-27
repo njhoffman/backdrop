@@ -176,12 +176,42 @@ describe('DisplayControl', () => {
         const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', width: 4000, height: 4000 });
 
         expect(await control.appendMedia([id])).to.deep.equal({ 'DP-1': 1, 'HDMI-1': 1 });
-        expect(clientFor('DP-1').commands).to.deep.equal([['loadfile', '/m/v.mp4', 'append-play']]);
+        expect(clientFor('DP-1').commands).to.deep.equal([['get_property', 'playlist'], ['loadfile', '/m/v.mp4', 'append-play']]);
       });
 
       it('skips connecting when there is nothing to add', async () => {
         expect(await control.appendMedia([])).to.deep.equal({});
         expect(clients.size).to.equal(0);
+      });
+    });
+
+    describe('removeMedia', () => {
+      it('removes every occurrence from every monitor, in descending index order', async () => {
+        clientFor('DP-1').properties.playlist = [
+          { filename: '/m/a.mp4', current: true },
+          { filename: '/m/b.mp4' },
+          { filename: '/m/a.mp4' }
+        ];
+        clientFor('HDMI-1').properties.playlist = [{ filename: '/m/a.mp4', current: true }];
+
+        await control.removeMedia({ path: '/m/a.mp4' });
+
+        expect(clientFor('DP-1').commands.filter(cmd => cmd[0] === 'playlist-remove'))
+          .to.deep.equal([['playlist-remove', 2], ['playlist-remove', 0]]);
+        expect(clientFor('HDMI-1').commands.filter(cmd => cmd[0] === 'playlist-remove'))
+          .to.deep.equal([['playlist-remove', 0]]);
+        expect(clientFor('DP-1').closed).to.be.true;
+        expect(clientFor('HDMI-1').closed).to.be.true;
+      });
+
+      it('leaves unrelated playlist entries alone', async () => {
+        for (const name of ['DP-1', 'HDMI-1']) {
+          clientFor(name).properties.playlist = [{ filename: '/m/other.mp4' }];
+        }
+        await control.removeMedia({ path: '/m/a.mp4' });
+        for (const name of ['DP-1', 'HDMI-1']) {
+          expect(clientFor(name).commands.some(cmd => cmd[0] === 'playlist-remove')).to.be.false;
+        }
       });
     });
 
@@ -235,6 +265,11 @@ describe('DisplayControl', () => {
 
     it('has nothing to append to', async () => {
       expect(await control.appendMedia([1])).to.deep.equal({});
+    });
+
+    it('can remove library media without a running daemon', async () => {
+      await control.removeMedia({ path: '/m/a.mp4' });
+      await control.removeMedia({ path: null });
     });
 
     it('still stores the mode', async () => {

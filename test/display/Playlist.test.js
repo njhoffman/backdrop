@@ -133,7 +133,7 @@ describe('Playlist', () => {
       });
 
       expect(added).to.equal(1);
-      expect(client.commands).to.deep.equal([['loadfile', '/m/1', 'append-play']]);
+      expect(client.commands).to.deep.equal([['get_property', 'playlist'], ['loadfile', '/m/1', 'append-play']]);
     });
 
     it('does nothing for an empty list', async () => {
@@ -141,6 +141,13 @@ describe('Playlist', () => {
       add('video', 1);
       expect(await appendToPlaylist(client, { database: db, config, mode: 'video', monitor: MONITOR, mediaIds: [] })).to.equal(0);
       expect(client.commands).to.deep.equal([]);
+    });
+
+    it('does not duplicate media already in the playlist when a rating changes', async () => {
+      const client = new FakeMpvClient({ playlist: [{ filename: '/m/1' }] });
+      const id = add('video', 1);
+      expect(await appendToPlaylist(client, { database: db, config, mode: 'video', monitor: MONITOR, mediaIds: [id] })).to.equal(0);
+      expect(client.commands.some(cmd => cmd[0] === 'loadfile')).to.be.false;
     });
   });
 

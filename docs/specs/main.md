@@ -4,7 +4,7 @@ backdrop is a wallpaper and screensaver manager for X11. It collects images and 
 sources that have a public API (Pexels first) and from local folders, lets the user rate them, and
 displays them as wallpaper and screensaver through mpv controlled over IPC sockets.
 
-Detailed specs: [config.md](config.md), [database.md](database.md). The pre-rename command behavior is
+Detailed specs: [config.md](config.md), [database.md](database.md), [sources.md](sources.md). The pre-rename command behavior is
 in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open work is tracked in `TODO.md`.
 
 ## Decisions
@@ -53,6 +53,16 @@ IPC socket) would break a wallpaper.
   videos, sets mpv's `speed` to the stored value.
 - **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>` connect to the socket of the monitor
   under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` applies immediately and is saved.
+- **Rating:** `keep [1-3]` and `skip` use the same monitor targeting. Keep moves inbox files into `media/`
+  and changes the current rating; skip removes every playlist reference before moving the file to trash,
+  advancing monitors playing it. `undo` works across CLI invocations, deletes the latest rating and restores
+  its exact previous path. Moving a kept file refreshes affected playlists and restarts that file from its
+  beginning. Re-rating a file already in `media/` does not restart it. `go-next` checks the item is rated and
+  advances the target monitor.
+- **Removal:** `remove <id>` or `remove --current [--monitor <name>]` removes every occurrence of the item
+  from all running playlists before deleting its file and database row. Removing a playing entry advances
+  mpv; an empty playlist becomes idle. Import records and original source files remain, so unchanged
+  originals are not imported again. Removal by ID also works without a running daemon.
 - **Supervision:** an mpv that exits is relaunched after 1s, at most 5 times a minute per monitor. `stop` sends
   `quit`, then SIGTERM to each xwinwrap process group, SIGKILL after 2s, and removes sockets, playlists and state.
 
@@ -63,8 +73,8 @@ IPC socket) would break a wallpaper.
 - `src/database/DatabaseManager.js` - synchronous `node:sqlite` access; owns status transitions and rating history.
 - `src/display/` - `MpvClient` (JSON IPC), `Monitors` (xrandr/xdotool), `Playlist` (modes, eligibility, loading),
   `Daemon` (process supervision), `DisplayControl` (CLI side of the socket commands).
-- `src/commands/` - one class per command, constructed with `(config, database, logger)`. `DisplayCommand` is
-  registered; the other files are pre-rename commands, not registered until ported.
+- `src/sources/` - normalized `Source` contract and registry, with Pexels as the first adapter.
+- `src/commands/` - all commands are ported to the new layer and registered; the old shell-hook command is removed.
 
 ## Item lifecycle
 

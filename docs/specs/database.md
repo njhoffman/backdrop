@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 3); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 4); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -34,9 +34,13 @@ Full history; the current rating is the row with the highest `id` for the item.
 | `rating` | 0 = skip, 1-3 = keep |
 | `orientation` | `landscape` or `portrait`, from the monitor resolution (portrait when height > width) |
 | `resolution` | monitor resolution at rating time, e.g. `1920x1080` |
+| `previous_path`, `rated_path` | file location before and after the rating; nullable for imports and pre-v4 history |
 
 Adding a rating sets the item's status in the same transaction. Undo deletes the most recent rating
 across all items and restores the status from the previous rating, or `new` if none is left.
+The command restores `previous_path`; history without recorded paths uses the directory for the previous
+status (inbox, media or trash). File moves are reversed if the database transaction fails. Re-rating an
+import changes its effective latest rating while retaining history for undo.
 
 ## searches, search_results
 

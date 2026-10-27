@@ -20,10 +20,14 @@ dependency order.
 - [x] **Hard-coded CLI version.** (p3) [bug] `src/index.js` passes `.version('1.0.0')` while `package.json` is 1.1.1. Now read from `package.json`.
 - [x] **Startup requires every hook and the API key for all commands.** (p2) [refactor] `validateConfig()` in `src/index.js` exited if any hook or `api_key` was missing, even for `list` or `stats`.
       Removed with the hooks; ported commands must check the credentials they need (e.g. the Pexels source checks its own key).
-- [ ] **No tests for commands.** (p2) [test] Only `ConfigManager` and `DatabaseManager` have tests; the search, download, rating, hook and import commands have none.
-      The insert bug above would have been caught by one. Add command tests with sinon stubs for API and fs.
+- [x] **No tests for commands.** (p2) [test] Search, download, rating, import, removal, lists and stats have command tests;
+      CLI subprocess tests cover registration, offline operation and failing exit codes. Real mpv tests cover rating and playback transitions.
 - [ ] **Changelog lives in docs/specs.** (p3) [docs] `docs/specs/changelog.md` duplicates the new root `CHANGELOG.md` and embeds prompts. Drop it or reduce it to a pointer.
-- [ ] **No version tags.** (p3) [chore] Releases 1.0.0 to 1.1.1 exist only in docs; there are no `vX.Y.Z` tags. Tag from here on.
+- [x] **No version tags.** (p3) [chore] Releases 1.0.0 to 1.1.1 exist only in docs; every release from v2.0.0 on has an annotated `vX.Y.Z` tag.
+- [ ] **Stale .claude/preferences.json.** (p3) [chore] Untracked generated file still names `pexels-cli` and describes jest/eslint/prettier setups the repo does not use.
+      Agents may read it as project guidance that contradicts `AGENTS.md`. Delete it or add `.claude/preferences.json` to `.gitignore`.
+- [ ] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
+      Replace that with a prerequisites list (Node 22.13+, mpv, ffmpeg/ffprobe, xwinwrap, xrandr, xdotool) and a `backdrop` self-check command or script.
 
 ## 2. Rename to backdrop
 
@@ -35,9 +39,9 @@ dependency order.
       Done: XDG paths (`paths` not written to the file), `sources`/`library`/`display`/`screensaver` sections; see `docs/specs/config.md`.
 - [x] **Source-neutral database schema.** (p1) [refactor] `media`, `ratings`, `searches`, `search_results`, `sequences` on built-in `node:sqlite`; see `docs/specs/database.md`.
       No data migration: backdrop starts with an empty database (decided 2026-10-21).
-- [ ] **Port old commands onto the new layer.** (p1) [refactor] `src/commands/*.js` still use the old schema and `hooks` config and are not registered in `src/index.js`.
-      Port each (or replace it via projects 3-5) and delete the old file: Search/Download (project 4), List, Stats, Rating/Hook (project 3). Import is done.
-      `docs/specs/legacy-pexels-cli.md` describes their old behavior.
+- [x] **Port old commands onto the new layer.** (p1) [refactor] Search/Download, List, Stats and Rating use the new schema
+      and are registered alongside Import and Display. HookCommand is removed; `go-next` uses mpv IPC.
+      Lists default to text with optional interactive rating/M3U export; stats work offline. See `docs/specs/sources.md`.
 - [ ] **Trash purge.** (p2) [feature] Delete files and rows from `DatabaseManager.getExpiredTrash(library.trash_days)`; run on startup or from the daemon.
 - [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
       Commander rejects unknown subcommands once any are registered; add a test for this when the first command is ported.
@@ -52,10 +56,12 @@ dependency order.
 - [x] **Static images and GIFs through mpv.** (p2) [feature] Show images with `--image-display-duration=inf` (or a slideshow interval) and GIFs with `--loop-file=inf`, so all media uses one code path (the `wall` / `wall.gif` cases).
 - [x] **Per-video playback speed, persisted.** (p1) [feature] Commands to slow down / speed up the current video (`set_property speed`), saved per media item in the DB and applied on the next play.
 - [x] **Daemon lifecycle.** (p2) [feature] `backdrop start|stop|status`, a PID/state file, and recovery when mpv or xwinwrap dies (bg.sh currently uses `kill -9`).
-- [ ] **Rate the current item via the socket.** (p1) [refactor] Rework `keep` / `skip` / `undo` / `go-next` (`RatingCommand`, `HookCommand`) to read the current path from mpv instead of a shell hook.
-      Use `DisplayControl.current()` for the target; on skip, `playlist-remove current` and move the file to trash; undo moves it back.
-- [ ] **Playlists go stale while the daemon runs.** (p2) [feature] Media imported or downloaded after start only appears after `backdrop mode` or a restart.
-      Rebuild the monitor's playlist when the library changes (e.g. after import/download, or when mpv wraps around via `playlist-pos` returning to 0).
+- [x] **Rate the current item via the socket.** (p1) [refactor] `keep` / `skip` / `go-next` use `DisplayControl.current()`
+      with monitor targeting. Skip removes all playlist references before moving to trash. Persistent undo deletes the latest rating and
+      restores its exact previous path; schema v4 upgrades existing databases. Failed database writes roll file moves back.
+- [x] **Playlists go stale while the daemon runs.** (p2) [feature] Import/download append eligible items immediately,
+      rating moves refresh affected playlists, and skip/remove delete every matching entry. Appends avoid duplicate paths.
+      External file changes remain covered by the separate missing-files/watch-mode tasks.
 - [ ] **Missing files can make mpv spin.** (p2) [bug] If every playlist entry fails to load (files moved or deleted outside backdrop), `--loop-playlist=inf` keeps retrying.
       Watch `end-file` events with `reason: error` in `Daemon`, drop those entries, and stop on an empty playlist.
 - [ ] **Hung mpv is not detected.** (p3) [feature] Supervision only reacts to process exit; an mpv that stops answering IPC stays up. Add a periodic `get_property pid` health check.
@@ -63,7 +69,9 @@ dependency order.
 
 ## 4. Media sources
 
-- [ ] **Source plugin interface.** (p1) [refactor] Extract a `Source` contract (search, metadata, download URLs with resolutions, rate limits) from `SearchCommand` / `DownloadCommand`, with Pexels as the first implementation.
+- [x] **Source plugin interface.** (p1) [refactor] `Source`/`SourceRegistry` provide search, metadata, normalized download
+      variants and quota information; Pexels is the first adapter. Source-specific credentials are checked only on API requests.
+      See `docs/specs/sources.md` for the contract and current Pexels endpoints.
 - [ ] **Unsplash source.** (p2) [feature] Official API, images only; requires an access key and attribution/download-tracking per their guidelines.
 - [ ] **Other free sources.** (p3) [feature] Only sites with a public API qualify; scraping is out (decided 2026-10-21).
       That excludes MoeWalls and wallsflow.com (checked 2026-10-21: `/api/` redirects to the homepage, no developer docs).
@@ -76,16 +84,21 @@ dependency order.
 - [x] **Consistent names for imports.** (p2) [feature] Rename imported files to a sequential `local-<n>.<ext>` (no category detection, decided 2026-10-21).
       Keep the original filename and path in the DB; never reuse a number after deletion.
 - [ ] **Watch mode for import directories.** (p3) [feature] Pick up new files while the daemon runs (fs.watch / inotify) instead of only on start or `backdrop import`.
+- [x] **No command to remove an item from the library.** (p2) [feature] `backdrop remove <id>` or `backdrop remove --current [--monitor <name>]`
+      deletes the file and media row after removing all playlist references. `imported_files` keeps the source record so unchanged originals are not re-imported.
 - [ ] **Animated WebP imports as a still image.** (p3) [bug] ffprobe cannot decode animated WebP, so `probe.js` classifies it as `image`; detect the ANIM chunk and treat it as `gif`.
 - [ ] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
-- [ ] **Edit rating during playback.** (p2) [feature] Imported items start at 2/3; ensure `keep N` on the current item overwrites rather than appends a rating.
+- [x] **Edit rating during playback.** (p2) [feature] `keep N` changes the effective current rating for imported items;
+      prior ratings remain as undo history, and repeated ratings do not duplicate playlist entries or restart media already in the library.
 
 ## 6. Resolution-aware quality filter
 
-- [ ] **Never upscale.** (p1) [feature] Only select media whose width and height are >= the target monitor's resolution (after orientation); higher-res media is fine since it scales down.
-      Apply at search/download time and at playback selection. Read monitor geometry via xrandr (or the compositor).
-- [ ] **Pick the best download variant.** (p2) [perf] Pexels `video_files` / `src` have several sizes; download the smallest one that still meets the largest monitor, not always the largest.
-- [ ] **Store measured dimensions.** (p2) [feature] Probe real width/height with ffprobe on download/import instead of trusting API metadata or filenames.
+- [x] **Never upscale.** (p1) [feature] Search/download and playback filter against configured xrandr monitors;
+      `--resolution WIDTHxHEIGHT` supports headless source commands. `display.allow_upscale` is the explicit override.
+- [x] **Pick the best download variant.** (p2) [perf] Download the smallest variant by pixel area that meets all target
+      monitor dimensions and the library minimum.
+- [x] **Store measured dimensions.** (p2) [feature] Download/import probe real dimensions, kind and duration with ffprobe;
+      a later source search preserves measurements for files already downloaded.
 
 ## 7. Screensaver
 

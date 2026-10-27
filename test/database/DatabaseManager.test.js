@@ -75,6 +75,8 @@ describe('DatabaseManager', () => {
         first.addMedia(video());
         first.db.exec('DROP TABLE settings');
         first.db.exec('DROP TABLE imported_files');
+        first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
+        first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
         first.db.exec('PRAGMA user_version = 1');
         first.close();
 
@@ -95,6 +97,21 @@ describe('DatabaseManager', () => {
         first.close();
 
         expect(() => new DatabaseManager().initialize(dbPath)).to.throw(/newer than this version/);
+      });
+
+      it('upgrades v3 ratings without losing history and stores reversible path changes', () => {
+        const dbPath = path.join(tempDir, 'v3.db');
+        const first = new DatabaseManager(); first.initialize(dbPath);
+        const id = first.addMedia(video()); first.addRating(id, 2, '1920x1080');
+        first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
+        first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
+        first.db.exec('PRAGMA user_version = 3'); first.close();
+        const second = new DatabaseManager(); second.initialize(dbPath);
+        expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
+        second.addRating(id, 0, '1920x1080', { previousPath: '/media/a.mp4', ratedPath: '/trash/a.mp4' });
+        expect(second.getLastRating()).to.include({ previous_path: '/media/a.mp4', rated_path: '/trash/a.mp4' });
+        expect(second.undoLastRating().media.status).to.equal('kept');
+        second.close();
       });
     });
   });
@@ -153,11 +170,17 @@ describe('DatabaseManager', () => {
       const media = db.getMedia(again);
 
       expect(again).to.equal(id);
-      expect(media.width).to.equal(7680);
+      expect(media.width).to.equal(3840);
       expect(media.tags).to.deep.equal(['new']);
       expect(media.path).to.equal('/m/a.mp4');
       expect(media.speed).to.equal(0.5);
       expect(media.status).to.equal('kept');
+    });
+
+    it('refreshes dimensions from source metadata before download', () => {
+      const id = db.addMedia(video());
+      db.upsertMedia(video({ width: 7680, height: 4320 }));
+      expect(db.getMedia(id)).to.include({ width: 7680, height: 4320 });
     });
 
     it('upserts new items by inserting them', () => {
