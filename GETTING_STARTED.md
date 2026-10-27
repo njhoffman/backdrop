@@ -3,23 +3,34 @@
 Backdrop is ready to use for wallpapers on X11. It supports local images, videos and GIFs,
 one mpv wallpaper per monitor, ratings, and Pexels search and download.
 
-As checked on 2026-10-23, this machine has an X11 session and Node.js, mpv, ffprobe, ffmpeg,
-xwinwrap, xrandr and xdotool installed. Project dependencies and a Backdrop config already exist.
-The latest test suite passed 241 tests, including real mpv integration tests. Displaying it on
-your desktop is still the final practical check.
+## Prerequisites
+
+- An X11 session (Wayland is not supported)
+- Node.js 22.13 or later
+- `mpv`, `xwinwrap`, `xrandr` and `xdotool` for playback
+- `ffprobe` (from ffmpeg) for import and download; `ffmpeg` itself is only needed by the test suite
+
+To check them all at once:
+
+```bash
+node --version
+for tool in mpv xwinwrap xrandr xdotool ffprobe ffmpeg; do
+  command -v "$tool" >/dev/null || echo "missing: $tool"
+done
+```
 
 ## 1. Make the command available
 
-From the current checkout:
+From your checkout:
 
 ```bash
-cd ~/ghq/github.com/njhoffman/backdrop
+npm install
+npm test          # optional; real mpv tests are skipped when mpv or ffmpeg is missing
 npm link
 backdrop --help
 ```
 
 You can also run any command as `node src/index.js …` from the checkout without linking.
-On a fresh checkout, run `npm install` first. Node.js 22.13 or later is required.
 
 ## 2. Configure your wallpaper folders
 
@@ -83,6 +94,7 @@ images change at the configured `image_duration` interval, which defaults to 300
 | `backdrop list-images --interactive` | Browse and rate downloaded images |
 | `backdrop list-videos --playlist ~/walls.m3u` | Export a playlist |
 | `backdrop stats` | Show library totals and last observed API quota; works offline |
+| `backdrop purge --dry-run` | List trash older than `library.trash_days`; drop `--dry-run` to delete it |
 | `backdrop stop` | Stop wallpaper playback |
 
 Playback commands target the monitor under your pointer. Add `--monitor DP-1` to choose one
@@ -147,12 +159,16 @@ bindsym $mod+equal exec --no-startup-id backdrop speed +0.1
 ## Current limitations and troubleshooting
 
 - X11 is supported; Wayland is out of scope.
-- Screensaver and automatic trash purging are not implemented. `trash_days` does not yet trigger cleanup.
+- The screensaver is not implemented yet.
+- Skipped files stay in trash for `library.trash_days` (default 30, `0` keeps them forever). The daemon
+  purges older ones at start and daily; a purged skip cannot be undone.
 - Import folders rescan on startup or `backdrop import`; live watching is not implemented.
 - Moving a newly kept file from the inbox refreshes affected playlists and restarts that file.
   Re-rating a file already in the library keeps it playing.
-- Avoid manually moving or deleting managed library files while Backdrop runs. Missing-file recovery
-  and health checks for an unresponsive mpv remain on the roadmap.
+- Avoid manually moving or deleting managed library files while Backdrop runs. Files that fail to load
+  are dropped from the running playlist (and logged), but stay in the database until you `remove` them.
+- An mpv that stops responding is restarted automatically; if it keeps failing, that monitor is given up
+  on and the log says so.
 
 If startup fails, run `backdrop daemon` in a terminal to see errors. If Backdrop is already running,
 stop it first with `backdrop stop`.

@@ -14,3 +14,6 @@ build
 .nyc_output/
 .coveralls.yml
 reports/coverage
+
+# generated agent tooling state
+.claude/preferences.json

@@ -22,12 +22,14 @@ dependency order.
       Removed with the hooks; ported commands must check the credentials they need (e.g. the Pexels source checks its own key).
 - [x] **No tests for commands.** (p2) [test] Search, download, rating, import, removal, lists and stats have command tests;
       CLI subprocess tests cover registration, offline operation and failing exit codes. Real mpv tests cover rating and playback transitions.
-- [ ] **Changelog lives in docs/specs.** (p3) [docs] `docs/specs/changelog.md` duplicates the new root `CHANGELOG.md` and embeds prompts. Drop it or reduce it to a pointer.
+- [x] **Changelog lives in docs/specs.** (p3) [docs] `docs/specs/changelog.md` duplicates the new root `CHANGELOG.md` and embeds prompts. Removed; the root `CHANGELOG.md` already summarizes 1.0.0 to 1.1.1.
 - [x] **No version tags.** (p3) [chore] Releases 1.0.0 to 1.1.1 exist only in docs; every release from v2.0.0 on has an annotated `vX.Y.Z` tag.
-- [ ] **Stale .claude/preferences.json.** (p3) [chore] Untracked generated file still names `pexels-cli` and describes jest/eslint/prettier setups the repo does not use.
-      Agents may read it as project guidance that contradicts `AGENTS.md`. Delete it or add `.claude/preferences.json` to `.gitignore`.
-- [ ] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
-      Replace that with a prerequisites list (Node 22.13+, mpv, ffmpeg/ffprobe, xwinwrap, xrandr, xdotool) and a `backdrop` self-check command or script.
+- [x] **Stale .claude/preferences.json.** (p3) [chore] Untracked generated file still names `pexels-cli` and describes jest/eslint/prettier setups the repo does not use.
+      Agents may read it as project guidance that contradicts `AGENTS.md`. Deleted and added to `.gitignore` in case the tool regenerates it.
+- [x] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
+      Replaced with a prerequisites list and a `command -v` check; limitations updated for purge, missing files and health checks.
+- [ ] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
+      a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
 
 ## 2. Rename to backdrop
 

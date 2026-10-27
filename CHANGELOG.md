@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-10-27
+
+### Changed
+- `GETTING_STARTED.md` lists prerequisites with a quick check instead of one machine's setup, and
+  describes trash purging, missing-file handling and mpv restarts as they now work.
+
+### Removed
+- `docs/specs/changelog.md`; `CHANGELOG.md` is the only changelog.
+
 ## [2.4.0] - 2026-10-27
 
 ### Added
