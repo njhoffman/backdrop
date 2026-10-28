@@ -8,7 +8,7 @@ import { MpvClient } from '../../src/display/MpvClient.js';
 import { DisplayControl } from '../../src/display/DisplayControl.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
-import { loadPlaylist, lastMediaKey, removeFailedEntry } from '../../src/display/Playlist.js';
+import { loadPlaylist, lastMediaKey, removeFailedEntry, queueRandom, reshuffleOnWrap } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 function hasCommand(name) {
@@ -152,6 +152,43 @@ describe('mpv integration', function () {
     expect(removed.map(entry => entry.filename)).to.have.members(missing);
     expect((await client.getProperty('playlist'))[0].filename).to.equal(file);
     expect(await waitFor(() => client.getProperty('path'))).to.equal(file);
+  });
+
+  it('marks the switched-to entry current as soon as next or a removal returns, and moves random picks next', async () => {
+    const files = ['a.mp4', 'b.mp4', 'c.mp4', 'd.mp4'].map(name => path.join(tempDir, name));
+    makeVideo(files[0], '320x180');
+    for (const file of files.slice(1)) await fs.copy(files[0], file);
+    await client.setProperty('loop-file', 'inf');
+    await client.command('loadfile', files[0], 'replace');
+    for (const file of files.slice(1)) await client.command('loadfile', file, 'append');
+    await waitFor(async () => (await client.getProperty('path')) === files[0]);
+    const control = new DisplayControl({ config: makeConfig(), database: db });
+    control.targetMonitor = async () => ({ name: 'TEST-1' });
+    control.withClient = async (monitor, fn) => fn(client);
+
+    expect((await control.next('TEST-1')).path).to.equal(files[1]);
+    await waitFor(async () => (await client.getProperty('path')) === files[1]);
+    await control.removeMedia({ path: files[1] });
+    expect((await client.getProperty('playlist')).find(entry => entry.current).filename).to.equal(files[2]);
+    await waitFor(async () => (await client.getProperty('path')) === files[2]);
+
+    // From the last entry the pick moves to the end of the playlist, right after the current one
+    await client.command('playlist-next', 'force');
+    await waitFor(async () => (await client.getProperty('path')) === files[3]);
+    const picked = await queueRandom(client, () => 0);
+    expect(picked.filename).to.equal(files[0]);
+    expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.deep.equal([files[2], files[3], files[0]]);
+    expect((await control.next('TEST-1')).path).to.equal(files[0]);
+
+    // The next advance wraps from the last entry, so the daemon reshuffles with the playing entry first
+    await waitFor(async () => (await client.getProperty('path')) === files[0]);
+    expect(await reshuffleOnWrap(client, 1)).to.equal(2);
+    expect((await control.next('TEST-1')).path).to.equal(files[2]);
+    await waitFor(async () => (await client.getProperty('path')) === files[2]);
+    expect(await reshuffleOnWrap(client, 2)).to.equal(0);
+    expect(await client.getProperty('playlist-pos')).to.equal(0);
+    expect(await client.getProperty('path')).to.equal(files[2]);
+    expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.have.members([files[0], files[2], files[3]]);
   });
 
   it('accepts the brightness values dim sets', async () => {

@@ -47,6 +47,7 @@ display:
   monitors: auto
   image_duration: 300
   allow_upscale: false
+  order: shuffle
 ```
 
 Imports copy your files, preserve the originals, and approve the library copies with a 2/3 rating.

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-28
+
+### Added
+- `next`, `prev`, `skip`, `go-next` and `mode` print the item the target monitor now plays, with its rating,
+  speed, dim and monitor.
+- `keep --next` rates the current item and then plays the next one.
+- `--random` on `next`, `skip`, `go-next` and `keep --next` plays a random item; `prev` still returns to the
+  item before it. `display.order: random` makes that the default.
+- `--line` on `current`, `next`, `prev`, `skip`, `go-next`, `keep`, `mode`, `list-images` and `list-videos`
+  prints one line per item: aligned and styled on a terminal, tab-separated when piped for fzf or tables.
+- `backdrop` with no arguments shows the status.
+
+### Fixed
+- The playlist no longer repeats the same order on every pass: the daemon reshuffles it when playback wraps
+  to the first entry.
+
 ## [2.8.0] - 2026-10-27
 
 ### Added

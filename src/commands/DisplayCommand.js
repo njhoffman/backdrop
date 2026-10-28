@@ -2,9 +2,9 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { getMode, eligibleMedia } from '../display/Playlist.js';
+import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution } from '../utils/output.js';
-import { printMedia } from '../utils/mediaView.js';
+import { printMedia, printPlaying, formatMediaLine, formatAdjustments } from '../utils/mediaView.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const START_TIMEOUT_MS = 15_000;
@@ -98,8 +98,8 @@ export class DisplayCommand {
   }
 
   adjustments(media) {
-    const list = [media.speed !== 1 && `speed ${media.speed}`, media.dim && `dim ${media.dim}`].filter(Boolean);
-    return list.length ? fmt.dim(`  ${list.join(', ')}`) : '';
+    const text = formatAdjustments(media);
+    return text ? fmt.dim(`  ${text}`) : '';
   }
 
   // Why a monitor shows nothing, with the likely fix
@@ -121,17 +121,22 @@ export class DisplayCommand {
       return;
     }
 
+    if (options.line && media) {
+      out.print(formatMediaLine(media, { rating }));
+      return;
+    }
     // The first line stays the bare path (full when piped) for scripts
     out.print(displayPath(path));
     if (media) printMedia(this.database, media, { rating, path: false, extra: [this.adjustments(media)] });
   }
 
-  async next(options) {
-    await this.control.next(options.monitor);
+  async next(options = {}) {
+    const random = randomOrder(this.config.get().display, options.random);
+    printPlaying(this.database, await this.control.next(options.monitor, { random }), options);
   }
 
-  async prev(options) {
-    await this.control.prev(options.monitor);
+  async prev(options = {}) {
+    printPlaying(this.database, await this.control.prev(options.monitor), options);
   }
 
   async speed(value, options) {
@@ -144,13 +149,15 @@ export class DisplayCommand {
     out.print(`${monitor.name}: dim ${fmt.cyan(dim)}`);
   }
 
-  async mode(requested) {
-    const { mode, running, counts } = await this.control.mode(requested);
+  // With the daemon running, the reload also shows what the target monitor now plays
+  async mode(requested, options = {}) {
+    const running = await this.control.state({ required: false });
+    const playing = running ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
+    const { mode, counts } = playing?.result ?? await this.control.mode(requested);
     out.row('Mode', fmt.cyan(mode));
-    if (running) {
-      for (const [name, count] of Object.entries(counts)) {
-        out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
-      }
+    for (const [name, count] of Object.entries(running ? counts : {})) {
+      out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
     }
+    if (playing) printPlaying(this.database, playing, options);
   }
 }

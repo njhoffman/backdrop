@@ -48,13 +48,19 @@ IPC socket) would break a wallpaper.
   `backdrop mode video|image` sets it; the mode is stored in the database and survives restarts.
 - **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), written
   as `<output>.m3u` and loaded with `loadlist`. The item last shown in the mode on that monitor goes first, so
-  startup and toggling back resume it.
+  startup and toggling back resume it. mpv loops the playlist, and the daemon reshuffles it each time playback
+  wraps from the last entry to the first (keeping the playing entry first), so no two passes repeat an order.
+- **Order:** `display.order` is `shuffle` (default; play the shuffled playlist in order) or `random` (`next`,
+  `skip`, `go-next` and `keep --next` pick a random entry). `--random` picks randomly for one command. A random
+  pick is moved to just after the playing entry before advancing, so `prev` still returns to it.
 - **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown, sets mpv's
   `brightness` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
   `speed` to the stored value.
 - **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>`, `dim <0-100|+10|-10|reset>` connect to
   the socket of the monitor under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` and
-  `dim` apply immediately and are saved per item.
+  `dim` apply immediately and are saved per item. Every command that switches what plays (`next`, `prev`, `skip`,
+  `go-next`, `keep --next`, `mode`) prints the new item on the target monitor, read from the entry mpv marks
+  current, so it shows before the file finishes loading. `--line` prints it as one aligned line instead.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
   current layout; a configured monitor that is unplugged is picked up again when it returns.

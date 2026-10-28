@@ -66,6 +66,45 @@ export function orderPlaylist(media, lastMediaId, random = Math.random) {
   return shuffled;
 }
 
+export const ORDERS = ['shuffle', 'random'];
+
+// Whether a navigation command picks a random next item: --random, or display.order set to random
+export function randomOrder(display, requested = false) {
+  const order = display.order ?? 'shuffle';
+  if (!ORDERS.includes(order)) {
+    throw new Error(`display.order must be ${ORDERS.join(' or ')}, not ${order}`);
+  }
+  return Boolean(requested) || order === 'random';
+}
+
+// Moves a random entry for another file to just after the current one, so the next advance plays it
+// and prev still returns here. Returns the moved entry, or null when there is nothing else to pick.
+export async function queueRandom(client, random = Math.random) {
+  const playlist = await client.getProperty('playlist');
+  const current = playlist.findIndex(entry => entry.current);
+  const currentFile = playlist[current]?.filename;
+  const candidates = playlist.flatMap((entry, index) => (entry.filename === currentFile ? [] : [index]));
+  if (!candidates.length) return null;
+  const index = candidates[Math.floor(random() * candidates.length)];
+  // mpv inserts the entry before index2 (or at the end when index2 is the count), so current + 1 is right after it
+  await client.command('playlist-move', index, current + 1);
+  return playlist[index];
+}
+
+// --loop-playlist replays one order on every pass, so the daemon reshuffles when playback wraps from the
+// last entry to the first. The playing entry goes back to the front so the new pass covers every entry.
+// Returns the playlist position now playing.
+export async function reshuffleOnWrap(client, previousPosition) {
+  const position = await client.getProperty('playlist-pos');
+  const count = await client.getProperty('playlist-count');
+  // With two entries a reshuffle that keeps the playing one first changes nothing
+  if (position !== 0 || count < 3 || previousPosition !== count - 1) return position;
+  await client.command('playlist-shuffle');
+  const shuffled = await client.getProperty('playlist-pos');
+  if (shuffled > 0) await client.command('playlist-move', shuffled, 0);
+  return 0;
+}
+
 // mpv brightness for a stored dim amount (0 rather than -0 when undimmed)
 export function brightnessFor(dim) {
   return dim ? -dim : 0;

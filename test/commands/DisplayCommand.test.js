@@ -75,6 +75,50 @@ describe('DisplayCommand', () => {
     });
   });
 
+  describe('navigation', () => {
+    it('shows the item next switched to, randomly when display.order is random', async () => {
+      const id = addVideo(1, 1920, 1080);
+      db.addRating(id, 3);
+      const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: db.getLatestRating(id) };
+      command.control = { next: sinon.stub().resolves(playing), prev: sinon.stub().resolves(playing) };
+      config.set('display.order', 'random');
+
+      await command.next({ monitor: 'DP-1' });
+      await command.prev({ line: true });
+
+      expect(command.control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
+      expect(lines[0]).to.equal(`#${id}  video  1920x1080  landscape  3/3 landscape  DP-1`);
+      expect(lines.at(-1)).to.equal(`#${id}\tvideo\t1920x1080\t\tlandscape\t3/3\tlocal\t\t/m/1.mp4`);
+    });
+
+    it('prints one line for current --line', async () => {
+      const id = addVideo(1, 1920, 1080);
+      command.control = { current: async () => ({ monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null }) };
+      await command.current({ line: true });
+      expect(lines).to.deep.equal([`#${id}\tvideo\t1920x1080\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
+    });
+
+    it('shows what the target monitor plays after a mode switch, or only the mode when stopped', async () => {
+      const id = addVideo(1, 1920, 1080);
+      const switchTo = sinon.stub().callsFake(async (name, change) => (
+        { monitor: monitors[1], path: '/m/1.mp4', media: db.getMedia(id), rating: null, result: await change() }
+      ));
+      command.control = { state: async () => ({}), switchTo,
+        mode: async () => ({ mode: 'video', running: true, counts: { 'DP-1': 1, 'DP-2': 0 } }) };
+
+      await command.mode('video', { monitor: 'DP-2', line: true });
+
+      expect(switchTo.firstCall.args[0]).to.equal('DP-2');
+      expect(lines).to.deep.equal(['Mode: video', '  DP-1: 1 items', '  DP-2: no videos at this resolution',
+        `#${id}\tvideo\t1920x1080\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
+
+      lines.length = 0;
+      command.control = { state: async () => null, mode: async () => ({ mode: 'image', running: false, counts: {} }) };
+      await command.mode('image', {});
+      expect(lines).to.deep.equal(['Mode: image']);
+    });
+  });
+
   it('prints the stored dim for the target monitor', async () => {
     command.control = { dim: sinon.stub().resolves({ monitor: { name: 'DP-2' }, dim: 30 }) };
 

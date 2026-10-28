@@ -5,7 +5,7 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
-  modeProperties, loadPlaylist, appendToPlaylist
+  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, reshuffleOnWrap, randomOrder
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
 
@@ -198,6 +198,62 @@ describe('Playlist', () => {
       expect(await load('video')).to.equal(0);
       expect(client.commands.slice(-2)).to.deep.equal([['playlist-clear'], ['stop']]);
       expect(await fs.pathExists(path.join(tempDir, 'DP-3.m3u'))).to.be.false;
+    });
+  });
+
+  describe('random order', () => {
+    it('uses --random or display.order and rejects unknown orders', () => {
+      expect(randomOrder({ order: 'shuffle' })).to.be.false;
+      expect(randomOrder({ order: 'shuffle' }, true)).to.be.true;
+      expect(randomOrder({ order: 'random' })).to.be.true;
+      expect(randomOrder({})).to.be.false;
+      expect(() => randomOrder({ order: 'sorted' })).to.throw('display.order must be shuffle or random, not sorted');
+    });
+
+    it('moves a picked entry right after the current one, skipping copies of the current file', async () => {
+      const client = new FakeMpvClient({ playlist: [
+        { filename: '/m/a' }, { filename: '/m/b', current: true }, { filename: '/m/b' }, { filename: '/m/c' }
+      ] });
+
+      expect(await queueRandom(client, () => 0)).to.deep.equal({ filename: '/m/a' });
+      expect(await queueRandom(client, () => 0.99)).to.deep.equal({ filename: '/m/c' });
+      expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([
+        ['playlist-move', 0, 2], ['playlist-move', 3, 2]
+      ]);
+    });
+
+    it('does nothing when every entry is the current file', async () => {
+      const client = new FakeMpvClient({ playlist: [{ filename: '/m/a', current: true }, { filename: '/m/a' }] });
+      expect(await queueRandom(client)).to.be.null;
+      expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
+    });
+  });
+
+  describe('reshuffleOnWrap', () => {
+    it('reshuffles when playback wraps from the last entry, keeping the playing one first', async () => {
+      const client = new FakeMpvClient({ 'playlist-pos': 0, 'playlist-count': 4 });
+      client.command = async function (...args) {
+        if (args[0] === 'playlist-shuffle') this.properties['playlist-pos'] = 2;
+        return FakeMpvClient.prototype.command.apply(this, args);
+      };
+
+      expect(await reshuffleOnWrap(client, 3)).to.equal(0);
+      expect(client.commands.filter(cmd => !cmd[0].startsWith('get_'))).to.deep.equal([
+        ['playlist-shuffle'], ['playlist-move', 2, 0]
+      ]);
+    });
+
+    it('leaves the order alone for other moves, first loads and short playlists', async () => {
+      for (const [properties, previous] of [
+        [{ 'playlist-pos': 2, 'playlist-count': 4 }, 1],
+        [{ 'playlist-pos': 0, 'playlist-count': 4 }, 1],
+        [{ 'playlist-pos': 0, 'playlist-count': 4 }, undefined],
+        [{ 'playlist-pos': 0, 'playlist-count': 2 }, 1]
+      ]) {
+        const client = new FakeMpvClient(properties);
+        expect(await reshuffleOnWrap(client, previous)).to.equal(properties['playlist-pos']);
+        expect(client.commands.every(cmd => cmd[0] === 'get_property')).to.be.true;
+      }
     });
   });
 });

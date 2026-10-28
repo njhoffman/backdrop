@@ -4,7 +4,9 @@ import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
-import { getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor } from './Playlist.js';
+import {
+  getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap
+} from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 
@@ -345,6 +347,11 @@ export class Daemon {
       await screen.client.setProperty('brightness', brightnessFor(media?.dim ?? 0));
     } catch (error) {
       this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
+    }
+    try {
+      screen.position = await reshuffleOnWrap(screen.client, screen.position);
+    } catch (error) {
+      this.logger.warn('Failed to reshuffle playlist', { monitor: screen.monitor.name, error: error.message });
     }
     if (!media) {
       this.logger.warn('Playing file not in library', { monitor: screen.monitor.name, path: filePath });

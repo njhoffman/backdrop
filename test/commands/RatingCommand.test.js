@@ -5,10 +5,10 @@ import os from 'os';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('RatingCommand', () => {
-  let dir, db, config, control, command, id, monitor;
+  let dir, db, config, control, command, id, monitor, client, lines;
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-rating-'));
     config = makeConfig(Object.fromEntries(['media', 'inbox', 'trash'].map(key => [`paths.${key}`, path.join(dir, key)])));
@@ -17,10 +17,15 @@ describe('RatingCommand', () => {
     await fs.outputFile(file, 'video');
     id = db.addMedia({ kind: 'video', source: 'pexels', source_id: 'video:1', path: file, width: 4000, height: 4000 });
     monitor = { name: 'DP-1', width: 1080, height: 1920 };
+    client = new FakeMpvClient({ playlist: [{ filename: file, current: true }, { filename: '/m/a.mp4' }, { filename: '/m/b.mp4' }] });
+    const nothing = { monitor, path: null, media: null, rating: null };
     control = { current: sinon.stub().callsFake(async () => ({ media: db.getMedia(id), monitor, rating: db.getLatestRating(id) })),
-      removeMedia: sinon.stub().resolves(), refreshMedia: sinon.stub().resolves(), appendMedia: sinon.stub().resolves(), next: sinon.stub().resolves() };
+      removeMedia: sinon.stub().resolves(), refreshMedia: sinon.stub().resolves(), appendMedia: sinon.stub().resolves(),
+      next: sinon.stub().resolves(nothing),
+      switchTo: sinon.stub().callsFake(async (name, change) => ({ ...nothing, result: await change(client, monitor) })) };
     command = new RatingCommand(config, db, silentLogger, { control });
-    sinon.stub(console, 'log'); sinon.stub(console, 'error');
+    lines = [];
+    sinon.stub(console, 'log').callsFake(line => lines.push(line)); sinon.stub(console, 'error');
   });
   afterEach(async () => { sinon.restore(); db.close(); await fs.remove(dir); });
   async function fails(fn, text) {
@@ -133,7 +138,47 @@ describe('RatingCommand', () => {
     await fails(() => command.goNext(), 'Rate this item');
     await command.keep();
     await command.goNext({ monitor: 'DP-1' });
-    expect(control.next.calledOnceWithExactly('DP-1')).to.be.true;
+    expect(control.next.calledOnceWithExactly('DP-1', { random: false })).to.be.true;
+    await command.goNext({ random: true });
+    expect(control.next.lastCall.args).to.deep.equal(['DP-1', { random: true }]);
+  });
+
+  it('skip shows what the monitor plays next and returns the skipped item', async () => {
+    const next = db.addMedia({ kind: 'video', source: 'local', source_id: 9, path: '/m/a.mp4', width: 4000, height: 4000 });
+    control.switchTo.callsFake(async (name, change) => {
+      const result = await change(client, monitor);
+      return { monitor, path: '/m/a.mp4', media: db.getMedia(next), rating: null, result };
+    });
+    const skipped = await command.skip({ monitor: 'DP-1', line: true });
+    expect(control.switchTo.calledOnceWith('DP-1')).to.be.true;
+    expect(skipped).to.include({ id, status: 'skipped' });
+    expect(lines.at(-1).split('\t')).to.deep.equal([`#${next}`, 'video', '4000x4000', '', 'square', 'unrated', 'local', '', '/m/a.mp4']);
+    expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
+  });
+
+  it('skip --random moves a random entry up before the removal advances mpv', async () => {
+    await command.skip({ random: true });
+    const moves = client.commands.filter(cmd => cmd[0] === 'playlist-move');
+    expect(moves).to.have.length(1);
+    expect(moves[0][2]).to.equal(1);
+    expect(control.removeMedia.calledOnce).to.be.true;
+  });
+
+  it('keep --next advances after rating, randomly when display.order is random', async () => {
+    await command.keep(2);
+    expect(control.next.called).to.be.false;
+    config.set('display.order', 'random');
+    await command.keep(3, { next: true });
+    expect(control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
+    expect(lines.join('\n')).to.include('DP-1: nothing playing');
+  });
+
+  it('rejects an unknown display.order before rating or advancing', async () => {
+    config.set('display.order', 'alphabetical');
+    await fails(() => command.keep(2, { next: true }), 'display.order must be shuffle or random');
+    await fails(() => command.skip(), 'display.order');
+    expect(db.getLatestRating(id)).to.be.null;
+    expect(control.next.called).to.be.false;
   });
 
   it('restores playback references after a skip file move fails', async () => {

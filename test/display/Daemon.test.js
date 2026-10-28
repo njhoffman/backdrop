@@ -342,6 +342,16 @@ describe('Daemon', () => {
       expect(client.properties.brightness).to.equal(0);
     });
 
+    it('reshuffles the playlist when playback wraps to its first entry', async () => {
+      const { client } = clients[0];
+      Object.assign(client.properties, { 'playlist-pos': 2, 'playlist-count': 3 });
+      await load(0, '/m/c.png');
+      client.properties['playlist-pos'] = 0;
+      await load(0, '/m/a.png');
+
+      expect(client.commands.filter(cmd => cmd[0] === 'playlist-shuffle')).to.have.length(1);
+    });
+
     it('ignores files outside the library and other properties', async () => {
       await load(0, '/elsewhere.mp4');
       clients[0].client.emit('property-change', { name: 'speed', data: 2 });

@@ -1,7 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { out, fmt } from '../utils/output.js';
+import { queueRandom, randomOrder } from '../display/Playlist.js';
+import { out } from '../utils/output.js';
+import { printPlaying } from '../utils/mediaView.js';
 
 export class RatingCommand {
   constructor(config, database, logger, { control } = {}) {
@@ -20,12 +22,31 @@ export class RatingCommand {
   async keep(rating = 1, options = {}) {
     if (!/^[1-3]$/.test(String(rating))) throw new Error('Rating must be an integer from 1 to 3');
     const { media, monitor } = await this.current(options);
-    return this.rate(media, Number(rating), `${monitor.width}x${monitor.height}`);
+    // Checked before rating so a bad display.order does not leave a rating without the advance
+    const random = options.next && this.random(options);
+    const rated = await this.rate(media, Number(rating), `${monitor.width}x${monitor.height}`);
+    if (options.next) await this.advance(monitor, options, random);
+    return rated;
   }
 
+  // Removing the playing entry advances mpv, so --random moves a random entry up to play next first
   async skip(options = {}) {
     const { media, monitor } = await this.current(options);
-    return this.rate(media, 0, `${monitor.width}x${monitor.height}`);
+    const random = this.random(options);
+    const playing = await this.control.switchTo(monitor.name, async client => {
+      if (random) await queueRandom(client);
+      return this.rate(media, 0, `${monitor.width}x${monitor.height}`);
+    });
+    printPlaying(this.database, playing, options);
+    return playing.result;
+  }
+
+  random(options) {
+    return randomOrder(this.config.get().display, options.random);
+  }
+
+  async advance(monitor, options, random = this.random(options)) {
+    printPlaying(this.database, await this.control.next(monitor.name, { random }), options);
   }
 
   async rate(media, rating, resolution = null) {
@@ -116,7 +137,7 @@ export class RatingCommand {
   async goNext(options = {}) {
     const { media, monitor, rating } = await this.current(options);
     if (!rating) throw new Error('Rate this item with keep or skip before go-next');
-    await this.control.next(monitor.name);
+    await this.advance(monitor, options);
     return media;
   }
 }

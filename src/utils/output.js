@@ -215,13 +215,23 @@ export function describeMedia(media) {
 
 // A 0-3 rating as stars on a terminal (★★☆), as "2/3" in plain output; 0 is shown as skipped
 export function formatRating(rating) {
+  if (!rating?.rating) return formatStars(rating);
+  return `${formatStars(rating)} ${fmt.dim(rating.orientation)}`;
+}
+
+// formatRating without the orientation the rating was given in
+export function formatStars(rating) {
   if (!rating) return fmt.yellow('unrated');
   if (rating.rating === 0) return fmt.red('skipped');
   const set = symbolSet();
-  const stars = isInteractive() && set !== SYMBOL_SETS.ascii
+  return fmt.green(isInteractive() && set !== SYMBOL_SETS.ascii
     ? set.star.repeat(rating.rating) + set.starEmpty.repeat(3 - rating.rating)
-    : `${rating.rating}/3`;
-  return `${fmt.green(stars)} ${fmt.dim(rating.orientation)}`;
+    : `${rating.rating}/3`);
+}
+
+// Pads styled text to a visible width; longer text is left as is
+export function padVisible(text, width) {
+  return text + ' '.repeat(Math.max(0, width - stripAnsi(text).length));
 }
 
 // Quoted search queries, e.g. "ocean waves", "aerial coast"

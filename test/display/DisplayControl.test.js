@@ -143,8 +143,43 @@ describe('DisplayControl', () => {
       await control.next();
       await control.prev('HDMI-1');
 
-      expect(clientFor('DP-1').commands).to.deep.equal([['playlist-next', 'force']]);
-      expect(clientFor('HDMI-1').commands).to.deep.equal([['playlist-prev', 'force']]);
+      expect(clientFor('DP-1').commands[0]).to.deep.equal(['playlist-next', 'force']);
+      expect(clientFor('HDMI-1').commands[0]).to.deep.equal(['playlist-prev', 'force']);
+    });
+
+    it('reports the entry mpv switched to before it loads, with its rating', async () => {
+      const id = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/b.png' });
+      db.addRating(id, 2);
+      clientFor('DP-1').properties.path = '/m/a.png';
+      clientFor('DP-1').properties.playlist = [{ filename: '/m/a.png' }, { filename: '/m/b.png', current: true }];
+
+      const playing = await control.next();
+
+      expect(playing).to.include({ path: '/m/b.png', result: undefined });
+      expect(playing.monitor.name).to.equal('DP-1');
+      expect(playing.media.id).to.equal(id);
+      expect(playing.rating.rating).to.equal(2);
+      expect(clientFor('DP-1').closed).to.be.true;
+    });
+
+    it('reports nothing playing when the change empties the playlist, and passes the change result on', async () => {
+      const playing = await control.switchTo('HDMI-1', async (client, monitor) => monitor.name);
+      expect(playing).to.include({ path: null, media: null, result: 'HDMI-1' });
+    });
+
+    it('moves a random entry for another file next before advancing', async () => {
+      clientFor('DP-1').properties.playlist = [
+        { filename: '/m/a.png' }, { filename: '/m/b.png', current: true }, { filename: '/m/c.png' }, { filename: '/m/d.png' }
+      ];
+
+      await control.next(null, { random: true });
+
+      const commands = clientFor('DP-1').commands.filter(cmd => !cmd[0].startsWith('get_'));
+      expect(commands).to.have.length(2);
+      expect(commands[0][0]).to.equal('playlist-move');
+      expect([0, 2, 3]).to.include(commands[0][1]);
+      expect(commands[0][2]).to.equal(2);
+      expect(commands[1]).to.deep.equal(['playlist-next', 'force']);
     });
 
     describe('speed', () => {

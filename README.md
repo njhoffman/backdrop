@@ -38,15 +38,19 @@ backdrop --help   # creates ~/.config/backdrop/config.yaml on first run
 
 ```bash
 backdrop start              # one mpv wallpaper per monitor, in the background
+backdrop                    # same as backdrop status
 backdrop status             # mode and what each monitor is playing
 backdrop mode               # toggle between video and image wallpapers
-backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1)
+backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
+backdrop next --random      # jump to a random item; prev still returns to the one before it
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
+backdrop current --line     # one aligned line; tab-separated when piped
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
 backdrop import ~/walls     # or specific folders
 backdrop keep 3             # rate the current item on the monitor under the pointer
+backdrop keep 3 --next      # rate it, then play the next item
 backdrop skip               # move it to trash and advance all monitors playing it
 backdrop undo               # undo the last rating and file move, across CLI invocations
 backdrop go-next            # advance after checking the current item has a rating
@@ -57,6 +61,7 @@ backdrop download --upgrade # refetch downloads smaller than your monitors at a 
 backdrop list-videos --rated landscape
 backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
+backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..8  # one line per item
 backdrop stats              # local totals, pending downloads and last observed API quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
@@ -77,6 +82,13 @@ Regenerate it after upgrading so new commands and options are included.
 `remove --current` accepts `--monitor <name>`. Removal drops the file from all running monitor playlists,
 deletes its library copy and database record, and preserves its import record so an unchanged original
 is not imported again. It works by ID when the daemon is stopped, too.
+
+Commands that switch what plays (`next`, `prev`, `skip`, `go-next`, `keep --next`, `mode`) print the item the
+target monitor now plays. `--line` (also on `current`, `list-images` and `list-videos`) prints one line per item
+instead: id, kind, resolution, running time, orientation, rating, source, speed/dim and path. On a terminal the
+columns are styled and aligned; piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR`
+(for `fzf --ansi`). The playlist plays in shuffled order and is reshuffled on every pass; `--random` on `next`,
+`skip`, `go-next` and `keep --next`, or `display.order: random`, picks a random item instead.
 
 `keep`, `skip` and `go-next` accept `--monitor <name>`. Rating an imported item changes its current rating
 and preserves undo history. Keep moves new downloads from the inbox into the library; this refreshes

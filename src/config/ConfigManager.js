@@ -75,6 +75,7 @@ export class ConfigManager {
         monitors: 'auto',
         image_duration: 300,
         allow_upscale: false,
+        order: 'shuffle',
         xwinwrap_args: ['-b', '-s', '-st', '-sp', '-nf', '-ov', '-fdt', '-ni'],
         mpv_args: []
       },

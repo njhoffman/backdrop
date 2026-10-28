@@ -54,7 +54,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
   runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
   xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
-  trash daily (`src/library/purge.js`); `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer;
+  trash daily (`src/library/purge.js`) and reshuffles the playlist on wrap; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source

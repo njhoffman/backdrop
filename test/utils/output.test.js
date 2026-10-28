@@ -3,8 +3,9 @@ import sinon from 'sinon';
 import {
   configureOutput, colorDepth, symbolSet, SYMBOL_SETS, out, fmt, stripAnsi, printVersion, ProgressBar,
   renderBar, gradientAt, parseHex, formatDuration, formatBytes, formatClock, icon, displayPath, formatResolution,
-  orientationName, describeMedia, formatRating, formatQueries, mark
+  orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible
 } from '../../src/utils/output.js';
+import { formatMediaLine, formatAdjustments } from '../../src/utils/mediaView.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 const TRUECOLOR = { TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8' };
@@ -127,6 +128,38 @@ describe('output', () => {
 
   describe('media formatting', () => {
     const HOME = { ...TRUECOLOR, HOME: '/home/me' };
+    const video = { id: 7, kind: 'video', width: 3840, height: 2160, duration: 75, source: 'pexels', speed: 0.8, dim: 20,
+      path: '/home/me/media/remote-7.mp4' };
+    const image = { id: 1234, kind: 'image', width: 1080, height: 1920, duration: null, source: 'local', speed: 1, dim: 0,
+      path: '/home/me/media/local-1234.png' };
+
+    it('formats one media line tab-separated when piped, with empty fields kept in place', () => {
+      setup({ env: HOME, tty: false });
+      expect(formatMediaLine(video, { rating: { rating: 2 } }).split('\t')).to.deep.equal(
+        ['#7', 'video', '3840x2160', '1:15', 'landscape', '2/3', 'pexels', 'speed 0.8, dim 20', '/home/me/media/remote-7.mp4']
+      );
+      expect(formatMediaLine(image, { rating: null }).split('\t')).to.deep.equal(
+        ['#1234', 'image', '1080x1920', '', 'portrait', 'unrated', 'local', '', '/home/me/media/local-1234.png']
+      );
+    });
+
+    it('aligns styled media lines on a terminal so separate lines share columns', () => {
+      setup({ env: HOME });
+      const lines = [formatMediaLine(video, { rating: { rating: 3 } }), formatMediaLine(image, { rating: { rating: 0 } })]
+        .map(stripAnsi);
+      expect(lines[0]).to.match(/^#7 {7}▶ video {2}3840×2160 {2}1:15 {5}landscape {2}★★★ {6}pexels {4}speed 0\.8, dim 20 {2}~\/media\/remote-7\.mp4$/);
+      expect(lines[1].indexOf('~/media')).to.equal(lines[0].indexOf('~/media'));
+      expect(lines[1].indexOf('skipped')).to.equal(lines[0].indexOf('★★★'));
+    });
+
+    it('pads by visible width and formats stars and adjustments', () => {
+      setup();
+      expect(stripAnsi(padVisible(fmt.red('ab'), 4))).to.equal('ab  ');
+      expect(padVisible('abcdef', 4)).to.equal('abcdef');
+      expect(stripAnsi(formatStars({ rating: 1 }))).to.equal('★☆☆');
+      expect(formatAdjustments(image)).to.equal('');
+      expect(formatAdjustments({ speed: 1, dim: 30 })).to.equal('dim 30');
+    });
 
     it('shortens home paths to ~ on a terminal only', () => {
       setup({ env: HOME });

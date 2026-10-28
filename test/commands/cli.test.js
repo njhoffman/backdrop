@@ -61,6 +61,12 @@ describe('CLI command registration', function () {
     expect(run('stats').stderr).to.equal('');
   });
 
+  it('shows the status when run without arguments', () => {
+    const result = run();
+    expect(result.status).to.equal(0);
+    expect(result.stdout).to.include('Mode: video').and.include('Daemon: not running');
+  });
+
   it('runs offline commands and rejects unknown commands with a failing exit code', () => {
     expect(run('stats').status).to.equal(0);
     expect(run('list-images', '--rated', 'portrait', '--no-local').status).to.equal(0);

@@ -80,6 +80,8 @@ class BackdropApp {
     const stats = new StatsCommand(this.config, this.database, this.logger);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
+    const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order'];
+    const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
 
     program
       .name('backdrop')
@@ -111,18 +113,22 @@ class BackdropApp {
       .command('current')
       .description('Show the item playing on a monitor')
       .option(...monitorOption)
+      .option(...lineOption)
       .action(this.action(options => display.current(options)));
 
     program
       .command('next')
-      .description('Play the next item')
+      .description('Play the next item and show it')
       .option(...monitorOption)
+      .option(...randomOption)
+      .option(...lineOption)
       .action(this.action(options => display.next(options)));
 
     program
       .command('prev')
-      .description('Play the previous item')
+      .description('Play the previous item and show it')
       .option(...monitorOption)
+      .option(...lineOption)
       .action(this.action(options => display.prev(options)));
 
     program
@@ -165,21 +171,24 @@ class BackdropApp {
       .command('mode')
       .description('Switch between video and image wallpapers')
       .argument('[mode]', 'video, image or toggle', 'toggle')
-      .action(this.action(mode => display.mode(mode)));
+      .option(...monitorOption)
+      .option(...lineOption)
+      .action(this.action((mode, options) => display.mode(mode, options)));
 
     program.command('keep')
       .description('Keep the current item with a rating from 1 to 3')
       .argument('[rating]', 'Rating', '1').option(...monitorOption)
+      .option('-n, --next', 'Then play the next item and show it').option(...randomOption).option(...lineOption)
       .action(this.action((value, options) => rating.keep(value, options)));
     program.command('skip')
-      .description('Move the current item to trash and advance every monitor playing it')
-      .option(...monitorOption).action(this.action(options => rating.skip(options)));
+      .description('Move the current item to trash, advance every monitor playing it and show the new item')
+      .option(...monitorOption).option(...randomOption).option(...lineOption).action(this.action(options => rating.skip(options)));
     program.command('undo')
       .description('Undo the latest rating and restore its file location')
       .action(this.action(() => rating.undo()));
     program.command('go-next')
-      .description('Advance the target monitor after checking the current item has a rating')
-      .option(...monitorOption).action(this.action(options => rating.goNext(options)));
+      .description('Advance the target monitor after checking the current item has a rating, and show the new item')
+      .option(...monitorOption).option(...randomOption).option(...lineOption).action(this.action(options => rating.goNext(options)));
 
     for (const [name, method] of [['search-images', 'searchImages'], ['search-videos', 'searchVideos']]) {
       program.command(name).description('Search a source and save matching media for download')
@@ -217,6 +226,7 @@ class BackdropApp {
         .option('--keywords <words...>', 'Match all words against searches, tags or filenames')
         .option('--playlist <file>', 'Export matching existing files as M3U')
         .option('--interactive', 'Browse and rate the listed media')
+        .option(...lineOption)
         .action(this.action(options => list[method](options)));
     }
     program.command('stats').description('Show library totals and last observed API quota')
@@ -233,7 +243,8 @@ class BackdropApp {
     const args = process.argv.slice(2);
     if (!args.some(arg => ['-V', '--version', 'daemon', 'completion'].includes(arg))) printVersion(version);
     try {
-      await program.parseAsync();
+      // Bare `backdrop` shows the status
+      await program.parseAsync(args.length ? process.argv : [...process.argv, 'status']);
     } catch (error) {
       // exitOverride turns commander's own exits (--help, --version, usage errors) into errors
       // so the database closes and logs flush; commander has already printed the message

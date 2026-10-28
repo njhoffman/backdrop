@@ -57,6 +57,14 @@ describe('ListCommand and StatsCommand', () => {
     expect(rating.rate.firstCall.args[1]).to.equal(0);
   });
 
+  it('prints one tab-separated line per item without a summary row for fzf', async () => {
+    const id = await add('image', 'local', 1); db.addRating(id, 2);
+    await command.listImages({ line: true });
+    const printed = console.log.getCalls().map(call => call.args[0]);
+    expect(printed).to.have.length(1);
+    expect(printed[0].split('\t')).to.deep.equal([`#${id}`, 'image', '3840x2160', '', 'landscape', '2/3', 'local', '', db.getMedia(id).path]);
+  });
+
   it('rejects invalid filters', async () => {
     for (const options of [{ number: '2abc' }, { minRating: '4' }, { rated: 'diagonal' }, { status: 'bad' }]) {
       let caught; try { await command.listImages(options); } catch (error) { caught = error; }

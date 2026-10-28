@@ -167,6 +167,16 @@ dependency order.
       Done for import and download (with per-file bytes); colors from `output.progress_gradient`. Purge is fast enough without one.
 - [x] **Show the version on every run.** (p3) [feature] Print `backdrop vX.Y.Z` as a dim first line on stderr for interactive runs only, so piped output and
       M3U exports stay clean; `--version` already exists. Skip it for `daemon` logs, where the version should go in the startup log entry instead.
+- [x] **Show the new item after navigation, with a one-line view and random order.** (p2) [feature] `next`, `prev`, `skip`, `go-next`, `keep --next`
+      and `mode` print what the target monitor now plays (`DisplayControl.switchTo` reads mpv's current playlist entry). `--line` prints one aligned
+      line (tab-separated when piped, for fzf); `--random` / `display.order: random` move a random entry next. Bare `backdrop` runs `status`.
+- [x] **Playlist repeated one order every pass.** (p2) [bug] `--loop-playlist=inf` replayed the startup shuffle forever. The daemon now reshuffles
+      on wrap (`reshuffleOnWrap` in `src/display/Playlist.js`).
+- [ ] **Wrap detection uses positions from the previous load.** (p3) [bug] `reshuffleOnWrap` compares `playlist-pos` with the position at the
+      previous file load. Removals, appends and random moves between loads shift positions, so a wrap can occasionally be missed or an extra
+      reshuffle run. Both are harmless; tracking the playing entry's id (`playlist_entry_id` on `start-file`) would make it exact.
+- [ ] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
+      `fzf --header-lines=1`.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.

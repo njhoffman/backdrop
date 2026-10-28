@@ -4,7 +4,7 @@ import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
 import { out, mark, displayPath } from '../utils/output.js';
-import { printMedia } from '../utils/mediaView.js';
+import { printMedia, formatMediaLine } from '../utils/mediaView.js';
 
 export class ListCommand {
   constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
@@ -35,7 +35,9 @@ export class ListCommand {
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
     const items = this.database.findMedia(filters);
     for (const item of items) {
-      printMedia(this.database, item, { rating: this.database.getLatestRating(item.id) });
+      const rating = this.database.getLatestRating(item.id);
+      if (options.line) out.print(formatMediaLine(item, { rating }));
+      else printMedia(this.database, item, { rating });
       if (options.interactive) {
         const { action } = await this.prompt([{ type: 'list', name: 'action', message: 'Action:',
           choices: [{ name: 'Next', value: 'next' }, { name: 'Keep 1', value: 1 }, { name: 'Keep 2', value: 2 },
@@ -45,7 +47,8 @@ export class ListCommand {
       }
     }
     if (!items.length) out.info('No matching downloaded media');
-    else out.print(`${mark('info')}${items.length} item(s)`);
+    // One-line output is meant for fzf and tables, so no summary row joins the items
+    else if (!options.line) out.print(`${mark('info')}${items.length} item(s)`);
     if (options.playlist) {
       const file = path.resolve(this.config.expandPath(options.playlist));
       const paths = [];

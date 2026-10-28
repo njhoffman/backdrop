@@ -1,7 +1,9 @@
 import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
-import { MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor } from './Playlist.js';
+import {
+  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueRandom
+} from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
 
@@ -88,22 +90,38 @@ export class DisplayControl {
     const monitor = await this.targetMonitor(monitorName);
     return this.withClient(monitor, async client => {
       const filePath = await client.getProperty('path').catch(() => null);
-      const media = filePath ? this.database.getMediaByPath(filePath) : null;
-      const rating = media ? this.database.getLatestRating(media.id) : null;
-      return { monitor, path: filePath, media, rating };
+      return this.describe(monitor, filePath);
     });
   }
 
-  async next(monitorName) {
+  describe(monitor, filePath) {
+    const media = filePath ? this.database.getMediaByPath(filePath) : null;
+    const rating = media ? this.database.getLatestRating(media.id) : null;
+    return { monitor, path: filePath, media, rating };
+  }
+
+  // Runs change(client, monitor), which switches what the monitor plays, and returns the new item along
+  // with change's result. mpv marks the entry it switches to as current before the file loads, so this
+  // reads the playlist instead of waiting for the load; an emptied playlist reports nothing playing.
+  async switchTo(monitorName, change) {
     const monitor = await this.targetMonitor(monitorName);
-    await this.withClient(monitor, client => client.command('playlist-next', 'force'));
-    return monitor;
+    return this.withClient(monitor, async client => {
+      const result = await change(client, monitor);
+      const playlist = await client.getProperty('playlist');
+      return { ...this.describe(monitor, playlist.find(entry => entry.current)?.filename ?? null), result };
+    });
+  }
+
+  // random first moves a random entry up to play next, so prev still returns to the item before it
+  async next(monitorName, { random = false } = {}) {
+    return this.switchTo(monitorName, async client => {
+      if (random) await queueRandom(client);
+      await client.command('playlist-next', 'force');
+    });
   }
 
   async prev(monitorName) {
-    const monitor = await this.targetMonitor(monitorName);
-    await this.withClient(monitor, client => client.command('playlist-prev', 'force'));
-    return monitor;
+    return this.switchTo(monitorName, client => client.command('playlist-prev', 'force'));
   }
 
   // Changes the playing video's speed now and stores it for future plays
