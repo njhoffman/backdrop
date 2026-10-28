@@ -64,6 +64,16 @@ backdrop purge --dry-run    # trash files older than library.trash_days (the dae
 backdrop stop
 ```
 
+Shell completion for zsh (commands, options, monitor names from the running daemon, and fixed values such
+as modes and types):
+
+```bash
+backdrop completion zsh > "${fpath[1]}/_backdrop"  # then restart zsh; or in ~/.zshrc after compinit:
+source <(backdrop completion zsh)
+```
+
+Regenerate it after upgrading so new commands and options are included.
+
 `remove --current` accepts `--monitor <name>`. Removal drops the file from all running monitor playlists,
 deletes its library copy and database record, and preserves its import record so an unchanged original
 is not imported again. It works by ID when the daemon is stopped, too.

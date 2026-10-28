@@ -28,6 +28,20 @@ describe('CLI command registration', function () {
     expect(result.stderr).to.equal('');
   });
 
+  it('prints a zsh completion script for every registered command without the version line', () => {
+    run('stats');
+    const result = run('completion', 'zsh');
+    expect(result.status).to.equal(0);
+    expect(result.stderr).to.equal('');
+    expect(result.stdout).to.match(/^#compdef backdrop/);
+    for (const command of ['keep', 'pending', 'search-videos', 'list-images', 'dim', 'completion']) {
+      expect(result.stdout).to.include(`        ${command})`);
+    }
+    const unsupported = run('completion', 'fish');
+    expect(unsupported.status).to.equal(1);
+    expect(unsupported.stderr).to.include('Unsupported shell: fish');
+  });
+
   it('keeps piped output free of escape codes, symbols and the version line unless FORCE_COLOR is set', () => {
     run('stats');
     const plain = run('stats');

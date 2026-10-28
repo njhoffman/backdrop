@@ -176,5 +176,6 @@ dependency order.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
 - [ ] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.
+      Partly done: `backdrop completion zsh` (generated from the Commander definitions, `src/commands/CompletionCommand.js`). Bash remains.
 - [ ] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.

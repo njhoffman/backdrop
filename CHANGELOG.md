@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-27
+
+### Added
+- `backdrop completion zsh` prints a zsh completion script built from the CLI's own commands and options.
+  It completes `--monitor` from the running daemon (or `xrandr`), `--resolution` from active monitors,
+  sources, modes, types, statuses, ratings, import directories and M3U playlist files.
+
 ## [2.7.0] - 2026-10-27
 
 ### Added

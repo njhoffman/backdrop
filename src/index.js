@@ -15,6 +15,7 @@ import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
 import { ListCommand } from './commands/ListCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
+import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { configureOutput, out, printVersion } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
@@ -77,6 +78,7 @@ class BackdropApp {
     const download = new DownloadCommand(this.config, this.database, this.logger);
     const list = new ListCommand(this.config, this.database, this.logger);
     const stats = new StatsCommand(this.config, this.database, this.logger);
+    const completion = new CompletionCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
 
     program
@@ -219,14 +221,17 @@ class BackdropApp {
     }
     program.command('stats').description('Show library totals and last observed API quota')
       .action(this.action(() => stats.showStats()));
+    program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
+      .argument('<shell>', SHELLS.join(' or '))
+      .action(this.action(shell => completion.print(shell, program, version)));
   }
 
   async run() {
     await this.initialize();
     this.setupCommands();
-    // The daemon logs its version at startup instead; --version prints it already
+    // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);
-    if (!args.some(arg => ['-V', '--version', 'daemon'].includes(arg))) printVersion(version);
+    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion'].includes(arg))) printVersion(version);
     try {
       await program.parseAsync();
     } catch (error) {
