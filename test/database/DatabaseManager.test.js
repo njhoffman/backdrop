@@ -78,6 +78,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
+        first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('PRAGMA user_version = 1');
         first.close();
 
@@ -95,6 +96,7 @@ describe('DatabaseManager', () => {
         const first = new DatabaseManager(); first.initialize(dbPath);
         const id = first.addMedia(video());
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
+        first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('PRAGMA user_version = 4'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(id).dim).to.equal(0);
@@ -121,6 +123,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE ratings DROP COLUMN previous_path');
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
+        first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
@@ -499,6 +502,50 @@ describe('DatabaseManager', () => {
       expect(stats.media.image).to.deep.equal({ new: 0, kept: 0, skipped: 0 });
       expect(stats.searches).to.equal(1);
       expect(stats.ratings).to.equal(1);
+    });
+  });
+
+  describe('duplicates and queries', () => {
+    it('lists distinct queries per item, oldest first and case-insensitively', () => {
+      const id = db.addMedia(video());
+      for (const query of ['ocean', 'night city', 'Ocean']) db.addSearchResult(db.addSearch('pexels', query), id, 1);
+      expect(db.getQueries(id)).to.deep.equal(['ocean', 'night city']);
+      expect(db.getQueries(id + 1)).to.deep.equal([]);
+    });
+
+    it('marks a duplicate, moves its search results to the original and hides it from pending', () => {
+      const original = db.addMedia(video({ source_id: 1, path: '/m/a.mp4' }));
+      const copy = db.addMedia(video({ source_id: 2 }));
+      const shared = db.addSearch('pexels', 'ocean');
+      const other = db.addSearch('pexels', 'coast');
+      db.addSearchResult(shared, original, 5);
+      db.addSearchResult(shared, copy, 2);
+      db.addSearchResult(other, copy, 7);
+
+      db.markDuplicate(copy, original);
+
+      expect(db.getMedia(copy).duplicate_of).to.equal(original);
+      expect(db.getQueries(original)).to.deep.equal(['ocean', 'coast']);
+      expect(db.getSearchResults(shared).map(media => [media.id, media.rank])).to.deep.equal([[original, 2]]);
+      expect(db.findMedia({ downloaded: false })).to.deep.equal([]);
+      expect(db.getStats()).to.include({ pending: 0, duplicates: 1 });
+      expect(db.getStats().media.video.new).to.equal(1);
+    });
+
+    it('refuses self-references and items that were downloaded meanwhile', () => {
+      const original = db.addMedia(video({ source_id: 1, path: '/m/a.mp4' }));
+      const downloaded = db.addMedia(video({ source_id: 2, path: '/m/b.mp4' }));
+      expect(() => db.markDuplicate(original, original)).to.throw('itself');
+      expect(() => db.markDuplicate(downloaded, original)).to.throw('changed');
+      expect(db.getMedia(downloaded).duplicate_of).to.be.null;
+    });
+
+    it('keeps a duplicate hidden after its original is deleted', () => {
+      const original = db.addMedia(video({ source_id: 1, path: '/m/a.mp4' }));
+      const copy = db.addMedia(video({ source_id: 2 }));
+      db.markDuplicate(copy, original);
+      db.deleteMedia(original);
+      expect(db.findMedia({ downloaded: false })).to.deep.equal([]);
     });
   });
 

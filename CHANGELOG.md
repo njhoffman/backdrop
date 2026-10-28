@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-27
+
+### Added
+- `backdrop pending` lists media saved by searches and not yet downloaded, with kind, resolution, running
+  time, the variant it would download, and the queries that found it, plus a count per query. It works
+  offline; without X, pass `--resolution`.
+- Downloads, lists, `current`, `status` and `stats` show resolution, video running time (`0:18`),
+  orientation, file size, star ratings and the search queries behind each item.
+- `BACKDROP_SYMBOLS=nerd|unicode|ascii|auto` overrides `output.symbols`, and every symbol set now has
+  media icons (Nerd Font glyphs with `nerd`).
+
+### Changed
+- On a terminal, paths under your home directory are shown with `~`; piped output keeps full paths.
+- Output of `list-*`, `current` and `status` puts each item on a heading line with its path, queries and
+  credit indented below. `current` still prints the bare path first.
+- The database upgrades to schema v6 in place.
+
+### Fixed
+- A download whose content matches an item you already have is no longer retried on every `backdrop download`.
+  It is recorded as a duplicate, and the queries that found it are added to the original.
+
 ## [2.6.0] - 2026-10-27
 
 ### Added

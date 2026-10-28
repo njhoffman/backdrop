@@ -2,7 +2,8 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import {
   configureOutput, colorDepth, symbolSet, SYMBOL_SETS, out, fmt, stripAnsi, printVersion, ProgressBar,
-  renderBar, gradientAt, parseHex, formatDuration, formatBytes
+  renderBar, gradientAt, parseHex, formatDuration, formatBytes, formatClock, icon, displayPath, formatResolution,
+  orientationName, describeMedia, formatRating, formatQueries, mark
 } from '../../src/utils/output.js';
 import { makeConfig } from '../helpers/fakes.js';
 
@@ -71,6 +72,20 @@ describe('output', () => {
       expect(() => setup({ config: makeConfig({ 'output.symbols': 'fancy' }) })).to.throw('output.symbols');
     });
 
+    it('lets BACKDROP_SYMBOLS override the configured symbols', () => {
+      setup({ env: { ...TRUECOLOR, BACKDROP_SYMBOLS: 'nerd' }, config: makeConfig({ 'output.symbols': 'ascii' }) });
+      expect(symbolSet(stdout)).to.equal(SYMBOL_SETS.nerd);
+      setup({ env: { ...TRUECOLOR, BACKDROP_SYMBOLS: '' }, config: makeConfig({ 'output.symbols': 'ascii' }) });
+      expect(symbolSet(stdout)).to.equal(SYMBOL_SETS.ascii);
+      expect(() => setup({ env: { BACKDROP_SYMBOLS: 'emoji' } })).to.throw('BACKDROP_SYMBOLS');
+    });
+
+    it('defines the same icons in every symbol set', () => {
+      const keys = Object.keys(SYMBOL_SETS.unicode).sort();
+      for (const set of Object.values(SYMBOL_SETS)) expect(Object.keys(set).sort()).to.deep.equal(keys);
+      for (const glyph of Object.values(SYMBOL_SETS.nerd)) expect(glyph.codePointAt(0)).to.be.within(0xe000, 0xf8ff);
+    });
+
     it('is plain everywhere when interactive output is turned off', () => {
       setup({ interactive: false });
       expect(colorDepth(stdout)).to.equal(1);
@@ -107,6 +122,61 @@ describe('output', () => {
       setup({ tty: false });
       printVersion('1.2.3');
       expect(logs).to.deep.equal([]);
+    });
+  });
+
+  describe('media formatting', () => {
+    const HOME = { ...TRUECOLOR, HOME: '/home/me' };
+
+    it('shortens home paths to ~ on a terminal only', () => {
+      setup({ env: HOME });
+      expect(displayPath('/home/me/.local/share/backdrop/a.mp4')).to.equal('~/.local/share/backdrop/a.mp4');
+      expect(displayPath('/home/me')).to.equal('~');
+      expect(displayPath('/home/mention/a.mp4')).to.equal('/home/mention/a.mp4');
+      expect(displayPath('/srv/a.mp4')).to.equal('/srv/a.mp4');
+      expect(displayPath(null)).to.equal('');
+      setup({ env: HOME, tty: false });
+      expect(displayPath('/home/me/a.mp4')).to.equal('/home/me/a.mp4');
+    });
+
+    it('formats running time as a clock', () => {
+      expect([0, 9.6, 61, 3599, 3723].map(formatClock)).to.deep.equal(['0:00', '0:10', '1:01', '59:59', '1:02:03']);
+      expect(formatClock(null)).to.equal('--');
+    });
+
+    it('uses icons and × on a terminal, plain text otherwise', () => {
+      setup();
+      expect(icon('video')).to.equal('▶ ');
+      expect(formatResolution(1920, 1080)).to.equal('1920×1080');
+      expect(stripAnsi(mark('success'))).to.equal('✓ ');
+      setup({ env: { TERM: 'xterm', LANG: 'C' } });
+      expect(icon('video')).to.equal('');
+      expect(formatResolution(1920, 1080)).to.equal('1920x1080');
+      setup({ tty: false });
+      expect(icon('video')).to.equal('');
+      expect(mark('success')).to.equal('');
+      expect(formatResolution(null, 1080)).to.equal('?');
+    });
+
+    it('describes media with kind, resolution, duration for videos and orientation', () => {
+      setup({ tty: false });
+      expect(describeMedia({ kind: 'video', width: 1080, height: 1920, duration: 18.2 })).to.equal('video  1080x1920  0:18  portrait');
+      expect(describeMedia({ kind: 'image', width: 2000, height: 2000, duration: null })).to.equal('image  2000x2000  square');
+      expect(describeMedia({ kind: 'gif', width: null, height: null })).to.equal('gif  ?');
+      expect(orientationName({ width: 3, height: 2 })).to.equal('landscape');
+      setup();
+      expect(stripAnsi(describeMedia({ kind: 'video', width: 3840, height: 2160, duration: 75 })))
+        .to.equal('▶ video  ⤢ 3840×2160  ◷ 1:15  landscape');
+    });
+
+    it('shows ratings as stars on a terminal and as n/3 in plain output', () => {
+      setup();
+      expect(stripAnsi(formatRating({ rating: 2, orientation: 'landscape' }))).to.equal('★★☆ landscape');
+      setup({ tty: false });
+      expect(formatRating({ rating: 2, orientation: 'portrait' })).to.equal('2/3 portrait');
+      expect(formatRating({ rating: 0, orientation: 'portrait' })).to.equal('skipped');
+      expect(formatRating(null)).to.equal('unrated');
+      expect(formatQueries(['ocean', 'night city'])).to.equal('"ocean", "night city"');
     });
   });
 

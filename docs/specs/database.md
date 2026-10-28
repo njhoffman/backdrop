@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 5); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 6); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -21,6 +21,7 @@ One row per item, from any source.
 | `status_changed_at` | drives trash expiry |
 | `speed` | mpv playback speed (0.01-100), one per item, default 1.0 |
 | `dim` | 0 (none) to 100 (black), applied as mpv `brightness` = -dim; added in v5, default 0 |
+| `duplicate_of` | set when a download's content matched this media id; the item is never downloaded again. Added in v6; no foreign key, so it stays hidden if the original is removed |
 | `tags`, `variants` | JSON arrays; `variants` holds download options `{url, width, height, ...}` |
 | `author`, `page_url` | attribution |
 | `added_at`, `updated_at` | timestamps (UTC) |
@@ -46,7 +47,9 @@ import changes its effective latest rating while retaining history for undo.
 ## searches, search_results
 
 `searches` records each query with its source and parameters as JSON. `search_results` links a search to
-the media it returned with its rank; recording the same pair again updates the rank.
+the media it returned with its rank; recording the same pair again updates the rank. When an item turns out
+to duplicate another, its results move to the original (keeping the better rank), and later searches that
+return it credit the original, so the original lists every query that found either copy.
 
 ## imported_files
 

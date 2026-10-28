@@ -2,7 +2,7 @@ import path from 'path';
 import { Importer } from '../library/Importer.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { listMonitors } from '../display/Monitors.js';
-import { out, fmt, ProgressBar } from '../utils/output.js';
+import { out, fmt, ProgressBar, displayPath } from '../utils/output.js';
 
 // Evaluated per call so colors follow the current output settings
 const OUTCOME_LABELS = {
@@ -53,7 +53,7 @@ export class ImportCommand {
           bar?.update(done, path.basename(file));
           if (outcome.status !== 'unchanged') {
             const detail = outcome.detail ? fmt.gray(` (${outcome.detail})`) : '';
-            out.print(`${OUTCOME_LABELS[outcome.status]()} ${file}${detail}`);
+            out.print(`${OUTCOME_LABELS[outcome.status]()} ${displayPath(file)}${detail}`);
           }
         }
       });

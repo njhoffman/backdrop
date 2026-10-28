@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -14,7 +14,7 @@ const MAX_SPEED = 100;
 // Columns callers may write through addMedia/updateMedia; id, status and timestamps are managed here
 const MEDIA_FIELDS = [
   'kind', 'source', 'source_id', 'path', 'original_name', 'width', 'height', 'duration',
-  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url'
+  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url', 'duplicate_of'
 ];
 const JSON_FIELDS = ['tags', 'variants'];
 
@@ -96,6 +96,10 @@ const MIGRATIONS = [`
   ALTER TABLE ratings ADD COLUMN rated_path TEXT;
 `, `
   ALTER TABLE media ADD COLUMN dim INTEGER NOT NULL DEFAULT 0;
+`, `
+  -- No foreign key on purpose: removing the original must not make its duplicate downloadable again,
+  -- and media ids are never reused (AUTOINCREMENT)
+  ALTER TABLE media ADD COLUMN duplicate_of INTEGER;
 `];
 
 export function orientationOf(resolution) {
@@ -275,7 +279,8 @@ export class DatabaseManager {
   }
 
   // Filters: kind, status, source, minWidth/minHeight (resolution floor), minRating,
-  // orientation (rated on a monitor of that orientation), downloaded, limit
+  // orientation (rated on a monitor of that orientation), downloaded, limit.
+  // downloaded: false leaves out items whose download turned out to duplicate another item.
   findMedia(filters = {}) {
     const conditions = [];
     const params = [];
@@ -296,7 +301,7 @@ export class DatabaseManager {
       params.push(filters.minHeight);
     }
     if (filters.downloaded !== undefined) {
-      conditions.push(filters.downloaded ? 'm.path IS NOT NULL' : 'm.path IS NULL');
+      conditions.push(filters.downloaded ? 'm.path IS NOT NULL' : 'm.path IS NULL AND m.duplicate_of IS NULL');
     }
     if (filters.excludeLocal) conditions.push("m.source <> 'local'");
     for (const keyword of filters.keywords ?? []) {
@@ -440,6 +445,33 @@ export class DatabaseManager {
     `).run(searchId, mediaId, rank);
   }
 
+  // Records that a pending item's download matched an existing item, so it is not fetched again,
+  // and moves its search results to that item so the original keeps every query that found it
+  markDuplicate(mediaId, originalId) {
+    if (mediaId === originalId) throw new Error('An item cannot duplicate itself');
+    this.transaction(() => {
+      const media = this.getMedia(mediaId);
+      if (!media || media.path || !this.getMedia(originalId)) throw new Error('Media changed during download');
+      this.updateMedia(mediaId, { duplicate_of: originalId });
+      this.db.prepare(`
+        INSERT INTO search_results (search_id, media_id, rank)
+        SELECT search_id, ?, rank FROM search_results WHERE media_id = ?
+        ON CONFLICT (search_id, media_id) DO UPDATE SET rank = MIN(rank, excluded.rank)
+      `).run(originalId, mediaId);
+      this.db.prepare('DELETE FROM search_results WHERE media_id = ?').run(mediaId);
+    });
+  }
+
+  // Distinct search queries that returned an item, oldest first
+  getQueries(mediaId) {
+    return this.db.prepare(`
+      SELECT s.query FROM search_results sr JOIN searches s ON s.id = sr.search_id
+      WHERE sr.media_id = ?
+      GROUP BY lower(s.query)
+      ORDER BY MIN(s.id)
+    `).all(mediaId).map(row => row.query);
+  }
+
   getSearchResults(searchId) {
     return this.db.prepare(`
       SELECT m.*, sr.rank FROM search_results sr
@@ -483,7 +515,7 @@ export class DatabaseManager {
 
   getStats() {
     const byKindStatus = this.db.prepare(`
-      SELECT kind, status, COUNT(*) AS count FROM media GROUP BY kind, status
+      SELECT kind, status, COUNT(*) AS count FROM media WHERE duplicate_of IS NULL GROUP BY kind, status
     `).all();
     const media = {};
     for (const kind of MEDIA_KINDS) {
@@ -495,8 +527,12 @@ export class DatabaseManager {
 
     const { count: searches } = this.db.prepare('SELECT COUNT(*) AS count FROM searches').get();
     const { count: ratings } = this.db.prepare('SELECT COUNT(*) AS count FROM ratings').get();
+    const { count: pending } = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM media WHERE path IS NULL AND status = 'new' AND duplicate_of IS NULL
+    `).get();
+    const { count: duplicates } = this.db.prepare('SELECT COUNT(*) AS count FROM media WHERE duplicate_of IS NOT NULL').get();
 
-    return { media, searches, ratings };
+    return { media, searches, ratings, pending, duplicates };
   }
 
   close() {

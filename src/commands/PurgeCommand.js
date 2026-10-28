@@ -1,5 +1,5 @@
 import { purgeTrash } from '../library/purge.js';
-import { out, fmt } from '../utils/output.js';
+import { out, fmt, displayPath } from '../utils/output.js';
 
 export class PurgeCommand {
   constructor(config, database, logger) {
@@ -16,10 +16,10 @@ export class PurgeCommand {
       return result;
     }
     for (const media of result.purged) {
-      out.print(`${dryRun ? 'Would purge' : 'Purged'} ${fmt.bold(`#${media.id}`)}: ${media.path}`);
+      out.print(`${dryRun ? 'Would purge' : 'Purged'} ${fmt.bold(`#${media.id}`)}: ${displayPath(media.path)}`);
     }
     for (const media of result.failed) {
-      out.error(`Not purged #${media.id}: ${media.path}`);
+      out.error(`Not purged #${media.id}: ${displayPath(media.path)}`);
     }
     const days = this.config.get().library.trash_days;
     out.success(`${dryRun ? 'Would purge' : 'Purged'} ${result.purged.length} item(s) skipped more than ${days} day(s) ago`);

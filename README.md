@@ -51,12 +51,13 @@ backdrop skip               # move it to trash and advance all monitors playing 
 backdrop undo               # undo the last rating and file move, across CLI invocations
 backdrop go-next            # advance after checking the current item has a rating
 backdrop search-videos 'ocean waves'  # also search-images; requires the source API key
+backdrop pending             # media saved by searches, with its queries and the size it would download
 backdrop download --total 10 --type videos
 backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
 backdrop list-videos --rated landscape
 backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
-backdrop stats              # local totals and last observed API quota; works offline
+backdrop stats              # local totals, pending downloads and last observed API quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
 backdrop purge --dry-run    # trash files older than library.trash_days (the daemon purges daily)
@@ -72,7 +73,8 @@ and preserves undo history. Keep moves new downloads from the inbox into the lib
 affected playlists and restarts the moved file. Re-rating a file already in the library keeps it playing.
 
 Search and download choose the smallest variant that fits all configured monitors, then probe and hash
-downloads before adding them to playback. After attaching a larger monitor, `download --upgrade` replaces
+downloads before adding them to playback. A download identical to one you already have is recorded as a
+duplicate, never fetched again, and its search queries are added to the original. After attaching a larger monitor, `download --upgrade` replaces
 kept or new downloads that are now too small, keeping their ratings, speed and dim. For use without X, pass `--resolution 1920x1080`. Lists are plain
 text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--source` and `--number` filter them.
 See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.

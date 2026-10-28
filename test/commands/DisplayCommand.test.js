@@ -48,8 +48,10 @@ describe('DisplayCommand', () => {
       await command.status();
 
       const text = lines.join('\n');
-      expect(text).to.include('DP-1 1920x1080, 1 videos eligible: /m/1.mp4 (speed 0.8, dim 20)');
-      expect(text).to.include('DP-2 3840x2160, 0 videos eligible: nothing playing');
+      expect(text).to.include('DP-1 1920x1080, 1 videos eligible');
+      expect(text).to.include(`#${id}  video  1920x1080  landscape  speed 0.8, dim 20`);
+      expect(text).to.include('    /m/1.mp4');
+      expect(text).to.include('DP-2 3840x2160, 0 videos eligible\n    nothing playing');
       expect(text).to.include('No videos at least 3840x2160').and.include('display.allow_upscale');
     });
 

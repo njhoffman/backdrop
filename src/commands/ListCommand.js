@@ -3,7 +3,8 @@ import path from 'path';
 import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
-import { out, fmt } from '../utils/output.js';
+import { out, mark, displayPath } from '../utils/output.js';
+import { printMedia } from '../utils/mediaView.js';
 
 export class ListCommand {
   constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
@@ -34,10 +35,7 @@ export class ListCommand {
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
     const items = this.database.findMedia(filters);
     for (const item of items) {
-      const rating = this.database.getLatestRating(item.id);
-      const rated = rating ? fmt.green(`${rating.rating}/3 (${rating.orientation})`) : fmt.yellow('unrated');
-      out.print(`${fmt.bold(`#${item.id}`)} ${item.kind} ${fmt.dim(`${item.width}x${item.height} ${item.source}`)} ${rated} ${item.path}`);
-      if (item.author || item.page_url) out.detail(`${item.author ?? ''} ${item.page_url ?? ''}`.trim());
+      printMedia(this.database, item, { rating: this.database.getLatestRating(item.id) });
       if (options.interactive) {
         const { action } = await this.prompt([{ type: 'list', name: 'action', message: 'Action:',
           choices: [{ name: 'Next', value: 'next' }, { name: 'Keep 1', value: 1 }, { name: 'Keep 2', value: 2 },
@@ -47,13 +45,14 @@ export class ListCommand {
       }
     }
     if (!items.length) out.info('No matching downloaded media');
+    else out.print(`${mark('info')}${items.length} item(s)`);
     if (options.playlist) {
       const file = path.resolve(this.config.expandPath(options.playlist));
       const paths = [];
       for (const item of items) if (await fs.pathExists(item.path)) paths.push(item.path);
       if (paths.some(filePath => /[\r\n]/.test(filePath))) throw new Error('Cannot export paths containing line breaks');
       await fs.outputFile(file, `#EXTM3U\n${paths.join('\n')}${paths.length ? '\n' : ''}`);
-      out.success(`Playlist: ${file}`);
+      out.success(`Playlist: ${displayPath(file)} (${paths.length} files)`);
     }
     return items;
   }

@@ -35,9 +35,10 @@ output:
   progress_gradient: ['#00c8ff', '#a050ff']  # two or more #rrggbb stops for progress bars
 ```
 
-Colors and symbols appear only when output goes to a terminal; piped output stays plain. `NO_COLOR`
-turns colors off and `FORCE_COLOR` turns them on for pipes. Nerd Font glyphs cannot be detected, so
-`nerd` must be chosen explicitly.
+Colors, symbols, media icons and `~` for the home directory appear only when output goes to a terminal;
+piped output stays plain with full paths. `NO_COLOR` turns colors off and `FORCE_COLOR` turns them on for
+pipes. Nerd Font glyphs cannot be detected, so `nerd` must be chosen explicitly, in the config or with the
+`BACKDROP_SYMBOLS` environment variable, which overrides `output.symbols` (e.g. only in a Nerd Font terminal).
 
 Other sources go under `sources.<name>` with their own credentials; unknown keys are preserved.
 

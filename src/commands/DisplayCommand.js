@@ -3,7 +3,8 @@ import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia } from '../display/Playlist.js';
-import { out, fmt } from '../utils/output.js';
+import { out, fmt, icon, displayPath, describeMedia, formatResolution } from '../utils/output.js';
+import { printMedia } from '../utils/mediaView.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const START_TIMEOUT_MS = 15_000;
@@ -85,10 +86,20 @@ export class DisplayCommand {
     for (const monitor of state.monitors) {
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
       const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
-      const playing = path ? `${path}${media ? fmt.dim(` (speed ${media.speed}${media.dim ? `, dim ${media.dim}` : ''})`) : ''}` : fmt.yellow('nothing playing');
-      out.print(`  ${fmt.bold(monitor.name)} ${fmt.dim(`${monitor.width}x${monitor.height}, ${eligible} ${mode}s eligible`)}: ${playing}`);
-      if (!path) out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
+      out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(`${formatResolution(monitor.width, monitor.height)}, ${eligible} ${mode}s eligible`)}`);
+      if (!path) {
+        out.field('info', fmt.yellow('nothing playing'));
+        out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
+        continue;
+      }
+      if (media) out.field(media.kind, `${fmt.bold(`#${media.id}`)}  ${describeMedia(media)}${this.adjustments(media)}`);
+      out.field('path', displayPath(path));
     }
+  }
+
+  adjustments(media) {
+    const list = [media.speed !== 1 && `speed ${media.speed}`, media.dim && `dim ${media.dim}`].filter(Boolean);
+    return list.length ? fmt.dim(`  ${list.join(', ')}`) : '';
   }
 
   // Why a monitor shows nothing, with the likely fix
@@ -110,11 +121,9 @@ export class DisplayCommand {
       return;
     }
 
-    out.print(path);
-    if (media) {
-      const stars = rating ? (rating.rating === 0 ? 'skipped' : `${rating.rating}/3`) : 'unrated';
-      out.detail(`#${media.id} ${media.kind} ${media.width}x${media.height} ${media.source} ${stars} speed ${media.speed}${media.dim ? ` dim ${media.dim}` : ''}`);
-    }
+    // The first line stays the bare path (full when piped) for scripts
+    out.print(displayPath(path));
+    if (media) printMedia(this.database, media, { rating, path: false, extra: [this.adjustments(media)] });
   }
 
   async next(options) {

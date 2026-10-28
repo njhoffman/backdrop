@@ -198,6 +198,12 @@ class BackdropApp {
       .option('--resolution <WIDTHxHEIGHT>', 'Override detected monitor dimensions')
       .option('--upgrade', 'Replace downloaded media smaller than the monitors with a larger variant')
       .action(this.action(options => download.download(options)));
+    program.command('pending').description('List media saved by searches and not yet downloaded, with their queries')
+      .option('--number <number>', 'Limit results')
+      .option('--type <type>', 'images, videos or both', 'both')
+      .option('--source <name>', 'Restrict to one source')
+      .option('--resolution <WIDTHxHEIGHT>', 'Override detected monitor dimensions')
+      .action(this.action(options => download.pending(options)));
     for (const [name, method] of [['list-images', 'listImages'], ['list-videos', 'listVideos']]) {
       program.command(name).description('List downloaded media and their current ratings')
         .option('--number <number>', 'Limit results')

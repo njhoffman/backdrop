@@ -50,8 +50,10 @@ headless use. Without known dimensions, commands fail with a useful message unle
 `download --total N --type images|videos|both [--source NAME]` selects pending `new` items and chooses the
 smallest variant by pixel area that meets these requirements. Downloads stream into unique temporary
 files, are probed by ffprobe and hashed, and enter the inbox only after validation. Actual dimensions,
-kind, duration and SHA-256 are stored. Failed transfers, undersized files, duplicates and database-write
-failures do not mark the media downloaded or leave partial files. The command continues after individual
+kind, duration and SHA-256 are stored. Content identical to an existing item is discarded and the pending
+item is marked `duplicate_of` that item, so it is never fetched again and its queries move to the original.
+Failed transfers, undersized files and database-write failures do not mark the media downloaded or leave
+partial files. `pending` lists the queue offline with each item's queries and the variant it would fetch. The command continues after individual
 failures and exits nonzero if any item failed. Successful items are appended to running playlists.
 
 Search and download are separate commands; scripts run without confirmation prompts. Searches without a

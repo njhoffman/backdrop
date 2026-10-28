@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import { SourceRegistry } from '../sources/SourceRegistry.js';
 import { targetResolution, positiveInteger, selectVariant } from '../library/quality.js';
-import { out, fmt } from '../utils/output.js';
+import { out, fmt, icon, formatResolution } from '../utils/output.js';
 
 export class SearchCommand {
   constructor(config, database, logger, { sources, monitors, prompt = inquirer.prompt } = {}) {
@@ -28,7 +28,10 @@ export class SearchCommand {
     const target = await targetResolution(this.config, options.resolution, this.monitors);
     const params = { kind, perPage, orientation, minSize: options.minSize, color: options.color, target };
     const searchId = this.database.addSearch(source.name, query, params);
-    const summary = { searchId, fetched: 0, added: 0, updated: 0, filtered: 0, pages: 0, rateLimited: false };
+    const summary = { searchId, fetched: 0, added: 0, updated: 0, duplicates: 0, filtered: 0, pages: 0, rateLimited: false };
+    const filters = [orientation, options.minSize && `min ${options.minSize}`, options.color].filter(Boolean);
+    out.info(`${icon('query')}Searching ${source.name} ${kind}s for ${fmt.bold(`"${query}"`)}`
+      + fmt.dim(`  target ${formatResolution(target.width, target.height)}${filters.length ? `, ${filters.join(', ')}` : ''}`));
     let page = 1;
     while (page !== null) {
       let result;
@@ -51,18 +54,25 @@ export class SearchCommand {
           }
           const existing = this.database.getMediaBySource(media.source, media.source_id);
           const id = this.database.upsertMedia(media);
-          this.database.addSearchResult(searchId, id, rank);
-          if (existing) summary.updated++; else summary.added++;
+          // A known duplicate credits the query to the item it duplicates
+          this.database.addSearchResult(searchId, existing?.duplicate_of ?? id, rank);
+          if (existing?.duplicate_of) summary.duplicates++;
+          else if (existing) summary.updated++;
+          else summary.added++;
         }
       });
       summary.pages++;
-      out.detail(`Page ${page}: ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+      out.detail(`Page ${page}: ${result.items.length} results, ${summary.added} added, ${summary.updated} updated, ${summary.filtered} filtered so far`);
       if (result.nextPage !== null && result.nextPage !== undefined && (!Number.isInteger(result.nextPage) || result.nextPage <= page)) {
         throw new Error(`${source.name}: invalid next page`);
       }
       page = result.items.length ? (result.nextPage ?? null) : null;
     }
-    out.success(`Search #${searchId}: ${fmt.bold(summary.added)} added, ${summary.updated} updated, ${summary.filtered} filtered`);
+    const duplicates = summary.duplicates ? `, ${summary.duplicates} known duplicates` : '';
+    out.success(`Search #${searchId}: ${fmt.bold(summary.added)} added, ${summary.updated} updated${duplicates}, `
+      + `${summary.filtered} filtered (${summary.fetched} results, ${summary.pages} pages)`);
+    const { pending } = this.database.getStats();
+    if (pending) out.detail(`${pending} pending; see them with \`backdrop pending\`, fetch with \`backdrop download\``);
     if (source.name === 'pexels') out.detail('Photos and videos provided by Pexels: https://www.pexels.com');
     this.logger.info('Search finished', summary);
     return summary;

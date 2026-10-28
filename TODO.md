@@ -30,6 +30,11 @@ dependency order.
       Replaced with a prerequisites list and a `command -v` check; limitations updated for purge, missing files and health checks.
 - [ ] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
       a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
+- [ ] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
+      `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
+- [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
+      integration tests run instead of being skipped.
+- [ ] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Delete it.
 
 ## 2. Rename to backdrop
 
@@ -75,6 +80,16 @@ dependency order.
       Decide whether to accept a 0-100 dim amount mapped to negative brightness, or raw brightness -100 to 100; consider lowering `saturation` with it.
       `backdrop current`/`status` should show non-zero dim. Cheaper than xwinwrap `-o` opacity, which needs a compositor blending every frame.
       Done: `backdrop dim` takes a 0-100 amount (brightness = -dim), steps clamp to the range; schema v5 `media.dim`; saturation left alone.
+- [ ] **Undo can get stuck.** (p3) [bug] `undo` only ever targets the globally latest rating. If that rating cannot be undone (its skip was purged, or
+      `download --upgrade` renamed the file so `rated_path` no longer matches), every later `undo` fails the same way. Update `rated_path` when an upgrade renames a file,
+      and let undo report and step past an unrestorable rating (or add `undo --discard`).
+- [ ] **A missing configured monitor blocks startup.** (p2) [bug] `selectMonitors()` throws when a name in `display.monitors` is not active, so
+      `Daemon.start()` fails if that monitor is unplugged at boot, and `targetResolution()` makes search/download fail too. Hotplug already tolerates it at runtime.
+      Start with the configured monitors that are present (warn about the rest) and size downloads for those, failing only when none are active.
+- [ ] **state.json is written in place.** (p3) [bug] `Daemon.writeState()` uses `fs.writeJson` directly and `readState()` treats a parse error as "not running",
+      so a CLI command racing a rewrite (now on every hotplug change) can report the daemon as stopped. Write to a temp file in the runtime dir and rename it.
+- [ ] **Hotplug only tested with fakes.** (p3) [test] Reconciliation is covered against a fake `xrandr`; confirm on real hardware (attach, remove, change resolution,
+      lid close) and note any xrandr output the parser misses, e.g. monitors without a physical size.
 - [x] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
       Poll `xrandr --listactivemonitors` (or listen for RandR events) and start, stop or respawn per-monitor mpv instances on changes, then rewrite `state.json`.
       Done: the daemon polls xrandr every 5s; empty or failed reads keep the layout, and crash restarts cannot race a layout change.
@@ -93,6 +108,14 @@ dependency order.
 - [ ] **Other free sources.** (p3) [feature] Only sites with a public API qualify; scraping is out (decided 2026-10-21).
       That excludes MoeWalls and wallsflow.com (checked 2026-10-21: `/api/` redirects to the homepage, no developer docs).
       Candidates: Wallhaven (API with resolution filters), Pixabay (API, has video). Pick after the interface exists.
+- [ ] **Pexels adapter not run against the live API.** (p2) [test] Search, metadata, variants, download and `--upgrade` are only tested against mocked responses.
+      Run a manual smoke test with a real key, record any differences in `docs/specs/sources.md`, and consider an opt-in live test gated on `PEXELS_API`.
+- [x] **Duplicate downloads are retried forever.** (p2) [bug] When a downloaded file's sha256 matches an existing item, `downloadItem()` throws
+      `Duplicate content of #N` and leaves the pending row as `new`, so every `backdrop download` fetches it again, and its search queries never reach the kept copy.
+      Record the duplicate (e.g. `media.duplicate_of`), move its `search_results` to the original, and exclude it from pending lists.
+      Done: schema v6 `media.duplicate_of` (no foreign key); searches that return a known duplicate credit the original.
+- [ ] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
+      a body that stalls mid-transfer, and nothing caps the size. Abort when no data arrives for 30s and when bytes exceed Content-Length (or a configured maximum).
 
 ## 5. Local library import
 
@@ -108,6 +131,9 @@ dependency order.
       Done: the daemon logs the file total and progress every 30s; `backdrop import` shows a progress bar.
 - [x] **Edit rating during playback.** (p2) [feature] `keep N` changes the effective current rating for imported items;
       prior ratings remain as undo history, and repeated ratings do not duplicate playlist entries or restart media already in the library.
+- [ ] **Concurrent imports can collide.** (p3) [bug] `backdrop import` and the daemon's startup import can scan the same folders at once; both may copy a file
+      before either commits, so the second likely fails on the unique `sha256` and is recorded as `failed`. Take a lock file in the data dir for the duration of an import,
+      and have the second importer wait or skip.
 
 ## 6. Resolution-aware quality filter
 
@@ -148,3 +174,7 @@ dependency order.
       keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
       Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
+- [ ] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
+      `state.json` and `mode` from video/image.
+- [ ] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
+      to i3 `exec`, and document enabling it.

@@ -1,13 +1,30 @@
 import tty from 'tty';
+import os from 'os';
 
 // Shared terminal output: colors, status symbols and progress bars. Styling applies only when the
 // target stream is a terminal (or FORCE_COLOR is set), so pipes, M3U exports and scripts get plain text.
 
 export const DEFAULT_GRADIENT = ['#00c8ff', '#a050ff'];
+// Status symbols plus media icons. Nerd Font glyphs are Font Awesome code points present in Nerd Fonts v2 and v3.
 export const SYMBOL_SETS = {
-  nerd: { success: '', warn: '', error: '', info: '' },
-  unicode: { success: '✓', warn: '▲', error: '✗', info: '•' },
-  ascii: { success: '+', warn: '!', error: 'x', info: '-' }
+  nerd: {
+    success: '', warn: '', error: '', info: '',
+    video: '', image: '', gif: '', duration: '', resolution: '', path: '',
+    query: '', author: '', link: '', download: '', duplicate: '', monitor: '',
+    star: '', starEmpty: '', pending: ''
+  },
+  unicode: {
+    success: '✓', warn: '▲', error: '✗', info: '•',
+    video: '▶', image: '▣', gif: '↻', duration: '◷', resolution: '⤢', path: '↳',
+    query: '⌕', author: '✎', link: '↗', download: '↓', duplicate: '≡', monitor: '▭',
+    star: '★', starEmpty: '☆', pending: '…'
+  },
+  ascii: {
+    success: '+', warn: '!', error: 'x', info: '-',
+    video: '', image: '', gif: '', duration: '', resolution: '', path: '',
+    query: '', author: '', link: '', download: '', duplicate: '', monitor: '',
+    star: '*', starEmpty: '.', pending: ''
+  }
 };
 const SYMBOL_MODES = ['auto', ...Object.keys(SYMBOL_SETS)];
 const STYLES = {
@@ -41,9 +58,12 @@ export function parseHex(color) {
 export function configureOutput({ config, ...overrides } = {}) {
   const output = config?.get().output ?? {};
   const next = { ...defaults(), ...overrides };
-  const symbols = output.symbols ?? next.symbols;
+  // BACKDROP_SYMBOLS wins over the config, e.g. to use Nerd Font glyphs in one terminal only
+  const fromEnv = next.env.BACKDROP_SYMBOLS || undefined;
+  const symbols = fromEnv ?? output.symbols ?? next.symbols;
   if (!SYMBOL_MODES.includes(symbols)) {
-    throw new Error(`output.symbols must be one of ${SYMBOL_MODES.join(', ')} (got ${symbols})`);
+    const name = fromEnv ? 'BACKDROP_SYMBOLS' : 'output.symbols';
+    throw new Error(`${name} must be one of ${SYMBOL_MODES.join(', ')} (got ${symbols})`);
   }
   next.symbols = symbols;
   const gradient = output.progress_gradient ?? overrides.gradient;
@@ -122,9 +142,16 @@ export const out = {
   error: message => write('error', status('error', settings.stderr, message)),
   // Secondary detail lines, dimmed and indented
   detail: message => write('log', `  ${fmt.dim(message)}`),
+  // An indented line under an item, prefixed with an icon from the symbol set
+  field: (iconName, value) => write('log', `    ${fmt.dim(icon(iconName))}${value}`),
   heading: text => write('log', fmt.bold(text)),
   row: (label, value) => write('log', `${fmt.dim(`${label}:`)} ${value}`)
 };
+
+// A colored status symbol and a space for composing lines; nothing in plain output
+export function mark(tone, stream = settings.stdout) {
+  return isInteractive(stream) ? `${paint(stream, TONES[tone], symbolSet(stream)[tone])} ` : '';
+}
 
 // Dim "backdrop vX.Y.Z" on stderr for interactive runs, so piped output stays clean
 export function printVersion(version) {
@@ -137,6 +164,69 @@ export function formatDuration(seconds) {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
   return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+}
+
+// Media running time as a clock, e.g. 0:18 or 1:02:03
+export function formatClock(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--';
+  const s = Math.round(seconds);
+  const minutes = Math.floor(s / 60) % 60;
+  const clock = `${minutes}:${String(s % 60).padStart(2, '0')}`;
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${clock.padStart(5, '0')}` : clock;
+}
+
+// An icon followed by a space on a terminal; nothing in plain output or where the set has no icon
+export function icon(name, stream = settings.stdout) {
+  if (!isInteractive(stream)) return '';
+  const symbol = symbolSet(stream)[name];
+  return symbol ? `${symbol} ` : '';
+}
+
+// Replaces the home directory with ~ on a terminal; piped output keeps full paths for scripts
+export function displayPath(filePath, stream = settings.stdout) {
+  if (!filePath || !isInteractive(stream)) return filePath ?? '';
+  const home = (settings.env.HOME || os.homedir()).replace(/\/+$/, '');
+  if (!home) return filePath;
+  if (filePath === home) return '~';
+  return filePath.startsWith(`${home}/`) ? `~${filePath.slice(home.length)}` : filePath;
+}
+
+export function formatResolution(width, height, stream = settings.stdout) {
+  if (!width || !height) return '?';
+  const times = isInteractive(stream) && symbolSet(stream) !== SYMBOL_SETS.ascii ? '×' : 'x';
+  return `${width}${times}${height}`;
+}
+
+export function orientationName({ width, height }) {
+  if (!width || !height) return null;
+  if (width === height) return 'square';
+  return height > width ? 'portrait' : 'landscape';
+}
+
+// One-line media summary: kind, resolution, running time for videos, orientation
+export function describeMedia(media) {
+  const parts = [`${icon(media.kind)}${fmt.cyan(media.kind)}`];
+  parts.push(`${icon('resolution')}${fmt.bold(formatResolution(media.width, media.height))}`);
+  if (media.kind !== 'image' && Number.isFinite(media.duration)) parts.push(`${icon('duration')}${formatClock(media.duration)}`);
+  const orientation = orientationName(media);
+  if (orientation) parts.push(fmt.dim(orientation));
+  return parts.join('  ');
+}
+
+// A 0-3 rating as stars on a terminal (★★☆), as "2/3" in plain output; 0 is shown as skipped
+export function formatRating(rating) {
+  if (!rating) return fmt.yellow('unrated');
+  if (rating.rating === 0) return fmt.red('skipped');
+  const set = symbolSet();
+  const stars = isInteractive() && set !== SYMBOL_SETS.ascii
+    ? set.star.repeat(rating.rating) + set.starEmpty.repeat(3 - rating.rating)
+    : `${rating.rating}/3`;
+  return `${fmt.green(stars)} ${fmt.dim(rating.orientation)}`;
+}
+
+// Quoted search queries, e.g. "ocean waves", "aerial coast"
+export function formatQueries(queries) {
+  return queries.map(query => `"${query}"`).join(', ');
 }
 
 export function formatBytes(bytes) {

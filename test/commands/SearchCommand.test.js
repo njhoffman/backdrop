@@ -34,6 +34,18 @@ describe('SearchCommand', () => {
     expect(source.search.secondCall.args[0].page).to.equal(2);
   });
 
+  it('credits a known duplicate\'s query to the item it duplicates', async () => {
+    const original = db.addMedia(item(1, { path: '/library/a.jpg' }));
+    const copy = db.addMedia(item(2));
+    db.markDuplicate(copy, original);
+    source.search.resolves({ items: [item(2), item(3)], nextPage: null });
+    const result = await run();
+    expect(result).to.include({ added: 1, updated: 0, duplicates: 1 });
+    expect(db.getSearchResults(result.searchId).map(m => m.id)).to.deep.equal([original, copy + 1]);
+    expect(db.getQueries(original)).to.deep.equal(['ocean']);
+    expect(db.getMedia(copy).duplicate_of).to.equal(original);
+  });
+
   it('filters undersized variants and portrait mismatches without changing result ranks', async () => {
     source.search.resolves({ items: [item(1, { variants: [{ url: 'https://example.com/small', width: 640, height: 480 }] }),
       item(2), item(3, { width: 3000, height: 4000 })], nextPage: null });

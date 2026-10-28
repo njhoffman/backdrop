@@ -48,7 +48,8 @@ describe('DownloadCommand', () => {
     const done = add(2); db.updateMedia(done, { path: '/existing.mp4' });
     const next = add(3); add(4);
     const result = await command.download({ total: 1, type: 'videos', source: 'fake' });
-    expect(result).to.deep.equal({ downloaded: [next], skipped: 1, failed: 0 });
+    expect(result).to.include({ skipped: 1, failed: 0 });
+    expect(result.downloaded).to.deep.equal([next]);
     expect(command.transfer.callCount).to.equal(1);
   });
 
@@ -68,17 +69,88 @@ describe('DownloadCommand', () => {
       await fs.writeFile(file, url);
       if (++attempts === 1) throw new Error('connection reset');
     };
-    expect(await command.download({ total: 1 })).to.deep.equal({ downloaded: [next], skipped: 0, failed: 1 });
+    const result = await command.download({ total: 1 });
+    expect(result).to.include({ skipped: 0, failed: 1 });
+    expect(result.downloaded).to.deep.equal([next]);
     expect(await fs.readdir(config.get().paths.inbox)).to.deep.equal([`remote-${next}.mp4`]);
   });
 
-  it('rejects duplicate content and cleans the new copy without affecting the existing item', async () => {
-    const first = add(); await command.download({ total: 1 });
+  it('records duplicate content, moves its queries to the original and never fetches it again', async () => {
+    const first = add();
+    const firstSearch = db.addSearch('fake', 'ocean waves');
+    db.addSearchResult(firstSearch, first, 1);
+    await command.download({ total: 1 });
     const second = add(2);
-    expect((await command.download()).failed).to.equal(1);
-    expect(db.getMedia(second).path).to.be.null;
+    const secondSearch = db.addSearch('fake', 'night city');
+    db.addSearchResult(secondSearch, second, 4);
+    db.addSearchResult(firstSearch, second, 2);
+
+    const result = await command.download();
+    expect(result).to.include({ failed: 0 });
+    expect(result.duplicates).to.deep.equal([second]);
+    expect(db.getMedia(second)).to.include({ path: null, duplicate_of: first });
+    expect(db.getQueries(first)).to.deep.equal(['ocean waves', 'night city']);
+    expect(db.getQueries(second)).to.deep.equal([]);
+    expect(db.getSearchResults(firstSearch).map(media => [media.id, media.rank])).to.deep.equal([[first, 1]]);
     expect(await fs.pathExists(db.getMedia(first).path)).to.be.true;
     expect(await fs.readdir(config.get().paths.inbox)).to.deep.equal([`remote-${first}.mp4`]);
+    expect(process.exitCode).to.not.equal(1);
+
+    command.transfer.resetHistory();
+    expect((await command.download()).duplicates).to.deep.equal([]);
+    expect(command.transfer.called).to.be.false;
+  });
+
+  it('prints each download with resolution, duration, size, path and queries', async () => {
+    const id = add();
+    db.addSearchResult(db.addSearch('fake', 'ocean waves'), id, 1);
+    const result = await command.download({ total: 1 });
+    const text = console.log.args.flat().join('\n');
+    expect(text).to.include(`#${id}  video  1920x1080  0:12  landscape  fake`);
+    expect(text).to.include(`    ${path.join(dir, 'inbox', `remote-${id}.mp4`)}`);
+    expect(text).to.include('    "ocean waves"');
+    expect(text).to.match(/Downloaded 1 \(24 B in \d+s\)  ·  duplicates 0  ·  no suitable variant 0  ·  failed 0  ·  pending 0/);
+    expect(result.bytes).to.equal(24);
+  });
+
+  describe('pending', () => {
+    it('lists pending items with the variant to download and counts by query, offline', async () => {
+      const a = add(1);
+      const b = db.addMedia({ source: 'fake', source_id: 2, kind: 'image', width: 800, height: 600, variants: [variant(800, 600)] });
+      const done = add(3); db.updateMedia(done, { path: '/existing.mp4' });
+      const ocean = db.addSearch('fake', 'ocean');
+      db.addSearchResult(ocean, a, 1); db.addSearchResult(ocean, b, 2);
+      db.addSearchResult(db.addSearch('fake', 'Ocean'), a, 1);
+      db.addSearchResult(db.addSearch('fake', 'city'), a, 3);
+
+      const result = await command.pending();
+      const text = console.log.args.flat().join('\n');
+      expect(result.items.map(media => media.id)).to.deep.equal([a, b]);
+      expect(text).to.include(`#${a}  video  3840x2160  landscape  fake  1920x1080 video/mp4`);
+      expect(text).to.include(`#${b}  image  800x600  landscape  fake  no suitable variant`);
+      expect(text).to.include('    "ocean", "city"');
+      expect(text).to.match(/"ocean"\s+2/);
+      expect(text).to.include('2 pending: 1 videos, 1 images  target 1920x1080, 1 without a suitable variant');
+      expect(command.transfer.called).to.be.false;
+    });
+
+    it('works without known monitors and filters by type and number', async () => {
+      add(1); add(2);
+      db.addMedia({ source: 'fake', source_id: 3, kind: 'image', width: 4000, height: 3000 });
+      command.monitors = async () => [];
+      const result = await command.pending({ type: 'videos', number: '1' });
+      const text = console.log.args.flat().join('\n');
+      expect(result.items).to.have.length(1);
+      expect(text).to.include('2 pending: 2 videos (showing 1)');
+      expect(text).to.include('--resolution');
+      let caught; try { await command.pending({ resolution: 'big' }); } catch (error) { caught = error; }
+      expect(caught.message).to.include('WIDTHxHEIGHT');
+    });
+
+    it('reports an empty queue', async () => {
+      expect((await command.pending()).items).to.deep.equal([]);
+      expect(console.log.args.flat().join('\n')).to.include('Nothing pending');
+    });
   });
 
   it('validates filters and does not contact sources without known monitor dimensions', async () => {

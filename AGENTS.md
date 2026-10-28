@@ -46,7 +46,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
-- **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`.
+- **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`;
+  `printMedia` (`src/utils/mediaView.js`) prints a media item with icons, size, duration, path and queries.
+  Print paths through `displayPath()` (`~` on a terminal, full path when piped).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
   Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
@@ -62,7 +64,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
-  undo (schema v4; v5 adds per-item `dim`); failed database writes restore the file. The obsolete shell-hook command has been removed.
+  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline.
 
 ## Conventions
