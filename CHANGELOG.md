@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-28
+
+### Changed
+- `backdrop stats` is split into aligned sections: the library per kind (new, kept, skipped, pending, playing
+  time, with a kept/new/skipped bar), the current rating distribution and orientation, resolutions by short
+  side, sources with average rating, top searches, the last 7 days of activity, storage used by media, inbox
+  and trash, items eligible on each monitor when the daemon runs, and the API quota. Bars appear only on a
+  terminal; piped output stays plain and aligned. Library "new" no longer counts pending items that were never
+  downloaded.
+
 ## [2.9.0] - 2026-10-28
 
 ### Added

@@ -175,6 +175,11 @@ dependency order.
 - [ ] **Wrap detection uses positions from the previous load.** (p3) [bug] `reshuffleOnWrap` compares `playlist-pos` with the position at the
       previous file load. Removals, appends and random moves between loads shift positions, so a wrap can occasionally be missed or an extra
       reshuffle run. Both are harmless; tracking the playing entry's id (`playlist_entry_id` on `start-file`) would make it exact.
+- [x] **Detailed, aligned stats.** (p2) [feature] `stats` shows sectioned tables with bars on a terminal:
+      library per kind, rating distribution, resolutions, sources, top searches, recent activity, storage, per-monitor
+      eligibility and quota (`DatabaseManager.getDetailedStats`, `formatTable` and `stackedBar` in `src/utils/output.js`).
+- [ ] **Stats walks the library directories on every run.** (p3) [perf] `directoryUsage` stats every file under media, inbox
+      and trash; fine for thousands of files, slow on network mounts. Store file sizes at download/import and sum them in SQL.
 - [ ] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
       `fzf --header-lines=1`.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),

@@ -3,7 +3,7 @@ import sinon from 'sinon';
 import {
   configureOutput, colorDepth, symbolSet, SYMBOL_SETS, out, fmt, stripAnsi, printVersion, ProgressBar,
   renderBar, gradientAt, parseHex, formatDuration, formatBytes, formatClock, icon, displayPath, formatResolution,
-  orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible
+  orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible, formatTable, stackedBar
 } from '../../src/utils/output.js';
 import { formatMediaLine, formatAdjustments } from '../../src/utils/mediaView.js';
 import { makeConfig } from '../helpers/fakes.js';
@@ -150,6 +150,21 @@ describe('output', () => {
       expect(lines[0]).to.match(/^#7 {7}▶ video {2}3840×2160 {2}1:15 {5}landscape {2}★★★ {6}pexels {4}speed 0\.8, dim 20 {2}~\/media\/remote-7\.mp4$/);
       expect(lines[1].indexOf('~/media')).to.equal(lines[0].indexOf('~/media'));
       expect(lines[1].indexOf('skipped')).to.equal(lines[0].indexOf('★★★'));
+    });
+
+    it('aligns table columns by visible width and drops columns empty in every row', () => {
+      setup();
+      expect(formatTable([[fmt.bold('a'), 10, ''], ['bbb', 2, '']], { align: ['l', 'r'] }).map(stripAnsi))
+        .to.deep.equal(['  a    10', '  bbb   2']);
+    });
+
+    it('splits stacked bars by share, keeping small segments visible', () => {
+      setup();
+      const bar = stripAnsi(stackedBar([{ value: 98, style: 'green' }, { value: 1, style: 'cyan' }, { value: 0, style: 'red' }], 10));
+      expect(bar).to.equal('██████████');
+      expect(stackedBar([{ value: 98, style: 'green' }, { value: 1, style: 'cyan' }], 10)).to.include('\x1b[36m█\x1b[39m');
+      expect(stripAnsi(stackedBar([{ value: 0, style: 'green' }], 4))).to.equal('░░░░');
+      expect(stripAnsi(stackedBar([{ value: 1, style: 'green' }, { value: 1, style: 'red' }], 4, { ascii: true }))).to.equal('####');
     });
 
     it('pads by visible width and formats stars and adjustments', () => {

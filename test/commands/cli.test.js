@@ -46,7 +46,7 @@ describe('CLI command registration', function () {
     run('stats');
     const plain = run('stats');
     expect(plain.stdout).to.not.include('\x1b[');
-    expect(plain.stdout).to.match(/^image: /m);
+    expect(plain.stdout).to.match(/^ {2}image +0 +0/m);
     expect(plain.stderr).to.equal('');
     env.FORCE_COLOR = '3';
     const forced = run('stats');

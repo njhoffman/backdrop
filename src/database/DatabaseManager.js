@@ -535,6 +535,60 @@ export class DatabaseManager {
     return { media, searches, ratings, pending, duplicates };
   }
 
+  // Breakdowns for `backdrop stats`; duplicates are left out everywhere
+  getDetailedStats({ since = null, topQueries = 5 } = {}) {
+    const all = sql => this.db.prepare(sql).all();
+    // Current rating of every rated item: its latest rating row
+    const current = `
+      SELECT r.* FROM ratings r
+      JOIN (SELECT media_id, MAX(id) AS id FROM ratings GROUP BY media_id) latest ON latest.id = r.id`;
+
+    const kinds = all(`
+      SELECT kind,
+        SUM(path IS NULL AND status = 'new') AS pending,
+        SUM(CASE WHEN path IS NOT NULL AND status != 'skipped' THEN COALESCE(duration, 0) ELSE 0 END) AS duration
+      FROM media WHERE duplicate_of IS NULL GROUP BY kind`);
+    const ratings = all(`
+      SELECT c.rating, c.orientation, COUNT(*) AS count FROM (${current}) c
+      JOIN media m ON m.id = c.media_id WHERE m.duplicate_of IS NULL
+      GROUP BY c.rating, c.orientation`);
+    // Short side, so portrait media lands in the same bucket as its landscape equivalent
+    const resolutions = all(`
+      SELECT CASE
+          WHEN MIN(width, height) >= 4320 THEN '8K'
+          WHEN MIN(width, height) >= 2160 THEN '4K'
+          WHEN MIN(width, height) >= 1440 THEN '1440p'
+          WHEN MIN(width, height) >= 1080 THEN '1080p'
+          WHEN width IS NULL OR height IS NULL THEN 'unknown'
+          ELSE 'smaller' END AS bucket,
+        COUNT(*) AS count
+      FROM media WHERE path IS NOT NULL AND status != 'skipped' AND duplicate_of IS NULL GROUP BY bucket`);
+    const sources = all(`
+      SELECT m.source, COUNT(*) AS total,
+        SUM(m.path IS NOT NULL) AS downloaded,
+        SUM(m.status = 'kept') AS kept,
+        SUM(m.status = 'skipped') AS skipped,
+        SUM(m.path IS NULL AND m.status = 'new') AS pending,
+        AVG(CASE WHEN m.status = 'kept' THEN c.rating END) AS average
+      FROM media m LEFT JOIN (${current}) c ON c.media_id = m.id
+      WHERE m.duplicate_of IS NULL GROUP BY m.source ORDER BY total DESC, m.source`);
+    const queries = this.db.prepare(`
+      SELECT MIN(s.query) AS query, COUNT(DISTINCT r.media_id) AS results,
+        COUNT(DISTINCT CASE WHEN m.status = 'kept' THEN m.id END) AS kept,
+        COUNT(DISTINCT CASE WHEN m.path IS NOT NULL THEN m.id END) AS downloaded
+      FROM searches s JOIN search_results r ON r.search_id = s.id JOIN media m ON m.id = r.media_id
+      WHERE m.duplicate_of IS NULL
+      GROUP BY LOWER(s.query) ORDER BY results DESC, query LIMIT ?`).all(topQueries);
+    const recent = since === null ? null : this.db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM media WHERE added_at >= ? AND path IS NOT NULL AND duplicate_of IS NULL) AS added,
+        (SELECT COUNT(*) FROM ratings WHERE created_at >= ?) AS ratings,
+        (SELECT COUNT(*) FROM searches WHERE created_at >= ?) AS searches`).get(since, since, since);
+    const { last: lastRating } = this.db.prepare('SELECT MAX(created_at) AS last FROM ratings').get();
+
+    return { kinds, ratings, resolutions, sources, queries, recent, lastRating };
+  }
+
   close() {
     if (this.db?.isOpen) {
       this.db.close();

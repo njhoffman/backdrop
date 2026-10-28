@@ -5,7 +5,8 @@ import os from 'os';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { ListCommand } from '../../src/commands/ListCommand.js';
-import { StatsCommand } from '../../src/commands/StatsCommand.js';
+import { StatsCommand, directoryUsage } from '../../src/commands/StatsCommand.js';
+import { statePath } from '../../src/display/Daemon.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('ListCommand and StatsCommand', () => {
@@ -78,5 +79,46 @@ describe('ListCommand and StatsCommand', () => {
     const stats = await new StatsCommand(config, db, silentLogger).showStats();
     expect(stats.media.image.kept).to.equal(1);
     expect(console.log.args.flat().join('\n')).to.include('last response').and.include('123 / 20000');
+  });
+
+  it('prints aligned stats sections with breakdowns, storage and per-monitor eligibility, plain when piped', async () => {
+    config = makeConfig({ 'paths.media': path.join(dir, 'media'), 'paths.inbox': path.join(dir, 'inbox'),
+      'paths.trash': path.join(dir, 'trash'), 'paths.runtime': dir });
+    await fs.outputFile(path.join(dir, 'media', 'a.mp4'), Buffer.alloc(2048));
+    const image = await add('image', 'pexels', 1); db.addRating(image, 3, '1920x1080');
+    const video = db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: path.join(dir, 'media', 'a.mp4'),
+      width: 1920, height: 1080, duration: 90 });
+    db.addRating(video, 1, '1080x1920');
+    db.addMedia({ kind: 'video', source: 'pexels', source_id: 3, width: 3840, height: 2160 });
+    const search = db.addSearch('pexels', 'Ocean'); db.addSearchResult(search, image, 1);
+    await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ name: 'DP-1', width: 1920, height: 1080 }] });
+
+    const stats = await new StatsCommand(config, db, silentLogger).showStats();
+
+    const text = console.log.args.map(args => args[0] ?? '').join('\n');
+    expect(stats.media.video.kept).to.equal(1);
+    expect(text).to.include([
+      'Library',
+      '  kind   total  new  kept  skipped  pending  playing time',
+      '  video      1    0     1        0        1         1m30s',
+      '  gif        0    0     0        0        0             -',
+      '  image      1    0     1        0        0             -',
+      '  total      2    0     2        0        1         1m30s'
+    ].join('\n'));
+    expect(text).to.include('  3/3      1  50%\n  2/3      0   0%\n  1/3      1  50%\n  skipped  0');
+    expect(text).to.include('  4K       1  50%\n  1440p    0   0%\n  1080p    1  50%\n  smaller  0   0%');
+    expect(text).to.include('  pexels      2           1     1        0        1         3.0\n  local       1           1     1        0        0         1.0');
+    expect(text).to.include('  "Ocean"        1           1     1');
+    expect(text).to.include('all time: 1 search');
+    expect(text).to.match(/media {2}1 files {2}2\.0 KB {2}\S+media/);
+    expect(text).to.include('  DP-1     1920x1080       1       1');
+    expect(text).to.not.match(/\x1b|█/);
+  });
+
+  it('counts files and bytes under a directory, treating a missing one as empty', async () => {
+    await fs.outputFile(path.join(dir, 'u', 'a'), 'abc');
+    await fs.outputFile(path.join(dir, 'u', 'sub', 'b'), 'de');
+    expect(await directoryUsage(path.join(dir, 'u'))).to.deep.equal({ files: 2, bytes: 5 });
+    expect(await directoryUsage(path.join(dir, 'missing'))).to.deep.equal({ files: 0, bytes: 0 });
   });
 });

@@ -290,6 +290,33 @@ export function renderBar(fraction, width, { depth = 24, stops = settings.gradie
   return `${body}\x1b[90m${'░'.repeat(empty)}\x1b[39m`;
 }
 
+// A bar split into colored segments ([{ value, style }]), e.g. kept/new/skipped; # blocks in ASCII terminals.
+// Segments with a value get at least one cell so small shares stay visible.
+export function stackedBar(segments, width, { ascii = symbolSet() === SYMBOL_SETS.ascii } = {}) {
+  const total = segments.reduce((sum, { value }) => sum + value, 0);
+  if (!total) return fmt.gray((ascii ? '-' : '░').repeat(width));
+  const cells = segments.map(({ value }) => (value ? Math.max(1, Math.round((value / total) * width)) : 0));
+  // Rounding can overshoot or fall short; take the difference from the largest segment
+  const largest = cells.indexOf(Math.max(...cells));
+  cells[largest] += width - cells.reduce((sum, count) => sum + count, 0);
+  return segments.map(({ style }, i) => fmt[style]((ascii ? '#' : '█').repeat(Math.max(0, cells[i])))).join('');
+}
+
+// Rows of cells as lines with columns aligned by visible width; align holds 'r' for right-aligned columns.
+// Columns empty in every row (such as bars in piped output) are dropped.
+export function formatTable(rows, { align = [], indent = 2, gap = 2 } = {}) {
+  const cells = rows.map(row => row.map(cell => String(cell ?? '')));
+  const widths = [];
+  for (const row of cells) {
+    row.forEach((cell, i) => { widths[i] = Math.max(widths[i] ?? 0, stripAnsi(cell).length); });
+  }
+  return cells.map(row => ' '.repeat(indent) + row.flatMap((cell, i) => {
+    if (!widths[i]) return [];
+    const pad = ' '.repeat(widths[i] - stripAnsi(cell).length);
+    return [align[i] === 'r' ? pad + cell : cell + pad];
+  }).join(' '.repeat(gap)).trimEnd());
+}
+
 function truncate(text, width) {
   if (width <= 0) return '';
   return text.length <= width ? text : `…${text.slice(text.length - width + 1)}`;
