@@ -119,13 +119,33 @@ describe('RatingCommand', () => {
     expect(db.getMedia(id).status).to.equal('skipped');
   });
 
-  it('keeps the latest rating intact when undo cannot restore its file', async () => {
+  it('keeps the latest rating intact when undo cannot restore its file, and suggests --discard', async () => {
     const original = db.getMedia(id).path;
     await command.keep();
     await fs.outputFile(original, 'collision');
     await fails(() => command.undo(), 'already exists');
+    await fails(() => command.undo(), 'backdrop undo --discard');
     expect(db.getLatestRating(id).rating).to.equal(1);
     expect(db.getMedia(id).status).to.equal('kept');
+  });
+
+  it('undo --discard steps past a stuck rating so the one before it can be undone', async () => {
+    const other = db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: path.join(dir, 'inbox', 'b.mp4'), width: 4000, height: 4000 });
+    await fs.outputFile(db.getMedia(other).path, 'b');
+    await command.rate(db.getMedia(other), 2, '1920x1080');
+    await command.keep(3);
+    const kept = db.getMedia(id).path;
+    await fs.remove(kept);
+    await fails(() => command.undo(), 'backdrop undo --discard');
+
+    await command.undo({ discard: true });
+    expect(db.getMedia(id)).to.include({ status: 'kept', path: kept });
+    expect(db.getLatestRating(id).rating).to.equal(3);
+    expect(lines.join('\n')).to.include(`Dropped the keep 3/3 of #${id} from undo history`);
+
+    await command.undo();
+    expect(db.getMedia(other)).to.include({ status: 'new', path: path.join(dir, 'inbox', 'b.mp4') });
+    expect(await command.undo()).to.be.null;
   });
 
   it('reports a committed rating as successful if playlist synchronization fails', async () => {

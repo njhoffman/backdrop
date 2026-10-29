@@ -422,7 +422,7 @@ export class Daemon {
       this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
     }
     try {
-      screen.position = await reshuffleOnWrap(screen.client, screen.position);
+      screen.entryId = await reshuffleOnWrap(screen.client, screen.entryId);
     } catch (error) {
       this.logger.warn('Failed to reshuffle playlist', { monitor: screen.monitor.name, error: error.message });
     }

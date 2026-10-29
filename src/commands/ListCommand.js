@@ -4,7 +4,7 @@ import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
 import { out, mark, displayPath } from '../utils/output.js';
-import { printMedia, formatMediaLine } from '../utils/mediaView.js';
+import { printMedia, formatMediaLine, formatMediaHeader } from '../utils/mediaView.js';
 
 export class ListCommand {
   constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
@@ -35,9 +35,12 @@ export class ListCommand {
     if (options.tag) filters.tags = options.tag;
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
     const items = this.database.findMedia(filters);
+    // --header implies --line; it is printed even with no items so fzf --header-lines=1 stays aligned
+    const line = Boolean(options.line || options.header);
+    if (options.header) out.print(formatMediaHeader());
     for (const item of items) {
       const rating = this.database.getLatestRating(item.id);
-      if (options.line) out.print(formatMediaLine(item, { rating }));
+      if (line) out.print(formatMediaLine(item, { rating }));
       else printMedia(this.database, item, { rating });
       if (options.interactive) {
         const { action } = await this.prompt([{ type: 'list', name: 'action', message: 'Action:',
@@ -49,7 +52,7 @@ export class ListCommand {
     }
     if (!items.length) out.info('No matching downloaded media');
     // One-line output is meant for fzf and tables, so no summary row joins the items
-    else if (!options.line) out.print(`${mark('info')}${items.length} item(s)`);
+    else if (!line) out.print(`${mark('info')}${items.length} item(s)`);
     if (options.playlist) {
       const file = path.resolve(this.config.expandPath(options.playlist));
       const paths = [];

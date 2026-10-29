@@ -182,10 +182,13 @@ describe('mpv integration', function () {
 
     // The next advance wraps from the last entry, so the daemon reshuffles with the playing entry first
     await waitFor(async () => (await client.getProperty('path')) === files[0]);
-    expect(await reshuffleOnWrap(client, 1)).to.equal(2);
+    const entryId = name => client.getProperty('playlist').then(playlist => playlist.find(entry => entry.filename === name).id);
+    const last = await reshuffleOnWrap(client, await entryId(files[3]));
+    expect(last).to.equal(await entryId(files[0]));
+    expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.deep.equal([files[2], files[3], files[0]]);
     expect((await control.next('TEST-1')).path).to.equal(files[2]);
     await waitFor(async () => (await client.getProperty('path')) === files[2]);
-    expect(await reshuffleOnWrap(client, 2)).to.equal(0);
+    expect(await reshuffleOnWrap(client, last)).to.equal(await entryId(files[2]));
     expect(await client.getProperty('playlist-pos')).to.equal(0);
     expect(await client.getProperty('path')).to.equal(files[2]);
     expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.have.members([files[0], files[2], files[3]]);

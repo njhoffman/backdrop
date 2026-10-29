@@ -93,17 +93,22 @@ export async function queueRandom(client, random = Math.random) {
 }
 
 // --loop-playlist replays one order on every pass, so the daemon reshuffles when playback wraps from the
-// last entry to the first. The playing entry goes back to the front so the new pass covers every entry.
-// Returns the playlist position now playing.
-export async function reshuffleOnWrap(client, previousPosition) {
-  const position = await client.getProperty('playlist-pos');
-  const count = await client.getProperty('playlist-count');
+// last entry to the first. Entries are compared by mpv's entry id rather than position, which removals,
+// appends and random moves shift between loads. The playing entry goes back to the front so the new pass
+// covers every entry. Returns the id of the entry now playing, for the next call.
+export async function reshuffleOnWrap(client, previousEntryId) {
+  const playlist = await client.getProperty('playlist');
+  const position = playlist.findIndex(entry => entry.current);
+  const entryId = playlist[position]?.id ?? null;
   // With two entries a reshuffle that keeps the playing one first changes nothing
-  if (position !== 0 || count < 3 || previousPosition !== count - 1) return position;
+  if (position !== 0 || playlist.length < 3 || previousEntryId === undefined || previousEntryId === null
+    || playlist.at(-1).id !== previousEntryId) {
+    return entryId;
+  }
   await client.command('playlist-shuffle');
-  const shuffled = await client.getProperty('playlist-pos');
+  const shuffled = (await client.getProperty('playlist')).findIndex(entry => entry.id === entryId);
   if (shuffled > 0) await client.command('playlist-move', shuffled, 0);
-  return 0;
+  return entryId;
 }
 
 // mpv brightness for a stored dim amount (0 rather than -0 when undimmed)

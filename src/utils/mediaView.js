@@ -41,6 +41,16 @@ export function formatAdjustments(media) {
 // id, kind, resolution, running time, frame rate, orientation, rating, source, adjustments, then the path
 const LINE_WIDTHS = [7, 7, 9, 7, 8, 9, 7, 8, 17];
 
+const LINE_COLUMNS = ['id', 'kind', 'size', 'time', 'fps', 'orient', 'rating', 'source', 'adjust', 'path'];
+
+// Column names for --line output, aligned like the lines on a terminal and tab-separated when piped,
+// for fzf --header-lines=1
+export function formatMediaHeader() {
+  if (!isInteractive()) return LINE_COLUMNS.join('\t');
+  return LINE_COLUMNS.map((name, index) => (index < LINE_WIDTHS.length ? padVisible(fmt.dim(name), LINE_WIDTHS[index]) : fmt.dim(name)))
+    .join('  ').trimEnd();
+}
+
 // One line per item for fzf or a table. Aligned and styled on a terminal; tab-separated when piped
 // (fzf --delimiter '\t'), keeping colors only with FORCE_COLOR (fzf --ansi). Empty fields stay in place.
 export function formatMediaLine(media, { rating } = {}) {

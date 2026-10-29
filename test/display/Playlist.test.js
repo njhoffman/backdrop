@@ -266,30 +266,45 @@ describe('Playlist', () => {
   });
 
   describe('reshuffleOnWrap', () => {
+    // Entries with mpv ids; current marks the one playing
+    const entries = (ids, current) => ids.map(id => ({ id, filename: `/m/${id}`, ...(id === current ? { current: true } : {}) }));
+
     it('reshuffles when playback wraps from the last entry, keeping the playing one first', async () => {
-      const client = new FakeMpvClient({ 'playlist-pos': 0, 'playlist-count': 4 });
+      const client = new FakeMpvClient({ playlist: entries([5, 6, 7, 8], 5) });
       client.command = async function (...args) {
-        if (args[0] === 'playlist-shuffle') this.properties['playlist-pos'] = 2;
+        if (args[0] === 'playlist-shuffle') this.properties.playlist = entries([7, 6, 5, 8], 5);
         return FakeMpvClient.prototype.command.apply(this, args);
       };
 
-      expect(await reshuffleOnWrap(client, 3)).to.equal(0);
+      expect(await reshuffleOnWrap(client, 8)).to.equal(5);
       expect(client.commands.filter(cmd => !cmd[0].startsWith('get_'))).to.deep.equal([
         ['playlist-shuffle'], ['playlist-move', 2, 0]
       ]);
     });
 
     it('leaves the order alone for other moves, first loads and short playlists', async () => {
-      for (const [properties, previous] of [
-        [{ 'playlist-pos': 2, 'playlist-count': 4 }, 1],
-        [{ 'playlist-pos': 0, 'playlist-count': 4 }, 1],
-        [{ 'playlist-pos': 0, 'playlist-count': 4 }, undefined],
-        [{ 'playlist-pos': 0, 'playlist-count': 2 }, 1]
+      for (const [playlist, previous, playing] of [
+        [entries([5, 6, 7, 8], 7), 6, 7],
+        [entries([5, 6, 7, 8], 5), 6, 5],
+        [entries([5, 6, 7, 8], 5), undefined, 5],
+        [entries([5, 6], 5), 6, 5]
       ]) {
-        const client = new FakeMpvClient(properties);
-        expect(await reshuffleOnWrap(client, previous)).to.equal(properties['playlist-pos']);
+        const client = new FakeMpvClient({ playlist });
+        expect(await reshuffleOnWrap(client, previous)).to.equal(playing);
         expect(client.commands.every(cmd => cmd[0] === 'get_property')).to.be.true;
       }
+    });
+
+    it('is not fooled by positions that shifted since the last load', async () => {
+      // The previous item was at the last position when it loaded, but an append moved it to the middle:
+      // the first entry playing next is an ordinary advance after a jump, not a wrap
+      const client = new FakeMpvClient({ playlist: entries([5, 6, 7, 8, 9], 5) });
+      expect(await reshuffleOnWrap(client, 8)).to.equal(5);
+      expect(client.commands.every(cmd => cmd[0] === 'get_property')).to.be.true;
+      // A removal before the playing entry shifts it to the front without a wrap either
+      const removed = new FakeMpvClient({ playlist: entries([6, 7, 8], 6) });
+      expect(await reshuffleOnWrap(removed, 5)).to.equal(6);
+      expect(removed.commands.every(cmd => cmd[0] === 'get_property')).to.be.true;
     });
   });
 });

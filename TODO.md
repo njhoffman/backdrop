@@ -82,9 +82,10 @@ Reviewed: 2026-10-28
       Decide whether to accept a 0-100 dim amount mapped to negative brightness, or raw brightness -100 to 100; consider lowering `saturation` with it.
       `backdrop current`/`status` should show non-zero dim. Cheaper than xwinwrap `-o` opacity, which needs a compositor blending every frame.
       Done: `backdrop dim` takes a 0-100 amount (brightness = -dim), steps clamp to the range; schema v5 `media.dim`; saturation left alone.
-- [ ] **Undo can get stuck.** (p3) [bug] `undo` only ever targets the globally latest rating. If that rating cannot be undone (its skip was purged, or
+- [x] **Undo can get stuck.** (p3) [bug] `undo` only ever targets the globally latest rating. If that rating cannot be undone (its skip was purged, or
       `download --upgrade` renamed the file so `rated_path` no longer matches), every later `undo` fails the same way. Update `rated_path` when an upgrade renames a file,
       and let undo report and step past an unrestorable rating (or add `undo --discard`).
+      Done: ratings have a `final` flag (v9) that undo skips; purge sets it, `download --upgrade` renames recorded paths, and `undo --discard` drops a stuck rating.
 - [x] **A missing configured monitor blocks startup.** (p2) [bug] `selectMonitors()` throws when a name in `display.monitors` is not active, so
       `Daemon.start()` fails if that monitor is unplugged at boot, and `targetResolution()` makes search/download fail too. Hotplug already tolerates it at runtime.
       Start with the configured monitors that are present (warn about the rest) and size downloads for those, failing only when none are active.
@@ -197,16 +198,19 @@ Reviewed: 2026-10-28
       line (tab-separated when piped, for fzf); `--random` / `display.order: random` move a random entry next. Bare `backdrop` runs `status`.
 - [x] **Playlist repeated one order every pass.** (p2) [bug] `--loop-playlist=inf` replayed the startup shuffle forever. The daemon now reshuffles
       on wrap (`reshuffleOnWrap` in `src/display/Playlist.js`).
-- [ ] **Wrap detection uses positions from the previous load.** (p3) [bug] `reshuffleOnWrap` compares `playlist-pos` with the position at the
+- [x] **Wrap detection uses positions from the previous load.** (p3) [bug] `reshuffleOnWrap` compares `playlist-pos` with the position at the
       previous file load. Removals, appends and random moves between loads shift positions, so a wrap can occasionally be missed or an extra
       reshuffle run. Both are harmless; tracking the playing entry's id (`playlist_entry_id` on `start-file`) would make it exact.
+      Done: the daemon compares mpv entry ids, so removals, appends and random moves no longer affect it.
 - [x] **Detailed, aligned stats.** (p2) [feature] `stats` shows sectioned tables with bars on a terminal:
       library per kind, rating distribution, resolutions, sources, top searches, recent activity, storage, per-monitor
       eligibility and quota (`DatabaseManager.getDetailedStats`, `formatTable` and `stackedBar` in `src/utils/output.js`).
-- [ ] **Stats walks the library directories on every run.** (p3) [perf] `directoryUsage` stats every file under media, inbox
+- [x] **Stats walks the library directories on every run.** (p3) [perf] `directoryUsage` stats every file under media, inbox
       and trash; fine for thousands of files, slow on network mounts. Store file sizes at download/import and sum them in SQL.
-- [ ] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
+      Won't fix (2026-10-28): 0.09s for 169 files (776 MB); stored sizes would need upkeep everywhere, drift from disk and miss files the database does not know about.
+- [x] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
       `fzf --header-lines=1`.
+      Done: `--header` on `current`, `list-images` and `list-videos` (implies `--line`), aligned on a terminal and tab-separated when piped.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
@@ -214,9 +218,10 @@ Reviewed: 2026-10-28
       keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
       Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
-- [ ] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
+- [x] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.
       Partly done: `backdrop completion zsh` (generated from the Commander definitions, `src/commands/CompletionCommand.js`). Bash remains.
+      Done: `backdrop completion bash`, generated from the same definitions as zsh, without needing the bash-completion package.
 - [ ] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag

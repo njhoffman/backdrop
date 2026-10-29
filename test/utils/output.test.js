@@ -5,7 +5,7 @@ import {
   renderBar, gradientAt, parseHex, formatDuration, formatBytes, formatClock, icon, displayPath, formatResolution,
   orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible, formatTable, stackedBar
 } from '../../src/utils/output.js';
-import { formatMediaLine, formatAdjustments } from '../../src/utils/mediaView.js';
+import { formatMediaLine, formatMediaHeader, formatAdjustments } from '../../src/utils/mediaView.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 const TRUECOLOR = { TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8' };
@@ -150,6 +150,9 @@ describe('output', () => {
       expect(lines[0]).to.match(/^#7 {7}▶ video {2}3840×2160 {2}1:15 {5}29\.97fps {2}landscape {2}★★★ {6}pexels {4}speed 0\.8, dim 20 {2}~\/media\/remote-7\.mp4$/);
       expect(lines[1].indexOf('~/media')).to.equal(lines[0].indexOf('~/media'));
       expect(lines[1].indexOf('skipped')).to.equal(lines[0].indexOf('★★★'));
+      const header = stripAnsi(formatMediaHeader());
+      expect(header.indexOf('rating')).to.equal(lines[0].indexOf('★★★'));
+      expect(header.indexOf('path')).to.equal(lines[0].indexOf('~/media'));
     });
 
     it('aligns table columns by visible width and drops columns empty in every row', () => {

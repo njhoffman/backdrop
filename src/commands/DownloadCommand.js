@@ -258,6 +258,7 @@ export class DownloadCommand {
         if (!latest || latest.path !== media.path) throw new Error('Media changed during upgrade');
         this.database.updateMedia(media.id, { path: file, sha256, kind: info.kind,
           width: info.width, height: info.height, duration: info.duration, fps: info.fps ?? null });
+        if (file !== media.path) this.database.renameRatingPaths(media.id, path.basename(media.path), path.basename(file));
       });
       state = 'committed';
       await fs.remove(backup).catch(error => this.logger.warn('Could not remove replaced file', { path: backup, error: error.message }));

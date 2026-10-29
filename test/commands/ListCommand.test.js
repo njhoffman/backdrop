@@ -66,6 +66,15 @@ describe('ListCommand and StatsCommand', () => {
     expect(printed[0].split('\t')).to.deep.equal([`#${id}`, 'image', '3840x2160', '', '', 'landscape', '2/3', 'local', '', db.getMedia(id).path]);
   });
 
+  it('prints a header row above the lines with --header, which implies --line', async () => {
+    const id = await add('image', 'local', 1);
+    await command.listImages({ header: true });
+    const printed = console.log.getCalls().map(call => call.args[0]);
+    expect(printed[0].split('\t')).to.deep.equal(['id', 'kind', 'size', 'time', 'fps', 'orient', 'rating', 'source', 'adjust', 'path']);
+    expect(printed[1].split('\t')[0]).to.equal(`#${id}`);
+    expect(printed).to.have.length(2);
+  });
+
   it('rejects invalid filters', async () => {
     for (const options of [{ number: '2abc' }, { minRating: '4' }, { rated: 'diagonal' }, { status: 'bad' }]) {
       let caught; try { await command.listImages(options); } catch (error) { caught = error; }

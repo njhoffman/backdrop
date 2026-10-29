@@ -46,7 +46,9 @@ describe('trash purge', () => {
     expect(result.purged.map(m => m.id)).to.deep.equal([old]);
     expect(await fs.pathExists(file)).to.be.false;
     expect(db.getMedia(old)).to.include({ path: null, status: 'skipped' });
-    expect(db.getLatestRating(old).rating).to.equal(0);
+    expect(db.getLatestRating(old)).to.include({ rating: 0, final: 1 });
+    // Undo skips the purged item and reaches the recent skip, whose file still exists
+    expect(db.getLastRating().media_id).to.equal(recent);
     expect(await fs.pathExists(db.getMedia(recent).path)).to.be.true;
     expect((await run()).purged).to.deep.equal([]);
   });

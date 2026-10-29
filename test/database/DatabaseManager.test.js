@@ -80,7 +80,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 1');
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('PRAGMA user_version = 1');
         first.close();
 
         const second = new DatabaseManager();
@@ -99,7 +99,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 4'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('PRAGMA user_version = 4'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(id).dim).to.equal(0);
         second.setDim(id, 40);
@@ -115,7 +115,7 @@ describe('DatabaseManager', () => {
           tags: ['Waves crashing on rocks'], original_name: 'remote-1.mp4' }));
         const local = first.addMedia({ kind: 'image', source: 'local', source_id: 1, original_name: 'MistyForest_4k-2160p.JPG' });
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 6'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('PRAGMA user_version = 6'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(remote).fps).to.be.null;
         expect(second.getTags(remote)).to.deep.equal(['aerial', 'ocean', 'waves', 'crashing', 'rocks']);
@@ -143,7 +143,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 3'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
         second.addRating(id, 0, '1920x1080', { previousPath: '/media/a.mp4', ratedPath: '/trash/a.mp4' });
@@ -151,6 +151,39 @@ describe('DatabaseManager', () => {
         expect(second.undoLastRating().media.status).to.equal('kept');
         second.close();
       });
+    });
+  });
+
+  describe('final ratings', () => {
+    it('leaves final ratings out of undo and moves recorded paths along with a renamed file', () => {
+      const id = db.addMedia({ kind: 'video', source: 'pexels', source_id: 'video:1', path: '/media/remote-1.mov' });
+      const first = db.addRating(id, 2, '1920x1080', { previousPath: '/inbox/remote-1.mov', ratedPath: '/media/remote-1.mov' });
+      const second = db.addRating(id, 3, '1920x1080');
+      db.finalizeRating(second);
+      expect(db.getLastRating().id).to.equal(first);
+      expect(db.undoLastRating(first).media.status).to.equal('kept');
+      expect(db.getLastRating()).to.be.null;
+
+      const again = db.addRating(id, 1, null, { previousPath: '/media/remote-1.mov', ratedPath: '/elsewhere/other.mov' });
+      db.renameRatingPaths(id, 'remote-1.mov', 'remote-1.mp4');
+      expect(db.getLastRating()).to.include({ id: again, previous_path: '/media/remote-1.mp4', rated_path: '/elsewhere/other.mov' });
+      db.finalizeRatings(id);
+      expect(db.getLastRating()).to.be.null;
+    });
+
+    it('marks the ratings of items already purged as final on upgrade', async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'backdrop-db-v8-'));
+      const dbPath = path.join(dir, 'v8.db');
+      const first = new DatabaseManager(); first.initialize(dbPath);
+      const purged = first.addMedia(video({ source_id: 1 }));
+      first.addRating(purged, 0, null); first.updateMedia(purged, { path: null });
+      const kept = first.addMedia(video({ source_id: 2, path: '/m/k.mp4' }));
+      first.addRating(kept, 2, null);
+      first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('PRAGMA user_version = 8'); first.close();
+      const second = new DatabaseManager(); second.initialize(dbPath);
+      expect(second.getLastRating().media_id).to.equal(kept);
+      second.close();
+      await fs.remove(dir);
     });
   });
 

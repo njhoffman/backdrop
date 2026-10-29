@@ -53,6 +53,7 @@ backdrop keep 3             # rate the current item on the monitor under the poi
 backdrop keep 3 --next      # rate it, then play the next item
 backdrop skip               # move it to trash and advance all monitors playing it
 backdrop undo               # undo the last rating and file move, across CLI invocations
+backdrop undo --discard     # drop a rating that can no longer be restored, so undo reaches the one before
 backdrop go-next            # advance after checking the current item has a rating
 backdrop search-videos 'ocean waves'  # also search-images; requires the source API key
 backdrop pending             # media saved by searches, with its queries and the size it would download
@@ -63,6 +64,7 @@ backdrop list-videos --tag ocean waves  # items tagged with every word
 backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
 backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line per item
+backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
@@ -71,12 +73,14 @@ backdrop rescan             # probe videos without a frame rate; --all re-checks
 backdrop stop
 ```
 
-Shell completion for zsh (commands, options, monitor names from the running daemon, and fixed values such
-as modes and types):
+Shell completion for zsh and bash (commands, options, monitor names from the running daemon, and fixed values
+such as modes and types):
 
 ```bash
 backdrop completion zsh > "${fpath[1]}/_backdrop"  # then restart zsh; or in ~/.zshrc after compinit:
 source <(backdrop completion zsh)
+backdrop completion bash > ~/.local/share/bash-completion/completions/backdrop  # or in ~/.bashrc:
+source <(backdrop completion bash)
 ```
 
 Regenerate it after upgrading so new commands and options are included.
@@ -88,7 +92,9 @@ is not imported again. It works by ID when the daemon is stopped, too.
 Commands that switch what plays (`next`, `prev`, `skip`, `go-next`, `keep --next`, `mode`) print the item the
 target monitor now plays and send a desktop notification through `notify-send` (duration and frame rate for
 videos, rating, monitor, tags); `display.notify: all` has the daemon notify on every change, including automatic
-advances, and `off` disables it. `keep` and `undo` print the rated item with its new rating. `--line` (also on
+advances, and `off` disables it. `keep` and `undo` print the rated item with its new rating. Undo skips items whose file was purged from
+trash; when the latest rating cannot be restored for another reason (a file moved or deleted by hand), the
+error suggests `undo --discard`, which drops it from undo history and leaves the item as it is. `--line` (also on
 `current`, `list-images` and `list-videos`) prints one line per item instead: id, kind, resolution, running time,
 frame rate, orientation, rating, source, speed/dim and path. On a terminal the columns are styled and aligned;
 piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` (for `fzf --ansi`).

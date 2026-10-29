@@ -118,29 +118,44 @@ export class RatingCommand {
     out.warn(`Rating change saved; playlist update failed: ${error.message}`);
   }
 
-  async undo() {
+  // discard drops the latest rating from undo history instead, leaving the item and its files as they are,
+  // for a rating whose file can no longer be restored
+  async undo({ discard = false } = {}) {
     const rating = this.database.getLastRating();
     if (!rating) {
       out.info('No rating to undo');
       return null;
     }
+    if (discard) {
+      this.database.finalizeRating(rating.id);
+      out.success(`Dropped the ${rating.rating ? `keep ${rating.rating}/3` : 'skip'} of #${rating.media_id} from undo history; the item is unchanged`);
+      return this.database.getMedia(rating.media_id);
+    }
+    // Failures that retrying cannot fix would otherwise block every later undo
+    const stuck = message => new Error(`${message}; \`backdrop undo --discard\` drops this rating from undo history`);
     const previous = this.database.getMedia(rating.media_id);
     if (!previous?.path) {
-      throw new Error(previous?.status === 'skipped' && rating.rating === 0
+      throw stuck(previous?.status === 'skipped' && rating.rating === 0
         ? `#${rating.media_id} was purged from trash; its file cannot be restored`
-        : 'Rating item has no downloaded file to restore');
+        : `#${rating.media_id} has no downloaded file to restore`);
     }
     const preceding = this.database.getLatestRating(previous.id, rating.id);
     const { paths } = this.config.get();
     const directory = preceding ? (preceding.rating === 0 ? paths.trash : paths.media) : paths.inbox;
     const target = rating.previous_path ?? path.join(directory, path.basename(previous.path));
-    if (rating.rated_path && previous.path !== rating.rated_path) throw new Error('Media path changed since this rating');
+    if (rating.rated_path && previous.path !== rating.rated_path) throw stuck(`#${previous.id} moved since this rating`);
     let result;
-    await this.moveAndCommit(previous.path, target, () => {
-      if (this.database.getMedia(previous.id)?.path !== previous.path) throw new Error('Media changed while undoing; try again');
-      result = this.database.undoLastRating(rating.id);
-      this.database.updateMedia(previous.id, { path: target });
-    });
+    try {
+      await this.moveAndCommit(previous.path, target, () => {
+        if (this.database.getMedia(previous.id)?.path !== previous.path) throw new Error('Media changed while undoing; try again');
+        result = this.database.undoLastRating(rating.id);
+        this.database.updateMedia(previous.id, { path: target });
+      });
+    } catch (error) {
+      // A missing file or an occupied destination: the file system, not a race
+      if (error.code === 'ENOENT' || /already exists/.test(error.message)) throw stuck(error.message);
+      throw error;
+    }
     if (result.media.status === 'skipped') {
       try { await this.control.removeMedia(previous); } catch (error) { this.playbackWarning(error); }
     } else {

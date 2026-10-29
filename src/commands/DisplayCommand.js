@@ -4,7 +4,7 @@ import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
-import { printMedia, printPlaying, formatMediaLine, formatAdjustments, formatPlaybackCost } from '../utils/mediaView.js';
+import { printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
@@ -129,7 +129,8 @@ export class DisplayCommand {
       return;
     }
 
-    if (options.line && media) {
+    if ((options.line || options.header) && media) {
+      if (options.header) out.print(formatMediaHeader());
       out.print(formatMediaLine(media, { rating }));
       return;
     }

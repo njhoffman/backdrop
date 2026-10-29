@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { tagsFor } from '../library/tags.js';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -127,6 +127,10 @@ const MIGRATIONS = [`
     hwdec TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+`, `
+  -- Final ratings stay in the history but undo skips them: their file was purged, or undo --discard dropped them
+  ALTER TABLE ratings ADD COLUMN final INTEGER NOT NULL DEFAULT 0;
+  UPDATE ratings SET final = 1 WHERE media_id IN (SELECT id FROM media WHERE path IS NULL AND status = 'skipped');
 `];
 
 export function orientationOf(resolution) {
@@ -441,11 +445,31 @@ export class DatabaseManager {
     return this.db.prepare('SELECT * FROM ratings WHERE media_id = ? AND id < ? ORDER BY id DESC LIMIT 1').get(mediaId, beforeId) ?? null;
   }
 
+  // The latest rating undo can act on; final ratings are skipped
   getLastRating() {
-    return this.db.prepare('SELECT * FROM ratings ORDER BY id DESC LIMIT 1').get() ?? null;
+    return this.db.prepare('SELECT * FROM ratings WHERE final = 0 ORDER BY id DESC LIMIT 1').get() ?? null;
   }
 
-  // Removes the most recent rating across all media and restores the item's previous status.
+  // Takes one rating, or every rating of an item, out of undo's reach without changing the item
+  finalizeRating(ratingId) {
+    this.db.prepare('UPDATE ratings SET final = 1 WHERE id = ?').run(ratingId);
+  }
+
+  finalizeRatings(mediaId) {
+    this.db.prepare('UPDATE ratings SET final = 1 WHERE media_id = ?').run(mediaId);
+  }
+
+  // After a file is renamed (download --upgrade changing the extension), points recorded rating paths with
+  // the old name at the new one, so undo still finds the file and restores it under its current name
+  renameRatingPaths(mediaId, oldName, newName) {
+    const rename = recorded => (recorded && path.basename(recorded) === oldName ? path.join(path.dirname(recorded), newName) : recorded);
+    const update = this.db.prepare('UPDATE ratings SET previous_path = ?, rated_path = ? WHERE id = ?');
+    for (const rating of this.db.prepare('SELECT id, previous_path, rated_path FROM ratings WHERE media_id = ?').all(mediaId)) {
+      update.run(rename(rating.previous_path), rename(rating.rated_path), rating.id);
+    }
+  }
+
+  // Removes the most recent rating undo can act on and restores the item's previous status.
   // Returns { rating, media } so the caller can move the file back, or null if nothing to undo.
   undoLastRating(expectedId = null) {
     return this.transaction(() => {

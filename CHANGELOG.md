@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-10-28
+
+### Added
+- `backdrop completion bash` prints a bash completion script with the same commands, options and values as
+  the zsh one, including monitor names from the running daemon; it does not need the bash-completion package.
+- `--header` on `current`, `list-images` and `list-videos` prints column names above the `--line` output
+  (and implies `--line`), for `fzf --header-lines=1`.
+- `undo --discard` drops the latest rating from undo history without touching the item, for a rating whose
+  file can no longer be restored; the error for such a rating suggests it.
+
+### Fixed
+- Undo no longer gets stuck on an item whose file was purged from trash: purged items' ratings are skipped
+  (existing ones are marked on upgrade), so undo reaches the rating before them.
+- `download --upgrade` that changes a file's extension no longer breaks undo of that item's ratings.
+- The daemon reshuffles the playlist exactly when playback wraps, even after skips, imports or random picks
+  moved entries since the previous item started.
+
+### Changed
+- The database schema is v9 (ratings undo should skip); it upgrades automatically.
+
 ## [2.12.0] - 2026-10-28
 
 ### Added

@@ -85,6 +85,7 @@ class BackdropApp {
     const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
     const noRandomOption = ['--no-random', 'Play the next item in the shuffled order'];
     const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
+    const headerOption = ['--header', 'Print column names above --line output (implies --line; fzf --header-lines=1)'];
 
     program
       .name('backdrop')
@@ -117,6 +118,7 @@ class BackdropApp {
       .description('Show the item playing on a monitor')
       .option(...monitorOption)
       .option(...lineOption)
+      .option(...headerOption)
       .action(this.action(options => display.current(options)));
 
     program
@@ -195,7 +197,8 @@ class BackdropApp {
       .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.skip(options)));
     program.command('undo')
       .description('Undo the latest rating and restore its file location')
-      .action(this.action(() => rating.undo()));
+      .option('--discard', 'Drop the latest rating from undo history without changing the item, when it cannot be restored')
+      .action(this.action(options => rating.undo(options)));
     program.command('go-next')
       .description('Advance the target monitor after checking the current item has a rating, and show the new item')
       .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.goNext(options)));
@@ -238,6 +241,7 @@ class BackdropApp {
         .option('--playlist <file>', 'Export matching existing files as M3U')
         .option('--interactive', 'Browse and rate the listed media')
         .option(...lineOption)
+        .option(...headerOption)
         .action(this.action(options => list[method](options)));
     }
     program.command('stats').description('Show library totals and last observed API quota')

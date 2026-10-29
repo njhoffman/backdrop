@@ -10,6 +10,7 @@ import { makeConfig } from '../helpers/fakes.js';
 
 const capture = fileURLToPath(new URL('../helpers/zsh-capture.zsh', import.meta.url));
 const hasZsh = spawnSync('zsh', ['-fc', 'zmodload zsh/zpty'], { encoding: 'utf8' }).status === 0;
+const hasBash = spawnSync('bash', ['-c', 'compgen -W x'], { encoding: 'utf8' }).status === 0;
 
 function program() {
   const root = new Command('backdrop');
@@ -18,8 +19,9 @@ function program() {
   root.command('speed').description('Set the playing video\'s speed').argument('<value>', 'speed');
   root.command('list-videos').description('List videos')
     .option('--rated [orientation]', 'Kept items [any]').option('--source <name>', 'Source')
-    .option('--keywords <words...>', 'Words').option('--no-local', 'Exclude local');
+    .option('--keywords <words...>', 'Words').option('--no-local', 'Exclude local').option('--playlist <file>', 'M3U');
   root.command('import').argument('[dirs...]', 'Directories');
+  root.command('keep').argument('[rating]', 'Rating').option('-m, --monitor <name>', 'Target monitor').option('-n, --next', 'Then next');
   return root;
 }
 
@@ -48,7 +50,7 @@ describe('CompletionCommand', () => {
   });
 
   it('rejects unsupported shells', () => {
-    expect(() => command.generate('fish', program(), '1.0.0')).to.throw('Unsupported shell: fish (available: zsh)');
+    expect(() => command.generate('fish', program(), '1.0.0')).to.throw('Unsupported shell: fish (available: zsh, bash)');
   });
 
   (hasZsh ? describe : describe.skip)('in zsh', function () {
@@ -70,9 +72,53 @@ describe('CompletionCommand', () => {
     });
 
     it('completes commands, argument values and monitors from the daemon state', () => {
-      expect(complete('backdrop ')).to.deep.equal(['import', 'list-videos', 'mode', 'next', 'speed']);
+      expect(complete('backdrop ')).to.deep.equal(['import', 'keep', 'list-videos', 'mode', 'next', 'speed']);
       expect(complete('backdrop mode ')).to.deep.equal(['image', 'toggle', 'video']);
       expect(complete('backdrop next --monitor ')).to.deep.equal(['DP-1', 'HDMI-0']);
+    });
+  });
+
+  (hasBash ? describe : describe.skip)('in bash', () => {
+    let script;
+    beforeEach(async () => {
+      script = path.join(dir, 'backdrop.bash');
+      await fs.outputFile(script, command.generate('bash', program(), '1.0.0'));
+      await fs.outputJson(path.join(dir, 'run', 'state.json'), { pid: 1, monitors: [{ name: 'DP-1' }, { name: 'HDMI-0' }] });
+      await fs.outputFile(path.join(dir, 'work', 'list.m3u'), '');
+      await fs.outputFile(path.join(dir, 'work', 'notes.txt'), '');
+      await fs.ensureDir(path.join(dir, 'work', 'walls'));
+    });
+    // Runs the completion function for a command line the way bash would and returns the candidates
+    const complete = line => {
+      const words = line.split(' ');
+      const result = spawnSync('bash', ['-c', `source "$1"; COMP_WORDS=("\${@:2}"); COMP_CWORD=$((\${#COMP_WORDS[@]} - 1)); _backdrop; printf '%s\\n' "\${COMPREPLY[@]}"`,
+        'bash', script, ...words], { cwd: path.join(dir, 'work'), encoding: 'utf8' });
+      expect(result.stderr).to.equal('');
+      return result.stdout.split('\n').filter(Boolean).sort();
+    };
+
+    it('passes bash syntax checking', () => {
+      expect(spawnSync('bash', ['-n', script]).status).to.equal(0);
+    });
+
+    it('completes commands, options, values by position and monitors from the daemon state', () => {
+      expect(complete('backdrop ')).to.include.members(['import', 'keep', 'mode', '--help', '--version']);
+      expect(complete('backdrop mo')).to.deep.equal(['mode']);
+      expect(complete('backdrop mode ')).to.deep.equal(['image', 'toggle', 'video']);
+      expect(complete('backdrop keep ')).to.deep.equal(['1', '2', '3']);
+      expect(complete('backdrop keep --monitor ')).to.deep.equal(['DP-1', 'HDMI-0']);
+      expect(complete('backdrop keep -m DP-1 ')).to.deep.equal(['1', '2', '3']);
+      expect(complete('backdrop keep -n ')).to.deep.equal(['1', '2', '3']);
+      expect(complete('backdrop keep 2 ')).to.deep.equal([]);
+      expect(complete('backdrop keep --')).to.deep.equal(['--help', '--monitor', '--next']);
+      expect(complete('backdrop list-videos --source ')).to.deep.equal(['local', 'pexels', 'unsplash']);
+      expect(complete('backdrop list-videos --rated ')).to.deep.equal(['any', 'landscape', 'portrait']);
+    });
+
+    it('completes directories for import and m3u files for --playlist', async () => {
+      expect(complete('backdrop import ')).to.deep.equal(['walls']);
+      expect(complete('backdrop import walls ')).to.deep.equal(['walls']);
+      expect(complete('backdrop list-videos --playlist ')).to.deep.equal(['list.m3u', 'walls']);
     });
   });
 });

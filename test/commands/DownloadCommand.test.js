@@ -206,6 +206,19 @@ describe('DownloadCommand', () => {
       expect((await fs.readdir(path.dirname(file))).sort()).to.deep.equal(['remote-1.mp4']);
     });
 
+    it('points rating paths at the new name when the upgrade changes the extension, so undo still works', async () => {
+      db.deleteMedia(media.id);
+      const mov = path.join(dir, 'media', 'remote-2.mov');
+      await fs.outputFile(mov, 'small original');
+      const id = db.addMedia({ source: 'fake', source_id: 2, kind: 'video', width: 1280, height: 720, path: mov, variants: upgradeVariants });
+      db.addRating(id, 2, '1920x1080', { previousPath: path.join(dir, 'inbox', 'remote-2.mov'), ratedPath: mov });
+
+      expect((await command.download({ upgrade: true })).upgraded).to.deep.equal([id]);
+      const mp4 = path.join(dir, 'media', 'remote-2.mp4');
+      expect(db.getMedia(id).path).to.equal(mp4);
+      expect(db.getLatestRating(id)).to.include({ previous_path: path.join(dir, 'inbox', 'remote-2.mp4'), rated_path: mp4 });
+    });
+
     it('skips media that already fits, local and skipped items, and items without a larger variant', async () => {
       const local = db.addMedia({ source: 'local', source_id: 9, kind: 'video', width: 640, height: 360, path: '/m/local-9.mp4' });
       const big = db.addMedia({ source: 'fake', source_id: 2, kind: 'video', width: 1920, height: 1080, path: '/m/big.mp4', variants: upgradeVariants });

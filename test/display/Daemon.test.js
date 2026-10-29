@@ -406,9 +406,10 @@ describe('Daemon', () => {
 
     it('reshuffles the playlist when playback wraps to its first entry', async () => {
       const { client } = clients[0];
-      Object.assign(client.properties, { 'playlist-pos': 2, 'playlist-count': 3 });
+      const playlist = playing => ['a', 'b', 'c'].map((name, index) => ({ id: index + 1, filename: `/m/${name}.png`, current: name === playing }));
+      client.properties.playlist = playlist('c');
       await load(0, '/m/c.png');
-      client.properties['playlist-pos'] = 0;
+      client.properties.playlist = playlist('a');
       await load(0, '/m/a.png');
 
       expect(client.commands.filter(cmd => cmd[0] === 'playlist-shuffle')).to.have.length(1);

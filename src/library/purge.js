@@ -38,7 +38,11 @@ export async function purgeTrash({ config, database, logger, dryRun = false, unl
         continue;
       }
     }
-    database.updateMedia(media.id, { path: null });
+    // The file is gone for good, so undo must not stop at this item's ratings
+    database.transaction(() => {
+      database.updateMedia(media.id, { path: null });
+      database.finalizeRatings(media.id);
+    });
     result.purged.push(media);
   }
   if (result.purged.length && !dryRun) {
