@@ -1,0 +1,103 @@
+/*
+ * backdrop menu, panel style: a preview banner, the file name and details above a grid of buttons.
+ * backdrop sets the preview image and grid size per menu with -theme-str. Override anything through
+ * menu.rofi_args, e.g. [-theme-str, '@import "~/.config/rofi/colors/onedark.rasi"'].
+ */
+
+configuration {
+    show-icons: false;
+}
+
+* {
+    background:     #1e222a;
+    background-alt: #2a2f3a;
+    foreground:     #c8ccd4;
+    muted:          #7f8796;
+    selected:       #61afef;
+    active:         #98c379;
+    urgent:         #e06c75;
+    font:           "JetBrainsMono Nerd Font 10";
+    background-color: transparent;
+    text-color:       @foreground;
+}
+
+window {
+    location:         center;
+    anchor:           center;
+    width:            760px;
+    border:           1px solid;
+    border-color:     @background-alt;
+    border-radius:    12px;
+    background-color: @background;
+}
+
+mainbox {
+    orientation: vertical;
+    children:    [ "preview", "inputbar", "message", "listview" ];
+    padding:     16px;
+    spacing:     12px;
+}
+
+/* 728x200: the window's inner width, and a height set through padding because an empty box has no
+   height of its own. backdrop crops thumbnails to this shape and sets the image; without one the banner
+   stays an empty frame. */
+preview {
+    expand:           false;
+    padding:          100px 0px;
+    border-radius:    8px;
+    background-color: @background-alt;
+}
+
+inputbar {
+    children: [ "prompt" ];
+}
+
+prompt {
+    font:       "JetBrainsMono Nerd Font Bold 12";
+    text-color: @foreground;
+}
+
+message {
+    padding:          10px 12px;
+    border-radius:    8px;
+    background-color: @background-alt;
+}
+
+textbox {
+    text-color: @muted;
+    markup:     true;
+}
+
+listview {
+    columns:      6;
+    lines:        2;
+    flow:         horizontal;
+    fixed-height: true;
+    cycle:        true;
+    scrollbar:    false;
+    layout:       vertical;
+    spacing:      8px;
+}
+
+element {
+    orientation:      vertical;
+    padding:          4px;
+    border-radius:    8px;
+    background-color: @background-alt;
+    cursor:           pointer;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align:   0.5;
+    text-color:       inherit;
+    cursor:           inherit;
+}
+
+element normal.active,
+element alternate.active   { text-color: @active; }
+element normal.urgent,
+element alternate.urgent   { text-color: @urgent; }
+element selected.normal    { background-color: @selected; text-color: @background; }
+element selected.active    { background-color: @active;   text-color: @background; }
+element selected.urgent    { background-color: @urgent;   text-color: @background; }

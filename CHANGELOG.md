@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-10-28
+
+### Added
+- A `panel` style for `backdrop menu`, now the default: a preview banner of the item (a video frame or the
+  image, cached under `~/.cache/backdrop/thumbnails`), its file name, resolution, duration, frame rate,
+  rating and tags, and a grid of icon buttons with the current rating highlighted. `menu.style: minimal` or
+  `--style minimal` keeps the list.
+- Icons on every menu entry in both styles.
+
+### Changed
+- In the menu, keep 1, keep 2 and keep 3 all play the next item after rating; "keep 3 and next" is gone.
+
 ## [2.14.0] - 2026-10-28
 
 ### Added

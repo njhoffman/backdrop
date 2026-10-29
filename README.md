@@ -65,7 +65,7 @@ backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
 backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line per item
 backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
-backdrop menu               # rofi menu for the item under the pointer (--stay keeps it open)
+backdrop menu               # rofi panel for the item under the pointer: preview, details, buttons (--style minimal)
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id

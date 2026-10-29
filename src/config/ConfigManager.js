@@ -50,6 +50,7 @@ export class ConfigManager {
       media: path.join(dataDir, 'media'),
       trash: path.join(dataDir, 'trash'),
       inbox: path.join(cacheDir, 'inbox'),
+      thumbnails: path.join(cacheDir, 'thumbnails'),
       runtime: runtimeDir()
     };
   }
@@ -82,6 +83,7 @@ export class ConfigManager {
         mpv_args: []
       },
       menu: {
+        style: 'panel',
         rofi_args: []
       },
       screensaver: {

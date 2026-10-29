@@ -165,10 +165,13 @@ bindsym $mod+b exec --no-startup-id backdrop menu
 bindsym $mod+Shift+b exec --no-startup-id backdrop menu --stay
 ```
 
-`backdrop menu` opens rofi for the monitor under the pointer: keep 1-3, skip, undo, next, prev, go-next,
-speed and dim steps, the mode switch and the target monitor. It closes after one action (`--stay` keeps
-it open until Escape); speed and dim stay in their submenu for repeated steps. Errors appear as desktop
-notifications, since a keybinding has no terminal. Theme it with `menu.rofi_args` in the config.
+`backdrop menu` opens rofi for the monitor under the pointer: keep 1-3 (each then plays the next item),
+skip, undo, prev, next, random, go-next, speed and dim steps, the mode switch and the target monitor. The
+default `panel` style shows a preview banner, the file name, resolution, duration and rating above a grid
+of icon buttons, with the current rating highlighted; `menu.style: minimal` (or `--style minimal`) is a
+plain list with icons. It closes after one action (`--stay` keeps it open until Escape); speed and dim
+stay in their submenu for repeated steps. Errors appear as desktop notifications, since a keybinding has
+no terminal. Pass rofi options with `menu.rofi_args`, e.g. a `-theme-str` to recolor the panel.
 
 ## Current limitations and troubleshooting
 

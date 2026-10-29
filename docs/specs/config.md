@@ -32,7 +32,8 @@ display:
   mpv_args: []             # extra mpv options; mpv runs with --no-config, so mpv.conf is not read
 
 menu:
-  rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme, mytheme.rasi]
+  style: panel             # panel (share/rofi/backdrop-panel.rasi: preview banner, details, button grid) or minimal
+  rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme-str, 'window { width: 900px; }']
 
 screensaver:
   idle_minutes: 10

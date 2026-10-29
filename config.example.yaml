@@ -26,6 +26,7 @@ display:
   mpv_args: [--hwdec=vaapi]          # extra mpv options (your mpv.conf is not loaded)
 
 menu:
+  style: panel                       # panel (preview banner and buttons) or minimal (a list)
   rofi_args: []                      # extra rofi options for backdrop menu, e.g. [-theme, ~/.config/rofi/backdrop.rasi]
 
 screensaver:

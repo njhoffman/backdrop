@@ -25,7 +25,8 @@ function valueSpecs(sources) {
     'speed:value': { words: ['reset', '0.5', '0.8', '1', '+0.1', '-0.1'] },
     'dim:value': { words: ['reset', '0', '20', '40', '+10', '-10'] },
     'import:dirs': { directories: true },
-    'completion:shell': { words: SHELLS }
+    'completion:shell': { words: SHELLS },
+    'menu:--style': { words: ['panel', 'minimal'] }
   };
 }
 

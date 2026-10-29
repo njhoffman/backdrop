@@ -180,6 +180,7 @@ class BackdropApp {
       .description('Open a rofi menu to rate, navigate, adjust and switch the item under the pointer')
       .option(...monitorOption)
       .option('--stay', 'Reopen the menu after each action until dismissed')
+      .option('--style <style>', 'panel (buttons and a preview) or minimal (a list); default: menu.style')
       .action(this.action(options => menu.open(options)));
 
     program
