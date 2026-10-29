@@ -214,6 +214,19 @@ describe('RatingCommand', () => {
     expect(lines.indexOf(rated)).to.be.below(lines.findIndex(line => line.includes('nothing playing')));
   });
 
+  it('prints one JSON document: the rated item, or with --next or skip the item now playing', async () => {
+    await command.keep(2, { json: true });
+    expect(JSON.parse(lines.at(-1)).item).to.include({ id, status: 'kept' });
+    lines.length = 0;
+    await command.keep(3, { json: true, next: true });
+    const documents = lines.filter(line => line.startsWith('{'));
+    expect(documents).to.have.length(1);
+    expect(JSON.parse(documents[0])).to.deep.equal({ monitor: { name: 'DP-1', width: 1080, height: 1920 }, item: null });
+    lines.length = 0;
+    await command.skip({ json: true, random: false });
+    expect(JSON.parse(lines.filter(line => line.startsWith('{'))[0])).to.have.keys('monitor', 'item');
+  });
+
   it('undo shows the restored item with the rating it has again', async () => {
     await command.keep(2);
     await command.keep(3);

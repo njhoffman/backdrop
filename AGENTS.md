@@ -72,7 +72,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
   rating and display commands from `rofi -dmenu`; it builds menus as data and draws them with `panelView`
   (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`)
-  or `minimalView`; tests inject a `view`.
+  or `minimalView`; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
+  format in `docs/specs/json.md`) and `setJsonOutput`, which moves every other stdout line to stderr.
+  `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts.
 
 ## Conventions
 

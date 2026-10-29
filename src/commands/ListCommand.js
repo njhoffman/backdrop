@@ -4,7 +4,7 @@ import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
 import { out, mark, displayPath } from '../utils/output.js';
-import { printMedia, formatMediaLine, formatMediaHeader } from '../utils/mediaView.js';
+import { printMedia, formatMediaLine, formatMediaHeader, wantsJson, mediaJson } from '../utils/mediaView.js';
 
 export class ListCommand {
   constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
@@ -34,7 +34,14 @@ export class ListCommand {
     if (options.keywords) filters.keywords = options.keywords;
     if (options.tag) filters.tags = options.tag;
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
+    const json = wantsJson(options);
+    if (json && options.interactive) throw new Error('--json cannot be combined with --interactive');
     const items = this.database.findMedia(filters);
+    if (json) {
+      out.json(items.map(item => mediaJson(this.database, item)));
+      await this.exportPlaylist(items, options);
+      return items;
+    }
     // --header implies --line; it is printed even with no items so fzf --header-lines=1 stays aligned
     const line = Boolean(options.line || options.header);
     if (options.header) out.print(formatMediaHeader());
@@ -53,14 +60,18 @@ export class ListCommand {
     if (!items.length) out.info('No matching downloaded media');
     // One-line output is meant for fzf and tables, so no summary row joins the items
     else if (!line) out.print(`${mark('info')}${items.length} item(s)`);
-    if (options.playlist) {
-      const file = path.resolve(this.config.expandPath(options.playlist));
-      const paths = [];
-      for (const item of items) if (await fs.pathExists(item.path)) paths.push(item.path);
-      if (paths.some(filePath => /[\r\n]/.test(filePath))) throw new Error('Cannot export paths containing line breaks');
-      await fs.outputFile(file, `#EXTM3U\n${paths.join('\n')}${paths.length ? '\n' : ''}`);
-      out.success(`Playlist: ${displayPath(file)} (${paths.length} files)`);
-    }
+    await this.exportPlaylist(items, options);
     return items;
+  }
+
+  // --playlist: the listed items whose files exist, as M3U
+  async exportPlaylist(items, options) {
+    if (!options.playlist) return;
+    const file = path.resolve(this.config.expandPath(options.playlist));
+    const paths = [];
+    for (const item of items) if (await fs.pathExists(item.path)) paths.push(item.path);
+    if (paths.some(filePath => /[\r\n]/.test(filePath))) throw new Error('Cannot export paths containing line breaks');
+    await fs.outputFile(file, `#EXTM3U\n${paths.join('\n')}${paths.length ? '\n' : ''}`);
+    out.success(`Playlist: ${displayPath(file)} (${paths.length} files)`);
   }
 }

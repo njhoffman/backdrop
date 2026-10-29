@@ -18,7 +18,8 @@ import { DownloadCommand } from './commands/DownloadCommand.js';
 import { ListCommand } from './commands/ListCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
 import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
-import { configureOutput, out, printVersion } from './utils/output.js';
+import { SystemdCommand } from './commands/SystemdCommand.js';
+import { configureOutput, out, printVersion, setJsonOutput } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
 
@@ -83,17 +84,21 @@ class BackdropApp {
     const list = new ListCommand(this.config, this.database, this.logger);
     const stats = new StatsCommand(this.config, this.database, this.logger);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
+    const systemd = new SystemdCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
     const noRandomOption = ['--no-random', 'Play the next item in the shuffled order'];
     const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
     const headerOption = ['--header', 'Print column names above --line output (implies --line; fzf --header-lines=1)'];
+    const jsonOption = ['--json', 'Print JSON on stdout (docs/specs/json.md); other messages go to stderr'];
 
     program
       .name('backdrop')
       .description(description)
       .version(version)
-      .exitOverride();
+      .exitOverride()
+      // With --json, stdout carries only the JSON document
+      .hook('preAction', (root, command) => setJsonOutput(command.opts().json));
 
     program
       .command('daemon')
@@ -113,13 +118,14 @@ class BackdropApp {
     program
       .command('status')
       .description('Show the mode and what each monitor is playing')
-      .action(this.action(() => display.status()));
+      .option(...jsonOption)
+      .action(this.action(options => display.status(options)));
 
     program
       .command('current')
       .description('Show the item playing on a monitor')
       .option(...monitorOption)
-      .option(...lineOption)
+      .option(...lineOption).option(...jsonOption)
       .option(...headerOption)
       .action(this.action(options => display.current(options)));
 
@@ -129,14 +135,14 @@ class BackdropApp {
       .option(...monitorOption)
       .option(...randomOption)
       .option(...noRandomOption)
-      .option(...lineOption)
+      .option(...lineOption).option(...jsonOption)
       .action(this.action(options => display.next(options)));
 
     program
       .command('prev')
       .description('Play the previous item and show it')
       .option(...monitorOption)
-      .option(...lineOption)
+      .option(...lineOption).option(...jsonOption)
       .action(this.action(options => display.prev(options)));
 
     program
@@ -194,24 +200,24 @@ class BackdropApp {
       .description('Switch between video and image wallpapers')
       .argument('[mode]', 'video, image or toggle', 'toggle')
       .option(...monitorOption)
-      .option(...lineOption)
+      .option(...lineOption).option(...jsonOption)
       .action(this.action((mode, options) => display.mode(mode, options)));
 
     program.command('keep')
       .description('Keep the current item with a rating from 1 to 3')
       .argument('[rating]', 'Rating', '1').option(...monitorOption)
-      .option('-n, --next', 'Then play the next item and show it').option(...randomOption).option(...noRandomOption).option(...lineOption)
+      .option('-n, --next', 'Then play the next item and show it').option(...randomOption).option(...noRandomOption).option(...lineOption).option(...jsonOption)
       .action(this.action((value, options) => rating.keep(value, options)));
     program.command('skip')
       .description('Move the current item to trash, advance every monitor playing it and show the new item')
-      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.skip(options)));
+      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).option(...jsonOption).action(this.action(options => rating.skip(options)));
     program.command('undo')
       .description('Undo the latest rating and restore its file location')
       .option('--discard', 'Drop the latest rating from undo history without changing the item, when it cannot be restored')
       .action(this.action(options => rating.undo(options)));
     program.command('go-next')
       .description('Advance the target monitor after checking the current item has a rating, and show the new item')
-      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.goNext(options)));
+      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).option(...jsonOption).action(this.action(options => rating.goNext(options)));
 
     for (const [name, method] of [['search-images', 'searchImages'], ['search-videos', 'searchVideos']]) {
       program.command(name).description('Search a source and save matching media for download')
@@ -250,7 +256,7 @@ class BackdropApp {
         .option('--tag <tags...>', 'Only items with all of these tags (shown under each item)')
         .option('--playlist <file>', 'Export matching existing files as M3U')
         .option('--interactive', 'Browse and rate the listed media')
-        .option(...lineOption)
+        .option(...lineOption).option(...jsonOption)
         .option(...headerOption)
         .action(this.action(options => list[method](options)));
     }
@@ -259,6 +265,8 @@ class BackdropApp {
     program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
+    program.command('systemd').description('Print a systemd user unit for the daemon, e.g. backdrop systemd > ~/.config/systemd/user/backdrop.service')
+      .action(this.action(() => systemd.print(version)));
   }
 
   async run() {
@@ -266,7 +274,7 @@ class BackdropApp {
     this.setupCommands();
     // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);
-    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion'].includes(arg))) printVersion(version);
+    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'systemd'].includes(arg))) printVersion(version);
     try {
       // Bare `backdrop` shows the status
       await program.parseAsync(args.length ? process.argv : [...process.argv, 'status']);

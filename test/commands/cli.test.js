@@ -22,7 +22,7 @@ describe('CLI command registration', function () {
     run('stats');
     const result = run('--help');
     expect(result.status).to.equal(0);
-    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge', 'dim', 'rescan', 'menu']) {
+    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge', 'dim', 'rescan', 'menu', 'systemd']) {
       expect(result.stdout).to.include(command);
     }
     expect(result.stderr).to.equal('');
@@ -73,6 +73,14 @@ describe('CLI command registration', function () {
     expect(run('undo').status).to.equal(0);
     expect(run('purge', '--dry-run').status).to.equal(0);
     expect(run('rescan').status).to.equal(0);
+    // --json keeps stdout to the JSON document alone
+    const json = run('list-images', '--json');
+    expect(json.status).to.equal(0);
+    expect(JSON.parse(json.stdout)).to.deep.equal([]);
+    expect(JSON.parse(run('status', '--json').stdout)).to.deep.include({ mode: 'video', monitors: [] });
+    const unit = run('systemd');
+    expect(unit.status).to.equal(0);
+    expect(unit.stdout).to.match(/^# backdrop \S+ daemon as a systemd user service/);
     const result = run('bogus');
     expect(result.status).to.equal(1);
     expect(result.stderr).to.include('unknown command');

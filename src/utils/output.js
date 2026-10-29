@@ -126,14 +126,23 @@ function status(tone, stream, message) {
 
 let activeBar = null;
 
+// With --json, stdout carries only the JSON document; every other line moves to stderr
+let jsonOutput = false;
+
+export function setJsonOutput(enabled) {
+  jsonOutput = Boolean(enabled);
+}
+
 function write(method, line) {
   activeBar?.clear();
-  console[method](line);
+  console[jsonOutput && method === 'log' ? 'error' : method](line);
   activeBar?.render(true);
 }
 
 export const out = {
   print: (line = '') => write('log', line),
+  // The --json document, always on stdout
+  json: value => console.log(JSON.stringify(value, null, 2)),
   success: message => write('log', status('success', settings.stdout, message)),
   info: message => write('log', status('info', settings.stdout, message)),
   // Informational messages that should not mix with a command's stdout, e.g. first-run notices

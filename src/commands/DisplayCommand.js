@@ -4,7 +4,9 @@ import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
-import { printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost } from '../utils/mediaView.js';
+import {
+  printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
+} from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
@@ -73,7 +75,11 @@ export class DisplayCommand {
     out.success('Stopped');
   }
 
-  async status() {
+  async status(options = {}) {
+    if (wantsJson(options)) {
+      out.json(await this.statusJson());
+      return;
+    }
     const state = await readState(this.runtimeDir);
     out.row('Mode', fmt.cyan(getMode(this.database)));
     if (!state) {
@@ -105,6 +111,25 @@ export class DisplayCommand {
     }
   }
 
+  // status --json: cpu_percent and decoder are the daemon's recent samples, null until it has them
+  async statusJson() {
+    const state = await readState(this.runtimeDir);
+    const mode = getMode(this.database);
+    const { allow_upscale: allowUpscale } = this.config.get().display;
+    const monitors = [];
+    for (const monitor of state?.monitors ?? []) {
+      const { media, rating } = await this.control.current(monitor.name).catch(() => ({}));
+      monitors.push({
+        name: monitor.name, width: monitor.width, height: monitor.height,
+        eligible: eligibleMedia(this.database, mode, monitor, { allowUpscale }).length,
+        cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
+        decoder: formatDecoder(monitor.hwdec) || null,
+        playing: media ? mediaJson(this.database, media, rating) : null
+      });
+    }
+    return { mode, daemon: { running: Boolean(state), pid: state?.pid ?? null }, monitors };
+  }
+
   adjustments(media) {
     const text = formatAdjustments(media);
     return text ? fmt.dim(`  ${text}`) : '';
@@ -123,7 +148,12 @@ export class DisplayCommand {
   }
 
   async current(options) {
+    const json = wantsJson(options);
     const { monitor, path, media, rating } = await this.control.current(options.monitor);
+    if (json) {
+      out.json(playingJson(this.database, { monitor, media, rating }));
+      return;
+    }
     if (!path) {
       out.info(`${monitor.name}: nothing playing`);
       return;
@@ -172,6 +202,11 @@ export class DisplayCommand {
     const running = await this.control.state({ required: false });
     const playing = running ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
     const { mode, counts } = playing?.result ?? await this.control.mode(requested);
+    // --json: the new mode and what the target monitor now plays, or a null monitor when stopped
+    if (wantsJson(options)) {
+      out.json({ mode, ...(playing ? playingJson(this.database, playing) : { monitor: null, item: null }) });
+      return;
+    }
     out.row('Mode', fmt.cyan(mode));
     for (const [name, count] of Object.entries(running ? counts : {})) {
       out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);

@@ -219,15 +219,17 @@ Reviewed: 2026-10-28
       Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
       Done: `backdrop menu` built into the CLI (no script, so `--json` was not needed); closes after an action, `--stay`
       keeps it open; errors go to critical notifications; `menu.rofi_args` for theming; i3 example in GETTING_STARTED.md.
-- [ ] **No `--json` output.** (p3) [feature] Scripts parse `--line` today. `current`, `status` and the lists could print JSON
+- [x] **No `--json` output.** (p3) [feature] Scripts parse `--line` today. `current`, `status` and the lists could print JSON
       (the media row, rating, tags, playback cost, monitor) for status bars and custom menus; split from the rofi menu item.
+      Done: `--json` on `status`, `current`, the lists and the navigation commands; curated item format in `docs/specs/json.md`; other output moves to stderr.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
 - [x] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.
       Partly done: `backdrop completion zsh` (generated from the Commander definitions, `src/commands/CompletionCommand.js`). Bash remains.
       Done: `backdrop completion bash`, generated from the same definitions as zsh, without needing the bash-completion package.
-- [ ] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
+- [x] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.
+      Done: `backdrop systemd` prints a unit with the generating shell's PATH (node through `/usr/bin/env`), restart on failure and a start limit; i3 activation documented in GETTING_STARTED.md.
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.

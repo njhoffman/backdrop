@@ -1,3 +1,4 @@
+import { basename } from 'path';
 import {
   out, fmt, icon, mark, describeMedia, displayPath, formatQueries, formatRating, formatStars, formatResolution,
   formatClock, formatFps, formatCpu, formatDecoder, formatDuration, orientationName, padVisible, isInteractive
@@ -71,9 +72,59 @@ export function formatMediaLine(media, { rating } = {}) {
     .join('  ').trimEnd();
 }
 
-// What a monitor plays after a command switched it: the full block, or one line with --line
-export function printPlaying(database, { monitor, path, media, rating }, { line = false } = {}) {
-  if (!path) {
+// --json and the one-line or header forms are different outputs, so asking for both is a mistake
+export function wantsJson(options = {}) {
+  if (options.json && (options.line || options.header)) throw new Error('--json cannot be combined with --line or --header');
+  return Boolean(options.json);
+}
+
+const round = (value, digits = 1) => (Number.isFinite(value) ? Math.round(value * 10 ** digits) / 10 ** digits : null);
+
+// The --json form of a media item; fields are documented in docs/specs/json.md. Internal columns
+// (variants, hashes, duplicate links) stay out so scripts do not depend on the schema.
+export function mediaJson(database, media, rating = database.getLatestRating(media.id)) {
+  const stats = database.getPlaybackStats(media.id);
+  return {
+    id: media.id,
+    kind: media.kind,
+    source: media.source,
+    path: media.path,
+    file: media.source === 'local' && media.original_name ? media.original_name : (media.path ? basename(media.path) : null),
+    width: media.width,
+    height: media.height,
+    orientation: orientationName(media) ?? null,
+    duration: media.kind === 'image' ? null : media.duration,
+    fps: media.kind === 'image' ? null : media.fps ?? null,
+    speed: media.speed,
+    dim: media.dim,
+    status: media.status,
+    rating: rating ? { value: rating.rating, orientation: rating.orientation, at: rating.created_at } : null,
+    tags: database.getTags(media.id),
+    queries: database.getQueries(media.id),
+    playback: stats ? {
+      cpu_percent: stats.seconds ? round((stats.cpu_seconds / stats.seconds) * 100) : null,
+      seconds: Math.round(stats.seconds),
+      decoder: formatDecoder(stats.hwdec) || null
+    } : null,
+    author: media.author ?? null,
+    page_url: media.page_url ?? null
+  };
+}
+
+// What a monitor plays, for --json: the item is null when nothing from the library is playing
+export function playingJson(database, { monitor, media, rating }) {
+  return {
+    monitor: { name: monitor.name, width: monitor.width, height: monitor.height },
+    item: media ? mediaJson(database, media, rating) : null
+  };
+}
+
+// What a monitor plays after a command switched it: the full block, one line with --line, or --json
+export function printPlaying(database, { monitor, path, media, rating }, options = {}) {
+  const { line = false } = options;
+  if (wantsJson(options)) {
+    out.json(playingJson(database, { monitor, media, rating }));
+  } else if (!path) {
     out.info(`${monitor.name}: nothing playing`);
   } else if (!media) {
     out.print(displayPath(path));

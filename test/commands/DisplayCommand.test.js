@@ -81,6 +81,38 @@ describe('DisplayCommand', () => {
       expect(text).to.include('cpu 4.0% over 12m30s, software');
     });
 
+    it('prints status, current and a stopped mode switch as JSON', async () => {
+      const id = addVideo(1, 1920, 1080, { duration: 12, fps: 30 });
+      db.addRating(id, 3, '1920x1080');
+      db.addPlaybackSample(id, 100, 5); db.setDecoder(id, 'vaapi');
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 2.345, hwdec: 'vaapi' }] });
+      const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: db.getLatestRating(id) };
+      command.control = { current: async () => playing };
+
+      await command.status({ json: true });
+      const status = JSON.parse(lines.at(-1));
+      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid } });
+      expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi' });
+      expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
+      expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
+
+      await command.current({ json: true });
+      const current = JSON.parse(lines.at(-1));
+      expect(current.monitor).to.deep.equal({ name: 'DP-1', width: 1920, height: 1080 });
+      expect(current.item.rating.value).to.equal(3);
+
+      command.control = { current: async () => ({ monitor: monitors[0], path: null, media: null, rating: null }) };
+      await command.current({ json: true });
+      expect(JSON.parse(lines.at(-1)).item).to.be.null;
+
+      await fs.remove(statePath(dir));
+      command = new DisplayCommand(config, db, silentLogger);
+      await command.mode('image', { json: true });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
+      await command.status({ json: true });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null }, monitors: [] });
+    });
+
     it('says the daemon waits when none of its configured monitors is active', async () => {
       await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [] });
       await command.status();

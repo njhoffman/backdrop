@@ -3,7 +3,7 @@ import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { queueRandom, randomOrder } from '../display/Playlist.js';
 import { out, fmt } from '../utils/output.js';
-import { printMedia, printPlaying, formatMediaLine, formatAdjustments } from '../utils/mediaView.js';
+import { printMedia, printPlaying, formatMediaLine, formatAdjustments, wantsJson, mediaJson } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
 
 export class RatingCommand {
@@ -25,9 +25,12 @@ export class RatingCommand {
     const { media, monitor } = await this.current(options);
     // Checked before rating so a bad display.order does not leave a rating without the advance
     const random = options.next && this.random(options);
+    const json = wantsJson(options);
     const rated = await this.rate(media, Number(rating), `${monitor.width}x${monitor.height}`);
-    // With --next the rated item gets one line, so the full block below it is the item now playing
-    this.printRated(rated, { line: options.line || options.next });
+    // With --next the rated item gets one line, so the full block below it is the item now playing;
+    // with --json only one document is printed: the rated item, or with --next the item now playing
+    if (json && !options.next) out.json({ item: mediaJson(this.database, rated) });
+    else if (!json) this.printRated(rated, { line: options.line || options.next });
     if (options.next) await this.advance(monitor, options, random);
     return rated;
   }

@@ -75,6 +75,23 @@ describe('ListCommand and StatsCommand', () => {
     expect(printed).to.have.length(2);
   });
 
+  it('prints a JSON array of items with --json, and rejects it with --line or --interactive', async () => {
+    const id = await add('image', 'local', 1); db.addRating(id, 2, '1920x1080');
+    await command.listImages({ json: true });
+    const items = JSON.parse(console.log.lastCall.args[0]);
+    expect(items).to.have.length(1);
+    expect(items[0]).to.include({ id, kind: 'image', source: 'local', width: 3840, height: 2160, orientation: 'landscape',
+      duration: null, fps: null, status: 'kept', playback: null });
+    expect(items[0].rating).to.deep.include({ value: 2, orientation: 'landscape' });
+    expect(items[0]).to.not.have.any.keys('variants', 'sha256', 'duplicate_of');
+    await command.listVideos({ json: true });
+    expect(JSON.parse(console.log.lastCall.args[0])).to.deep.equal([]);
+    for (const options of [{ json: true, line: true }, { json: true, header: true }, { json: true, interactive: true }]) {
+      let caught; try { await command.listImages(options); } catch (error) { caught = error; }
+      expect(caught.message).to.include('--json cannot be combined');
+    }
+  });
+
   it('rejects invalid filters', async () => {
     for (const options of [{ number: '2abc' }, { minRating: '4' }, { rated: 'diagonal' }, { status: 'bad' }]) {
       let caught; try { await command.listImages(options); } catch (error) { caught = error; }

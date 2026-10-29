@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-10-28
+
+### Added
+- `--json` on `status`, `current`, `list-images`, `list-videos` and the commands that switch what plays
+  (`next`, `prev`, `skip`, `go-next`, `keep`, `mode`) prints one JSON document on stdout for scripts and
+  status bars; every other message goes to stderr. The format is documented in `docs/specs/json.md`.
+- `backdrop systemd` prints a systemd user unit for the daemon, with your PATH written in so node and the
+  external tools are found; it restarts the daemon on failure. GETTING_STARTED.md shows how to start it from i3.
+
 ## [2.15.0] - 2026-10-28
 
 ### Added

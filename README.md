@@ -47,6 +47,7 @@ backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
 backdrop current --line     # one aligned line; tab-separated when piped
+backdrop current --json     # JSON for scripts (also status, the lists and navigation commands)
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
 backdrop import ~/walls     # or specific folders
 backdrop keep 3             # rate the current item on the monitor under the pointer
@@ -83,6 +84,12 @@ source <(backdrop completion zsh)
 backdrop completion bash > ~/.local/share/bash-completion/completions/backdrop  # or in ~/.bashrc:
 source <(backdrop completion bash)
 ```
+
+To run the daemon as a systemd user service instead of from i3, see
+[GETTING_STARTED.md](GETTING_STARTED.md#start-automatically-with-i3) and `backdrop systemd`.
+
+`--json` on `status`, `current`, the lists and the commands that switch what plays prints one JSON document
+on stdout, with every other message on stderr; the fields are in [docs/specs/json.md](docs/specs/json.md).
 
 Regenerate it after upgrading so new commands and options are included.
 

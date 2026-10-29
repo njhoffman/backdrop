@@ -153,6 +153,23 @@ Add this to your i3 config:
 exec --no-startup-id backdrop start
 ```
 
+Or run the daemon as a systemd user service, which restarts it if it crashes and logs to the journal.
+`backdrop systemd` prints a unit with your current PATH and the paths to node and backdrop written in:
+
+```bash
+backdrop systemd > ~/.config/systemd/user/backdrop.service
+systemctl --user daemon-reload && systemctl --user enable backdrop
+```
+
+i3 does not start `graphical-session.target`, and the service needs your X display, so replace the
+`exec` line above with:
+
+```i3
+exec --no-startup-id systemctl --user import-environment DISPLAY XAUTHORITY && systemctl --user start backdrop
+```
+
+`backdrop stop` still works and is not restarted; `journalctl --user -u backdrop` shows the daemon's output.
+
 Optional keybindings:
 
 ```i3
