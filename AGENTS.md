@@ -43,9 +43,11 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Sections: `sources`, `library`, `display`, `screensaver`, plus `paths` that default to XDG locations and
   are not written to the file. `save()` writes only user-set values (`userConfig`), never env credentials.
 - **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
-  `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
+  `media_tags` (derived by `src/library/tags.js`), `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
+- **Notifications** (`src/utils/notify.js`) - `notify-send` per monitor; tests swap the exec through
+  `configureNotify` in `test/helpers/setup.js`, so nothing is sent.
 - **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`;
   `printMedia` (`src/utils/mediaView.js`) prints a media item with icons, size, duration, path and queries.
   Print paths through `displayPath()` (`~` on a terminal, full path when piped).
@@ -54,7 +56,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
   runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
   xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
-  trash daily (`src/library/purge.js`) and reshuffles the playlist on wrap; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
+  trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
+  `loop-file`/`end`, records frame rates from mpv and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
@@ -64,7 +67,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
-  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`); failed database writes restore the file. The obsolete shell-hook command has been removed.
+  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline.
 
 ## Conventions

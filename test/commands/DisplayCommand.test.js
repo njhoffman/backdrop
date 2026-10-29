@@ -88,14 +88,16 @@ describe('DisplayCommand', () => {
 
       expect(command.control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
       expect(lines[0]).to.equal(`#${id}  video  1920x1080  landscape  3/3 landscape  DP-1`);
-      expect(lines.at(-1)).to.equal(`#${id}\tvideo\t1920x1080\t\tlandscape\t3/3\tlocal\t\t/m/1.mp4`);
+      expect(lines.at(-1)).to.equal(`#${id}\tvideo\t1920x1080\t\t\tlandscape\t3/3\tlocal\t\t/m/1.mp4`);
+      await command.next({ random: false });
+      expect(command.control.next.lastCall.args[1]).to.deep.equal({ random: false });
     });
 
     it('prints one line for current --line', async () => {
       const id = addVideo(1, 1920, 1080);
       command.control = { current: async () => ({ monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null }) };
       await command.current({ line: true });
-      expect(lines).to.deep.equal([`#${id}\tvideo\t1920x1080\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
+      expect(lines).to.deep.equal([`#${id}\tvideo\t1920x1080\t\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
     });
 
     it('shows what the target monitor plays after a mode switch, or only the mode when stopped', async () => {
@@ -110,7 +112,7 @@ describe('DisplayCommand', () => {
 
       expect(switchTo.firstCall.args[0]).to.equal('DP-2');
       expect(lines).to.deep.equal(['Mode: video', '  DP-1: 1 items', '  DP-2: no videos at this resolution',
-        `#${id}\tvideo\t1920x1080\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
+        `#${id}\tvideo\t1920x1080\t\t\tlandscape\tunrated\tlocal\t\t/m/1.mp4`]);
 
       lines.length = 0;
       command.control = { state: async () => null, mode: async () => ({ mode: 'image', running: false, counts: {} }) };

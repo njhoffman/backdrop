@@ -5,7 +5,8 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
-  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, reshuffleOnWrap, randomOrder
+  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, reshuffleOnWrap, randomOrder,
+  playbackLimits, validVideoDuration
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
 
@@ -114,8 +115,41 @@ describe('Playlist', () => {
   });
 
   it('sets per-mode mpv properties', () => {
-    expect(modeProperties('video', 300)).to.deep.equal({ 'loop-file': 'inf' });
-    expect(modeProperties('image', 60)).to.deep.equal({ 'loop-file': 'no', 'image-display-duration': 60 });
+    expect(modeProperties('video', 300)).to.deep.equal({ 'loop-file': 'inf', end: 'none' });
+    expect(modeProperties('image', 60)).to.deep.equal({ 'loop-file': 'no', end: 'none', 'image-display-duration': 60 });
+  });
+
+  describe('playbackLimits', () => {
+    const video = (duration, speed = 1, kind = 'video') => ({ kind, duration, speed });
+
+    it('loops short videos as many whole times as fit in the timeout', () => {
+      expect(playbackLimits(video(18), 600)).to.deep.equal({ 'loop-file': 32, end: 'none' });
+      expect(playbackLimits(video(2, 1, 'gif'), 10)).to.deep.equal({ 'loop-file': 4, end: 'none' });
+      expect(playbackLimits(video(400), 600)).to.deep.equal({ 'loop-file': 'no', end: 'none' });
+      expect(playbackLimits(video(600), 600)).to.deep.equal({ 'loop-file': 'no', end: 'none' });
+    });
+
+    it('counts playback speed, so a slowed video loops fewer times', () => {
+      expect(playbackLimits(video(20, 0.5), 600)).to.deep.equal({ 'loop-file': 14, end: 'none' });
+    });
+
+    it('stops videos longer than the timeout at the timeout, in media time', () => {
+      expect(playbackLimits(video(1800), 600)).to.deep.equal({ 'loop-file': 'no', end: '600' });
+      expect(playbackLimits(video(1800, 0.5), 600)).to.deep.equal({ 'loop-file': 'no', end: '300' });
+    });
+
+    it('loops forever with no timeout or an unknown duration, and only clears end for images', () => {
+      expect(playbackLimits(video(18), 0)).to.deep.equal({ 'loop-file': 'inf', end: 'none' });
+      expect(playbackLimits(video(null), 600)).to.deep.equal({ 'loop-file': 'inf', end: 'none' });
+      expect(playbackLimits({ kind: 'image', duration: null, speed: 1 }, 600)).to.deep.equal({ end: 'none' });
+      expect(playbackLimits(null, 600)).to.deep.equal({ end: 'none' });
+    });
+
+    it('rejects a negative or non-numeric video_duration', () => {
+      expect(validVideoDuration(0)).to.equal(0);
+      expect(() => validVideoDuration(-1)).to.throw('display.video_duration');
+      expect(() => validVideoDuration('10m')).to.throw('display.video_duration');
+    });
   });
 
   describe('appendToPlaylist', () => {
@@ -180,6 +214,7 @@ describe('Playlist', () => {
       expect(lines).to.have.members(['/m/1', '/m/2']);
       expect(client.commands).to.deep.equal([
         ['set_property', 'loop-file', 'no'],
+        ['set_property', 'end', 'none'],
         ['set_property', 'image-display-duration', 45],
         ['loadlist', playlistPath, 'replace']
       ]);
@@ -206,7 +241,8 @@ describe('Playlist', () => {
       expect(randomOrder({ order: 'shuffle' })).to.be.false;
       expect(randomOrder({ order: 'shuffle' }, true)).to.be.true;
       expect(randomOrder({ order: 'random' })).to.be.true;
-      expect(randomOrder({})).to.be.false;
+      expect(randomOrder({})).to.be.true;
+      expect(randomOrder({ order: 'random' }, false)).to.be.false;
       expect(() => randomOrder({ order: 'sorted' })).to.throw('display.order must be shuffle or random, not sorted');
     });
 

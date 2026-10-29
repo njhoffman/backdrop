@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-28
+
+### Added
+- Desktop notifications through `notify-send` when a command changes what plays (`next`, `prev`, `skip`,
+  `go-next`, `keep --next`, `mode`): id, kind and resolution, then duration and frame rate for videos, the
+  rating, the monitor and tags. `display.notify: all` has the daemon notify on every change, including
+  automatic advances; `off` disables them.
+- `display.video_duration` (default 600 seconds) moves on to the next video after about that long. Short
+  videos loop as many whole times as fit, so they never stop mid-clip; longer ones stop at the limit. `0`
+  keeps looping each video forever, as before.
+- Tags: words from a local file's name, the source page and its description are stored for every item
+  (existing items are tagged on upgrade), shown under each item, matched by `--keywords`, and filtered with
+  `list-images --tag` / `list-videos --tag` (every given tag must match).
+- Video frame rates, probed on import and download, shown next to the duration and as a new `--line` column
+  after the running time. Videos already in the library get theirs the first time they play.
+- `--no-random` on `next`, `skip`, `go-next` and `keep --next` plays the next item of the shuffled playlist.
+
+### Changed
+- `display.order` defaults to `random`, so navigation commands pick a random item; set it to `shuffle` to
+  keep the previous behavior. Automatic advances still follow the shuffled playlist.
+- `keep` prints the rated item with its new rating (one line before the new item with `--next`), and `undo`
+  prints the restored item with the rating it has again.
+- `--line` output has a frame rate column after the running time; scripts that pick tab-separated fields by
+  position (e.g. `fzf --with-nth`) need the later fields shifted by one.
+- The database schema is v7 (frame rate column and a tag table); it upgrades automatically.
+
 ## [2.10.0] - 2026-10-28
 
 ### Changed

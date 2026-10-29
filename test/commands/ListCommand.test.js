@@ -63,7 +63,7 @@ describe('ListCommand and StatsCommand', () => {
     await command.listImages({ line: true });
     const printed = console.log.getCalls().map(call => call.args[0]);
     expect(printed).to.have.length(1);
-    expect(printed[0].split('\t')).to.deep.equal([`#${id}`, 'image', '3840x2160', '', 'landscape', '2/3', 'local', '', db.getMedia(id).path]);
+    expect(printed[0].split('\t')).to.deep.equal([`#${id}`, 'image', '3840x2160', '', '', 'landscape', '2/3', 'local', '', db.getMedia(id).path]);
   });
 
   it('rejects invalid filters', async () => {

@@ -144,6 +144,7 @@ export class Importer {
           width: info.width,
           height: info.height,
           duration: info.duration,
+          fps: info.fps ?? null,
           sha256
         });
         this.database.addRating(mediaId, library.default_import_rating, resolution);

@@ -2,8 +2,9 @@ import fs from 'fs-extra';
 import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { queueRandom, randomOrder } from '../display/Playlist.js';
-import { out } from '../utils/output.js';
-import { printPlaying } from '../utils/mediaView.js';
+import { out, fmt } from '../utils/output.js';
+import { printMedia, printPlaying, formatMediaLine, formatAdjustments } from '../utils/mediaView.js';
+import { notifyCommand } from '../utils/notify.js';
 
 export class RatingCommand {
   constructor(config, database, logger, { control } = {}) {
@@ -25,8 +26,17 @@ export class RatingCommand {
     // Checked before rating so a bad display.order does not leave a rating without the advance
     const random = options.next && this.random(options);
     const rated = await this.rate(media, Number(rating), `${monitor.width}x${monitor.height}`);
+    // With --next the rated item gets one line, so the full block below it is the item now playing
+    this.printRated(rated, { line: options.line || options.next });
     if (options.next) await this.advance(monitor, options, random);
     return rated;
+  }
+
+  // The item a rating change applied to, with the rating it now has
+  printRated(media, { line = false } = {}) {
+    const rating = this.database.getLatestRating(media.id);
+    if (line) out.print(formatMediaLine(media, { rating }));
+    else printMedia(this.database, media, { rating, extra: [fmt.dim(formatAdjustments(media))] });
   }
 
   // Removing the playing entry advances mpv, so --random moves a random entry up to play next first
@@ -37,7 +47,7 @@ export class RatingCommand {
       if (random) await queueRandom(client);
       return this.rate(media, 0, `${monitor.width}x${monitor.height}`);
     });
-    printPlaying(this.database, playing, options);
+    await this.show(playing, options);
     return playing.result;
   }
 
@@ -46,7 +56,13 @@ export class RatingCommand {
   }
 
   async advance(monitor, options, random = this.random(options)) {
-    printPlaying(this.database, await this.control.next(monitor.name, { random }), options);
+    await this.show(await this.control.next(monitor.name, { random }), options);
+  }
+
+  // Prints and announces what a monitor plays after a command switched it
+  async show(playing, options) {
+    printPlaying(this.database, playing, options);
+    await notifyCommand(this.config, this.database, playing, { logger: this.logger });
   }
 
   async rate(media, rating, resolution = null) {
@@ -131,7 +147,9 @@ export class RatingCommand {
       await this.syncPlayback(previous, target);
     }
     out.success(`Undid rating for #${previous.id}`);
-    return this.database.getMedia(previous.id);
+    const restored = this.database.getMedia(previous.id);
+    this.printRated(restored);
+    return restored;
   }
 
   async goNext(options = {}) {

@@ -7,7 +7,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MpvClient } from '../../src/display/MpvClient.js';
 import { DisplayControl } from '../../src/display/DisplayControl.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
-import { statePath } from '../../src/display/Daemon.js';
+import { Daemon, statePath } from '../../src/display/Daemon.js';
 import { loadPlaylist, lastMediaKey, removeFailedEntry, queueRandom, reshuffleOnWrap } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
@@ -246,5 +246,29 @@ describe('mpv integration', function () {
     expect(db.getLatestRating(id).rating).to.equal(3);
     expect(await client.getProperty('playlist-count')).to.equal(2);
     expect(await client.getProperty('path')).to.equal(other);
+  });
+
+  it('records the frame rate mpv reports and ends a video at display.video_duration', async () => {
+    const files = ['long.mp4', 'next.mp4'].map(name => path.join(tempDir, name));
+    files.forEach(file => makeVideo(file, '640x360'));
+    const ids = files.map((file, i) => db.addMedia({
+      kind: 'video', source: 'local', source_id: i, path: file, width: 640, height: 360, duration: 3
+    }));
+    const config = makeConfig({ 'display.video_duration': 1 });
+    const daemon = new Daemon({ config, database: db, logger: silentLogger });
+    const screen = { monitor: { name: 'TEST-1', width: 640, height: 360 }, client };
+    client.on('property-change', event => {
+      if (event.name === 'path' && event.data) daemon.onFileLoaded(screen, event.data);
+      else if (event.name === 'container-fps' && event.data) daemon.onFrameRate(screen, event.data);
+    });
+    await client.observeProperty(1, 'path');
+    await client.observeProperty(2, 'container-fps');
+    await client.setProperty('loop-file', 'inf');
+    await client.command('loadfile', files[0], 'replace');
+    await client.command('loadfile', files[1], 'append');
+
+    // Without the 1 second limit the 3 second video would loop forever
+    await waitFor(async () => (await client.getProperty('path')) === files[1], 4000);
+    expect(db.getMedia(ids[0]).fps).to.equal(10);
   });
 });

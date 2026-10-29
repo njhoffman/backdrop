@@ -32,6 +32,7 @@ export class ListCommand {
     if (options.minRating !== undefined) filters.minRating = positiveInteger(options.minRating, 'Minimum rating', 3);
     if (options.local === false) filters.excludeLocal = true;
     if (options.keywords) filters.keywords = options.keywords;
+    if (options.tag) filters.tags = options.tag;
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
     const items = this.database.findMedia(filters);
     for (const item of items) {

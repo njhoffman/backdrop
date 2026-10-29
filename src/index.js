@@ -80,7 +80,8 @@ class BackdropApp {
     const stats = new StatsCommand(this.config, this.database, this.logger);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
-    const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order'];
+    const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
+    const noRandomOption = ['--no-random', 'Play the next item in the shuffled order'];
     const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
 
     program
@@ -121,6 +122,7 @@ class BackdropApp {
       .description('Play the next item and show it')
       .option(...monitorOption)
       .option(...randomOption)
+      .option(...noRandomOption)
       .option(...lineOption)
       .action(this.action(options => display.next(options)));
 
@@ -178,17 +180,17 @@ class BackdropApp {
     program.command('keep')
       .description('Keep the current item with a rating from 1 to 3')
       .argument('[rating]', 'Rating', '1').option(...monitorOption)
-      .option('-n, --next', 'Then play the next item and show it').option(...randomOption).option(...lineOption)
+      .option('-n, --next', 'Then play the next item and show it').option(...randomOption).option(...noRandomOption).option(...lineOption)
       .action(this.action((value, options) => rating.keep(value, options)));
     program.command('skip')
       .description('Move the current item to trash, advance every monitor playing it and show the new item')
-      .option(...monitorOption).option(...randomOption).option(...lineOption).action(this.action(options => rating.skip(options)));
+      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.skip(options)));
     program.command('undo')
       .description('Undo the latest rating and restore its file location')
       .action(this.action(() => rating.undo()));
     program.command('go-next')
       .description('Advance the target monitor after checking the current item has a rating, and show the new item')
-      .option(...monitorOption).option(...randomOption).option(...lineOption).action(this.action(options => rating.goNext(options)));
+      .option(...monitorOption).option(...randomOption).option(...noRandomOption).option(...lineOption).action(this.action(options => rating.goNext(options)));
 
     for (const [name, method] of [['search-images', 'searchImages'], ['search-videos', 'searchVideos']]) {
       program.command(name).description('Search a source and save matching media for download')
@@ -224,6 +226,7 @@ class BackdropApp {
         .option('--source <name>', 'Restrict to one source')
         .option('--status <status>', 'new, kept or skipped')
         .option('--keywords <words...>', 'Match all words against searches, tags or filenames')
+        .option('--tag <tags...>', 'Only items with all of these tags (shown under each item)')
         .option('--playlist <file>', 'Export matching existing files as M3U')
         .option('--interactive', 'Browse and rate the listed media')
         .option(...lineOption)

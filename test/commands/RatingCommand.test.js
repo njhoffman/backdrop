@@ -6,6 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { notifications } from '../helpers/setup.js';
 
 describe('RatingCommand', () => {
   let dir, db, config, control, command, id, monitor, client, lines;
@@ -138,9 +139,12 @@ describe('RatingCommand', () => {
     await fails(() => command.goNext(), 'Rate this item');
     await command.keep();
     await command.goNext({ monitor: 'DP-1' });
-    expect(control.next.calledOnceWithExactly('DP-1', { random: false })).to.be.true;
-    await command.goNext({ random: true });
-    expect(control.next.lastCall.args).to.deep.equal(['DP-1', { random: true }]);
+    expect(control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
+    await command.goNext({ random: false });
+    expect(control.next.lastCall.args).to.deep.equal(['DP-1', { random: false }]);
+    config.set('display.order', 'shuffle');
+    await command.goNext();
+    expect(control.next.lastCall.args).to.deep.equal(['DP-1', { random: false }]);
   });
 
   it('skip shows what the monitor plays next and returns the skipped item', async () => {
@@ -149,11 +153,12 @@ describe('RatingCommand', () => {
       const result = await change(client, monitor);
       return { monitor, path: '/m/a.mp4', media: db.getMedia(next), rating: null, result };
     });
-    const skipped = await command.skip({ monitor: 'DP-1', line: true });
+    const skipped = await command.skip({ monitor: 'DP-1', line: true, random: false });
     expect(control.switchTo.calledOnceWith('DP-1')).to.be.true;
     expect(skipped).to.include({ id, status: 'skipped' });
-    expect(lines.at(-1).split('\t')).to.deep.equal([`#${next}`, 'video', '4000x4000', '', 'square', 'unrated', 'local', '', '/m/a.mp4']);
+    expect(lines.at(-1).split('\t')).to.deep.equal([`#${next}`, 'video', '4000x4000', '', '', 'square', 'unrated', 'local', '', '/m/a.mp4']);
     expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
+    expect(notifications.at(-1).at(-2)).to.equal(`#${next}  video  4000x4000`);
   });
 
   it('skip --random moves a random entry up before the removal advances mpv', async () => {
@@ -165,12 +170,39 @@ describe('RatingCommand', () => {
   });
 
   it('keep --next advances after rating, randomly when display.order is random', async () => {
+    config.set('display.order', 'shuffle');
+    await command.keep(2, { next: true });
+    expect(control.next.calledOnceWithExactly('DP-1', { random: false })).to.be.true;
+    control.next.resetHistory();
     await command.keep(2);
     expect(control.next.called).to.be.false;
     config.set('display.order', 'random');
     await command.keep(3, { next: true });
     expect(control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
     expect(lines.join('\n')).to.include('DP-1: nothing playing');
+  });
+
+  it('keep shows the rated item in full, or as one line before the next item with --next', async () => {
+    await command.keep(2);
+    const kept = db.getMedia(id).path;
+    expect(lines.map(line => line.trim())).to.include(kept);
+    expect(lines.some(line => line.startsWith(`#${id}  video`) && line.includes('2/3'))).to.be.true;
+    lines.length = 0;
+    await command.keep(3, { next: true });
+    const rated = lines.find(line => line.startsWith(`#${id}\t`));
+    expect(rated.split('\t')).to.include('3/3');
+    expect(lines.indexOf(rated)).to.be.below(lines.findIndex(line => line.includes('nothing playing')));
+  });
+
+  it('undo shows the restored item with the rating it has again', async () => {
+    await command.keep(2);
+    await command.keep(3);
+    lines.length = 0;
+    await command.undo();
+    expect(lines.some(line => line.startsWith(`#${id}  video`) && line.includes('2/3'))).to.be.true;
+    lines.length = 0;
+    await command.undo();
+    expect(lines.some(line => line.startsWith(`#${id}  video`) && line.includes('unrated'))).to.be.true;
   });
 
   it('rejects an unknown display.order before rating or advancing', async () => {

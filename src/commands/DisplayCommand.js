@@ -5,6 +5,7 @@ import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution } from '../utils/output.js';
 import { printMedia, printPlaying, formatMediaLine, formatAdjustments } from '../utils/mediaView.js';
+import { notifyCommand } from '../utils/notify.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const START_TIMEOUT_MS = 15_000;
@@ -132,11 +133,17 @@ export class DisplayCommand {
 
   async next(options = {}) {
     const random = randomOrder(this.config.get().display, options.random);
-    printPlaying(this.database, await this.control.next(options.monitor, { random }), options);
+    await this.show(await this.control.next(options.monitor, { random }), options);
   }
 
   async prev(options = {}) {
-    printPlaying(this.database, await this.control.prev(options.monitor), options);
+    await this.show(await this.control.prev(options.monitor), options);
+  }
+
+  // Prints and announces what a monitor plays after a command switched it
+  async show(playing, options) {
+    printPlaying(this.database, playing, options);
+    await notifyCommand(this.config, this.database, playing, { logger: this.logger });
   }
 
   async speed(value, options) {
@@ -158,6 +165,6 @@ export class DisplayCommand {
     for (const [name, count] of Object.entries(running ? counts : {})) {
       out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
     }
-    if (playing) printPlaying(this.database, playing, options);
+    if (playing) await this.show(playing, options);
   }
 }

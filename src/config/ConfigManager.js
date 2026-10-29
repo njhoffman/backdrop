@@ -74,8 +74,10 @@ export class ConfigManager {
       display: {
         monitors: 'auto',
         image_duration: 300,
+        video_duration: 600,
         allow_upscale: false,
-        order: 'shuffle',
+        order: 'random',
+        notify: 'commands',
         xwinwrap_args: ['-b', '-s', '-st', '-sp', '-nf', '-ov', '-fdt', '-ni'],
         mpv_args: []
       },

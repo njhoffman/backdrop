@@ -1,12 +1,13 @@
 import {
   out, fmt, icon, mark, describeMedia, displayPath, formatQueries, formatRating, formatStars, formatResolution,
-  formatClock, orientationName, padVisible, isInteractive
+  formatClock, formatFps, orientationName, padVisible, isInteractive
 } from './output.js';
 
 // Prints a media item as a heading line plus indented path, query and credit lines:
-//   ✓ #412  ▶ video  ⤢ 3840×2160  ◷ 0:18  landscape  ★★☆ landscape
+//   ✓ #412  ▶ video  ⤢ 3840×2160  ◷ 0:18  25fps  landscape  ★★☆ landscape
 //       ↳ ~/.local/share/backdrop/inbox/remote-412.mp4
 //       ⌕ "ocean waves", "aerial coast"
+//       # ocean, waves, aerial
 //       ✎ Jane Doe  ↗ https://www.pexels.com/video/...
 // tone adds a status symbol; rating (or null for unrated) adds stars; extra is appended to the heading.
 export function printMedia(database, media, { tone, rating, extra = [], path = true } = {}) {
@@ -18,6 +19,8 @@ export function printMedia(database, media, { tone, rating, extra = [], path = t
   if (path && media.path) out.field('path', displayPath(media.path));
   const queries = database.getQueries(media.id);
   if (queries.length) out.field('query', formatQueries(queries));
+  const tags = database.getTags(media.id);
+  if (tags.length) out.field('tag', fmt.dim(tags.join(', ')));
   const credit = [media.author, media.page_url && fmt.dim(`${icon('link')}${media.page_url}`)].filter(Boolean);
   if (credit.length) out.field('author', credit.join('  '));
 }
@@ -28,8 +31,8 @@ export function formatAdjustments(media) {
 }
 
 // Fixed widths, so lines printed by separate commands still line up:
-// id, kind, resolution, running time, orientation, rating, source, adjustments, then the path
-const LINE_WIDTHS = [7, 7, 9, 7, 9, 7, 8, 17];
+// id, kind, resolution, running time, frame rate, orientation, rating, source, adjustments, then the path
+const LINE_WIDTHS = [7, 7, 9, 7, 8, 9, 7, 8, 17];
 
 // One line per item for fzf or a table. Aligned and styled on a terminal; tab-separated when piped
 // (fzf --delimiter '\t'), keeping colors only with FORCE_COLOR (fzf --ansi). Empty fields stay in place.
@@ -39,6 +42,7 @@ export function formatMediaLine(media, { rating } = {}) {
     `${icon(media.kind)}${fmt.cyan(media.kind)}`,
     formatResolution(media.width, media.height),
     media.kind !== 'image' && Number.isFinite(media.duration) ? formatClock(media.duration) : '',
+    media.kind !== 'image' ? formatFps(media.fps) : '',
     fmt.dim(orientationName(media) ?? ''),
     formatStars(rating),
     fmt.dim(media.source),

@@ -5,6 +5,8 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
+Reviewed: 2026-10-28
+
 ## 1. Existing bugs and tech debt
 
 - [x] **CLI crashes on startup: ImportCommand.js is empty.** (p1) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); rewritten in project 5. `src/commands/ImportCommand.js` is 0 bytes, but `src/index.js` imports `{ ImportCommand }` from it.
@@ -90,6 +92,13 @@ dependency order.
       so a CLI command racing a rewrite (now on every hotplug change) can report the daemon as stopped. Write to a temp file in the runtime dir and rename it.
 - [ ] **Hotplug only tested with fakes.** (p3) [test] Reconciliation is covered against a fake `xrandr`; confirm on real hardware (attach, remove, change resolution,
       lid close) and note any xrandr output the parser misses, e.g. monitors without a physical size.
+- [ ] **No record of player CPU use.** (p2) [perf] Nothing measures what the mpv instances cost over time. Have the daemon sample each
+      screen's mpv CPU (from `/proc/<pid>/stat`, every minute or so) and keep a rolling average per monitor and per item, alongside
+      `hwdec-current`, resolution and fps; show it in `status` and `stats`. That shows which items are expensive and whether 4K media
+      is worth keeping (2026-10-28 spot check on Iris Xe: 4K24 H.264 ~26% CPU with VA-API vs ~400% in software; 1080p30 ~17%).
+- [ ] **Software-decode fallback goes unnoticed.** (p2) [perf] `--hwdec=auto-safe` silently falls back to software for unsupported
+      codecs or profiles, which costs about four cores at 4K. `Daemon.onFileLoaded` could read `hwdec-current` and log a warning
+      (and mark the item) when it is empty for media larger than 1920x1080.
 - [x] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
       Poll `xrandr --listactivemonitors` (or listen for RandR events) and start, stop or respawn per-monitor mpv instances on changes, then rewrite `state.json`.
       Done: the daemon polls xrandr every 5s; empty or failed reads keep the layout, and crash restarts cannot race a layout change.
@@ -98,6 +107,9 @@ dependency order.
       Done: `status` shows eligible counts per monitor and a reason and fix for blank ones.
 - [x] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
       Done: ConfigManager sets `created`; the CLI prints the notice on stderr.
+- [ ] **Speed changes do not recompute the video limit.** (p3) [bug] `display.video_duration` is turned into
+      `loop-file`/`end` when a video loads (`playbackLimits` in `src/display/Playlist.js`); `backdrop speed` on a playing
+      video changes how long those loops take until the next load. Reapply the limits in `DisplayControl.speed()`.
 
 ## 4. Media sources
 
@@ -134,6 +146,11 @@ dependency order.
 - [ ] **Concurrent imports can collide.** (p3) [bug] `backdrop import` and the daemon's startup import can scan the same folders at once; both may copy a file
       before either commits, so the second likely fails on the unique `sha256` and is recorded as `failed`. Take a lock file in the data dir for the duration of an import,
       and have the second importer wait or skip.
+- [ ] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
+      and descriptions, and lists filter with `--tag`. Next: show tag counts in `stats`, add a `tags` command listing them,
+      and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
+- [ ] **Frame rate unknown until a video plays.** (p3) [feature] Videos added before v7 get `fps` from mpv the first time
+      they play. A `backdrop rescan` (ffprobe over existing files) would fill it at once and could also re-check sizes.
 
 ## 6. Resolution-aware quality filter
 
@@ -194,3 +211,6 @@ dependency order.
       Partly done: `backdrop completion zsh` (generated from the Commander definitions, `src/commands/CompletionCommand.js`). Bash remains.
 - [ ] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.
+- [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
+      replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
+      presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.

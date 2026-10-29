@@ -178,7 +178,7 @@ export class DownloadCommand {
         const duplicate = this.database.getMediaBySha256(sha256);
         if (duplicate) throw new Error(`Duplicate content of #${duplicate.id}`);
         this.database.updateMedia(media.id, { path: file, sha256, kind: info.kind,
-          width: info.width, height: info.height, duration: info.duration, original_name: path.basename(file) });
+          width: info.width, height: info.height, duration: info.duration, fps: info.fps ?? null, original_name: path.basename(file) });
       });
       return this.database.getMedia(media.id);
     } catch (error) {
@@ -257,7 +257,7 @@ export class DownloadCommand {
         const latest = this.database.getMedia(media.id);
         if (!latest || latest.path !== media.path) throw new Error('Media changed during upgrade');
         this.database.updateMedia(media.id, { path: file, sha256, kind: info.kind,
-          width: info.width, height: info.height, duration: info.duration });
+          width: info.width, height: info.height, duration: info.duration, fps: info.fps ?? null });
       });
       state = 'committed';
       await fs.remove(backup).catch(error => this.logger.warn('Could not remove replaced file', { path: backup, error: error.message }));

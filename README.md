@@ -42,7 +42,7 @@ backdrop                    # same as backdrop status
 backdrop status             # mode and what each monitor is playing
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
-backdrop next --random      # jump to a random item; prev still returns to the one before it
+backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
@@ -59,9 +59,10 @@ backdrop pending             # media saved by searches, with its queries and the
 backdrop download --total 10 --type videos
 backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
 backdrop list-videos --rated landscape
+backdrop list-videos --tag ocean waves  # items tagged with every word
 backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
-backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..8  # one line per item
+backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line per item
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
@@ -84,11 +85,21 @@ deletes its library copy and database record, and preserves its import record so
 is not imported again. It works by ID when the daemon is stopped, too.
 
 Commands that switch what plays (`next`, `prev`, `skip`, `go-next`, `keep --next`, `mode`) print the item the
-target monitor now plays. `--line` (also on `current`, `list-images` and `list-videos`) prints one line per item
-instead: id, kind, resolution, running time, orientation, rating, source, speed/dim and path. On a terminal the
-columns are styled and aligned; piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR`
-(for `fzf --ansi`). The playlist plays in shuffled order and is reshuffled on every pass; `--random` on `next`,
-`skip`, `go-next` and `keep --next`, or `display.order: random`, picks a random item instead.
+target monitor now plays and send a desktop notification through `notify-send` (duration and frame rate for
+videos, rating, monitor, tags); `display.notify: all` has the daemon notify on every change, including automatic
+advances, and `off` disables it. `keep` and `undo` print the rated item with its new rating. `--line` (also on
+`current`, `list-images` and `list-videos`) prints one line per item instead: id, kind, resolution, running time,
+frame rate, orientation, rating, source, speed/dim and path. On a terminal the columns are styled and aligned;
+piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` (for `fzf --ansi`).
+
+`next`, `skip`, `go-next` and `keep --next` pick a random item by default (`display.order: random`);
+`--no-random`, or `display.order: shuffle`, plays the next item of the shuffled playlist instead. The playlist
+itself is reshuffled on every pass, and automatic advances follow it. Images change every
+`display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
+as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
+
+Media is tagged with words from its file name (local imports), its source page and description. Tags show
+under each item and filter lists with `--tag`; `--keywords` matches them too.
 
 `keep`, `skip` and `go-next` accept `--monitor <name>`. Rating an imported item changes its current rating
 and preserves undo history. Keep moves new downloads from the inbox into the library; this refreshes
@@ -98,7 +109,7 @@ Search and download choose the smallest variant that fits all configured monitor
 downloads before adding them to playback. A download identical to one you already have is recorded as a
 duplicate, never fetched again, and its search queries are added to the original. After attaching a larger monitor, `download --upgrade` replaces
 kept or new downloads that are now too small, keeping their ratings, speed and dim. For use without X, pass `--resolution 1920x1080`. Lists are plain
-text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--source` and `--number` filter them.
+text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--tag`, `--source` and `--number` filter them.
 See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.
 
 i3 example:

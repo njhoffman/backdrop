@@ -5,10 +5,12 @@ import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
 import {
-  getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap
+  getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
+  playbackLimits, validVideoDuration
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
+import { notifyMode, notifyPlaying } from '../utils/notify.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -317,6 +319,8 @@ export class Daemon {
     screen.client.on('property-change', event => {
       if (event.name === 'path' && event.data) {
         this.onFileLoaded(screen, event.data);
+      } else if (event.name === 'container-fps' && event.data) {
+        this.onFrameRate(screen, event.data);
       }
     });
     screen.client.on('end-file', event => {
@@ -326,6 +330,7 @@ export class Daemon {
       }
     });
     await screen.client.observeProperty(1, 'path');
+    await screen.client.observeProperty(2, 'container-fps');
 
     const count = await loadPlaylist(screen.client, {
       database: this.database,
@@ -343,6 +348,7 @@ export class Daemon {
   // Brightness is set on every load because mpv keeps it from the previous file.
   async onFileLoaded(screen, filePath) {
     const media = this.database.getMediaByPath(filePath);
+    screen.media = media;
     try {
       await screen.client.setProperty('brightness', brightnessFor(media?.dim ?? 0));
     } catch (error) {
@@ -353,6 +359,7 @@ export class Daemon {
     } catch (error) {
       this.logger.warn('Failed to reshuffle playlist', { monitor: screen.monitor.name, error: error.message });
     }
+    await this.applyLimits(screen, media);
     if (!media) {
       this.logger.warn('Playing file not in library', { monitor: screen.monitor.name, path: filePath });
       return;
@@ -366,6 +373,46 @@ export class Daemon {
       } catch (error) {
         this.logger.warn('Failed to set speed', { monitor: screen.monitor.name, error: error.message });
       }
+    }
+    await this.notify(screen, media);
+  }
+
+  // Media added before frame rates were recorded gets its rate from mpv the first time it plays.
+  // mpv reports container-fps only once the file is open, after the path change.
+  onFrameRate(screen, value) {
+    const { media } = screen;
+    const fps = Number(value);
+    if (!media || media.fps || modeOfKind(media.kind) !== 'video' || !Number.isFinite(fps) || fps <= 0) return;
+    media.fps = Math.round(fps * 1000) / 1000;
+    try {
+      this.database.updateMedia(media.id, { fps: media.fps });
+    } catch (error) {
+      this.logger.warn('Failed to record frame rate', { mediaId: media.id, error: error.message });
+    }
+  }
+
+  // With display.notify: all every load is announced, including automatic advances
+  async notify(screen, media) {
+    try {
+      if (notifyMode(this.config.get().display) !== 'all') return;
+    } catch (error) {
+      this.logger.warn('Invalid notify setting', { error: error.message });
+      return;
+    }
+    const rating = this.database.getLatestRating(media.id);
+    await notifyPlaying(this.database, { monitor: screen.monitor, media, rating }, { logger: this.logger });
+  }
+
+  // Ends videos after display.video_duration. A file outside the library loops in video mode as before.
+  async applyLimits(screen, media) {
+    try {
+      const timeout = validVideoDuration(this.config.get().display.video_duration ?? 0);
+      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout) : { 'loop-file': 'inf', end: 'none' };
+      for (const [name, value] of Object.entries(limits)) {
+        await screen.client.setProperty(name, value);
+      }
+    } catch (error) {
+      this.logger.warn('Failed to set video duration', { monitor: screen.monitor.name, error: error.message });
     }
   }
 

@@ -68,13 +68,14 @@ export function orderPlaylist(media, lastMediaId, random = Math.random) {
 
 export const ORDERS = ['shuffle', 'random'];
 
-// Whether a navigation command picks a random next item: --random, or display.order set to random
-export function randomOrder(display, requested = false) {
-  const order = display.order ?? 'shuffle';
+// Whether a navigation command picks a random next item: --random or --no-random when given,
+// otherwise display.order. The daemon's own advances always follow the shuffled playlist.
+export function randomOrder(display, requested) {
+  const order = display.order ?? 'random';
   if (!ORDERS.includes(order)) {
     throw new Error(`display.order must be ${ORDERS.join(' or ')}, not ${order}`);
   }
-  return Boolean(requested) || order === 'random';
+  return requested === undefined ? order === 'random' : Boolean(requested);
 }
 
 // Moves a random entry for another file to just after the current one, so the next advance plays it
@@ -112,8 +113,28 @@ export function brightnessFor(dim) {
 
 export function modeProperties(mode, imageDuration) {
   return mode === 'video'
-    ? { 'loop-file': 'inf' }
-    : { 'loop-file': 'no', 'image-display-duration': imageDuration };
+    ? { 'loop-file': 'inf', end: 'none' }
+    : { 'loop-file': 'no', end: 'none', 'image-display-duration': imageDuration };
+}
+
+export function validVideoDuration(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`display.video_duration must be a number of seconds, 0 to loop forever, not ${value}`);
+  }
+  return value;
+}
+
+// mpv properties that end a video after about `timeout` seconds of wall time. Shorter videos loop
+// as many whole times as fit, so they never stop mid-clip (loop-file N plays N + 1 times); longer
+// ones stop at the timeout through `end`, which is in media time and so scales with speed.
+// end is a global option in mpv, so every load sets it, including images, to clear the last value.
+export function playbackLimits(media, timeout) {
+  if (!media || !MODE_KINDS.video.includes(media.kind)) return { end: 'none' };
+  const length = media.duration / (media.speed || 1);
+  if (!timeout || !(length > 0)) return { 'loop-file': 'inf', end: 'none' };
+  if (length > timeout) return { 'loop-file': 'no', end: String(Math.round(timeout * media.speed * 1000) / 1000) };
+  const plays = Math.floor(timeout / length);
+  return { 'loop-file': plays > 1 ? plays - 1 : 'no', end: 'none' };
 }
 
 // Replaces the monitor's mpv playlist with the media for the mode; returns how many items were loaded

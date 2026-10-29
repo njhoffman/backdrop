@@ -6,6 +6,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Daemon, buildCommand, readState, statePath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
+import { notifications } from '../helpers/setup.js';
 
 // Above Linux's maximum pid_max, so it can never be a live process
 const DEAD_PID = 4194305;
@@ -340,6 +341,41 @@ describe('Daemon', () => {
       client.properties.brightness = -40;
       await load(0, '/elsewhere.png');
       expect(client.properties.brightness).to.equal(0);
+    });
+
+    it('ends videos after display.video_duration and clears the limit for the next item', async () => {
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/short.mp4', duration: 20 });
+      db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/long.mp4', duration: 1800 });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 3, path: '/m/i.png' });
+      const { client } = clients[0];
+
+      await load(0, '/m/short.mp4');
+      expect(client.properties).to.include({ 'loop-file': 29, end: 'none' });
+      await load(0, '/m/long.mp4');
+      expect(client.properties).to.include({ 'loop-file': 'no', end: '600' });
+      await load(0, '/m/i.png');
+      expect(client.properties.end).to.equal('none');
+      await load(0, '/elsewhere.mp4');
+      expect(client.properties).to.include({ 'loop-file': 'inf', end: 'none' });
+    });
+
+    it('notifies on every load only with display.notify: all', async () => {
+      notifications.length = 0;
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', duration: 20 });
+      await load(0, '/m/v.mp4');
+      expect(notifications).to.have.length(0);
+      config.set('display.notify', 'all');
+      await load(0, '/m/v.mp4');
+      await load(0, '/elsewhere.mp4');
+      expect(notifications).to.have.length(1);
+      expect(notifications[0].at(-1)).to.include('DP-1');
+    });
+
+    it('loops videos forever when display.video_duration is 0', async () => {
+      config.set('display.video_duration', 0);
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/short.mp4', duration: 20 });
+      await load(0, '/m/short.mp4');
+      expect(clients[0].client.properties).to.include({ 'loop-file': 'inf', end: 'none' });
     });
 
     it('reshuffles the playlist when playback wraps to its first entry', async () => {

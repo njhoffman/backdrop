@@ -10,19 +10,19 @@ export const SYMBOL_SETS = {
   nerd: {
     success: '', warn: '', error: '', info: '',
     video: '', image: '', gif: '', duration: '', resolution: '', path: '',
-    query: '', author: '', link: '', download: '', duplicate: '', monitor: '',
+    query: '', author: '', link: '', download: '', duplicate: '', monitor: '', tag: '',
     star: '', starEmpty: '', pending: ''
   },
   unicode: {
     success: '✓', warn: '▲', error: '✗', info: '•',
     video: '▶', image: '▣', gif: '↻', duration: '◷', resolution: '⤢', path: '↳',
-    query: '⌕', author: '✎', link: '↗', download: '↓', duplicate: '≡', monitor: '▭',
+    query: '⌕', author: '✎', link: '↗', download: '↓', duplicate: '≡', monitor: '▭', tag: '#',
     star: '★', starEmpty: '☆', pending: '…'
   },
   ascii: {
     success: '+', warn: '!', error: 'x', info: '-',
     video: '', image: '', gif: '', duration: '', resolution: '', path: '',
-    query: '', author: '', link: '', download: '', duplicate: '', monitor: '',
+    query: '', author: '', link: '', download: '', duplicate: '', monitor: '', tag: '',
     star: '*', starEmpty: '.', pending: ''
   }
 };
@@ -208,9 +208,15 @@ export function describeMedia(media) {
   const parts = [`${icon(media.kind)}${fmt.cyan(media.kind)}`];
   parts.push(`${icon('resolution')}${fmt.bold(formatResolution(media.width, media.height))}`);
   if (media.kind !== 'image' && Number.isFinite(media.duration)) parts.push(`${icon('duration')}${formatClock(media.duration)}`);
+  if (media.kind !== 'image' && media.fps) parts.push(formatFps(media.fps));
   const orientation = orientationName(media);
   if (orientation) parts.push(fmt.dim(orientation));
   return parts.join('  ');
+}
+
+// 25fps, 29.97fps; empty when unknown
+export function formatFps(fps) {
+  return fps ? `${Math.round(fps * 100) / 100}fps` : '';
 }
 
 // A 0-3 rating as stars on a terminal (★★☆), as "2/3" in plain output; 0 is shown as skipped

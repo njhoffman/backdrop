@@ -79,6 +79,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
+        first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
         first.db.exec('PRAGMA user_version = 1');
         first.close();
 
@@ -97,12 +98,29 @@ describe('DatabaseManager', () => {
         const id = first.addMedia(video());
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
+        first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
         first.db.exec('PRAGMA user_version = 4'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(id).dim).to.equal(0);
         second.setDim(id, 40);
         expect(second.getMedia(id).dim).to.equal(40);
         for (const bad of [-1, 101, 2.5, '10']) expect(() => second.setDim(id, bad)).to.throw('Dim');
+        second.close();
+      });
+
+      it('upgrades v6 media with frame rates and tags derived from names, pages and descriptions', () => {
+        const dbPath = path.join(tempDir, 'v6.db');
+        const first = new DatabaseManager(); first.initialize(dbPath);
+        const remote = first.addMedia(video({ page_url: 'https://www.pexels.com/video/aerial-view-of-ocean-waves-1234/',
+          tags: ['Waves crashing on rocks'], original_name: 'remote-1.mp4' }));
+        const local = first.addMedia({ kind: 'image', source: 'local', source_id: 1, original_name: 'MistyForest_4k-2160p.JPG' });
+        first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
+        first.db.exec('PRAGMA user_version = 6'); first.close();
+        const second = new DatabaseManager(); second.initialize(dbPath);
+        expect(second.getMedia(remote).fps).to.be.null;
+        expect(second.getTags(remote)).to.deep.equal(['aerial', 'ocean', 'waves', 'crashing', 'rocks']);
+        expect(second.getTags(local)).to.deep.equal(['misty', 'forest']);
+        expect(second.findMedia({ tags: ['Ocean', 'rocks'] }).map(m => m.id)).to.deep.equal([remote]);
         second.close();
       });
 
@@ -124,6 +142,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE ratings DROP COLUMN rated_path');
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
+        first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
         first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
@@ -132,6 +151,32 @@ describe('DatabaseManager', () => {
         expect(second.undoLastRating().media.status).to.equal('kept');
         second.close();
       });
+    });
+  });
+
+  describe('tags and frame rate', () => {
+    it('derives tags on insert and rebuilds them when the name, page or description changes', () => {
+      const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'red-fox.mp4' });
+      expect(db.getTags(id)).to.deep.equal(['red', 'fox']);
+      db.updateMedia(id, { original_name: 'grey_wolf.mp4' });
+      expect(db.getTags(id)).to.deep.equal(['grey', 'wolf']);
+      db.updateMedia(id, { speed: 0.5 });
+      expect(db.getTags(id)).to.deep.equal(['grey', 'wolf']);
+    });
+
+    it('filters by every given tag and matches tags in keyword searches', () => {
+      const fox = db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'red fox.mp4' });
+      db.addMedia({ kind: 'video', source: 'local', source_id: 2, original_name: 'red sunset.mp4' });
+      expect(db.findMedia({ tags: ['red', 'fox'] }).map(m => m.id)).to.deep.equal([fox]);
+      expect(db.findMedia({ tags: ['red'] })).to.have.length(2);
+      expect(db.findMedia({ keywords: ['fox'] }).map(m => m.id)).to.deep.equal([fox]);
+    });
+
+    it('stores a frame rate and drops tags with the item', () => {
+      const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'rain.mp4', fps: 29.97 });
+      expect(db.getMedia(id).fps).to.equal(29.97);
+      db.deleteMedia(id);
+      expect(db.getTags(id)).to.deep.equal([]);
     });
   });
 

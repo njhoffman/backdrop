@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 6); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 7); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -16,15 +16,29 @@ One row per item, from any source.
 | `path` | library file; `NULL` until downloaded; unique |
 | `original_name` | filename before import or download |
 | `width`, `height`, `duration` | probed dimensions; used for the never-upscale filter |
+| `fps` | average frame rate from ffprobe, or from mpv the first time an older item plays; `NULL` for images and until known. Added in v7 |
 | `sha256` | content hash, unique; prevents duplicate imports |
 | `status` | `new`, `kept` or `skipped`; follows the latest rating |
 | `status_changed_at` | drives trash expiry |
 | `speed` | mpv playback speed (0.01-100), one per item, default 1.0 |
 | `dim` | 0 (none) to 100 (black), applied as mpv `brightness` = -dim; added in v5, default 0 |
 | `duplicate_of` | set when a download's content matched this media id; the item is never downloaded again. Added in v6; no foreign key, so it stays hidden if the original is removed |
-| `tags`, `variants` | JSON arrays; `variants` holds download options `{url, width, height, ...}` |
+| `tags`, `variants` | JSON arrays; `tags` holds the source's own descriptions (e.g. Pexels alt text), `variants` download options `{url, width, height, ...}` |
 | `author`, `page_url` | attribution |
 | `added_at`, `updated_at` | timestamps (UTC) |
+
+## media_tags
+
+Words derived from each item, rebuilt whenever its `source`, `original_name`, `page_url` or `tags` change
+(`src/library/tags.js`). Added in v7; the migration backfills every existing item.
+
+| Column | Notes |
+| --- | --- |
+| `media_id`, `tag` | primary key; cascades on media delete |
+| `origin` | `filename` (local imports), `page` (source page URL slug) or `description` (the `tags` column) |
+
+Words are lowercased and split on punctuation and camelCase; words shorter than three letters, words with
+digits (ids, resolutions, codecs) and stop words such as `pexels`, `uhd`, `video` or `the` are dropped.
 
 ## ratings
 

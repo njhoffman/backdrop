@@ -19,6 +19,9 @@ library:
 display:
   monitors: auto                     # or a list of xrandr output names, e.g. [DP-1, HDMI-1]
   image_duration: 300                # seconds per image
+  video_duration: 600                # play a video about this long before the next; 0 loops forever
+  order: random                      # next/skip/keep --next pick at random; shuffle plays the shuffled order
+  notify: commands                   # desktop notification on media changes: commands, all (every load) or off
   allow_upscale: false               # never show media smaller than the monitor
   mpv_args: [--hwdec=vaapi]          # extra mpv options (your mpv.conf is not loaded)
 

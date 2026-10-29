@@ -1,8 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs-extra';
+import { tagsFor } from '../library/tags.js';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -14,11 +15,13 @@ const MAX_SPEED = 100;
 // Columns callers may write through addMedia/updateMedia; id, status and timestamps are managed here
 const MEDIA_FIELDS = [
   'kind', 'source', 'source_id', 'path', 'original_name', 'width', 'height', 'duration',
-  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url', 'duplicate_of'
+  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url', 'duplicate_of', 'fps'
 ];
+// Changing any of these rebuilds an item's derived tags
+const TAG_FIELDS = ['source', 'original_name', 'page_url', 'tags'];
 const JSON_FIELDS = ['tags', 'variants'];
 
-// MIGRATIONS[n] upgrades a database from schema version n to n + 1
+// MIGRATIONS[n] upgrades a database from schema version n to n + 1: SQL, or a function for data changes
 const MIGRATIONS = [`
   CREATE TABLE media (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,7 +103,21 @@ const MIGRATIONS = [`
   -- No foreign key on purpose: removing the original must not make its duplicate downloadable again,
   -- and media ids are never reused (AUTOINCREMENT)
   ALTER TABLE media ADD COLUMN duplicate_of INTEGER;
-`];
+`, database => {
+  database.db.exec(`
+    ALTER TABLE media ADD COLUMN fps REAL;
+
+    -- Words from file names, page slugs and descriptions; the media.tags column keeps the source's own text
+    CREATE TABLE media_tags (
+      media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+      tag TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      PRIMARY KEY (media_id, tag)
+    );
+    CREATE INDEX idx_media_tags_tag ON media_tags (tag);
+  `);
+  for (const { id } of database.db.prepare('SELECT id FROM media').all()) database.refreshTags(id);
+}];
 
 export function orientationOf(resolution) {
   const match = /^(\d+)x(\d+)$/.exec(resolution || '');
@@ -165,7 +182,9 @@ export class DatabaseManager {
     }
     for (let next = version; next < SCHEMA_VERSION; next++) {
       this.transaction(() => {
-        this.db.exec(MIGRATIONS[next]);
+        const step = MIGRATIONS[next];
+        if (typeof step === 'function') step(this);
+        else this.db.exec(step);
         this.db.exec(`PRAGMA user_version = ${next + 1}`);
       });
     }
@@ -216,7 +235,9 @@ export class DatabaseManager {
       VALUES (${fields.map(() => '?').join(', ')})
     `).run(...values);
 
-    return Number(result.lastInsertRowid);
+    const id = Number(result.lastInsertRowid);
+    this.refreshTags(id);
+    return id;
   }
 
   // Inserts a media item or refreshes the source metadata of an existing one,
@@ -259,6 +280,23 @@ export class DatabaseManager {
     this.db.prepare(`
       UPDATE media SET ${assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(...values, id);
+    if (fields.some(field => TAG_FIELDS.includes(field))) this.refreshTags(id);
+  }
+
+  // Rebuilds the tags derived from an item's name, page and description
+  refreshTags(id) {
+    const media = this.getMedia(id);
+    if (!media) return;
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM media_tags WHERE media_id = ?').run(id);
+      const insert = this.db.prepare('INSERT INTO media_tags (media_id, tag, origin) VALUES (?, ?, ?)');
+      for (const { tag, origin } of tagsFor(media)) insert.run(id, tag, origin);
+    });
+  }
+
+  // Tag words in the order they were derived: file name, then page, then description
+  getTags(id) {
+    return this.db.prepare('SELECT tag FROM media_tags WHERE media_id = ? ORDER BY rowid').all(id).map(row => row.tag);
   }
 
   getMedia(id) {
@@ -278,7 +316,7 @@ export class DatabaseManager {
     return parseMedia(this.db.prepare('SELECT * FROM media WHERE sha256 = ?').get(sha256));
   }
 
-  // Filters: kind, status, source, minWidth/minHeight (resolution floor), minRating,
+  // Filters: kind, status, source, minWidth/minHeight (resolution floor), minRating, tags (all must match),
   // orientation (rated on a monitor of that orientation), downloaded, limit.
   // downloaded: false leaves out items whose download turned out to duplicate another item.
   findMedia(filters = {}) {
@@ -304,12 +342,17 @@ export class DatabaseManager {
       conditions.push(filters.downloaded ? 'm.path IS NOT NULL' : 'm.path IS NULL AND m.duplicate_of IS NULL');
     }
     if (filters.excludeLocal) conditions.push("m.source <> 'local'");
+    for (const tag of filters.tags ?? []) {
+      conditions.push('EXISTS (SELECT 1 FROM media_tags t WHERE t.media_id = m.id AND t.tag = lower(?))');
+      params.push(tag);
+    }
     for (const keyword of filters.keywords ?? []) {
       conditions.push(`(instr(lower(COALESCE(m.original_name, '')), lower(?)) > 0
         OR instr(lower(m.tags), lower(?)) > 0 OR EXISTS (
+          SELECT 1 FROM media_tags t WHERE t.media_id = m.id AND instr(t.tag, lower(?)) > 0) OR EXISTS (
           SELECT 1 FROM search_results sr JOIN searches s ON s.id = sr.search_id
           WHERE sr.media_id = m.id AND instr(lower(s.query), lower(?)) > 0))`);
-      params.push(keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword);
     }
     if (filters.minRating !== undefined || filters.orientation !== undefined) {
       const ratingConditions = ['r.media_id = m.id'];

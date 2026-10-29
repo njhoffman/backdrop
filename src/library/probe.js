@@ -7,7 +7,7 @@ export const MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS];
 const PROBE_ARGS = [
   '-v', 'error',
   '-select_streams', 'v:0',
-  '-show_entries', 'stream=width,height,codec_name:stream_side_data=rotation:format=duration,format_name',
+  '-show_entries', 'stream=width,height,codec_name,avg_frame_rate:stream_side_data=rotation:format=duration,format_name',
   '-of', 'json'
 ];
 
@@ -16,7 +16,14 @@ function isStillImageFormat(formatName) {
   return formatName === 'image2' || formatName.endsWith('_pipe');
 }
 
-// Turns ffprobe JSON into { kind, width, height, duration }, or null when there is no picture
+// ffprobe frame rates are fractions such as 30000/1001; 0/0 means unknown. Rounded to 3 decimals.
+export function parseFrameRate(rate) {
+  const [numerator, denominator = 1] = String(rate ?? '').split('/').map(Number);
+  const fps = numerator / denominator;
+  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 1000) / 1000 : null;
+}
+
+// Turns ffprobe JSON into { kind, width, height, duration, fps }, or null when there is no picture
 export function parseProbe(json) {
   const data = typeof json === 'string' ? JSON.parse(json) : json;
   const stream = data.streams?.[0];
@@ -41,7 +48,8 @@ export function parseProbe(json) {
   }
 
   const duration = kind === 'image' ? null : Number(data.format?.duration) || null;
-  return { kind, width, height, duration };
+  const fps = kind === 'image' ? null : parseFrameRate(stream.avg_frame_rate);
+  return { kind, width, height, duration, fps };
 }
 
 export async function probeMedia(file, exec = run) {
