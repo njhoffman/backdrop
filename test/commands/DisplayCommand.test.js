@@ -65,6 +65,31 @@ describe('DisplayCommand', () => {
       expect(lines.join('\n')).to.include('1 videos fit but none loaded');
     });
 
+    it('shows each monitor\'s recent mpv CPU and decoder, and the item\'s average in current', async () => {
+      const id = addVideo(1, 1920, 1080);
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 3.25, hwdec: 'vaapi' }] });
+      db.addPlaybackSample(id, 750, 30);
+      db.setDecoder(id, 'no');
+      const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null };
+      command.control = { current: async () => playing };
+
+      await command.status();
+      await command.current({});
+
+      const text = lines.join('\n');
+      expect(text).to.include('DP-1 1920x1080, 1 videos eligible, cpu 3.3% vaapi');
+      expect(text).to.include('cpu 4.0% over 12m30s, software');
+    });
+
+    it('says the daemon waits when none of its configured monitors is active', async () => {
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [] });
+      await command.status();
+      expect(lines.join('\n')).to.include('waiting for the monitors in display.monitors');
+      let caught;
+      try { await command.next({}); } catch (error) { caught = error; }
+      expect(caught.message).to.include('waiting for its configured monitors');
+    });
+
     it('suggests importing when upscaling is allowed and the library is empty', async () => {
       config.set('display.allow_upscale', true);
       command.control = { current: async () => ({ path: null }) };

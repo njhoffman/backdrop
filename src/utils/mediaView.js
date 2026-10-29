@@ -1,6 +1,6 @@
 import {
   out, fmt, icon, mark, describeMedia, displayPath, formatQueries, formatRating, formatStars, formatResolution,
-  formatClock, formatFps, orientationName, padVisible, isInteractive
+  formatClock, formatFps, formatCpu, formatDecoder, formatDuration, orientationName, padVisible, isInteractive
 } from './output.js';
 
 // Prints a media item as a heading line plus indented path, query and credit lines:
@@ -23,6 +23,13 @@ export function printMedia(database, media, { tone, rating, extra = [], path = t
   if (tags.length) out.field('tag', fmt.dim(tags.join(', ')));
   const credit = [media.author, media.page_url && fmt.dim(`${icon('link')}${media.page_url}`)].filter(Boolean);
   if (credit.length) out.field('author', credit.join('  '));
+}
+
+// Average CPU of an item while it played, e.g. "cpu 4.1% over 12m30s, vaapi"; empty until sampled
+export function formatPlaybackCost(stats) {
+  if (!stats?.seconds) return '';
+  const decoder = formatDecoder(stats.hwdec);
+  return `cpu ${formatCpu((stats.cpu_seconds / stats.seconds) * 100)} over ${formatDuration(stats.seconds)}${decoder ? `, ${decoder}` : ''}`;
 }
 
 // Stored playback changes, e.g. "speed 0.8, dim 20"; empty when there are none

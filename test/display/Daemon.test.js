@@ -49,6 +49,8 @@ describe('Daemon', () => {
       importer: { importDirs: async () => ({ imported: [] }) },
       purge: async () => { purges++; },
       healthInterval: 0,
+      // Tests that sample CPU pass their own /proc reader
+      readFile: async () => { throw new Error('no /proc in tests'); },
       monitorInterval: 0,
       purgeInterval: 0,
       ...overrides
@@ -159,6 +161,30 @@ describe('Daemon', () => {
       } catch (error) {
         expect(error.message).to.include(`already running (pid ${process.pid})`);
       }
+    });
+
+    it('starts with the configured monitors that are active and warns about the rest', async () => {
+      const warnings = [];
+      config.set('display.monitors', ['HDMI-1', 'DP-9']);
+      const daemon = makeDaemon({ logger: { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) } });
+      await daemon.start();
+      expect(spawned).to.have.length(1);
+      expect(warnings).to.deep.include(['Configured monitors not active, waiting for them', { missing: ['DP-9'] }]);
+      await daemon.stop();
+    });
+
+    it('waits for configured monitors when none is active, and picks them up on hotplug', async () => {
+      config.set('display.monitors', ['DP-9']);
+      layout = LISTMONITORS_TWO;
+      const daemon = makeDaemon();
+      await daemon.start();
+      expect(spawned).to.have.length(0);
+      expect((await readState(tempDir)).monitors).to.deep.equal([]);
+      layout = `${LISTMONITORS_TWO} 2: +DP-9 1920/509x1080/286+3640+0  DP-9\n`.replace('Monitors: 2', 'Monitors: 3');
+      await daemon.checkMonitors();
+      expect(spawned).to.have.length(1);
+      expect((await readState(tempDir)).monitors.map(m => m.name)).to.deep.equal(['DP-9']);
+      await daemon.stop();
     });
 
     it('fails without active monitors', async () => {
@@ -506,6 +532,42 @@ describe('Daemon', () => {
       spawned[0].child.exit(null, 'SIGKILL');
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(spawned).to.have.length(3);
+      await daemon.stop();
+    });
+
+    it('samples mpv CPU per monitor and charges only intervals an item played through', async () => {
+      let clock = 0;
+      let ticks = 0;
+      const procStat = () => `4242 (mpv) S ${'0 '.repeat(10)}${ticks} 0 0 0`;
+      const warnings = [];
+      const daemon = makeDaemon({
+        now: () => clock, readFile: async () => procStat(),
+        logger: { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) }
+      });
+      await daemon.start();
+      const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/4k.mp4', width: 3840, height: 2160 });
+      const { client } = clients[0];
+      client.properties['hwdec-current'] = 'no';
+      client.emit('property-change', { name: 'path', data: '/m/4k.mp4' });
+      await tick();
+
+      await daemon.checkHealth();
+      clock += 30_000; ticks += 1200;
+      await daemon.checkHealth();
+      clock += 30_000; ticks += 600;
+      await daemon.checkHealth();
+      expect(db.getPlaybackStats(id)).to.include({ seconds: 60, cpu_seconds: 18, hwdec: 'no' });
+      const [monitor] = (await readState(tempDir)).monitors;
+      expect(monitor).to.include({ cpu: 30, hwdec: 'no' });
+      expect(warnings.filter(([message]) => message === 'Video above 1080p is decoded in software')).to.have.length(1);
+
+      // A new item mid-interval: the interval counts for the monitor average but for neither item
+      clock += 10_000;
+      client.emit('property-change', { name: 'path', data: '/elsewhere.mp4' });
+      await tick();
+      clock += 20_000; ticks += 300;
+      await daemon.checkHealth();
+      expect(db.getPlaybackStats(id).seconds).to.equal(60);
       await daemon.stop();
     });
 

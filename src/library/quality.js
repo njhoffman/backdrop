@@ -1,4 +1,5 @@
-import { listMonitors, selectMonitors } from '../display/Monitors.js';
+import { listMonitors, selectMonitors, missingMonitors } from '../display/Monitors.js';
+import { out } from '../utils/output.js';
 import { meetsMinimum } from './probe.js';
 
 export function positiveInteger(value, name, maximum = Number.MAX_SAFE_INTEGER) {
@@ -16,10 +17,16 @@ export async function targetResolution(config, explicit, monitors = listMonitors
   }
   let active;
   try { active = await monitors(); } catch { active = []; }
-  const selected = selectMonitors(active, config.get().display.monitors);
+  const setting = config.get().display.monitors;
+  const selected = selectMonitors(active, setting);
+  const missing = missingMonitors(active, setting);
   if (!selected.length) {
     if (config.get().display.allow_upscale) return { width: 1, height: 1 };
-    throw new Error('Cannot determine monitor resolution; use --resolution WIDTHxHEIGHT');
+    const reason = missing.length ? `configured monitors not active: ${missing.join(', ')}` : 'no active monitors';
+    throw new Error(`Cannot determine monitor resolution (${reason}); use --resolution WIDTHxHEIGHT`);
+  }
+  if (missing.length) {
+    out.warn(`Configured monitors not active: ${missing.join(', ')}; sizing for ${selected.map(m => m.name).join(', ')}`);
   }
   return { width: Math.max(...selected.map(m => m.width)), height: Math.max(...selected.map(m => m.height)) };
 }

@@ -27,16 +27,19 @@ export function parseMonitors(text) {
 }
 
 // display.monitors is 'auto' (all active) or a list of output names
+function configuredNames(setting) {
+  return setting === 'auto' || setting === undefined || setting === null ? null : [].concat(setting);
+}
+
+// The active monitors display.monitors asks for: all of them for auto, else the named ones that are active
 export function selectMonitors(monitors, setting) {
-  if (setting === 'auto' || setting === undefined || setting === null) {
-    return monitors;
-  }
-  const wanted = [].concat(setting);
-  const missing = wanted.filter(name => !monitors.some(monitor => monitor.name === name));
-  if (missing.length) {
-    throw new Error(`Configured monitors not active: ${missing.join(', ')}`);
-  }
-  return monitors.filter(monitor => wanted.includes(monitor.name));
+  const wanted = configuredNames(setting);
+  return wanted ? monitors.filter(monitor => wanted.includes(monitor.name)) : monitors;
+}
+
+// Names in display.monitors that are not active, e.g. an external monitor unplugged at boot
+export function missingMonitors(monitors, setting) {
+  return (configuredNames(setting) ?? []).filter(name => !monitors.some(monitor => monitor.name === name));
 }
 
 export async function listMonitors(exec = run) {

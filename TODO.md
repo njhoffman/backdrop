@@ -36,7 +36,7 @@ Reviewed: 2026-10-28
       `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped.
-- [ ] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Delete it.
+- [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
 
 ## 2. Rename to backdrop
 
@@ -85,20 +85,24 @@ Reviewed: 2026-10-28
 - [ ] **Undo can get stuck.** (p3) [bug] `undo` only ever targets the globally latest rating. If that rating cannot be undone (its skip was purged, or
       `download --upgrade` renamed the file so `rated_path` no longer matches), every later `undo` fails the same way. Update `rated_path` when an upgrade renames a file,
       and let undo report and step past an unrestorable rating (or add `undo --discard`).
-- [ ] **A missing configured monitor blocks startup.** (p2) [bug] `selectMonitors()` throws when a name in `display.monitors` is not active, so
+- [x] **A missing configured monitor blocks startup.** (p2) [bug] `selectMonitors()` throws when a name in `display.monitors` is not active, so
       `Daemon.start()` fails if that monitor is unplugged at boot, and `targetResolution()` makes search/download fail too. Hotplug already tolerates it at runtime.
       Start with the configured monitors that are present (warn about the rest) and size downloads for those, failing only when none are active.
-- [ ] **state.json is written in place.** (p3) [bug] `Daemon.writeState()` uses `fs.writeJson` directly and `readState()` treats a parse error as "not running",
+      Done: the daemon starts on the configured monitors that are active, or on none, and hotplug adds the rest; downloads size for the active ones and warn.
+- [x] **state.json is written in place.** (p3) [bug] `Daemon.writeState()` uses `fs.writeJson` directly and `readState()` treats a parse error as "not running",
       so a CLI command racing a rewrite (now on every hotplug change) can report the daemon as stopped. Write to a temp file in the runtime dir and rename it.
+      Done: written to a temporary file and renamed; skipped during shutdown so a late sample cannot recreate it.
 - [ ] **Hotplug only tested with fakes.** (p3) [test] Reconciliation is covered against a fake `xrandr`; confirm on real hardware (attach, remove, change resolution,
       lid close) and note any xrandr output the parser misses, e.g. monitors without a physical size.
-- [ ] **No record of player CPU use.** (p2) [perf] Nothing measures what the mpv instances cost over time. Have the daemon sample each
+- [x] **No record of player CPU use.** (p2) [perf] Nothing measures what the mpv instances cost over time. Have the daemon sample each
       screen's mpv CPU (from `/proc/<pid>/stat`, every minute or so) and keep a rolling average per monitor and per item, alongside
       `hwdec-current`, resolution and fps; show it in `status` and `stats`. That shows which items are expensive and whether 4K media
       is worth keeping (2026-10-28 spot check on Iris Xe: 4K24 H.264 ~26% CPU with VA-API vs ~400% in software; 1080p30 ~17%).
-- [ ] **Software-decode fallback goes unnoticed.** (p2) [perf] `--hwdec=auto-safe` silently falls back to software for unsupported
+      Done: sampled on each 30s health check into `playback_stats` (v8); shown in `status`, `current` and a `stats` section.
+- [x] **Software-decode fallback goes unnoticed.** (p2) [perf] `--hwdec=auto-safe` silently falls back to software for unsupported
       codecs or profiles, which costs about four cores at 4K. `Daemon.onFileLoaded` could read `hwdec-current` and log a warning
       (and mark the item) when it is empty for media larger than 1920x1080.
+      Done: the decoder is read on each sample and stored per item; software decoding above 1080p is logged once per item and run.
 - [x] **Monitor hotplug.** (p2) [feature] `Daemon.start()` reads `xrandr` once; a monitor attached later gets no wallpaper and moved outputs keep stale geometry until `backdrop stop && backdrop start`.
       Poll `xrandr --listactivemonitors` (or listen for RandR events) and start, stop or respawn per-monitor mpv instances on changes, then rewrite `state.json`.
       Done: the daemon polls xrandr every 5s; empty or failed reads keep the layout, and crash restarts cannot race a layout change.
@@ -149,8 +153,12 @@ Reviewed: 2026-10-28
 - [ ] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
       and descriptions, and lists filter with `--tag`. Next: show tag counts in `stats`, add a `tags` command listing them,
       and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
-- [ ] **Frame rate unknown until a video plays.** (p3) [feature] Videos added before v7 get `fps` from mpv the first time
+- [x] **Frame rate unknown until a video plays.** (p3) [feature] Videos added before v7 get `fps` from mpv the first time
       they play. A `backdrop rescan` (ffprobe over existing files) would fill it at once and could also re-check sizes.
+      Done: `backdrop rescan` fills missing frame rates; `--all` re-checks kind, size and duration of every file.
+- [ ] **ffprobe takes about 0.4s per file.** (p3) [perf] It decodes part of each file to fill in stream details, so `rescan` of
+      204 videos took 74s at two cores (2026-10-28), and large imports pay the same. Probe several files at once in `rescan`
+      and `Importer` (a small worker pool), or lower `-probesize`/`-analyzeduration` if the fields stay correct.
 
 ## 6. Resolution-aware quality filter
 

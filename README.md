@@ -39,7 +39,7 @@ backdrop --help   # creates ~/.config/backdrop/config.yaml on first run
 ```bash
 backdrop start              # one mpv wallpaper per monitor, in the background
 backdrop                    # same as backdrop status
-backdrop status             # mode and what each monitor is playing
+backdrop status             # mode, what each monitor is playing, and mpv's recent CPU use and decoder
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
 backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)
@@ -67,6 +67,7 @@ backdrop stats              # library, ratings, resolutions, sources, searches, 
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
 backdrop purge --dry-run    # trash files older than library.trash_days (the daemon purges daily)
+backdrop rescan             # probe videos without a frame rate; --all re-checks every file's kind, size and length
 backdrop stop
 ```
 
@@ -97,6 +98,15 @@ piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` 
 itself is reshuffled on every pass, and automatic advances follow it. Images change every
 `display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
+
+The daemon samples each mpv's CPU use every 30 seconds. `status` shows each monitor's recent average and
+decoder (`vaapi` or another hardware API, or `software`), `current` the playing item's average, and `stats` a
+"Playback cost" section by kind, size and decoder with the most expensive items. CPU is a percentage of one
+core, as in `top`. Videos above 1080p that mpv decodes in software are logged as a warning, since they can
+take several cores.
+
+If a monitor named in `display.monitors` is not connected, the daemon starts on the others (or on none)
+and picks it up when it appears; downloads are sized for the connected ones.
 
 Media is tagged with words from its file name (local imports), its source page and description. Tags show
 under each item and filter lists with `--tag`; `--keywords` matches them too.

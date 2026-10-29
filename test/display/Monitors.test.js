@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import {
-  parseMonitors, selectMonitors, listMonitors, geometry, monitorAt, parsePointer, pointerMonitor
+  parseMonitors, selectMonitors, missingMonitors, listMonitors, geometry, monitorAt, parsePointer, pointerMonitor
 } from '../../src/display/Monitors.js';
 import { LISTMONITORS_ONE, LISTMONITORS_TWO } from '../helpers/fakes.js';
 
@@ -37,8 +37,11 @@ describe('Monitors', () => {
       expect(selectMonitors(monitors, 'DP-1').map(m => m.name)).to.deep.equal(['DP-1']);
     });
 
-    it('fails when a configured monitor is not active', () => {
-      expect(() => selectMonitors(monitors, ['DP-1', 'DP-9'])).to.throw('Configured monitors not active: DP-9');
+    it('keeps the active configured monitors and reports the missing ones', () => {
+      expect(selectMonitors(monitors, ['DP-1', 'DP-9']).map(m => m.name)).to.deep.equal(['DP-1']);
+      expect(missingMonitors(monitors, ['DP-1', 'DP-9'])).to.deep.equal(['DP-9']);
+      expect(missingMonitors(monitors, 'auto')).to.deep.equal([]);
+      expect(selectMonitors(monitors, 'DP-9')).to.deep.equal([]);
     });
   });
 

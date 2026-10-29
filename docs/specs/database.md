@@ -1,7 +1,7 @@
 # Database
 
 SQLite via the built-in `node:sqlite` module (synchronous). The schema version is stored in
-`PRAGMA user_version` (currently 7); opening a database with a newer version fails rather than guessing.
+`PRAGMA user_version` (currently 8); opening a database with a newer version fails rather than guessing.
 Foreign keys are enforced, and file databases use WAL so the daemon and CLI can share them.
 
 ## media
@@ -39,6 +39,17 @@ Words derived from each item, rebuilt whenever its `source`, `original_name`, `p
 
 Words are lowercased and split on punctuation and camelCase; words shorter than three letters, words with
 digits (ids, resolutions, codecs) and stop words such as `pexels`, `uhd`, `video` or `the` are dropped.
+
+## playback_stats
+
+What playing an item costs, sampled by the daemon every 30 seconds from `/proc/<mpv pid>/stat`. A sample
+counts toward an item only when that item played through the whole interval. Added in v8.
+
+| Column | Notes |
+| --- | --- |
+| `media_id` | primary key; cascades on media delete |
+| `seconds`, `cpu_seconds` | wall time sampled and the CPU time mpv used in it; average CPU % is `cpu_seconds / seconds * 100` |
+| `hwdec` | decoder mpv last reported (`hwdec-current`): a hardware API such as `vaapi`, or `no` for software |
 
 ## ratings
 

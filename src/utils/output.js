@@ -219,6 +219,18 @@ export function formatFps(fps) {
   return fps ? `${Math.round(fps * 100) / 100}fps` : '';
 }
 
+// CPU use as a percentage of one core: 0.4%, 26%, 408%; '-' when unknown
+export function formatCpu(percent) {
+  if (!Number.isFinite(percent)) return '-';
+  return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+}
+
+// mpv's hwdec-current as hardware (the API, e.g. vaapi) or software
+export function formatDecoder(hwdec) {
+  if (hwdec === null || hwdec === undefined) return '';
+  return hwdec === 'no' || hwdec === '' ? 'software' : hwdec;
+}
+
 // A 0-3 rating as stars on a terminal (★★☆), as "2/3" in plain output; 0 is shown as skipped
 export function formatRating(rating) {
   if (!rating?.rating) return formatStars(rating);

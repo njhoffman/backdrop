@@ -80,7 +80,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('PRAGMA user_version = 1');
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 1');
         first.close();
 
         const second = new DatabaseManager();
@@ -99,7 +99,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('PRAGMA user_version = 4'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 4'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(id).dim).to.equal(0);
         second.setDim(id, 40);
@@ -115,7 +115,7 @@ describe('DatabaseManager', () => {
           tags: ['Waves crashing on rocks'], original_name: 'remote-1.mp4' }));
         const local = first.addMedia({ kind: 'image', source: 'local', source_id: 1, original_name: 'MistyForest_4k-2160p.JPG' });
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('PRAGMA user_version = 6'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 6'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(remote).fps).to.be.null;
         expect(second.getTags(remote)).to.deep.equal(['aerial', 'ocean', 'waves', 'crashing', 'rocks']);
@@ -143,7 +143,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('PRAGMA user_version = 3'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
         second.addRating(id, 0, '1920x1080', { previousPath: '/media/a.mp4', ratedPath: '/trash/a.mp4' });
@@ -151,6 +151,27 @@ describe('DatabaseManager', () => {
         expect(second.undoLastRating().media.status).to.equal('kept');
         second.close();
       });
+    });
+  });
+
+  describe('playback stats', () => {
+    it('adds sampled intervals, keeps the last decoder and groups cost by kind, size and decoder', () => {
+      const big = db.addMedia({ kind: 'video', source: 'local', source_id: 1, width: 3840, height: 2160 });
+      const small = db.addMedia({ kind: 'video', source: 'local', source_id: 2, width: 1920, height: 1080 });
+      db.setDecoder(big, 'no');
+      db.addPlaybackSample(big, 60, 120);
+      db.addPlaybackSample(big, 90, 240);
+      db.addPlaybackSample(small, 200, 20);
+      db.setDecoder(small, 'vaapi');
+      expect(db.getPlaybackStats(big)).to.include({ seconds: 150, cpu_seconds: 360, hwdec: 'no' });
+
+      const cost = db.getPlaybackCost({ minSeconds: 100 });
+      expect(cost.groups.map(row => [row.bucket, row.decoder, row.cpu_seconds / row.seconds]))
+        .to.deep.equal([['4K', 'software', 2.4], ['1080p', 'hardware', 0.1]]);
+      expect(cost.expensive.map(media => media.id)).to.deep.equal([big, small]);
+      expect(cost.software).to.equal(1);
+      db.deleteMedia(big);
+      expect(db.getPlaybackStats(big)).to.be.null;
     });
   });
 

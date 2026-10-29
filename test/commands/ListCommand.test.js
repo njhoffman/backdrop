@@ -112,6 +112,13 @@ describe('ListCommand and StatsCommand', () => {
     expect(text).to.include('all time: 1 search');
     expect(text).to.match(/media {2}1 files {2}2\.0 KB {2}\S+media/);
     expect(text).to.include('  DP-1     1920x1080       1       1');
+    expect(text).to.not.include('Playback cost');
+    db.addPlaybackSample(video, 600, 30); db.setDecoder(video, 'vaapi');
+    console.log.resetHistory();
+    await new StatsCommand(config, db, silentLogger).showStats();
+    const cost = console.log.args.map(args => args[0] ?? '').join('\n');
+    expect(cost).to.include('Playback cost (mpv CPU, % of one core)\n  kind   size   decoder   items  sampled  avg cpu\n  video  1080p  hardware      1   10m00s     5.0%');
+    expect(cost).to.include(`#${video} 1920x1080  cpu 5.0% over 10m00s, vaapi`);
     expect(text).to.not.match(/\x1b|█/);
   });
 

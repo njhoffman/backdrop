@@ -57,7 +57,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
   xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
   trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
-  `loop-file`/`end`, records frame rates from mpv and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
+  `loop-file`/`end`, records frame rates from mpv, samples mpv CPU and decoder on each health check (`src/display/cpu.js`,
+  `playback_stats`), writes `state.json` atomically and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
@@ -67,7 +68,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
-  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`); failed database writes restore the file. The obsolete shell-hook command has been removed.
+  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline.
 
 ## Conventions

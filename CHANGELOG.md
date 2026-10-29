@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-10-28
+
+### Added
+- `backdrop rescan` probes library videos and GIFs that have no frame rate yet; `--all` re-checks the kind,
+  size, duration and frame rate of every downloaded file, reports what changed, and lists files missing from
+  disk without removing them.
+- The daemon measures how much CPU each monitor's mpv uses (every 30 seconds) and which decoder it uses.
+  `status` shows each monitor's recent average and decoder, `current` the playing item's average, and `stats`
+  a "Playback cost" section by kind, size and hardware or software decoding, with the most expensive items.
+- A warning in the log when mpv decodes a video above 1080p in software.
+
+### Fixed
+- The daemon no longer refuses to start when a monitor named in `display.monitors` is unplugged: it starts
+  on the connected ones, or waits with none, and adds the rest when they appear. Search and download size
+  for the connected monitors and warn about the missing ones.
+- A command run while the daemon rewrote its state file could report the daemon as not running.
+
+### Changed
+- The database schema is v8 (playback cost per item); it upgrades automatically.
+
 ## [2.11.0] - 2026-10-28
 
 ### Added

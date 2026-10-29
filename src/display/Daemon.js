@@ -3,7 +3,7 @@ import { createRequire } from 'module';
 import fs from 'fs-extra';
 import path from 'path';
 import { MpvClient } from './MpvClient.js';
-import { listMonitors, selectMonitors, geometry, run } from './Monitors.js';
+import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
   getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
   playbackLimits, validVideoDuration
@@ -11,6 +11,7 @@ import {
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
+import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -87,7 +88,7 @@ export class Daemon {
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
     restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
     healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
-    monitorInterval = MONITOR_POLL_MS,
+    monitorInterval = MONITOR_POLL_MS, now = Date.now, readFile,
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger })
   }) {
@@ -106,6 +107,10 @@ export class Daemon {
     this.purgeInterval = purgeInterval;
     this.importProgressInterval = importProgressInterval;
     this.monitorInterval = monitorInterval;
+    this.now = now;
+    this.readFile = readFile;
+    // Items already warned about for software decoding during this run
+    this.softwareWarned = new Set();
     this.reconciling = null;
     this.purge = purge;
     this.timers = [];
@@ -125,9 +130,16 @@ export class Daemon {
     }
 
     const { display } = this.config.get();
-    const monitors = selectMonitors(await listMonitors(this.exec), display.monitors);
-    if (!monitors.length) {
+    const active = await listMonitors(this.exec);
+    const monitors = selectMonitors(active, display.monitors);
+    const missing = missingMonitors(active, display.monitors);
+    // Configured monitors that are unplugged are started by hotplug polling once they appear,
+    // even when none of them is active yet; with auto there is nothing to wait for
+    if (!monitors.length && !missing.length) {
       throw new Error('No active monitors found');
+    }
+    if (missing.length) {
+      this.logger.warn('Configured monitors not active, waiting for them', { missing });
     }
 
     await fs.ensureDir(this.runtimeDir, 0o700);
@@ -146,7 +158,7 @@ export class Daemon {
     this.logger.info('Daemon started', { version, pid: process.pid, monitors: monitors.map(m => m.name) });
 
     // Playback starts from the existing library; new imports are appended as they finish
-    this.importing = this.importDirs(monitors[0]);
+    this.importing = this.importDirs(monitors[0] ?? null);
 
     // An interval of 0 turns the timer off (tests drive these directly)
     this.runPurge();
@@ -155,13 +167,9 @@ export class Daemon {
     this.every(this.monitorInterval, () => this.checkMonitors());
   }
 
-  // Active monitors to manage now. Unlike startup, a configured monitor that is missing is not an
-  // error here: it was unplugged, and is picked up again when it returns.
+  // Active monitors to manage now; a configured monitor that is missing is picked up when it returns
   filterConfigured(active) {
-    const setting = this.config.get().display.monitors;
-    if (setting === 'auto' || setting === undefined || setting === null) return active;
-    const wanted = [].concat(setting);
-    return active.filter(monitor => wanted.includes(monitor.name));
+    return selectMonitors(active, this.config.get().display.monitors);
   }
 
   // Starts, stops or respawns monitor instances to match the current layout; concurrent calls share one run
@@ -235,7 +243,7 @@ export class Daemon {
   }
 
   // Supervision otherwise only sees process exits; an mpv that stops answering IPC is killed,
-  // and handleExit restarts it within the usual restart budget
+  // and handleExit restarts it within the usual restart budget. A healthy mpv is also sampled for CPU use.
   async checkHealth() {
     await Promise.all([...this.screens.values()].map(async screen => {
       if (this.stopping || screen.checking || screen.child.exitCode !== null || screen.child.signalCode !== null) {
@@ -243,8 +251,9 @@ export class Daemon {
       }
       screen.checking = true;
       try {
-        await screen.client.getProperty('pid');
+        const pid = await screen.client.getProperty('pid');
         screen.healthFailures = 0;
+        await this.sample(screen, pid);
       } catch (error) {
         screen.healthFailures = (screen.healthFailures ?? 0) + 1;
         this.logger.warn('mpv health check failed', { monitor: screen.monitor.name, failures: screen.healthFailures, error: error.message });
@@ -258,6 +267,63 @@ export class Daemon {
     }));
   }
 
+  // Measures the CPU mpv used since the previous sample. The interval counts toward the playing item only
+  // if that item played through all of it, so a switch never charges one item for another's decoding.
+  async sample(screen, pid) {
+    let cpu;
+    try {
+      cpu = await readCpuSeconds(pid, this.readFile);
+    } catch (error) {
+      this.logger.debug('Cannot read mpv CPU time', { monitor: screen.monitor.name, error: error.message });
+      return;
+    }
+    const at = this.now();
+    const last = screen.sample;
+    screen.sample = { pid, cpu, at, media: screen.media };
+    if (last?.pid === pid && at > last.at && cpu >= last.cpu) {
+      const seconds = (at - last.at) / 1000;
+      const cpuSeconds = cpu - last.cpu;
+      screen.recent = [...(screen.recent ?? []), { seconds, cpuSeconds }].slice(-RECENT_SAMPLES);
+      if (screen.media && screen.media === last.media && screen.loadedAt <= last.at) {
+        try {
+          this.database.addPlaybackSample(screen.media.id, seconds, cpuSeconds);
+        } catch (error) {
+          this.logger.warn('Failed to record playback cost', { mediaId: screen.media.id, error: error.message });
+        }
+      }
+    }
+    await this.recordDecoder(screen);
+    await this.writeState().catch(error => this.logger.warn('Failed to write state', { error: error.message }));
+  }
+
+  // mpv reports the decoder only once a file is open, and observed properties only fire on changes,
+  // so the decoder is read on each sample rather than on load
+  async recordDecoder(screen) {
+    const { media } = screen;
+    if (!media || modeOfKind(media.kind) !== 'video') {
+      screen.hwdec = null;
+      return;
+    }
+    let hwdec;
+    try {
+      hwdec = await screen.client.getProperty('hwdec-current');
+    } catch {
+      return;
+    }
+    screen.hwdec = hwdec || 'no';
+    try {
+      this.database.setDecoder(media.id, screen.hwdec);
+    } catch (error) {
+      this.logger.warn('Failed to record decoder', { mediaId: media.id, error: error.message });
+    }
+    if (isSoftwareDecoder(hwdec) && isLargeVideo(media) && !this.softwareWarned.has(media.id)) {
+      this.softwareWarned.add(media.id);
+      this.logger.warn('Video above 1080p is decoded in software', {
+        monitor: screen.monitor.name, mediaId: media.id, size: `${media.width}x${media.height}`, path: media.path
+      });
+    }
+  }
+
   async importDirs(monitor) {
     const dirs = this.config.get().library.import_dirs;
     if (!dirs.length) {
@@ -268,7 +334,7 @@ export class Daemon {
       let total = 0;
       let lastReport = Date.now();
       const { imported } = await this.importer.importDirs(dirs, {
-        resolution: `${monitor.width}x${monitor.height}`,
+        resolution: monitor ? `${monitor.width}x${monitor.height}` : null,
         shouldStop: () => this.stopping,
         onStart: count => {
           total = count;
@@ -349,6 +415,7 @@ export class Daemon {
   async onFileLoaded(screen, filePath) {
     const media = this.database.getMediaByPath(filePath);
     screen.media = media;
+    screen.loadedAt = this.now();
     try {
       await screen.client.setProperty('brightness', brightnessFor(media?.dim ?? 0));
     } catch (error) {
@@ -459,9 +526,21 @@ export class Daemon {
     }
   }
 
+  // Written to a temporary file and renamed, so a CLI command never reads a half-written state.
+  // cpu is the monitor's recent average (percent of one core), null until two samples were taken.
   async writeState() {
-    const monitors = [...this.screens.values()].map(({ monitor, socketPath }) => ({ ...monitor, socket: socketPath }));
-    await fs.writeJson(statePath(this.runtimeDir), { pid: process.pid, monitors });
+    // A sample finishing during shutdown must not recreate the state file stop() removes
+    if (this.stopping) return;
+    const monitors = [...this.screens.values()].map(({ monitor, socketPath, recent = [], hwdec = null }) => ({
+      ...monitor,
+      socket: socketPath,
+      cpu: cpuPercent(recent.reduce((sum, item) => sum + item.cpuSeconds, 0), recent.reduce((sum, item) => sum + item.seconds, 0)),
+      hwdec
+    }));
+    const file = statePath(this.runtimeDir);
+    const temporary = `${file}.${process.pid}.tmp`;
+    await fs.writeJson(temporary, { pid: process.pid, monitors });
+    await fs.rename(temporary, file);
   }
 
   async stop() {

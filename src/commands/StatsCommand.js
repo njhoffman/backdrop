@@ -4,8 +4,9 @@ import { readState } from '../display/Daemon.js';
 import { MODES, eligibleMedia } from '../display/Playlist.js';
 import {
   out, fmt, icon, isInteractive, colorDepth, symbolSet, SYMBOL_SETS, renderBar, stackedBar, formatTable,
-  formatDuration, formatBytes, formatStars, formatResolution, displayPath
+  formatDuration, formatBytes, formatStars, formatResolution, displayPath, formatCpu
 } from '../utils/output.js';
+import { formatPlaybackCost } from '../utils/mediaView.js';
 
 const KINDS = ['video', 'gif', 'image'];
 const RESOLUTION_BUCKETS = ['8K', '4K', '1440p', '1080p', 'smaller', 'unknown'];
@@ -72,6 +73,7 @@ export class StatsCommand {
     this.activity(stats, detail);
     await this.storage();
     await this.monitors();
+    this.playbackCost();
     this.quota();
     return { ...stats, detail };
   }
@@ -191,6 +193,24 @@ export class StatsCommand {
         ...MODES.map(mode => eligibleMedia(this.database, mode, monitor, { allowUpscale }).length)]);
     }
     this.section('Eligible on each monitor', rows, { align: ['l', 'l', 'r', 'r'] });
+  }
+
+  // Average mpv CPU (percent of one core) while items played, from the daemon's samples
+  playbackCost() {
+    const { groups, expensive, software } = this.database.getPlaybackCost();
+    if (!groups.length) return;
+    const rows = [[fmt.dim('kind'), fmt.dim('size'), fmt.dim('decoder'), fmt.dim('items'), fmt.dim('sampled'), fmt.dim('avg cpu')]];
+    for (const row of groups) {
+      rows.push([`${icon(row.kind)}${fmt.cyan(row.kind)}`, row.bucket,
+        row.decoder === 'software' ? fmt.yellow(row.decoder) : row.decoder, row.items,
+        formatDuration(row.seconds), formatCpu((row.cpu_seconds / row.seconds) * 100)]);
+    }
+    this.section('Playback cost (mpv CPU, % of one core)', rows, { align: ['l', 'l', 'l', 'r', 'r', 'r'] });
+    for (const media of expensive) {
+      out.detail(`#${media.id} ${formatResolution(media.width, media.height)}  `
+        + formatPlaybackCost({ seconds: media.sampled_seconds, cpu_seconds: media.cpu_seconds, hwdec: media.hwdec }));
+    }
+    if (software) out.detail(fmt.yellow(`${software} item(s) last played with software decoding`));
   }
 
   quota() {

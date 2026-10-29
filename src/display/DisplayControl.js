@@ -61,6 +61,9 @@ export class DisplayControl {
 
   async targetMonitor(name = null) {
     const { monitors } = await this.state();
+    if (!monitors.length) {
+      throw new Error('The daemon is waiting for its configured monitors (display.monitors); none is active');
+    }
 
     if (name) {
       const monitor = monitors.find(m => m.name === name);

@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { tagsFor } from '../library/tags.js';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -117,7 +117,17 @@ const MIGRATIONS = [`
     CREATE INDEX idx_media_tags_tag ON media_tags (tag);
   `);
   for (const { id } of database.db.prepare('SELECT id FROM media').all()) database.refreshTags(id);
-}];
+}, `
+  -- What playing an item costs, sampled by the daemon: wall seconds observed and the CPU seconds mpv used
+  -- in them, plus the decoder mpv last reported ('no' is software decoding)
+  CREATE TABLE playback_stats (
+    media_id INTEGER PRIMARY KEY REFERENCES media (id) ON DELETE CASCADE,
+    seconds REAL NOT NULL DEFAULT 0,
+    cpu_seconds REAL NOT NULL DEFAULT 0,
+    hwdec TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`];
 
 export function orientationOf(resolution) {
   const match = /^(\d+)x(\d+)$/.exec(resolution || '');
@@ -630,6 +640,52 @@ export class DatabaseManager {
     const { last: lastRating } = this.db.prepare('SELECT MAX(created_at) AS last FROM ratings').get();
 
     return { kinds, ratings, resolutions, sources, queries, recent, lastRating };
+  }
+
+  // Adds a sampled interval of playback to an item's totals
+  addPlaybackSample(mediaId, seconds, cpuSeconds) {
+    this.db.prepare(`
+      INSERT INTO playback_stats (media_id, seconds, cpu_seconds) VALUES (?, ?, ?)
+      ON CONFLICT (media_id) DO UPDATE SET seconds = seconds + excluded.seconds,
+        cpu_seconds = cpu_seconds + excluded.cpu_seconds, updated_at = CURRENT_TIMESTAMP
+    `).run(mediaId, seconds, cpuSeconds);
+  }
+
+  setDecoder(mediaId, hwdec) {
+    this.db.prepare(`
+      INSERT INTO playback_stats (media_id, hwdec) VALUES (?, ?)
+      ON CONFLICT (media_id) DO UPDATE SET hwdec = excluded.hwdec, updated_at = CURRENT_TIMESTAMP
+    `).run(mediaId, hwdec);
+  }
+
+  getPlaybackStats(mediaId) {
+    return this.db.prepare('SELECT * FROM playback_stats WHERE media_id = ?').get(mediaId) ?? null;
+  }
+
+  // Playback cost for `backdrop stats`: average CPU by kind, resolution bucket and decoder, the most
+  // expensive items with at least minSeconds sampled, and how many items mpv last decoded in software
+  getPlaybackCost({ minSeconds = 120, top = 5 } = {}) {
+    const groups = this.db.prepare(`
+      SELECT m.kind,
+        CASE
+          WHEN MIN(m.width, m.height) >= 2160 THEN '4K'
+          WHEN MIN(m.width, m.height) >= 1440 THEN '1440p'
+          WHEN MIN(m.width, m.height) >= 1080 THEN '1080p'
+          ELSE 'smaller' END AS bucket,
+        CASE WHEN p.hwdec IS NULL THEN 'unknown' WHEN p.hwdec IN ('no', '') THEN 'software' ELSE 'hardware' END AS decoder,
+        COUNT(*) AS items, SUM(p.seconds) AS seconds, SUM(p.cpu_seconds) AS cpu_seconds
+      FROM playback_stats p JOIN media m ON m.id = p.media_id
+      WHERE p.seconds > 0
+      GROUP BY m.kind, bucket, decoder
+      ORDER BY m.kind, SUM(p.cpu_seconds) / SUM(p.seconds) DESC`).all();
+    const expensive = this.db.prepare(`
+      SELECT m.*, p.seconds AS sampled_seconds, p.cpu_seconds, p.hwdec
+      FROM playback_stats p JOIN media m ON m.id = p.media_id
+      WHERE p.seconds >= ?
+      ORDER BY p.cpu_seconds / p.seconds DESC LIMIT ?`).all(minSeconds, top).map(parseMedia);
+    const { count: software } = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM playback_stats WHERE hwdec IN ('no', '')`).get();
+    return { groups, expensive, software };
   }
 
   close() {

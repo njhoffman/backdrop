@@ -10,6 +10,7 @@ import { DisplayCommand } from './commands/DisplayCommand.js';
 import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
 import { PurgeCommand } from './commands/PurgeCommand.js';
+import { RescanCommand } from './commands/RescanCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
 import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
@@ -73,6 +74,7 @@ class BackdropApp {
     const importer = new ImportCommand(this.config, this.database, this.logger);
     const remover = new RemoveCommand(this.config, this.database, this.logger);
     const purger = new PurgeCommand(this.config, this.database, this.logger);
+    const rescanner = new RescanCommand(this.config, this.database, this.logger);
     const rating = new RatingCommand(this.config, this.database, this.logger);
     const search = new SearchCommand(this.config, this.database, this.logger);
     const download = new DownloadCommand(this.config, this.database, this.logger);
@@ -168,6 +170,12 @@ class BackdropApp {
       .description('Delete trash files skipped more than library.trash_days ago (the daemon also runs this daily)')
       .option('--dry-run', 'List what would be purged without deleting anything')
       .action(this.action(options => purger.purge(options)));
+
+    program
+      .command('rescan')
+      .description('Probe library files again: fill in missing video frame rates, or with --all re-check every file')
+      .option('--all', 'Re-check kind, size, duration and frame rate of every downloaded file')
+      .action(this.action(options => rescanner.rescan(options)));
 
     program
       .command('mode')

@@ -3,8 +3,8 @@ import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
-import { out, fmt, icon, displayPath, describeMedia, formatResolution } from '../utils/output.js';
-import { printMedia, printPlaying, formatMediaLine, formatAdjustments } from '../utils/mediaView.js';
+import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
+import { printMedia, printPlaying, formatMediaLine, formatAdjustments, formatPlaybackCost } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
@@ -82,12 +82,19 @@ export class DisplayCommand {
     }
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid})`)}`);
+    if (!state.monitors.length) {
+      out.field('info', fmt.yellow('waiting for the monitors in display.monitors to become active'));
+      return;
+    }
     const mode = getMode(this.database);
     const { allow_upscale: allowUpscale } = this.config.get().display;
     for (const monitor of state.monitors) {
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
       const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
-      out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(`${formatResolution(monitor.width, monitor.height)}, ${eligible} ${mode}s eligible`)}`);
+      const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s eligible`];
+      // Recent average from the daemon's samples, once it has two
+      if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
+      out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
       if (!path) {
         out.field('info', fmt.yellow('nothing playing'));
         out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
@@ -128,7 +135,10 @@ export class DisplayCommand {
     }
     // The first line stays the bare path (full when piped) for scripts
     out.print(displayPath(path));
-    if (media) printMedia(this.database, media, { rating, path: false, extra: [this.adjustments(media)] });
+    if (!media) return;
+    printMedia(this.database, media, { rating, path: false, extra: [this.adjustments(media)] });
+    const cost = formatPlaybackCost(this.database.getPlaybackStats(media.id));
+    if (cost) out.field('cpu', fmt.dim(cost));
   }
 
   async next(options = {}) {
