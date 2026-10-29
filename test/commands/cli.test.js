@@ -22,7 +22,7 @@ describe('CLI command registration', function () {
     run('stats');
     const result = run('--help');
     expect(result.status).to.equal(0);
-    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge', 'dim', 'rescan']) {
+    for (const command of ['keep', 'skip', 'undo', 'go-next', 'search-images', 'search-videos', 'download', 'list-images', 'list-videos', 'stats', 'purge', 'dim', 'rescan', 'menu']) {
       expect(result.stdout).to.include(command);
     }
     expect(result.stderr).to.equal('');

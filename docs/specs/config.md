@@ -31,6 +31,9 @@ display:
   xwinwrap_args: [-b, -s, -st, -sp, -nf, -ov, -fdt, -ni]  # -g <geometry> is added per monitor
   mpv_args: []             # extra mpv options; mpv runs with --no-config, so mpv.conf is not read
 
+menu:
+  rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme, mytheme.rasi]
+
 screensaver:
   idle_minutes: 10
   sources: [rated_videos]  # what the screensaver draws from

@@ -19,7 +19,8 @@ export function notifyMode(display) {
   return mode;
 }
 
-function escapeMarkup(text) {
+// Notification bodies and rofi messages are Pango markup
+export function escapeMarkup(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -68,6 +69,15 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
     if (Number.isInteger(id)) database.setSetting(key, id);
   } catch (error) {
     logger?.warn('Notification failed', { error: error.message });
+  }
+}
+
+// Errors from commands run without a terminal (the rofi menu), shown whatever display.notify says
+export async function notifyError(message, { logger } = {}) {
+  try {
+    await settings.exec('notify-send', ['--app-name=backdrop', '--urgency=critical', 'backdrop', escapeMarkup(message)]);
+  } catch (error) {
+    logger?.warn('Error notification failed', { error: error.message });
   }
 }
 

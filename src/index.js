@@ -11,6 +11,7 @@ import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
 import { PurgeCommand } from './commands/PurgeCommand.js';
 import { RescanCommand } from './commands/RescanCommand.js';
+import { MenuCommand } from './commands/MenuCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
 import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
@@ -76,6 +77,7 @@ class BackdropApp {
     const purger = new PurgeCommand(this.config, this.database, this.logger);
     const rescanner = new RescanCommand(this.config, this.database, this.logger);
     const rating = new RatingCommand(this.config, this.database, this.logger);
+    const menu = new MenuCommand(this.config, this.database, this.logger, { display, rating });
     const search = new SearchCommand(this.config, this.database, this.logger);
     const download = new DownloadCommand(this.config, this.database, this.logger);
     const list = new ListCommand(this.config, this.database, this.logger);
@@ -172,6 +174,13 @@ class BackdropApp {
       .description('Delete trash files skipped more than library.trash_days ago (the daemon also runs this daily)')
       .option('--dry-run', 'List what would be purged without deleting anything')
       .action(this.action(options => purger.purge(options)));
+
+    program
+      .command('menu')
+      .description('Open a rofi menu to rate, navigate, adjust and switch the item under the pointer')
+      .option(...monitorOption)
+      .option('--stay', 'Reopen the menu after each action until dismissed')
+      .action(this.action(options => menu.open(options)));
 
     program
       .command('rescan')

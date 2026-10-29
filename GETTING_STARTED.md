@@ -161,7 +161,14 @@ bindsym $mod+bracketright exec --no-startup-id backdrop next
 bindsym $mod+bracketleft exec --no-startup-id backdrop prev
 bindsym $mod+minus exec --no-startup-id backdrop speed -0.1
 bindsym $mod+equal exec --no-startup-id backdrop speed +0.1
+bindsym $mod+b exec --no-startup-id backdrop menu
+bindsym $mod+Shift+b exec --no-startup-id backdrop menu --stay
 ```
+
+`backdrop menu` opens rofi for the monitor under the pointer: keep 1-3, skip, undo, next, prev, go-next,
+speed and dim steps, the mode switch and the target monitor. It closes after one action (`--stay` keeps
+it open until Escape); speed and dim stay in their submenu for repeated steps. Errors appear as desktop
+notifications, since a keybinding has no terminal. Theme it with `menu.rofi_args` in the config.
 
 ## Current limitations and troubleshooting
 

@@ -214,9 +214,13 @@ Reviewed: 2026-10-28
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
-- [ ] **Rofi control menu.** (p2) [feature] `backdrop menu` (or a shipped script) opens rofi with the current item (name, rating, monitor) and actions:
+- [x] **Rofi control menu.** (p2) [feature] `backdrop menu` (or a shipped script) opens rofi with the current item (name, rating, monitor) and actions:
       keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
       Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
+      Done: `backdrop menu` built into the CLI (no script, so `--json` was not needed); closes after an action, `--stay`
+      keeps it open; errors go to critical notifications; `menu.rofi_args` for theming; i3 example in GETTING_STARTED.md.
+- [ ] **No `--json` output.** (p3) [feature] Scripts parse `--line` today. `current`, `status` and the lists could print JSON
+      (the media row, rating, tags, playback cost, monitor) for status bars and custom menus; split from the rofi menu item.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
 - [x] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.

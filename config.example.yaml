@@ -25,6 +25,9 @@ display:
   allow_upscale: false               # never show media smaller than the monitor
   mpv_args: [--hwdec=vaapi]          # extra mpv options (your mpv.conf is not loaded)
 
+menu:
+  rofi_args: []                      # extra rofi options for backdrop menu, e.g. [-theme, ~/.config/rofi/backdrop.rasi]
+
 screensaver:
   idle_minutes: 10
   sources: [rated_videos]

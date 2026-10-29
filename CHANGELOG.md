@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-10-28
+
+### Added
+- `backdrop menu` opens a rofi menu for the item playing under the pointer (or `--monitor`): keep 1-3, keep 3
+  and next, skip, undo, next (in order or random), prev, go-next, speed and dim steps, the mode switch and
+  the target monitor. The menu shows the item's details, offers only what applies to it, and closes after
+  one action; `--stay` keeps it open until Escape. Speed and dim stay in their submenu for repeated steps.
+  Errors appear as critical desktop notifications. `menu.rofi_args` passes extra options such as a theme.
+
 ## [2.13.0] - 2026-10-28
 
 ### Added

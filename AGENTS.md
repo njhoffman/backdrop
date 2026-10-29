@@ -69,7 +69,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips); failed database writes restore the file. The obsolete shell-hook command has been removed.
-  Lists support plain output, interactive rating and M3U export; stats work offline.
+  Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
+  rating and display commands from `rofi -dmenu` (`rofiMenu`, injectable as `runMenu` for tests).
 
 ## Conventions
 

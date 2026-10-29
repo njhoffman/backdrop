@@ -81,6 +81,9 @@ export class ConfigManager {
         xwinwrap_args: ['-b', '-s', '-st', '-sp', '-nf', '-ov', '-fdt', '-ni'],
         mpv_args: []
       },
+      menu: {
+        rofi_args: []
+      },
       screensaver: {
         idle_minutes: 10,
         sources: ['rated_videos'],
