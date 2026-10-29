@@ -1,7 +1,8 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { queueRandom, randomOrder } from '../display/Playlist.js';
+import { queueRandom, queueMatching, randomOrder } from '../display/Playlist.js';
+import { matchingMedia } from '../library/match.js';
 import { out, fmt } from '../utils/output.js';
 import { printMedia, printPlaying, formatMediaLine, formatAdjustments, wantsJson, mediaJson } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
@@ -42,12 +43,15 @@ export class RatingCommand {
     else printMedia(this.database, media, { rating, extra: [fmt.dim(formatAdjustments(media))] });
   }
 
-  // Removing the playing entry advances mpv, so --random moves a random entry up to play next first
+  // Removing the playing entry advances mpv, so --random moves a random entry up to play next first.
+  // With --query/--tag/--keywords (from the menu) a matching entry goes first when there is one.
   async skip(options = {}) {
     const { media, monitor } = await this.current(options);
     const random = this.random(options);
+    const matches = matchingMedia(this.database, options);
     const playing = await this.control.switchTo(monitor.name, async client => {
-      if (random) await queueRandom(client);
+      const queued = matches && await queueMatching(client, new Set(matches.map(item => item.path)), { random });
+      if (!queued && random) await queueRandom(client);
       return this.rate(media, 0, `${monitor.width}x${monitor.height}`);
     });
     await this.show(playing, options);
@@ -58,8 +62,10 @@ export class RatingCommand {
     return randomOrder(this.config.get().display, options.random);
   }
 
+  // Filters pick the next item when one matches; otherwise the advance goes on as without them
   async advance(monitor, options, random = this.random(options)) {
-    await this.show(await this.control.next(monitor.name, { random }), options);
+    const matches = matchingMedia(this.database, options);
+    await this.show(await this.control.next(monitor.name, matches ? { random, matches, fallback: true } : { random }), options);
   }
 
   // Prints and announces what a monitor plays after a command switched it

@@ -2,7 +2,7 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueRandom
+  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueRandom, queueMatching
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -115,12 +115,39 @@ export class DisplayControl {
     });
   }
 
-  // random first moves a random entry up to play next, so prev still returns to the item before it
-  async next(monitorName, { random = false } = {}) {
-    return this.switchTo(monitorName, async client => {
-      if (random) await queueRandom(client);
+  // What the monitor plays or is about to: the playlist's current entry, which mpv sets before the file
+  // loads, so a menu redrawn right after next shows the new item rather than the one still on screen
+  async selected(monitorName) {
+    const { result, ...playing } = await this.switchTo(monitorName, async () => {});
+    return playing;
+  }
+
+  // random first moves a random entry up to play next, so prev still returns to the item before it.
+  // matches (media rows from --query/--tag/--keywords) limits that to their entries, in playlist order
+  // unless random; with no other matching entry the playlist is left alone and the error says why,
+  // or with fallback (the advance after a rating) it advances as without matches.
+  async next(monitorName, { random = false, matches, fallback = false } = {}) {
+    return this.switchTo(monitorName, async (client, monitor) => {
+      if (!matches || !await queueMatching(client, new Set(matches.map(media => media.path)), { random })) {
+        if (matches && !fallback) throw new Error(await this.noMatch(client, monitor, matches));
+        if (random) await queueRandom(client);
+      }
       await client.command('playlist-next', 'force');
     });
+  }
+
+  async noMatch(client, monitor, matches) {
+    if (!matches.length) return 'No downloaded media matches the filters';
+    const mode = getMode(this.database);
+    const inMode = matches.filter(media => MODE_KINDS[mode].includes(media.kind));
+    if (!inMode.length) {
+      const other = otherMode(mode);
+      return `No matching ${mode}s; ${matches.length} matching ${other}s (switch with \`backdrop mode ${other}\`)`;
+    }
+    const currentPath = await client.getProperty('path').catch(() => null);
+    if (inMode.length === 1 && inMode[0].path === currentPath) return `Only the item playing on ${monitor.name} matches`;
+    return `None of the ${inMode.length} matching ${mode}s is in the ${monitor.name} playlist besides the one playing`
+      + ' (items smaller than the monitor are left out unless display.allow_upscale is set)';
   }
 
   async prev(monitorName) {

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
+import { matchingMedia } from '../library/match.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
@@ -172,9 +173,11 @@ export class DisplayCommand {
     if (cost) out.field('cpu', fmt.dim(cost));
   }
 
+  // --query, --tag and --keywords jump to a matching item instead; the playlist itself stays as it was
   async next(options = {}) {
     const random = randomOrder(this.config.get().display, options.random);
-    await this.show(await this.control.next(options.monitor, { random }), options);
+    const matches = matchingMedia(this.database, options);
+    await this.show(await this.control.next(options.monitor, matches ? { random, matches } : { random }), options);
   }
 
   async prev(options = {}) {

@@ -10,6 +10,7 @@ import { probeMedia } from '../library/probe.js';
 import { targetResolution, positiveInteger, selectVariant, fits } from '../library/quality.js';
 import { out, fmt, icon, mark, ProgressBar, formatBytes, formatDuration, formatResolution, formatQueries, displayPath } from '../utils/output.js';
 import { printMedia } from '../utils/mediaView.js';
+import { matchFilters, hasMatchFilters } from '../library/match.js';
 
 const KINDS = { both: ['image', 'video', 'gif'], images: ['image'], videos: ['video', 'gif'] };
 const EXTENSIONS = { 'video/mp4': '.mp4', 'video/webm': '.webm', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
@@ -49,18 +50,19 @@ export class DownloadCommand {
     } catch (error) {
       if (requireTarget || options.resolution !== undefined) throw error;
     }
-    return { total, kind, target };
+    return { total, kind, target, match: matchFilters(this.database, options) };
   }
 
-  pendingItems(kind, source) {
-    return this.database.findMedia({ downloaded: false, status: 'new', kind, ...(source ? { source } : {}) });
+  // match holds the --query, --tag and --keywords filters
+  pendingItems(kind, source, match = {}) {
+    return this.database.findMedia({ downloaded: false, status: 'new', kind, ...(source ? { source } : {}), ...match });
   }
 
   // Lists media saved by searches and not yet downloaded, offline: the variant shown is chosen from
   // the variants stored at search time (sources that store none pick one at download time)
   async pending(options = {}) {
-    const { kind, target } = await this.filters(options, { requireTarget: false });
-    const items = this.pendingItems(kind, options.source);
+    const { kind, target, match } = await this.filters(options, { requireTarget: false });
+    const items = this.pendingItems(kind, options.source, match);
     const shown = options.number === undefined ? items : items.slice(0, positiveInteger(options.number, 'Number'));
     const byQuery = new Map();
     let unsuitable = 0;
@@ -75,7 +77,8 @@ export class DownloadCommand {
       for (const query of this.database.getQueries(media.id)) byQuery.set(query, (byQuery.get(query) ?? 0) + 1);
     }
     if (!items.length) {
-      out.info('Nothing pending; add some with `backdrop search-images` or `backdrop search-videos`');
+      out.info(hasMatchFilters(match) ? 'Nothing pending matches the filters'
+        : 'Nothing pending; add some with `backdrop search-images` or `backdrop search-videos`');
       return { items: [], byQuery };
     }
     out.print();
@@ -95,8 +98,8 @@ export class DownloadCommand {
 
   async download(options = {}) {
     if (options.upgrade) return this.upgrade(options);
-    const { total, kind, target } = await this.filters(options);
-    const items = this.pendingItems(kind, options.source);
+    const { total, kind, target, match } = await this.filters(options);
+    const items = this.pendingItems(kind, options.source, match);
     const summary = { downloaded: [], duplicates: [], skipped: 0, failed: 0, bytes: 0 };
     const started = Date.now();
     const bar = new ProgressBar({ label: 'Downloading', total: Math.min(total, items.length) });
@@ -138,14 +141,15 @@ export class DownloadCommand {
       this.logger.warn('Downloads saved but playlist update failed', { error: error.message });
       out.warn(`Downloads saved; playlist update failed: ${error.message}`);
     }
-    const remaining = this.pendingItems(kind, options.source).length;
+    const remaining = this.pendingItems(kind, options.source, match).length;
+    const overall = hasMatchFilters(match) ? fmt.dim(` (${this.pendingItems(kind, options.source).length} overall)`) : '';
     const elapsed = (Date.now() - started) / 1000;
     const parts = [
       `${fmt.bold(`Downloaded ${summary.downloaded.length}`)} ${fmt.dim(`(${formatBytes(summary.bytes)} in ${formatDuration(elapsed)})`)}`,
       `duplicates ${summary.duplicates.length}`,
       `no suitable variant ${summary.skipped}`,
       summary.failed ? fmt.red(`failed ${summary.failed}`) : 'failed 0',
-      `pending ${remaining}`
+      `pending ${remaining}${overall}`
     ];
     out.print(`${mark(summary.failed ? 'warn' : 'success')}${parts.join(fmt.dim('  ·  '))}`);
     if (summary.failed) process.exitCode = 1;
@@ -192,9 +196,9 @@ export class DownloadCommand {
   // Replaces downloaded remote media that is smaller than the current target (e.g. after attaching
   // a larger monitor) with a larger stored variant. Ratings, speed, dim and history stay with the item.
   async upgrade(options = {}) {
-    const { total, kind, target } = await this.filters(options);
+    const { total, kind, target, match } = await this.filters(options);
     const items = this.database.findMedia({
-      downloaded: true, status: ['new', 'kept'], kind, excludeLocal: true, ...(options.source ? { source: options.source } : {})
+      downloaded: true, status: ['new', 'kept'], kind, excludeLocal: true, ...(options.source ? { source: options.source } : {}), ...match
     }).filter(media => !fits(media, target, this.config));
     const summary = { upgraded: [], skipped: 0, failed: 0 };
     const bar = new ProgressBar({ label: 'Upgrading', total: Math.min(total, items.length) });

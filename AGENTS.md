@@ -62,7 +62,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
-  file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration).
+  file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
+  into `findMedia` filters for `pending`, `download`, the lists and `next`.
 - **Sources** (`src/sources/`) - `Source` defines normalized search/metadata/download variants and rate limits;
   `SourceRegistry` resolves adapters, with `PexelsSource` first. Credentials are checked on API requests only.
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
@@ -71,8 +72,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
   rating and display commands from `rofi -dmenu`; it builds menus as data and draws them with `panelView`
-  (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`)
-  or `minimalView`; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
+  (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`,
+  which the daemon also makes on each load) or `minimalView`; views bind entry keys to `-kb-custom-N` and resolve
+  to an index, `{ key }` or null; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
   format in `docs/specs/json.md`) and `setJsonOutput`, which moves every other stdout line to stderr.
   `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts.
 

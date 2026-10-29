@@ -1,6 +1,7 @@
 /*
- * backdrop menu, panel style: a preview banner, the file name and details above a grid of buttons.
- * backdrop sets the preview image and grid size per menu with -theme-str. Override anything through
+ * backdrop menu, panel style: a preview banner, the file name, the item's details beside the menu's
+ * status (random, filters, monitor) and a grid of buttons. backdrop sets the preview image, the status
+ * text and the grid size per menu with -theme-str. Override anything through
  * menu.rofi_args, e.g. [-theme-str, '@import "~/.config/rofi/colors/onedark.rasi"'].
  */
 
@@ -33,7 +34,7 @@ window {
 
 mainbox {
     orientation: vertical;
-    children:    [ "preview", "inputbar", "message", "listview" ];
+    children:    [ "preview", "inputbar", "info", "listview" ];
     padding:     16px;
     spacing:     12px;
 }
@@ -57,10 +58,29 @@ prompt {
     text-color: @foreground;
 }
 
-message {
+/* One box under the preview: the item's details, with the menu's status right-aligned beside them */
+info {
+    expand:           false;
+    orientation:      horizontal;
+    children:         [ "message", "textbox-status" ];
+    spacing:          12px;
     padding:          10px 12px;
     border-radius:    8px;
     background-color: @background-alt;
+}
+
+message {
+    expand: true;
+    vertical-align: 0;
+}
+
+/* Whether next picks randomly, any --query/--tag/--keywords, and the target monitor */
+textbox-status {
+    expand:           false;
+    content:          " ";
+    markup:           true;
+    horizontal-align: 1;
+    vertical-align:   0;
 }
 
 textbox {

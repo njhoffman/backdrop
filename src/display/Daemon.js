@@ -10,6 +10,7 @@ import {
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
+import { thumbnailFor } from '../library/thumbnail.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
 import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
@@ -90,7 +91,8 @@ export class Daemon {
     healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
     monitorInterval = MONITOR_POLL_MS, now = Date.now, readFile,
     importer = new Importer({ config, database, logger }),
-    purge = () => purgeTrash({ config, database, logger })
+    purge = () => purgeTrash({ config, database, logger }),
+    thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true })
   }) {
     this.config = config;
     this.database = database;
@@ -113,6 +115,7 @@ export class Daemon {
     this.softwareWarned = new Set();
     this.reconciling = null;
     this.purge = purge;
+    this.thumbnail = thumbnail;
     this.timers = [];
     this.screens = new Map();
     this.stopping = false;
@@ -442,6 +445,24 @@ export class Daemon {
       }
     }
     await this.notify(screen, media);
+    this.prefetchThumbnails(screen, media);
+  }
+
+  // Makes the panel menu's previews ahead of time so opening it does not wait for ffmpeg: the item
+  // now playing, then the next playlist entry. Runs in the background, one monitor's queue at a time.
+  prefetchThumbnails(screen, media) {
+    try {
+      if ((this.config.get().menu?.style ?? 'panel') !== 'panel') return;
+    } catch {
+      return;
+    }
+    screen.thumbnails = (screen.thumbnails ?? Promise.resolve()).then(async () => {
+      if (!await this.thumbnail(media)) return;
+      const playlist = await screen.client.getProperty('playlist');
+      const next = playlist[playlist.findIndex(entry => entry.current) + 1];
+      const upcoming = next && this.database.getMediaByPath(next.filename);
+      if (upcoming) await this.thumbnail(upcoming);
+    }).catch(error => this.logger.warn('Thumbnail prefetch failed', { monitor: screen.monitor.name, error: error.message }));
   }
 
   // Media added before frame rates were recorded gets its rate from mpv the first time it plays.

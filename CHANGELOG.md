@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-10-28
+
+### Changed
+- `backdrop menu` is a fixed grid of two rows, next, keep 1-3 and speed over prev, skip, undo, mode and
+  dim, each with a key (`n 1 2 3 s` and `p 0 u m d`). It stays open after each action until `q`, or Escape
+  on the main menu; Escape in the speed or dim submenu returns to the main menu. `--stay` is no longer
+  needed and is ignored.
+- Buttons that do not apply to the item stay in place, faded; a changed speed or dim is highlighted and
+  shown on its button, like the current rating. "next (random)" and "go-next" are gone from the menu.
+- The monitor picker moved from a button to the Tab key.
+
+### Added
+- `backdrop menu --random/--no-random --query --tag --keywords`: next, and the advance after keep and skip,
+  follow them; the panel shows them right-aligned in the box with the item's details.
+- The daemon makes the menu's preview of each item as it loads, and of the next playlist entry, at the
+  lowest CPU priority, so opening the menu rarely waits about 0.4s for ffmpeg.
+
+## [2.17.0] - 2026-10-28
+
+### Added
+- `--query`, `--tag` and `--keywords` on `pending` and `download` (including `--upgrade`) fetch only media
+  that one of your saved searches found or that carries every given tag; the summary shows what is left
+  under the filter and overall.
+- `--query` on `list-images` and `list-videos`. Queries match a saved search exactly apart from case, any of
+  several may match, and a query no search used is an error that names the closest saved ones.
+- `next --query/--tag/--keywords` jumps to a matching item in the monitor's playlist, in playlist order or
+  randomly with `--random`; the playlist itself is unchanged. With matches only in the other mode it says
+  which `backdrop mode` to switch to.
+
 ## [2.16.0] - 2026-10-28
 
 ### Added

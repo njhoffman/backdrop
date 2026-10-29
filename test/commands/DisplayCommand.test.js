@@ -150,6 +150,26 @@ describe('DisplayCommand', () => {
       expect(command.control.next.lastCall.args[1]).to.deep.equal({ random: false });
     });
 
+    it('passes the displayable items matching --query/--tag to next and validates queries first', async () => {
+      const ocean = addVideo(1, 1920, 1080);
+      const skipped = addVideo(2, 1920, 1080);
+      db.addRating(skipped, 0);
+      db.addMedia({ kind: 'video', source: 'pexels', source_id: 3 });
+      const search = db.addSearch('pexels', 'Ocean');
+      for (const id of [ocean, skipped]) db.addSearchResult(search, id, 1);
+      const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(ocean), rating: null };
+      command.control = { next: sinon.stub().resolves(playing) };
+      config.set('display.order', 'shuffle');
+
+      await command.next({ query: ['ocean'] });
+      const [, { random, matches }] = command.control.next.lastCall.args;
+      expect(random).to.be.false;
+      expect(matches.map(m => m.id)).to.deep.equal([ocean]);
+      let caught; try { await command.next({ query: ['oceans'] }); } catch (error) { caught = error; }
+      expect(caught.message).to.include('No search used the query "oceans"');
+      expect(command.control.next.callCount).to.equal(1);
+    });
+
     it('prints one line for current --line', async () => {
       const id = addVideo(1, 1920, 1080);
       command.control = { current: async () => ({ monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null }) };

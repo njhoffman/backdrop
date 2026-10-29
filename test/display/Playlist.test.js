@@ -5,7 +5,7 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
-  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, reshuffleOnWrap, randomOrder,
+  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, queueMatching, reshuffleOnWrap, randomOrder,
   playbackLimits, validVideoDuration
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -261,6 +261,35 @@ describe('Playlist', () => {
     it('does nothing when every entry is the current file', async () => {
       const client = new FakeMpvClient({ playlist: [{ filename: '/m/a', current: true }, { filename: '/m/a' }] });
       expect(await queueRandom(client)).to.be.null;
+      expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
+    });
+  });
+
+  describe('queueMatching', () => {
+    const playlist = () => [
+      { filename: '/m/a' }, { filename: '/m/b' }, { filename: '/m/c', current: true }, { filename: '/m/d' }, { filename: '/m/e' }
+    ];
+
+    it('queues the first matching entry after the current one, wrapping to the start', async () => {
+      const client = new FakeMpvClient({ playlist: playlist() });
+      expect(await queueMatching(client, new Set(['/m/b', '/m/e']))).to.deep.equal({ filename: '/m/e' });
+      expect(await queueMatching(client, new Set(['/m/a', '/m/b', '/m/c']))).to.deep.equal({ filename: '/m/a' });
+      expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([
+        ['playlist-move', 4, 3], ['playlist-move', 0, 3]
+      ]);
+    });
+
+    it('picks any matching entry with random', async () => {
+      const client = new FakeMpvClient({ playlist: playlist() });
+      const paths = new Set(['/m/a', '/m/d']);
+      expect(await queueMatching(client, paths, { random: true, rng: () => 0 })).to.deep.equal({ filename: '/m/a' });
+      expect(await queueMatching(client, paths, { random: true, rng: () => 0.99 })).to.deep.equal({ filename: '/m/d' });
+    });
+
+    it('does nothing when only the playing file or no entry matches', async () => {
+      const client = new FakeMpvClient({ playlist: playlist() });
+      expect(await queueMatching(client, new Set(['/m/c']))).to.be.null;
+      expect(await queueMatching(client, new Set(['/m/z']), { random: true })).to.be.null;
       expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
     });
   });

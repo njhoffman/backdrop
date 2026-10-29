@@ -347,6 +347,22 @@ describe('Daemon', () => {
       expect(db.getSetting(lastMediaKey('video', 'DP-1'))).to.be.null;
     });
 
+    it('makes the menu previews of the loaded item and the next entry in the background, for the panel style only', async () => {
+      const made = [];
+      daemon.thumbnail = async media => { made.push(media.id); return `/t/${media.id}.jpg`; };
+      const a = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/a.mp4' });
+      const b = db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/b.mp4' });
+      clients[0].client.properties.playlist = [{ filename: '/m/a.mp4', current: true }, { filename: '/m/b.mp4' }];
+      await load(0, '/m/a.mp4');
+      await daemon.screens.get('DP-1').thumbnails;
+      expect(made).to.deep.equal([a, b]);
+
+      config.set('menu.style', 'minimal');
+      await load(0, '/m/b.mp4');
+      await daemon.screens.get('DP-1').thumbnails;
+      expect(made).to.deep.equal([a, b]);
+    });
+
     it('remembers images without touching speed', async () => {
       const id = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png' });
       await load(0, '/m/i.png');

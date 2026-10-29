@@ -10,7 +10,7 @@ export const MODES = Object.keys(MODE_KINDS);
 export const DEFAULT_MODE = 'video';
 
 // New items are shown so they can be rated from the wallpaper; skipped ones never are
-const DISPLAY_STATUSES = ['kept', 'new'];
+export const DISPLAY_STATUSES = ['kept', 'new'];
 
 // Remembered per mode, so toggling back resumes what that mode was showing
 export function lastMediaKey(mode, monitorName) {
@@ -78,18 +78,33 @@ export function randomOrder(display, requested) {
   return requested === undefined ? order === 'random' : Boolean(requested);
 }
 
-// Moves a random entry for another file to just after the current one, so the next advance plays it
-// and prev still returns here. Returns the moved entry, or null when there is nothing else to pick.
-export async function queueRandom(client, random = Math.random) {
+// Moves the entry pick(candidates, current) chooses among those for other files to just after the current
+// one, so the next advance plays it and prev still returns here. Candidates are indexes in playlist order.
+// Returns the moved entry, or null when there is nothing to pick.
+async function queueEntry(client, pick) {
   const playlist = await client.getProperty('playlist');
   const current = playlist.findIndex(entry => entry.current);
   const currentFile = playlist[current]?.filename;
   const candidates = playlist.flatMap((entry, index) => (entry.filename === currentFile ? [] : [index]));
-  if (!candidates.length) return null;
-  const index = candidates[Math.floor(random() * candidates.length)];
+  const index = candidates.length ? pick(candidates, current, playlist) : undefined;
+  if (index === undefined) return null;
   // mpv inserts the entry before index2 (or at the end when index2 is the count), so current + 1 is right after it
   await client.command('playlist-move', index, current + 1);
   return playlist[index];
+}
+
+export async function queueRandom(client, random = Math.random) {
+  return queueEntry(client, candidates => candidates[Math.floor(random() * candidates.length)]);
+}
+
+// Queues an entry whose file is in paths: the first after the current one in playlist order, wrapping,
+// or with random any of them
+export async function queueMatching(client, paths, { random = false, rng = Math.random } = {}) {
+  return queueEntry(client, (candidates, current, playlist) => {
+    const matching = candidates.filter(index => paths.has(playlist[index].filename));
+    if (random) return matching[Math.floor(rng() * matching.length)];
+    return matching.find(index => index > current) ?? matching[0];
+  });
 }
 
 // --loop-playlist replays one order on every pass, so the daemon reshuffles when playback wraps from the

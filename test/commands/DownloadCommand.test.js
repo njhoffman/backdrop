@@ -147,10 +147,42 @@ describe('DownloadCommand', () => {
       expect(caught.message).to.include('WIDTHxHEIGHT');
     });
 
+    it('filters by query, tag and keywords and says when nothing matches', async () => {
+      const a = add(1); const b = add(2); add(3);
+      db.updateMedia(b, { page_url: 'https://www.pexels.com/video/sunset-over-the-sea-2/' });
+      const search = db.addSearch('fake', 'Ocean Waves');
+      db.addSearchResult(search, a, 1); db.addSearchResult(search, b, 2);
+
+      expect((await command.pending({ query: ['ocean waves'] })).items.map(m => m.id)).to.deep.equal([a, b]);
+      expect((await command.pending({ query: ['ocean waves'], tag: ['sunset'] })).items.map(m => m.id)).to.deep.equal([b]);
+      expect((await command.pending({ keywords: ['sea'] })).items.map(m => m.id)).to.deep.equal([b]);
+      expect((await command.pending({ tag: ['forest'] })).items).to.deep.equal([]);
+      expect(console.log.args.flat().join('\n')).to.include('Nothing pending matches the filters');
+    });
+
     it('reports an empty queue', async () => {
       expect((await command.pending()).items).to.deep.equal([]);
       expect(console.log.args.flat().join('\n')).to.include('Nothing pending');
     });
+  });
+
+  it('downloads only items matching the filters and counts what is left under them and overall', async () => {
+    const a = add(1, [variant(2560, 1440)]); const b = add(2); add(3);
+    db.updateMedia(b, { page_url: 'https://www.pexels.com/video/sunset-over-the-sea-2/' });
+    const search = db.addSearch('fake', 'Ocean Waves');
+    db.addSearchResult(search, a, 1); db.addSearchResult(search, b, 2);
+
+    expect((await command.download({ query: ['ocean waves'], tag: ['sunset'] })).downloaded).to.deep.equal([b]);
+    expect(console.log.args.flat().join('\n')).to.include('pending 0 (2 overall)');
+    expect((await command.download({ query: ['Ocean Waves'], total: 5 })).downloaded).to.deep.equal([a]);
+  });
+
+  it('rejects a query no search used before downloading anything', async () => {
+    add(1);
+    db.addSearch('fake', 'Ocean Waves');
+    let caught; try { await command.download({ query: ['ocean wave'] }); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('No search used the query "ocean wave"; closest: "Ocean Waves"');
+    expect(command.transfer.called).to.be.false;
   });
 
   it('validates filters and does not contact sources without known monitor dimensions', async () => {
@@ -191,6 +223,13 @@ describe('DownloadCommand', () => {
       db.addRating(id, 3, '1920x1080');
       media = db.getMedia(id);
       control.refreshMedia = sinon.stub().resolves();
+    });
+
+    it('upgrades only items matching the filters', async () => {
+      expect((await command.download({ upgrade: true, tag: ['forest'] })).upgraded).to.deep.equal([]);
+      expect(command.transfer.called).to.be.false;
+      db.updateMedia(media.id, { page_url: 'https://www.pexels.com/video/forest-path-1/' });
+      expect((await command.download({ upgrade: true, tag: ['forest'] })).upgraded).to.deep.equal([media.id]);
     });
 
     it('replaces a too-small file with the smallest fitting variant and keeps its history', async () => {

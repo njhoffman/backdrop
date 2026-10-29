@@ -3,6 +3,7 @@ import path from 'path';
 import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
+import { matchFilters } from '../library/match.js';
 import { out, mark, displayPath } from '../utils/output.js';
 import { printMedia, formatMediaLine, formatMediaHeader, wantsJson, mediaJson } from '../utils/mediaView.js';
 
@@ -31,8 +32,7 @@ export class ListCommand {
     }
     if (options.minRating !== undefined) filters.minRating = positiveInteger(options.minRating, 'Minimum rating', 3);
     if (options.local === false) filters.excludeLocal = true;
-    if (options.keywords) filters.keywords = options.keywords;
-    if (options.tag) filters.tags = options.tag;
+    Object.assign(filters, matchFilters(this.database, options));
     if (options.number !== undefined) filters.limit = positiveInteger(options.number, 'Number');
     const json = wantsJson(options);
     if (json && options.interactive) throw new Error('--json cannot be combined with --interactive');

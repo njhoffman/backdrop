@@ -123,6 +123,13 @@ backdrop search-videos 'ocean waves'
 backdrop download --total 10 --type videos
 ```
 
+To fetch only what one search found, or only items with some tags, filter `pending` and `download`:
+
+```bash
+backdrop pending --query 'ocean waves'
+backdrop download --query 'ocean waves' --tag sunset
+```
+
 For images:
 
 ```bash
@@ -179,16 +186,31 @@ bindsym $mod+bracketleft exec --no-startup-id backdrop prev
 bindsym $mod+minus exec --no-startup-id backdrop speed -0.1
 bindsym $mod+equal exec --no-startup-id backdrop speed +0.1
 bindsym $mod+b exec --no-startup-id backdrop menu
-bindsym $mod+Shift+b exec --no-startup-id backdrop menu --stay
+bindsym $mod+Shift+b exec --no-startup-id backdrop menu --no-random --tag ocean
 ```
 
-`backdrop menu` opens rofi for the monitor under the pointer: keep 1-3 (each then plays the next item),
-skip, undo, prev, next, random, go-next, speed and dim steps, the mode switch and the target monitor. The
-default `panel` style shows a preview banner, the file name, resolution, duration and rating above a grid
-of icon buttons, with the current rating highlighted; `menu.style: minimal` (or `--style minimal`) is a
-plain list with icons. It closes after one action (`--stay` keeps it open until Escape); speed and dim
-stay in their submenu for repeated steps. Errors appear as desktop notifications, since a keybinding has
-no terminal. Pass rofi options with `menu.rofi_args`, e.g. a `-theme-str` to recolor the panel.
+`backdrop menu` opens rofi for the monitor under the pointer with two rows of buttons, each with a key:
+
+| Key | Button | Key | Button |
+|-----|--------|-----|--------|
+| `n` | next | `p` | prev |
+| `1` `2` `3` | keep 1-3, then play the next item | `0` | skip |
+| `s` | speed steps | `u` | undo |
+| `m` | switch video/image mode | `d` | dim steps |
+
+The menu stays open after each action until you press `q`, or Escape on the main menu; Escape in the
+speed or dim submenu goes back to the main menu. With more than one monitor, Tab picks the monitor the
+buttons act on. Buttons that do not apply (speed on an image, rating with nothing playing) stay in place,
+faded. The current rating, a changed speed and dim are highlighted.
+
+The default `panel` style shows a preview banner, the file name, and under it the resolution, duration and
+rating, with the menu's status right-aligned in the same box: whether next picks randomly and any filters. Those are set when opening
+the menu: `--random`/`--no-random` (default `display.order`) and `--query`, `--tag` and `--keywords`, which
+apply to next and to the item after keep and skip (when nothing else matches, those advance as usual).
+`menu.style: minimal` (or `--style minimal`) is a plain list with icons and keys. Errors appear as desktop
+notifications, since a keybinding has no terminal. Pass rofi options with `menu.rofi_args`, e.g. a
+`-theme-str` to recolor the panel. The daemon makes the preview of each item as it starts playing, and of
+the next one in the playlist, so the menu rarely waits for ffmpeg.
 
 ## Current limitations and troubleshooting
 

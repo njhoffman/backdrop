@@ -226,6 +226,21 @@ describe('DatabaseManager', () => {
       expect(db.findMedia({ keywords: ['fox'] }).map(m => m.id)).to.deep.equal([fox]);
     });
 
+    it('filters by any of the given search queries, exactly apart from case, and lists distinct queries', () => {
+      const [waves, rain, both] = [1, 2, 3].map(n => db.addMedia({ kind: 'video', source: 'pexels', source_id: n }));
+      db.addMedia({ kind: 'video', source: 'pexels', source_id: 4 });
+      const ocean = db.addSearch('pexels', 'Ocean Waves');
+      db.addSearchResult(ocean, waves, 1); db.addSearchResult(ocean, both, 2);
+      const window = db.addSearch('pexels', 'rainy window');
+      db.addSearchResult(window, rain, 1); db.addSearchResult(window, both, 2);
+      db.addSearch('pexels', 'ocean waves');
+
+      expect(db.findMedia({ queries: ['ocean waves'] }).map(m => m.id)).to.deep.equal([waves, both]);
+      expect(db.findMedia({ queries: ['OCEAN WAVES', 'rainy window'] }).map(m => m.id)).to.deep.equal([waves, rain, both]);
+      expect(db.findMedia({ queries: ['ocean'] })).to.deep.equal([]);
+      expect(db.getSearchQueries()).to.deep.equal(['Ocean Waves', 'rainy window']);
+    });
+
     it('stores a frame rate and drops tags with the item', () => {
       const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'rain.mp4', fps: 29.97 });
       expect(db.getMedia(id).fps).to.equal(29.97);

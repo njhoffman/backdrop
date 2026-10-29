@@ -331,6 +331,7 @@ export class DatabaseManager {
   }
 
   // Filters: kind, status, source, minWidth/minHeight (resolution floor), minRating, tags (all must match),
+  // queries (a search with any of them returned the item, exact apart from case), keywords,
   // orientation (rated on a monitor of that orientation), downloaded, limit.
   // downloaded: false leaves out items whose download turned out to duplicate another item.
   findMedia(filters = {}) {
@@ -359,6 +360,11 @@ export class DatabaseManager {
     for (const tag of filters.tags ?? []) {
       conditions.push('EXISTS (SELECT 1 FROM media_tags t WHERE t.media_id = m.id AND t.tag = lower(?))');
       params.push(tag);
+    }
+    if (filters.queries?.length) {
+      conditions.push(`EXISTS (SELECT 1 FROM search_results sr JOIN searches s ON s.id = sr.search_id
+        WHERE sr.media_id = m.id AND lower(s.query) IN (${filters.queries.map(() => 'lower(?)').join(', ')}))`);
+      params.push(...filters.queries);
     }
     for (const keyword of filters.keywords ?? []) {
       conditions.push(`(instr(lower(COALESCE(m.original_name, '')), lower(?)) > 0
@@ -547,6 +553,11 @@ export class DatabaseManager {
       GROUP BY lower(s.query)
       ORDER BY MIN(s.id)
     `).all(mediaId).map(row => row.query);
+  }
+
+  // Distinct queries of every saved search, oldest first
+  getSearchQueries() {
+    return this.db.prepare('SELECT query FROM searches GROUP BY lower(query) ORDER BY MIN(id)').all().map(row => row.query);
   }
 
   getSearchResults(searchId) {

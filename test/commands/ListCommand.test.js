@@ -35,6 +35,17 @@ describe('ListCommand and StatsCommand', () => {
     expect(await command.listImages({ minRating: 3 })).to.deep.equal([]);
   });
 
+  it('filters by exact search query and rejects queries no search used', async () => {
+    const first = await add('image', 'pexels', 1);
+    await add('image', 'pexels', 2);
+    const third = await add('image', 'pexels', 3);
+    db.addSearchResult(db.addSearch('pexels', 'Ocean Waves'), first, 1);
+    db.addSearchResult(db.addSearch('pexels', 'ocean waves at night'), third, 1);
+    expect((await command.listImages({ query: ['ocean waves'] })).map(m => m.id)).to.deep.equal([first]);
+    let caught; try { await command.listImages({ query: ['ocean'] }); } catch (error) { caught = error; }
+    expect(caught.message).to.include('closest: "Ocean Waves", "ocean waves at night"');
+  });
+
   it('lists GIFs in video mode and excludes undownloaded rows', async () => {
     const gif = await add('gif', 'local', 1);
     db.addMedia({ kind: 'video', source: 'pexels', source_id: 2 });

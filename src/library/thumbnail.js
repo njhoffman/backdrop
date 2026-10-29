@@ -10,7 +10,8 @@ const COVER = `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,cro
 // A cached JPEG banner of a library item: a frame a second in (or halfway through short clips) for
 // videos and GIFs, the picture itself for images. It is rebuilt when the file is newer, e.g. after
 // download --upgrade. Returns the thumbnail path, or null when ffmpeg cannot make one.
-export async function thumbnailFor(media, dir, { exec = run, logger } = {}) {
+// nice runs ffmpeg at the lowest CPU priority, for the daemon making them ahead of time.
+export async function thumbnailFor(media, dir, { exec = run, logger, nice = false } = {}) {
   if (!media?.path) return null;
   const target = path.join(dir, `${media.id}.jpg`);
   try {
@@ -19,7 +20,8 @@ export async function thumbnailFor(media, dir, { exec = run, logger } = {}) {
     await fs.ensureDir(dir);
     const seek = media.kind === 'image' ? [] : ['-ss', String(Math.min(1, (media.duration || 2) / 2))];
     const partial = `${target}.${process.pid}.jpg`;
-    await exec('ffmpeg', ['-v', 'error', '-y', ...seek, '-i', media.path, '-frames:v', '1', '-vf', COVER, partial]);
+    const args = ['-v', 'error', '-y', ...seek, '-i', media.path, '-frames:v', '1', '-vf', COVER, partial];
+    await (nice ? exec('nice', ['-n', '19', 'ffmpeg', ...args]) : exec('ffmpeg', args));
     await fs.rename(partial, target);
     return target;
   } catch (error) {

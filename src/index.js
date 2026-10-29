@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { program, CommanderError } from 'commander';
+import { program, CommanderError, Option } from 'commander';
 import { createRequire } from 'module';
 import fs from 'fs-extra';
 import { ConfigManager } from './config/ConfigManager.js';
@@ -91,6 +91,9 @@ class BackdropApp {
     const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
     const headerOption = ['--header', 'Print column names above --line output (implies --line; fzf --header-lines=1)'];
     const jsonOption = ['--json', 'Print JSON on stdout (docs/specs/json.md); other messages go to stderr'];
+    const queryOption = ['--query <queries...>', 'Only items a search with any of these exact queries found (quote each query)'];
+    const tagOption = ['--tag <tags...>', 'Only items with all of these tags (shown under each item)'];
+    const keywordsOption = ['--keywords <words...>', 'Match all words against searches, tags or filenames'];
 
     program
       .name('backdrop')
@@ -135,6 +138,7 @@ class BackdropApp {
       .option(...monitorOption)
       .option(...randomOption)
       .option(...noRandomOption)
+      .option(...queryOption).option(...tagOption).option(...keywordsOption)
       .option(...lineOption).option(...jsonOption)
       .action(this.action(options => display.next(options)));
 
@@ -185,8 +189,11 @@ class BackdropApp {
       .command('menu')
       .description('Open a rofi menu to rate, navigate, adjust and switch the item under the pointer')
       .option(...monitorOption)
-      .option('--stay', 'Reopen the menu after each action until dismissed')
       .option('--style <style>', 'panel (buttons and a preview) or minimal (a list); default: menu.style')
+      .option(...randomOption).option(...noRandomOption)
+      .option(...queryOption).option(...tagOption).option(...keywordsOption)
+      // The menu stays open until q or Escape since 2.18.0; the old flag is still accepted
+      .addOption(new Option('--stay').hideHelp())
       .action(this.action(options => menu.open(options)));
 
     program
@@ -236,6 +243,7 @@ class BackdropApp {
       .option('--type <type>', 'images, videos or both', 'both')
       .option('--source <name>', 'Restrict to one source')
       .option('--resolution <WIDTHxHEIGHT>', 'Override detected monitor dimensions')
+      .option(...queryOption).option(...tagOption).option(...keywordsOption)
       .option('--upgrade', 'Replace downloaded media smaller than the monitors with a larger variant')
       .action(this.action(options => download.download(options)));
     program.command('pending').description('List media saved by searches and not yet downloaded, with their queries')
@@ -243,6 +251,7 @@ class BackdropApp {
       .option('--type <type>', 'images, videos or both', 'both')
       .option('--source <name>', 'Restrict to one source')
       .option('--resolution <WIDTHxHEIGHT>', 'Override detected monitor dimensions')
+      .option(...queryOption).option(...tagOption).option(...keywordsOption)
       .action(this.action(options => download.pending(options)));
     for (const [name, method] of [['list-images', 'listImages'], ['list-videos', 'listVideos']]) {
       program.command(name).description('List downloaded media and their current ratings')
@@ -252,8 +261,7 @@ class BackdropApp {
         .option('--no-local', 'Exclude local imports')
         .option('--source <name>', 'Restrict to one source')
         .option('--status <status>', 'new, kept or skipped')
-        .option('--keywords <words...>', 'Match all words against searches, tags or filenames')
-        .option('--tag <tags...>', 'Only items with all of these tags (shown under each item)')
+        .option(...queryOption).option(...tagOption).option(...keywordsOption)
         .option('--playlist <file>', 'Export matching existing files as M3U')
         .option('--interactive', 'Browse and rate the listed media')
         .option(...lineOption).option(...jsonOption)

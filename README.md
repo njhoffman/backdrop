@@ -43,6 +43,7 @@ backdrop status             # mode, what each monitor is playing, and mpv's rece
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
 backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)
+backdrop next --tag ocean   # jump to a matching item in the playlist (also --query, --keywords)
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
@@ -59,6 +60,7 @@ backdrop go-next            # advance after checking the current item has a rati
 backdrop search-videos 'ocean waves'  # also search-images; requires the source API key
 backdrop pending             # media saved by searches, with its queries and the size it would download
 backdrop download --total 10 --type videos
+backdrop download --query 'ocean waves' --tag sunset  # only media one of your searches found, with every tag
 backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
 backdrop list-videos --rated landscape
 backdrop list-videos --tag ocean waves  # items tagged with every word
@@ -66,7 +68,8 @@ backdrop list-images --interactive  # browse and rate downloaded images
 backdrop list-videos --playlist ~/walls.m3u
 backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line per item
 backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
-backdrop menu               # rofi panel for the item under the pointer: preview, details, buttons (--style minimal)
+backdrop menu               # rofi panel for the item under the pointer, with keys: n 1 2 3 s / p 0 u m d, q quits
+backdrop menu --tag ocean   # its next, keep and skip prefer matching items (also --query, --no-random)
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
@@ -125,6 +128,13 @@ and picks it up when it appears; downloads are sized for the connected ones.
 Media is tagged with words from its file name (local imports), its source page and description. Tags show
 under each item and filter lists with `--tag`; `--keywords` matches them too.
 
+`--query`, `--tag` and `--keywords` work the same on `pending`, `download` (and `--upgrade`), the lists and
+`next`. `--query` takes one or more saved search queries, each quoted, and matches them exactly apart from
+case; an item any of them found qualifies. `--tag` and `--keywords` require every word. A query no search
+used is an error that names the closest saved queries. `next` with filters moves one matching entry of the
+current playlist up to play next (in playlist order, or any with `--random`) and then plays the playlist as
+usual; it says so when only the other mode has matches.
+
 `keep`, `skip` and `go-next` accept `--monitor <name>`. Rating an imported item changes its current rating
 and preserves undo history. Keep moves new downloads from the inbox into the library; this refreshes
 affected playlists and restarts the moved file. Re-rating a file already in the library keeps it playing.
@@ -133,7 +143,7 @@ Search and download choose the smallest variant that fits all configured monitor
 downloads before adding them to playback. A download identical to one you already have is recorded as a
 duplicate, never fetched again, and its search queries are added to the original. After attaching a larger monitor, `download --upgrade` replaces
 kept or new downloads that are now too small, keeping their ratings, speed and dim. For use without X, pass `--resolution 1920x1080`. Lists are plain
-text by default; `--rated [orientation]`, `--no-local`, `--keywords`, `--tag`, `--source` and `--number` filter them.
+text by default; `--rated [orientation]`, `--no-local`, `--query`, `--keywords`, `--tag`, `--source` and `--number` filter them.
 See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.
 
 i3 example:
@@ -145,7 +155,7 @@ bindsym $mod+bracketright exec --no-startup-id backdrop next
 bindsym $mod+bracketleft exec --no-startup-id backdrop prev
 bindsym $mod+minus exec --no-startup-id backdrop speed -0.1
 bindsym $mod+equal exec --no-startup-id backdrop speed +0.1
-bindsym $mod+b exec --no-startup-id backdrop menu  # rofi: rate, navigate, speed, dim, mode, monitor
+bindsym $mod+b exec --no-startup-id backdrop menu  # rofi: rate, navigate, speed, dim, mode; Tab picks the monitor
 ```
 
 ## Configuration

@@ -152,8 +152,12 @@ Reviewed: 2026-10-28
       before either commits, so the second likely fails on the unique `sha256` and is recorded as `failed`. Take a lock file in the data dir for the duration of an import,
       and have the second importer wait or skip.
 - [ ] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
-      and descriptions, and lists filter with `--tag`. Next: show tag counts in `stats`, add a `tags` command listing them,
-      and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
+      and descriptions, and lists filter with `--tag`. Since v2.17.0 `pending`, `download` and `next` also take `--tag`
+      and `--query` (`src/library/match.js`), but `next` only jumps once. Next: show tag counts in `stats`, add a `tags`
+      command listing them, and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
+- [ ] **No shell completion for `--query` values.** (p3) [feature] `--query` must match a saved search exactly, so completing
+      it from `searches` (a helper like the monitors one in `src/commands/CompletionCommand.js`, reading the database or a
+      `backdrop queries` listing) would save typing and typos; `--tag` could complete from `media_tags` the same way.
 - [x] **Frame rate unknown until a video plays.** (p3) [feature] Videos added before v7 get `fps` from mpv the first time
       they play. A `backdrop rescan` (ffprobe over existing files) would fill it at once and could also re-check sizes.
       Done: `backdrop rescan` fills missing frame rates; `--all` re-checks kind, size and duration of every file.
@@ -222,6 +226,16 @@ Reviewed: 2026-10-28
 - [x] **No `--json` output.** (p3) [feature] Scripts parse `--line` today. `current`, `status` and the lists could print JSON
       (the media row, rating, tags, playback cost, monitor) for status bars and custom menus; split from the rofi menu item.
       Done: `--json` on `status`, `current`, the lists and the navigation commands; curated item format in `docs/specs/json.md`; other output moves to stderr.
+- [ ] **Menu previews miss after a random next.** (p3) [perf] The daemon makes the preview of each item as it loads and of
+      the next playlist entry (`prefetchThumbnails` in `src/display/Daemon.js`), but next is random by default and picks an
+      arbitrary entry, so the redrawn menu still waits about 0.4s for ffmpeg. Fix: backfill thumbnails for every eligible
+      item in the background (nice'd, a few per minute), or queue the random pick first and make its thumbnail before advancing.
+- [ ] **Menu rendering is only checked by hand.** (p2) [test] Unit tests check the rofi arguments, not what rofi does with
+      them: a status with quotes or line breaks inside a `-theme-str` string failed rofi's theme parser, and a horizontal
+      info box that expanded hid the second row of buttons, with every test passing. Both were found by rendering into
+      Xephyr and taking a screenshot. An integration test on a nested or virtual X server (Xvfb or Xephyr, skipped when
+      missing, like the mpv one) should open the panel, check rofi reports no theme error, and send keys with `xdotool`
+      to check the custom exit codes (10 + N).
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
 - [x] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.

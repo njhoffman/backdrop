@@ -182,6 +182,46 @@ describe('DisplayControl', () => {
       expect(commands[1]).to.deep.equal(['playlist-next', 'force']);
     });
 
+    describe('next with matches', () => {
+      const add = (n, kind = 'video') => db.getMedia(db.addMedia({ kind, source: 'local', source_id: n, path: `/m/${n}` }));
+      beforeEach(() => {
+        clientFor('DP-1').properties.path = '/m/2';
+        clientFor('DP-1').properties.playlist = [
+          { filename: '/m/1' }, { filename: '/m/2', current: true }, { filename: '/m/3' }, { filename: '/m/4' }
+        ];
+      });
+      const moves = () => clientFor('DP-1').commands.filter(cmd => !cmd[0].startsWith('get_'));
+      const rejection = async promise => { try { await promise; } catch (error) { return error.message; } return null; };
+
+      it('moves the next matching entry up before advancing', async () => {
+        await control.next(null, { matches: [add(1), add(4)] });
+        expect(moves()).to.deep.equal([['playlist-move', 3, 2], ['playlist-next', 'force']]);
+      });
+
+      it('advances as without matches when fallback is set and none is queued', async () => {
+        await control.next(null, { matches: [add(2)], fallback: true });
+        expect(moves()).to.deep.equal([['playlist-next', 'force']]);
+      });
+
+      it('reports the selected playlist entry without changing anything', async () => {
+        const media = add(2);
+        const selected = await control.selected();
+        expect(selected).to.include({ path: '/m/2' }).and.not.have.property('result');
+        expect(selected.media.id).to.equal(media.id);
+        expect(moves()).to.deep.equal([]);
+      });
+
+      it('leaves the playlist alone and says why when no other entry matches', async () => {
+        expect(await rejection(control.next(null, { matches: [] }))).to.equal('No downloaded media matches the filters');
+        expect(await rejection(control.next(null, { matches: [add(5, 'image'), add(6, 'image')] })))
+          .to.equal('No matching videos; 2 matching images (switch with `backdrop mode image`)');
+        expect(await rejection(control.next(null, { matches: [add(2)] }))).to.equal('Only the item playing on DP-1 matches');
+        expect(await rejection(control.next(null, { matches: [add(7), add(8)], random: true })))
+          .to.include('None of the 2 matching videos is in the DP-1 playlist');
+        expect(moves()).to.deep.equal([]);
+      });
+    });
+
     describe('speed', () => {
       it('changes the playing video now and stores it', async () => {
         const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', speed: 0.7 });

@@ -189,6 +189,19 @@ describe('RatingCommand', () => {
     expect(control.removeMedia.calledOnce).to.be.true;
   });
 
+  it('skip and keep --next move to an item matching the filters, or advance as usual without one', async () => {
+    const a = db.addMedia({ kind: 'video', source: 'local', source_id: 7, path: '/m/a.mp4', original_name: 'forest.mp4' });
+    db.addMedia({ kind: 'video', source: 'local', source_id: 8, path: '/m/b.mp4', original_name: 'beach.mp4' });
+    expect(db.getTags(a)).to.include('forest');
+    await command.skip({ random: false, tag: ['beach'] });
+    expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([['playlist-move', 2, 1]]);
+
+    await command.keep(2, { next: true, random: false, tag: ['forest'] });
+    const [, options] = control.next.lastCall.args;
+    expect(options).to.include({ random: false, fallback: true });
+    expect(options.matches.map(item => item.id)).to.deep.equal([a]);
+  });
+
   it('keep --next advances after rating, randomly when display.order is random', async () => {
     config.set('display.order', 'shuffle');
     await command.keep(2, { next: true });
