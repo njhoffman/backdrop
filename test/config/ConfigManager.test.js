@@ -161,6 +161,17 @@ describe('ConfigManager', () => {
       expect(config.display.monitors).to.equal('auto');
     });
 
+    it('reloads one section from the file, leaving the others as they were', async () => {
+      await writeConfig({ display: { image_duration: 60 }, visualizer: { enabled: true } });
+      await configManager.initialize();
+      await writeConfig({ display: { image_duration: 90 }, visualizer: { module: 'radial' } });
+      await configManager.reloadSection('visualizer');
+      const config = configManager.get();
+      expect(config.display.image_duration).to.equal(60);
+      expect(config.visualizer).to.include({ enabled: false, module: 'radial', engine: 'glava' });
+      expect(configManager.userConfig.visualizer).to.deep.equal({ module: 'radial' });
+    });
+
     it('replaces arrays instead of merging them', async () => {
       await writeConfig({ screensaver: { sources: ['playlist:night'] } });
       await configManager.initialize();

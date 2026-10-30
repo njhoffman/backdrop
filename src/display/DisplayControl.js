@@ -41,6 +41,11 @@ export function parseDim(spec, current) {
   throw new Error(`Invalid dim: ${spec} (use 0-100, a step like +10 or -10, or reset)`);
 }
 
+// Monitors with a running wallpaper (an mpv socket); none while the wallpaper is off or the daemon stopped
+function wallpaperMonitors(state) {
+  return (state?.monitors ?? []).filter(monitor => monitor.socket);
+}
+
 // Talks to the running daemon's mpv instances; the target is the monitor under the pointer
 // unless one is named
 export class DisplayControl {
@@ -81,6 +86,7 @@ export class DisplayControl {
   }
 
   async withClient(monitor, fn) {
+    if (!monitor.socket) throw new Error('The wallpaper is off; turn it on with `backdrop start --wallpaper`');
     const client = await this.connect(monitor.socket);
     try {
       return await fn(client);
@@ -191,7 +197,7 @@ export class DisplayControl {
       return counts;
     }
     const mode = getMode(this.database);
-    for (const monitor of state?.monitors ?? []) {
+    for (const monitor of wallpaperMonitors(state)) {
       counts[monitor.name] = await this.withClient(monitor, client => appendToPlaylist(client, {
         database: this.database, config: this.config.get(), mode, monitor, mediaIds
       }));
@@ -204,7 +210,7 @@ export class DisplayControl {
   async removeMedia(media) {
     if (!media.path) return;
     const state = await this.state({ required: false });
-    for (const monitor of state?.monitors ?? []) {
+    for (const monitor of wallpaperMonitors(state)) {
       await this.withClient(monitor, async client => {
         const playlist = await client.getProperty('playlist');
         for (let index = playlist.length - 1; index >= 0; index--) {
@@ -219,7 +225,7 @@ export class DisplayControl {
   // Rebuild affected playlists after a file move, keeping the same item selected where possible.
   async refreshMedia(previous) {
     const state = await this.state({ required: false });
-    for (const monitor of state?.monitors ?? []) {
+    for (const monitor of wallpaperMonitors(state)) {
       await this.withClient(monitor, async client => {
         const playlist = await client.getProperty('playlist');
         if (!playlist.some(entry => entry.filename === previous.path)) return;
@@ -243,7 +249,7 @@ export class DisplayControl {
 
     const state = await this.state({ required: false });
     const counts = {};
-    for (const monitor of state?.monitors ?? []) {
+    for (const monitor of wallpaperMonitors(state)) {
       counts[monitor.name] = await this.withClient(monitor, client => loadPlaylist(client, {
         database: this.database,
         config: this.config.get(),

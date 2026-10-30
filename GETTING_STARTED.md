@@ -97,7 +97,8 @@ images change at the configured `image_duration` interval, which defaults to 300
 | `backdrop list-videos --playlist ~/walls.m3u` | Export a playlist |
 | `backdrop stats` | Show library totals and last observed API quota; works offline |
 | `backdrop purge --dry-run` | List trash older than `library.trash_days`; drop `--dry-run` to delete it |
-| `backdrop stop` | Stop wallpaper playback |
+| `backdrop stop` | Stop wallpaper playback (and the visualizer) |
+| `backdrop stop --wallpaper` / `start --wallpaper` | Turn only the wallpaper off or on; `--visualizer` does the same for the visualizer |
 
 Playback commands target the monitor under your pointer. Add `--monitor DP-1` to choose one
 explicitly; `backdrop status` shows monitor names. `keep`, `skip`, `go-next` and `remove --current`
@@ -219,6 +220,38 @@ or a daemon restart.
 notifications, since a keybinding has no terminal. Pass rofi options with `menu.rofi_args`, e.g. a
 `-theme-str` to recolor the panel. The daemon makes the preview of each item as it starts playing, and of
 the next one in the playlist, so the menu rarely waits for ffmpeg.
+
+## Music visualizer
+
+Backdrop can run [GLava](https://github.com/jarcode-foss/glava) above the wallpaper on each monitor, below
+every window, with clicks passing through. It needs `glava` and a compositor (picom or similar), since the
+visualizer is drawn with real transparency. Turn it on in the config, and remove any `exec glava` from
+your i3 config so it does not run twice:
+
+```yaml
+visualizer:
+  enabled: true
+  module: bars                 # bars, graph, radial, circle or wave
+  placement: {anchor: bottom, height: 25%}
+  bars: {width: 20, gap: 1, amplify: 200, colors: ['#000000', '#33aacc']}
+```
+
+Placement is relative to each monitor (`anchor` bottom, top, left, right, center or fill; sizes in pixels
+or percent; `margin`), or a `rect`. `monitors` picks where it runs and can give a monitor its own placement.
+Options other than the bars ones go in `defines` (GLava `#define`s of the module) and `requests`. Backdrop
+gives GLava its own config folder in the runtime dir, so `~/.config/glava` is not used or changed.
+
+`backdrop stop --wallpaper` turns the wallpaper off and leaves the visualizer running over a black screen,
+which shows what the visualizer alone looks like; `backdrop start --wallpaper` brings the wallpaper back.
+`backdrop start --visualizer` and `stop --visualizer` do the same for the visualizer, whatever
+`visualizer.enabled` says, until the daemon restarts. With the daemon stopped, `start --visualizer` starts
+only the visualizer. When neither part is left on, the daemon stops. While the wallpaper is off, commands that
+need it (`next`, `keep`, `menu` and the like) say so; `mode` still records the mode.
+
+After editing the config, `backdrop visualizer reload` applies the visualizer section without touching the
+wallpaper, and reports any mistake in it. `backdrop status` shows where each instance runs. An instance that
+keeps exiting (for example from a bad `defines` value) is retried five times a minute, then given up on until
+the next reload; the log has its last output.
 
 ## Current limitations and troubleshooting
 

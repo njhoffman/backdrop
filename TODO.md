@@ -34,6 +34,10 @@ Reviewed: 2026-10-30
       a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
 - [ ] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
       `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
+- [ ] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
+      accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. Warn on
+      unknown top-level and section keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries`
+      does for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped.
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
@@ -256,3 +260,37 @@ Reviewed: 2026-10-30
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
+
+## 9. Music visualizer
+
+Backdrop places GLava above its wallpaper and below every window, on each monitor, and drives its options. GLava stays
+the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
+
+- [x] **Decide the visualizer engine.** (p2) [docs] GLava, behind an adapter: the only candidate with transparency, a
+      desktop-layer window and click-through on X11 by itself. Frozen upstream (last commit 2021-06, no maintained
+      fork as of 2026-10-30); the mpv lavfi fallback is recorded. Done in `docs/specs/visualizer.md` (2.20.0).
+- [x] **Run GLava from the daemon.** (p2) [feature] `visualizer` config section; `VisualizerManager` runs one instance
+      per monitor after its wallpaper, restarts it (five times a minute, then gives up until reload), follows hotplug
+      and stops with the daemon. Done in 2.20.0.
+- [x] **Keep GLava stacked above the wallpaper.** (p1) [bug] Done by start order instead of restacking: a GLava that maps
+      after the wallpaper lands directly above it, so the daemon restarts a monitor's visualizer after restarting its
+      wallpaper. `xdotool windowlower` was not an option (missing from xdotool 3.20160805).
+- [x] **Placement per monitor.** (p2) [feature] `placement` (anchor, width, height, margin) or `rect`, in pixels or
+      percent, resolved per monitor and passed as `setgeometry`; per-monitor overrides under `monitors`. Done in 2.20.0.
+- [x] **Visualizer options from backdrop.** (p2) [feature] Module choice, typed bars options, raw `defines` and
+      `requests`, written into a generated config root (`XDG_CONFIG_HOME` pointed at the runtime dir). Done in 2.20.0.
+- [ ] **Typed options for the other modules.** (p3) [feature] graph, radial, circle and wave only take raw `defines`.
+      Add typed, validated options for the ones in use (colors and size first), as `barsDefines` does in
+      `src/visualizer/settings.js`.
+- [ ] **Stacking is checked by one measurement.** (p3) [test] The start-order rule rests on one observation on picom and
+      i3 (GLava mapped after xwinwrap lands right above it). An integration test on Xephyr or Xvfb (skipped without
+      them, glava or a GL context) should start the daemon with the visualizer and check the order of the root's
+      children, also after killing mpv.
+- [ ] **Live colors over --pipe.** (p3) [feature] `glava --pipe=NAME` binds values read from stdin to `@NAME` in the
+      shaders, so colors can change without a restart (the bars `COLOR` already uses `@fg:`). One use: tint the bars
+      from the current wallpaper's dominant color on each load (from the menu thumbnail).
+- [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP) and `start/stop --wallpaper/--visualizer`
+      (`control.json` + SIGUSR1, 2.21.0) exist. Left: changing the module from the CLI, and menu buttons for both parts.
+      More requests would outgrow the signal-per-action scheme; a control socket in the runtime dir is the next step.
+- [ ] **Retire the old GLava setup.** (p3) [chore] Once `visualizer.enabled` is on: remove `exec /bin/glava` from
+      `~/.config/i3/config:467` and the `glava.*` aliases. `~/.config/glava/bars.glsl` (`USE_ALPHA 0`) is no longer read.

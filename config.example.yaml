@@ -30,6 +30,19 @@ menu:
   rofi_args: []                      # extra rofi options for backdrop menu, e.g. [-theme, ~/.config/rofi/backdrop.rasi]
   workspace: true                    # i3: show an empty workspace ("backdrop", or a name given here) while the menu is open; false to stay
 
+visualizer:
+  enabled: false                     # run a GLava music visualizer above the wallpaper (needs glava and a compositor)
+  monitors: all                      # all, a list [DP-3], or a mapping with per-monitor placement/rect: {DP-3: {placement: {anchor: top}}}
+  module: bars                       # bars, graph, radial, circle or wave
+  audio: pulseaudio                  # or fifo (source then defaults to /tmp/mpd.fifo)
+  source: auto                       # pulseaudio sink or device, or the fifo path
+  placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # anchor: bottom, top, left, right, center, fill
+  # rect: {x: 0, y: 75%, width: 100%, height: 25%}  # overrides placement; pixels or % of the monitor
+  bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
+  defines: {}                        # raw GLava #defines for the module, e.g. {C_LINE: 2}; override the bars options
+  requests: []                       # raw GLava requests, e.g. ['setframerate 60']
+  glava: {shader_dir: /etc/xdg/glava, args: []}
+
 screensaver:
   idle_minutes: 10
   sources: [rated_videos]

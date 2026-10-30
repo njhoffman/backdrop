@@ -17,12 +17,14 @@ them through mpv with one IPC socket per monitor.
 - Monitors attached, removed or resized while running are picked up automatically
 - Automatic import of local wallpapers as approved items (`local-1.jpg`, `local-2.mp4`, ...)
 - Screensaver after a period of inactivity, from rated videos or stream links such as YouTube
+- A music visualizer (GLava) above the wallpaper on each monitor, placed and styled from the config
 
 ## Requirements
 
 - Node.js 22.13 or later (uses the built-in `node:sqlite`)
 - X11 with `xwinwrap`, `mpv`, `xrandr` and `xdotool`; `ffprobe` for media dimensions; `yt-dlp` for stream links
 - A Pexels API key for Pexels search
+- For the visualizer: `glava` and a compositor such as picom
 
 ## Install
 
@@ -76,6 +78,7 @@ backdrop remove --current   # permanently delete the playing library item (origi
 backdrop remove 42          # or remove an item by its database id
 backdrop purge --dry-run    # trash files older than library.trash_days (the daemon purges daily)
 backdrop rescan             # probe videos without a frame rate; --all re-checks every file's kind, size and length
+backdrop stop --wallpaper   # turn one part off (or on with start): --wallpaper, --visualizer
 backdrop stop
 ```
 

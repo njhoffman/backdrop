@@ -6,6 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DisplayCommand } from '../../src/commands/DisplayCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
+import { getMode } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('DisplayCommand', () => {
@@ -55,6 +56,24 @@ describe('DisplayCommand', () => {
       expect(text).to.include('No videos at least 3840x2160').and.include('display.allow_upscale');
     });
 
+    it('shows each monitor\'s visualizer, one given up on, and why the visualizer is off', async () => {
+      await fs.writeJson(statePath(dir), {
+        pid: process.pid, version: '2.20.0', visualizer: { enabled: true, error: null, generation: 1 },
+        monitors: [{ ...monitors[0], visualizer: { module: 'bars', geometry: '1920x270+0+810', running: true } },
+          { ...monitors[1], visualizer: { module: 'bars', geometry: '3840x540+1920+1620', running: false } }]
+      });
+      command.control = { current: async () => ({ path: null }) };
+      await command.status();
+      const text = lines.join('\n');
+      expect(text).to.include('visualizer bars at 1920x270+0+810\n');
+      expect(text).to.include('visualizer bars at 3840x540+1920+1620 (gave up after repeated exits; backdrop visualizer reload)');
+
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: false, error: 'visualizer.module must be bars', generation: 1 } });
+      lines.length = 0;
+      await command.status();
+      expect(lines).to.include('Visualizer: off: visualizer.module must be bars');
+    });
+
     it('points at unplayable files when eligible media exists but nothing loaded', async () => {
       const id = addVideo(1, 3840, 2160);
       db.addRating(id, 2);
@@ -91,7 +110,7 @@ describe('DisplayCommand', () => {
 
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
-      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid } });
+      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false } });
       expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi' });
       expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
       expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
@@ -110,7 +129,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null }, monitors: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null }, monitors: [] });
     });
 
     it('says the daemon waits when none of its configured monitors is active', async () => {
@@ -129,6 +148,84 @@ describe('DisplayCommand', () => {
       await command.status();
 
       expect(lines.join('\n')).to.include('No videos in the library');
+    });
+  });
+
+  describe('start and stop by part', () => {
+    let signals, spawnedArgs, answer;
+    beforeEach(() => {
+      signals = [];
+      spawnedArgs = [];
+      answer = null;
+      command = new DisplayCommand(config, db, silentLogger, {
+        timeout: 500,
+        kill: (pid, signal) => { signals.push([pid, signal]); return answer?.(); },
+        spawnProcess: (file, args) => {
+          spawnedArgs.push(args.slice(1));
+          setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: !args.includes('--no-wallpaper'), control: 0, monitors }), 10);
+          return { unref() {}, exitCode: null };
+        }
+      });
+    });
+    const running = (extra = {}) => fs.writeJson(statePath(dir), {
+      pid: process.pid, version: '2.21.0', wallpaper: true, control: 0, visualizer: { enabled: true, error: null, generation: 1 }, monitors, ...extra
+    });
+
+    it('starts the daemon with only the parts named', async () => {
+      await fs.remove(statePath(dir));
+      await command.start({ visualizer: true });
+      expect(spawnedArgs[0]).to.deep.equal(['daemon', '--no-wallpaper', '--visualizer']);
+      expect(lines.at(-1)).to.include('Started').and.include('wallpaper off');
+      await fs.remove(statePath(dir));
+      await command.start({ wallpaper: true });
+      expect(spawnedArgs[1]).to.deep.equal(['daemon', '--wallpaper', '--no-visualizer']);
+      await fs.remove(statePath(dir));
+      await command.start({});
+      expect(spawnedArgs[2]).to.deep.equal(['daemon']);
+      // A bad visualizer section fails before anything starts
+      await fs.remove(statePath(dir));
+      config.set('visualizer.module', 'spiral');
+      expect(await command.start({ visualizer: true }).catch(error => error.message)).to.include('visualizer.module must be');
+      expect(spawnedArgs).to.have.length(3);
+    });
+
+    it('asks a running daemon to switch a part, and reports what is on afterwards', async () => {
+      await running();
+      answer = () => setTimeout(() => running({ wallpaper: false, control: 1 }), 10);
+      await command.stop({ wallpaper: true });
+      expect(signals).to.deep.equal([[process.pid, 'SIGUSR1']]);
+      expect(await fs.readJson(path.join(dir, 'control.json'))).to.deep.equal({ pid: process.pid, wallpaper: false });
+      expect(lines.at(-1)).to.include('wallpaper off, visualizer on');
+
+      answer = () => setTimeout(() => fs.remove(statePath(dir)), 10);
+      await command.stop({ visualizer: true });
+      expect(lines.at(-1)).to.include('Stopped: the wallpaper and visualizer are both off');
+    });
+
+    it('reports a visualizer that failed to turn on, and refuses daemons without control', async () => {
+      await running({ visualizer: { enabled: false, error: null, generation: 1 } });
+      answer = () => setTimeout(() => running({ control: 1, visualizer: { enabled: true, error: 'GLava shaders not found', generation: 2 } }), 10);
+      expect(await command.start({ visualizer: true }).catch(error => error.message)).to.equal('Visualizer off: GLava shaders not found');
+
+      await running({ control: undefined });
+      expect(await command.stop({ wallpaper: true }).catch(error => error.message)).to.include('cannot switch parts on or off; restart it');
+      await running();
+      await command.start({});
+      expect(lines.at(-1)).to.include('Already running');
+    });
+
+    it('shows a monitor without wallpaper in status, and says why commands that need mpv fail', async () => {
+      await running({ wallpaper: false, monitors: monitors.map(monitor => ({ ...monitor, socket: null })) });
+      command.control = new (await import('../../src/display/DisplayControl.js')).DisplayControl({ config, database: db });
+      await command.status();
+      const text = lines.join('\n');
+      expect(text).to.include('wallpaper off, visualizer on');
+      expect(text).to.include('wallpaper off (backdrop start --wallpaper)');
+      expect(await command.control.current('DP-1').catch(error => error.message))
+        .to.equal('The wallpaper is off; turn it on with `backdrop start --wallpaper`');
+      // mode only records the new mode, which the wallpaper starts in when turned on
+      await command.mode('image', {});
+      expect(getMode(db)).to.equal('image');
     });
   });
 

@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { Daemon, buildCommand, readState, statePath, nextFiltersPath, isProcessRunning } from '../../src/display/Daemon.js';
+import { Daemon, buildCommand, readState, statePath, nextFiltersPath, controlPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
@@ -731,6 +731,137 @@ describe('Daemon', () => {
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(spawned).to.have.length(4);
       await daemon.stop();
+    });
+  });
+
+  describe('visualizer', () => {
+    let calls, visualizers;
+    beforeEach(() => {
+      calls = [];
+      visualizers = {
+        override: null,
+        on: false,
+        get active() { return this.override ?? this.on; },
+        setEnabled: async on => { calls.push(['visualizer', on]); visualizers.override = on; },
+        restartAll: async () => { calls.push('restartAll'); },
+        configure: async () => { calls.push('configure'); },
+        sync: async () => { calls.push('sync'); },
+        restart: async name => { calls.push(['restart', name]); },
+        reload: async () => { calls.push('reload'); },
+        stop: async () => { calls.push('stop'); },
+        describe: name => (name === 'HDMI-1' ? { module: 'bars', geometry: '1080x480+2560+1440' } : null),
+        summary: () => ({ enabled: true, error: null, generation: calls.filter(call => call === 'configure' || call === 'reload').length })
+      };
+    });
+
+    const exitOnKill = { kill: (pid, signal) => {
+      kills.push([pid, signal]);
+      spawned.find(({ child }) => child.pid === -pid && child.exitCode === null)?.child.exit(0, signal);
+    } };
+
+    const control = async (daemon, request) => {
+      await fs.writeJson(controlPath(tempDir), { pid: process.pid, ...request });
+      await daemon.applyControl();
+    };
+
+    it('starts without wallpapers, tracking monitors for the visualizer, and refuses to start with nothing on', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start({ wallpaper: false, visualizer: true });
+      expect(spawned).to.have.length(0);
+      expect(visualizers.override).to.be.true;
+      const state = await readState(tempDir);
+      expect(state).to.include({ wallpaper: false, control: 0 });
+      expect(state.monitors.map(monitor => [monitor.name, monitor.socket])).to.deep.equal([['DP-1', null], ['HDMI-1', null]]);
+      // Hotplug follows monitors without starting wallpapers
+      layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
+      await daemon.checkMonitors();
+      expect([...daemon.monitors.keys()]).to.deep.equal(['DP-1']);
+      expect(spawned).to.have.length(0);
+      await daemon.stop();
+
+      let caught;
+      try { await makeDaemon({ visualizers }).start({ wallpaper: false, visualizer: false }); } catch (error) { caught = error; }
+      expect(caught.message).to.equal('Nothing to show: the wallpaper is off and the visualizer did not start');
+      expect(await readState(tempDir)).to.be.null;
+    });
+
+    it('switches the wallpaper and visualizer on and off on request, restarting the visualizer over new wallpapers', async () => {
+      const daemon = makeDaemon({ visualizers, ...exitOnKill });
+      await daemon.start({ visualizer: true });
+      expect(spawned).to.have.length(2);
+
+      await control(daemon, { wallpaper: false });
+      expect(daemon.screens.size).to.equal(0);
+      expect(kills.map(kill => kill[1])).to.deep.equal(['SIGTERM', 'SIGTERM']);
+      let state = await readState(tempDir);
+      expect(state).to.include({ wallpaper: false, control: 1 });
+      expect(await fs.pathExists(controlPath(tempDir))).to.be.false;
+      // Its own exits are not crashes
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(spawned).to.have.length(2);
+
+      await control(daemon, { wallpaper: true });
+      expect(spawned).to.have.length(4);
+      expect(calls.at(-1)).to.equal('restartAll');
+      state = await readState(tempDir);
+      expect(state.monitors.every(monitor => monitor.socket)).to.be.true;
+
+      // A request for another daemon is ignored, but still answered
+      await fs.writeJson(controlPath(tempDir), { pid: process.pid + 1, wallpaper: false });
+      await daemon.applyControl();
+      expect((await readState(tempDir)).control).to.equal(3);
+      expect(daemon.wallpaper).to.be.true;
+
+      await control(daemon, { visualizer: false });
+      expect(calls).to.deep.include(['visualizer', false]);
+      await control(daemon, { wallpaper: false });
+      // Neither part is left on, so the daemon stopped
+      expect(await readState(tempDir)).to.be.null;
+      expect(daemon.stopping).to.be.true;
+    });
+
+
+    it('starts it after the wallpapers and records it, with the daemon version, in the state', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start();
+      expect(calls).to.deep.equal(['configure', 'sync']);
+      const state = await readState(tempDir);
+      expect(state.version).to.match(/^\d+\.\d+\.\d+/);
+      expect(state.visualizer).to.deep.equal({ enabled: true, error: null, generation: 1 });
+      expect(state.monitors.map(monitor => monitor.visualizer)).to.deep.equal([null, { module: 'bars', geometry: '1080x480+2560+1440' }]);
+      await daemon.stop();
+      expect(calls.at(-1)).to.equal('stop');
+    });
+
+    it('follows monitor changes and starts it again over a restarted wallpaper', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start();
+      spawned[1].child.exit(1);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(calls).to.deep.include(['restart', 'HDMI-1']);
+      layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
+      await daemon.checkMonitors();
+      expect(calls.filter(call => call === 'sync')).to.have.length(2);
+      await daemon.stop();
+    });
+
+    it('reloads only the visualizer section on SIGHUP, and keeps it when the file no longer parses', async () => {
+      let reloads = 0;
+      const errors = [];
+      const daemon = makeDaemon({
+        visualizers, logger: { ...silentLogger, error: message => errors.push(message) },
+        reloadConfig: async () => { reloads++; if (reloads === 2) throw new Error('Failed to load config: bad YAML'); }
+      });
+      await daemon.start();
+      await daemon.reloadVisualizer();
+      expect(calls.slice(2)).to.deep.equal(['reload']);
+      expect((await readState(tempDir)).visualizer.generation).to.equal(2);
+      await daemon.reloadVisualizer();
+      expect(calls.slice(2)).to.deep.equal(['reload']);
+      expect(errors).to.include('Visualizer reload failed, keeping the running one');
+      await daemon.stop();
+      await daemon.reloadVisualizer();
+      expect(reloads).to.equal(2);
     });
   });
 

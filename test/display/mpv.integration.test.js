@@ -119,7 +119,7 @@ describe('mpv integration', function () {
 
     const control = new DisplayControl({ config: makeConfig(), database: db });
     // Reuse the test's live connection; production closes each temporary connection.
-    control.state = async () => ({ monitors: [{ name: 'TEST-1' }] });
+    control.state = async () => ({ monitors: [{ name: 'TEST-1', socket: 'test.sock' }] });
     control.withClient = async (monitor, fn) => fn(client);
     await control.removeMedia({ path: first });
 
@@ -164,7 +164,7 @@ describe('mpv integration', function () {
     await waitFor(async () => (await client.getProperty('path')) === files[0]);
     // removeMedia walks the monitors in the daemon's state
     const runtime = path.join(tempDir, 'run');
-    await fs.outputJson(path.join(runtime, 'state.json'), { pid: process.pid, monitors: [{ name: 'TEST-1' }] });
+    await fs.outputJson(path.join(runtime, 'state.json'), { pid: process.pid, monitors: [{ name: 'TEST-1', socket: 'test.sock' }] });
     const control = new DisplayControl({ config: makeConfig({ 'paths.runtime': runtime }), database: db });
     control.targetMonitor = async () => ({ name: 'TEST-1' });
     control.withClient = async (monitor, fn) => fn(client);

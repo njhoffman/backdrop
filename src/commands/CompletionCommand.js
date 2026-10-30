@@ -26,6 +26,7 @@ function valueSpecs(sources) {
     'dim:value': { words: ['reset', '0', '20', '40', '+10', '-10'] },
     'import:dirs': { directories: true },
     'completion:shell': { words: SHELLS },
+    'visualizer:action': { words: ['reload'] },
     'menu:--style': { words: ['panel', 'minimal'] }
   };
 }

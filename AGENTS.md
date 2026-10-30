@@ -60,10 +60,18 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
   `loop-file`/`end`, records frame rates from mpv, samples mpv CPU and decoder on each health check (`src/display/cpu.js`,
   `playback_stats`), writes `state.json` atomically and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
+  The daemon keeps active monitors (`monitors`) apart from their wallpaper processes (`screens`), so the wallpaper
+  can be off (`start/stop --wallpaper`) while the visualizer runs; the CLI writes `control.json` and sends SIGUSR1,
+  and `state.json` monitors have a null `socket` while the wallpaper is off.
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
   the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's
   pid (the daemon removes it on start and stop); `next`, `keep --next`, `skip` and `go-next` fill in from it. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
+- **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
+  `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
+  adapters (`index.js`, `GlavaVisualizer`) with `prepare()` and `command(monitor, geometry)`; `VisualizerManager`
+  owns the processes. Stacking relies on start order, so the daemon restarts a monitor's visualizer after
+  restarting its wallpaper. SIGHUP (`backdrop visualizer reload`) re-reads only that section.
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
   file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
   into `findMedia` filters for `pending`, `download`, the lists and `next`.

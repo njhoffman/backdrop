@@ -34,6 +34,21 @@ display:
 menu:
   style: panel             # panel (share/rofi/backdrop-panel.rasi: preview banner, details, button grid) or minimal
   rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme-str, 'window { width: 900px; }']
+  workspace: true          # i3: an empty workspace (true: "backdrop", or a name) while the menu is open; false to stay
+
+visualizer:                # see docs/specs/visualizer.md; checked at daemon start and on `backdrop visualizer reload`
+  enabled: false
+  engine: glava            # the only adapter so far
+  monitors: all            # all, [names], or {name: true | false | {placement, rect}}
+  module: bars             # bars, graph, radial, circle, wave
+  audio: pulseaudio        # pulseaudio or fifo
+  source: auto             # GLava setsource: a sink or device, or the fifo path
+  placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # sizes in pixels or % of the monitor
+  rect: null               # {x, y, width, height} relative to the monitor; overrides placement
+  bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
+  defines: {}              # raw #defines written into the module's .glsl, applied over the bars options
+  requests: []             # raw GLava requests (-r), applied after backdrop's
+  glava: {shader_dir: /etc/xdg/glava, args: []}
 
 screensaver:
   idle_minutes: 10

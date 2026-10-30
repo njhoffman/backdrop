@@ -19,6 +19,7 @@ import { ListCommand } from './commands/ListCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
 import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { SystemdCommand } from './commands/SystemdCommand.js';
+import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerCommand.js';
 import { configureOutput, out, printVersion, setJsonOutput } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
@@ -85,6 +86,7 @@ class BackdropApp {
     const stats = new StatsCommand(this.config, this.database, this.logger);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
     const systemd = new SystemdCommand(this.config, this.database, this.logger);
+    const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
     const noRandomOption = ['--no-random', 'Play the next item in the shuffled order'];
@@ -106,17 +108,23 @@ class BackdropApp {
     program
       .command('daemon')
       .description('Run the display daemon in the foreground')
-      .action(this.action(() => display.daemon()));
+      .option('--no-wallpaper', 'Start without wallpapers (backdrop start --wallpaper turns them on)')
+      .option('--visualizer', 'Run the visualizer even if visualizer.enabled is false')
+      .option('--no-visualizer', 'Do not run the visualizer even if visualizer.enabled is true')
+      .action(this.action(options => display.daemon(options)));
 
-    program
+    const partOptions = command => command
+      .option('--wallpaper', 'Only the wallpaper')
+      .option('--visualizer', 'Only the visualizer');
+    partOptions(program
       .command('start')
-      .description('Start the display daemon in the background')
-      .action(this.action(() => display.start()));
+      .description('Start the display daemon in the background, or with --wallpaper/--visualizer only that part, or turn it on'))
+      .action(this.action(options => display.start(options)));
 
-    program
+    partOptions(program
       .command('stop')
-      .description('Stop the display daemon')
-      .action(this.action(() => display.stop()));
+      .description('Stop the display daemon, or with --wallpaper/--visualizer turn only that part off'))
+      .action(this.action(options => display.stop(options)));
 
     program
       .command('status')
@@ -274,6 +282,9 @@ class BackdropApp {
     program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
+    program.command('visualizer').description('Apply the visualizer section of the config to the running daemon (reload)')
+      .argument('<action>', VISUALIZER_ACTIONS.join(' or '))
+      .action(this.action(action => visualizer.run(action)));
     program.command('systemd').description('Print a systemd user unit for the daemon, e.g. backdrop systemd > ~/.config/systemd/user/backdrop.service')
       .action(this.action(() => systemd.print(version)));
   }

@@ -12,6 +12,7 @@ import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
+import { VisualizerManager } from '../visualizer/VisualizerManager.js';
 import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -35,6 +36,11 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function statePath(runtimeDir) {
   return path.join(runtimeDir, 'state.json');
+}
+
+// What `backdrop start/stop --wallpaper/--visualizer` asks a running daemon to change (see applyControl)
+export function controlPath(runtimeDir) {
+  return path.join(runtimeDir, 'control.json');
 }
 
 // Filters for next that last as long as this daemon (see nextFilters.js); removed when it starts and stops
@@ -97,7 +103,8 @@ export class Daemon {
     monitorInterval = MONITOR_POLL_MS, now = Date.now, readFile,
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger }),
-    thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true })
+    thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
+    visualizers, reloadConfig = () => config.reloadSection('visualizer')
   }) {
     this.config = config;
     this.database = database;
@@ -122,7 +129,17 @@ export class Daemon {
     this.purge = purge;
     this.thumbnail = thumbnail;
     this.timers = [];
+    // Active monitors by name; screens holds their wallpaper processes, empty while the wallpaper is off
+    this.monitors = new Map();
     this.screens = new Map();
+    this.wallpaper = true;
+    // Counts control requests applied, so the CLI can tell when its request has been
+    this.controlGeneration = 0;
+    this.queue = Promise.resolve();
+    this.visualizers = visualizers ?? new VisualizerManager({
+      config, logger, monitors: this.monitors, spawn, kill, restartDelay, stopGrace, now
+    });
+    this.reloadConfig = reloadConfig;
     this.stopping = false;
     this.stopped = null;
   }
@@ -131,7 +148,9 @@ export class Daemon {
     return this.config.get().paths.runtime;
   }
 
-  async start() {
+  // wallpaper: false starts without wallpapers; visualizer: true or false overrides visualizer.enabled.
+  // Both last until changed by a control request or the daemon exits.
+  async start({ wallpaper = true, visualizer = null } = {}) {
     const existing = await readState(this.runtimeDir);
     if (existing) {
       throw new Error(`backdrop daemon already running (pid ${existing.pid})`);
@@ -152,17 +171,27 @@ export class Daemon {
 
     await fs.ensureDir(this.runtimeDir, 0o700);
     await fs.remove(nextFiltersPath(this.runtimeDir));
+    await fs.remove(controlPath(this.runtimeDir));
     this.stopped = new Promise(resolve => { this.resolveStopped = resolve; });
+    this.wallpaper = wallpaper;
+    this.visualizers.override = visualizer;
 
     try {
       for (const monitor of monitors) {
-        await this.startScreen(monitor);
+        this.monitors.set(monitor.name, monitor);
+        if (this.wallpaper) await this.startScreen(monitor);
       }
     } catch (error) {
       await this.stop();
       throw error;
     }
 
+    await this.visualizers.configure();
+    await this.visualizers.sync();
+    if (!this.wallpaper && !this.visualizers.active) {
+      await this.stop();
+      throw new Error(`Nothing to show: the wallpaper is off and the visualizer did not start${this.visualizers.error ? ` (${this.visualizers.error})` : ''}`);
+    }
     await this.writeState();
     this.logger.info('Daemon started', { version, pid: process.pid, monitors: monitors.map(m => m.name) });
 
@@ -205,36 +234,96 @@ export class Daemon {
 
     const byName = new Map(active.map(monitor => [monitor.name, monitor]));
     let changed = false;
-    for (const screen of [...this.screens.values()]) {
-      const next = byName.get(screen.monitor.name);
-      if (next && geometry(next) === geometry(screen.monitor)) continue;
+    for (const [name, monitor] of [...this.monitors]) {
+      const next = byName.get(name);
+      if (next && geometry(next) === geometry(monitor)) continue;
       if (this.stopping) return;
-      // A crash restart may have replaced this entry since the snapshot; the next poll handles it
-      if (this.screens.get(screen.monitor.name) !== screen) continue;
       this.logger.info(next ? 'Monitor changed, restarting it' : 'Monitor removed', {
-        monitor: screen.monitor.name, from: geometry(screen.monitor), to: next ? geometry(next) : null
+        monitor: name, from: geometry(monitor), to: next ? geometry(next) : null
       });
+      this.monitors.delete(name);
       // Removed from the map first so handleExit does not treat the exit as a crash
-      this.screens.delete(screen.monitor.name);
-      await this.stopScreen(screen);
-      changed = true;
-    }
-    for (const monitor of active) {
-      if (this.screens.has(monitor.name) || this.stopping) continue;
-      this.logger.info('Monitor added', { monitor: monitor.name, geometry: geometry(monitor) });
-      try {
-        await this.startScreen(monitor);
-      } catch (error) {
-        this.logger.error('Failed to start monitor', { monitor: monitor.name, error: error.message });
-        const screen = this.screens.get(monitor.name);
-        if (screen) {
-          this.screens.delete(monitor.name);
-          await this.stopScreen(screen);
-        }
+      const screen = this.screens.get(name);
+      if (screen) {
+        this.screens.delete(name);
+        await this.stopScreen(screen);
       }
       changed = true;
     }
-    if (changed && !this.stopping) await this.writeState();
+    for (const monitor of active) {
+      if (this.monitors.has(monitor.name) || this.stopping) continue;
+      this.logger.info('Monitor added', { monitor: monitor.name, geometry: geometry(monitor) });
+      this.monitors.set(monitor.name, monitor);
+      if (this.wallpaper && !await this.startWallpaper(monitor)) {
+        // Left out so the next poll tries again
+        this.monitors.delete(monitor.name);
+      }
+      changed = true;
+    }
+    if (changed && !this.stopping) {
+      await this.visualizers.sync();
+      await this.writeState();
+    }
+  }
+
+  // Starts a monitor's wallpaper; a failure is logged and cleaned up. Resolves to whether it started.
+  async startWallpaper(monitor) {
+    try {
+      await this.startScreen(monitor);
+      return true;
+    } catch (error) {
+      this.logger.error('Failed to start monitor', { monitor: monitor.name, error: error.message });
+      const screen = this.screens.get(monitor.name);
+      if (screen) {
+        this.screens.delete(monitor.name);
+        await this.stopScreen(screen);
+      }
+      return false;
+    }
+  }
+
+  // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. New wallpaper windows
+  // map above running visualizers, so those start again on top.
+  async setWallpaper(on) {
+    if (on === this.wallpaper || this.stopping) return;
+    this.wallpaper = on;
+    if (on) {
+      for (const monitor of [...this.monitors.values()]) {
+        if (!this.screens.has(monitor.name)) await this.startWallpaper(monitor);
+      }
+      await this.visualizers.restartAll();
+    } else {
+      const screens = [...this.screens.values()];
+      this.screens.clear();
+      await Promise.all(screens.map(screen => this.stopScreen(screen)));
+    }
+    this.logger.info(on ? 'Wallpaper on' : 'Wallpaper off');
+  }
+
+  // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer }, each optional), written by the CLI for this
+  // daemon's pid. With neither part left on, the daemon stops.
+  async applyControl() {
+    if (this.stopping) return;
+    let request = {};
+    try {
+      const { pid, ...rest } = await fs.readJson(controlPath(this.runtimeDir));
+      if (pid === process.pid) request = rest;
+      await fs.remove(controlPath(this.runtimeDir));
+    } catch {
+      // No request: the generation still moves so the CLI does not wait for nothing
+    }
+    if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
+    if (typeof request.visualizer === 'boolean') {
+      await this.visualizers.setEnabled(request.visualizer);
+      this.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.visualizers.summary());
+    }
+    this.controlGeneration++;
+    if (!this.wallpaper && !this.visualizers.active) {
+      this.logger.info('Wallpaper and visualizer are off, stopping');
+      await this.stop();
+      return;
+    }
+    await this.writeState();
   }
 
   every(interval, fn) {
@@ -547,6 +636,8 @@ export class Daemon {
     }
     try {
       await this.startScreen(screen.monitor);
+      // The new wallpaper window maps above the visualizer, so that is started again on top
+      await this.visualizers.restart(screen.monitor.name);
       await this.writeState();
     } catch (error) {
       this.logger.error('Failed to restart monitor', { monitor: screen.monitor.name, error: error.message });
@@ -558,15 +649,25 @@ export class Daemon {
   async writeState() {
     // A sample finishing during shutdown must not recreate the state file stop() removes
     if (this.stopping) return;
-    const monitors = [...this.screens.values()].map(({ monitor, socketPath, recent = [], hwdec = null }) => ({
-      ...monitor,
-      socket: socketPath,
-      cpu: cpuPercent(recent.reduce((sum, item) => sum + item.cpuSeconds, 0), recent.reduce((sum, item) => sum + item.seconds, 0)),
-      hwdec
-    }));
+    const monitors = [...this.monitors.values()].map(monitor => {
+      const { socketPath = null, recent = [], hwdec = null } = this.screens.get(monitor.name) ?? {};
+      return {
+        ...monitor,
+        // null while the wallpaper is off: CLI commands that need mpv say so
+        socket: socketPath,
+        cpu: cpuPercent(recent.reduce((sum, item) => sum + item.cpuSeconds, 0), recent.reduce((sum, item) => sum + item.seconds, 0)),
+        hwdec,
+        visualizer: this.visualizers.describe(monitor.name)
+      };
+    });
     const file = statePath(this.runtimeDir);
     const temporary = `${file}.${process.pid}.tmp`;
-    await fs.writeJson(temporary, { pid: process.pid, monitors });
+    // version tells the CLI this daemon reloads the visualizer on SIGHUP, and control that it applies
+    // control.json on SIGUSR1, rather than dying from either signal
+    await fs.writeJson(temporary, {
+      pid: process.pid, version, wallpaper: this.wallpaper, control: this.controlGeneration, monitors,
+      visualizer: this.visualizers.summary()
+    });
     await fs.rename(temporary, file);
   }
 
@@ -579,11 +680,14 @@ export class Daemon {
     this.timers = [];
     await this.reconciling;
 
+    await this.visualizers.stop();
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();
+    this.monitors.clear();
     await this.importing;
     await fs.remove(statePath(this.runtimeDir));
     await fs.remove(nextFiltersPath(this.runtimeDir));
+    await fs.remove(controlPath(this.runtimeDir));
 
     this.logger.info('Daemon stopped');
     this.resolveStopped?.();
@@ -620,12 +724,39 @@ export class Daemon {
     }
   }
 
-  // Runs until SIGINT/SIGTERM
-  async run() {
-    await this.start();
+  // SIGHUP (`backdrop visualizer reload`): re-reads the visualizer section and restarts only the
+  // visualizer. A config file that no longer parses keeps the running visualizer and logs why.
+  async reloadVisualizer() {
+    if (this.stopping) return;
+    try {
+      await this.reloadConfig();
+    } catch (error) {
+      this.logger.error('Visualizer reload failed, keeping the running one', { error: error.message });
+      return;
+    }
+    await this.visualizers.reload();
+    await this.writeState();
+    this.logger.info('Visualizer reloaded', this.visualizers.summary());
+  }
+
+  // Signal handlers run one at a time
+  enqueue(task) {
+    this.queue = this.queue.then(task).catch(error => this.logger.error('Daemon request failed', { error: error.message }));
+    return this.queue;
+  }
+
+  // Runs until SIGINT/SIGTERM, or until a control request leaves nothing on
+  async run(options) {
+    await this.start(options);
     const shutdown = () => this.stop();
+    const reload = () => this.enqueue(() => this.reloadVisualizer());
+    const control = () => this.enqueue(() => this.applyControl());
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
+    process.on('SIGHUP', reload);
+    process.on('SIGUSR1', control);
     await this.stopped;
+    process.off('SIGHUP', reload);
+    process.off('SIGUSR1', control);
   }
 }

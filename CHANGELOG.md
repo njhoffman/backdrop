@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-30
+
+### Added
+- `backdrop start` and `stop` take `--wallpaper` and `--visualizer` to switch one part on or off in the
+  running daemon, e.g. `backdrop stop --wallpaper` shows the visualizer alone on a black screen. With the
+  daemon stopped, `start --visualizer` (or `--wallpaper`) starts only that part. The switches last until the
+  daemon restarts, and the daemon stops when neither part is left on. `backdrop status` (and `--json`) shows
+  which parts are on.
+
+### Changed
+- While the wallpaper is off, commands that need it (`next`, `keep`, `menu` and the like) say so, and `mode`
+  only records the mode for when it comes back.
+
+## [2.20.0] - 2026-10-30
+
+### Added
+- Music visualizer: with `visualizer.enabled`, the daemon runs GLava above the wallpaper on each monitor
+  (`visualizer.monitors`), below every window, with clicks passing through. It needs `glava` and a compositor.
+  Placement is relative to each monitor (`placement` with an anchor, size and margin, or a `rect`), and the
+  module, bars options (width, gap, amplify, colors, gradient, direction, flip), raw `defines` and `requests`
+  come from the config. Backdrop gives GLava its own config folder, so `~/.config/glava` is left alone.
+- `backdrop visualizer reload` applies the visualizer section to the running daemon without touching the
+  wallpaper, and reports mistakes in it. `backdrop status` (and `--json`) shows each monitor's visualizer.
+- An instance that exits is restarted, up to five times a minute, then given up on until the next reload,
+  with its last output in the log.
+
 ## [2.19.0] - 2026-10-30
 
 ### Added

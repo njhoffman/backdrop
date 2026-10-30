@@ -87,6 +87,19 @@ export class ConfigManager {
         rofi_args: [],
         workspace: true
       },
+      visualizer: {
+        enabled: false,
+        engine: 'glava',
+        monitors: 'all',
+        module: 'bars',
+        audio: 'pulseaudio',
+        source: 'auto',
+        placement: { anchor: 'bottom', width: '100%', height: '25%', margin: 0 },
+        bars: { width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: 'inward', flip: false },
+        defines: {},
+        requests: [],
+        glava: { shader_dir: '/etc/xdg/glava', args: [] }
+      },
       screensaver: {
         idle_minutes: 10,
         sources: ['rated_videos'],
@@ -125,6 +138,15 @@ export class ConfigManager {
     } catch (error) {
       throw new Error(`Failed to load config: ${error.message}`);
     }
+  }
+
+  // Re-reads the file and takes only one section from it, so a running daemon can apply that section
+  // without its paths or other settings changing underneath it
+  async reloadSection(key) {
+    const fresh = new ConfigManager(this.configPath);
+    await fresh.loadConfig();
+    this.config[key] = fresh.config[key];
+    this.userConfig[key] = fresh.userConfig[key];
   }
 
   async createDefaultConfig() {

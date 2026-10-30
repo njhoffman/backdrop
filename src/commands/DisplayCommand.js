@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { Daemon, readState } from '../display/Daemon.js';
+import fs from 'fs-extra';
+import { Daemon, controlPath, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
@@ -10,45 +11,68 @@ import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
 } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
+import { visualizerSettings } from '../visualizer/settings.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const START_TIMEOUT_MS = 15_000;
+// The parts of the daemon `start` and `stop` can address on their own
+const PARTS = ['wallpaper', 'visualizer'];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export class DisplayCommand {
-  constructor(config, database, logger) {
+  constructor(config, database, logger, { kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
     this.control = new DisplayControl({ config, database });
+    this.kill = kill;
+    this.spawnProcess = spawnProcess;
+    this.timeout = timeout;
   }
 
   get runtimeDir() {
     return this.config.get().paths.runtime;
   }
 
-  // Foreground daemon, for i3 `exec` or a systemd user unit
-  async daemon() {
+  // Foreground daemon, for i3 `exec` or a systemd user unit. --no-wallpaper starts without wallpapers;
+  // --visualizer/--no-visualizer override visualizer.enabled.
+  async daemon(options = {}) {
     this.logger.enableConsole();
-    await new Daemon({ config: this.config, database: this.database, logger: this.logger }).run();
+    await new Daemon({ config: this.config, database: this.database, logger: this.logger })
+      .run({ wallpaper: options.wallpaper ?? true, visualizer: options.visualizer ?? null });
   }
 
-  async start() {
+  // The parts --wallpaper and --visualizer name, or null for the whole daemon
+  parts(options) {
+    const named = PARTS.filter(part => options[part]);
+    return named.length ? named : null;
+  }
+
+  // Without flags, starts the daemon with the wallpaper and, if visualizer.enabled, the visualizer.
+  // --wallpaper/--visualizer start only those parts, or turn them on in a running daemon.
+  async start(options = {}) {
+    const parts = this.parts(options);
     const running = await readState(this.runtimeDir);
     if (running) {
-      out.info(`Already running (pid ${running.pid})`);
+      if (!parts) out.info(`Already running (pid ${running.pid})`);
+      else await this.request(running, Object.fromEntries(parts.map(part => [part, true])));
       return;
     }
+    // Checked here so a mistake shows at the prompt rather than only in the daemon log
+    if (parts?.includes('visualizer')) visualizerSettings(this.config.get().visualizer);
 
-    const child = spawn(process.execPath, [ENTRY_POINT, 'daemon'], { detached: true, stdio: 'ignore' });
+    const flags = parts
+      ? [parts.includes('wallpaper') ? '--wallpaper' : '--no-wallpaper', parts.includes('visualizer') ? '--visualizer' : '--no-visualizer']
+      : [];
+    const child = this.spawnProcess(process.execPath, [ENTRY_POINT, 'daemon', ...flags], { detached: true, stdio: 'ignore' });
     child.unref();
 
-    const deadline = Date.now() + START_TIMEOUT_MS;
+    const deadline = Date.now() + this.timeout;
     while (Date.now() < deadline) {
       const state = await readState(this.runtimeDir);
       if (state) {
-        out.success(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}`);
+        out.success(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}: ${this.describeParts(state)}`);
         return;
       }
       if (child.exitCode !== null) {
@@ -59,22 +83,65 @@ export class DisplayCommand {
     throw new Error(`Daemon did not start; see ${this.config.get().paths.logfile}`);
   }
 
-  async stop() {
+  // Without flags, stops the daemon. --wallpaper/--visualizer turn only those parts off; the daemon stops
+  // itself when neither is left on.
+  async stop(options = {}) {
     const state = await readState(this.runtimeDir);
     if (!state) {
       out.info('Not running');
       return;
     }
+    const parts = this.parts(options);
+    if (parts) {
+      await this.request(state, Object.fromEntries(parts.map(part => [part, false])));
+      return;
+    }
 
-    process.kill(state.pid, 'SIGTERM');
-    const deadline = Date.now() + START_TIMEOUT_MS;
+    this.kill(state.pid, 'SIGTERM');
+    await this.waitForExit(state.pid);
+    out.success('Stopped');
+  }
+
+  async waitForExit(pid) {
+    const deadline = Date.now() + this.timeout;
     while (Date.now() < deadline && await readState(this.runtimeDir)) {
-      await sleep(200);
+      await sleep(100);
     }
     if (await readState(this.runtimeDir)) {
-      throw new Error(`Daemon (pid ${state.pid}) did not stop`);
+      throw new Error(`Daemon (pid ${pid}) did not stop`);
     }
-    out.success('Stopped');
+  }
+
+  // Asks the running daemon to switch parts on or off ({ wallpaper, visualizer }) through control.json and
+  // SIGUSR1, then waits for its state to show the request applied, or for it to exit
+  async request(state, change) {
+    // Daemons before 2.21.0 have no SIGUSR1 handler, and Node exits on an unhandled SIGUSR1
+    if (state.control === undefined) {
+      throw new Error(`The running daemon (pid ${state.pid}) cannot switch parts on or off; restart it with \`backdrop stop && backdrop start\``);
+    }
+    if (change.visualizer) visualizerSettings(this.config.get().visualizer);
+    await fs.writeJson(controlPath(this.runtimeDir), { pid: state.pid, ...change });
+    this.kill(state.pid, 'SIGUSR1');
+
+    const deadline = Date.now() + this.timeout;
+    let current = state;
+    while (current && current.control <= state.control) {
+      if (Date.now() > deadline) throw new Error(`The daemon did not answer; see ${this.config.get().paths.logfile}`);
+      await sleep(100);
+      current = await readState(this.runtimeDir);
+    }
+    if (!current) {
+      out.success('Stopped: the wallpaper and visualizer are both off');
+      return;
+    }
+    if (change.visualizer && current.visualizer.error) throw new Error(`Visualizer off: ${current.visualizer.error}`);
+    out.success(this.describeParts(current));
+  }
+
+  // e.g. "wallpaper on, visualizer off"
+  describeParts(state) {
+    const visualizer = state.visualizer?.enabled && !state.visualizer.error;
+    return `wallpaper ${state.wallpaper === false ? 'off' : 'on'}, visualizer ${visualizer ? 'on' : 'off'}`;
   }
 
   async status(options = {}) {
@@ -89,7 +156,8 @@ export class DisplayCommand {
       return;
     }
 
-    out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid})`)}`);
+    out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid}; ${this.describeParts(state)})`)}`);
+    if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
     const next = this.describeNextFilters(await readNextFilters(this.runtimeDir));
     if (next) out.row('Next', `${next} ${fmt.dim('(next --clear to drop)')}`);
     if (!state.monitors.length) {
@@ -99,12 +167,17 @@ export class DisplayCommand {
     const mode = getMode(this.database);
     const { allow_upscale: allowUpscale } = this.config.get().display;
     for (const monitor of state.monitors) {
+      if (!monitor.socket) {
+        out.field('info', fmt.yellow('wallpaper off (backdrop start --wallpaper)'));
+        continue;
+      }
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
       const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
       const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s eligible`];
       // Recent average from the daemon's samples, once it has two
       if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
       out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
+      if (monitor.visualizer) out.field('info', this.describeVisualizer(monitor.visualizer));
       if (!path) {
         out.field('info', fmt.yellow('nothing playing'));
         out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
@@ -128,10 +201,20 @@ export class DisplayCommand {
         eligible: eligibleMedia(this.database, mode, monitor, { allowUpscale }).length,
         cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
         decoder: formatDecoder(monitor.hwdec) || null,
+        visualizer: monitor.visualizer ?? null,
         playing: media ? mediaJson(this.database, media, rating) : null
       });
     }
-    return { mode, daemon: { running: Boolean(state), pid: state?.pid ?? null }, monitors };
+    const daemon = {
+      running: Boolean(state), pid: state?.pid ?? null,
+      wallpaper: state ? state.wallpaper !== false : null,
+      visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null
+    };
+    return { mode, daemon, monitors };
+  }
+
+  describeVisualizer({ module, geometry, running }) {
+    return `visualizer ${module} at ${geometry}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
   }
 
   // Filters and order next keeps using, e.g. 'random, query "clouds", tags sky'
@@ -219,8 +302,9 @@ export class DisplayCommand {
 
   // With the daemon running, the reload also shows what the target monitor now plays
   async mode(requested, options = {}) {
+    // With the wallpaper off only the mode changes; the wallpaper starts in it when turned on
     const running = await this.control.state({ required: false });
-    const playing = running ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
+    const playing = running && running.wallpaper !== false ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
     const { mode, counts } = playing?.result ?? await this.control.mode(requested);
     // --json: the new mode and what the target monitor now plays, or a null monitor when stopped
     if (wantsJson(options)) {
