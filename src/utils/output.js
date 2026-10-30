@@ -175,6 +175,14 @@ export function formatDuration(seconds) {
   return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
 }
 
+// A duration setting: whole seconds, minutes or hours as such, e.g. 90s, 5m, 1h, 0 as "forever"
+export function formatSetting(seconds) {
+  if (seconds === 0) return 'forever';
+  if (seconds >= 3600 && seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+}
+
 // Media running time as a clock, e.g. 0:18 or 1:02:03
 export function formatClock(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return '--';

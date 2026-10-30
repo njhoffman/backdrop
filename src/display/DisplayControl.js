@@ -1,3 +1,4 @@
+import { readNextFilters } from './nextFilters.js';
 import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
@@ -233,10 +234,16 @@ export class DisplayControl {
         const current = currentPath === previous.path ? previous : this.database.getMediaByPath(currentPath);
         await loadPlaylist(client, {
           database: this.database, config: this.config.get(), mode: getMode(this.database),
-          monitor, runtimeDir: this.config.get().paths.runtime, lastMediaId: current?.id
+          monitor, runtimeDir: this.config.get().paths.runtime, lastMediaId: current?.id,
+          imageDuration: await this.imageDuration()
         });
       });
     }
+  }
+
+  // The image duration next or the menu set, or undefined for display.image_duration
+  async imageDuration() {
+    return (await readNextFilters(this.config.get().paths.runtime)).image_duration;
   }
 
   // Sets the mode ('video', 'image' or 'toggle') and reloads every monitor if the daemon is running
@@ -250,12 +257,14 @@ export class DisplayControl {
     const state = await this.state({ required: false });
     const counts = {};
     for (const monitor of wallpaperMonitors(state)) {
+      const imageDuration = await this.imageDuration();
       counts[monitor.name] = await this.withClient(monitor, client => loadPlaylist(client, {
         database: this.database,
         config: this.config.get(),
         mode,
         monitor,
-        runtimeDir: this.config.get().paths.runtime
+        runtimeDir: this.config.get().paths.runtime,
+        imageDuration
       }));
     }
     return { mode, running: Boolean(state), counts };

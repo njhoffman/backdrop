@@ -47,7 +47,11 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # sizes in pixels or % of the monitor
   rect: null               # {x, y, width, height} relative to the monitor; overrides placement
   bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
-  defines: {}              # raw #defines written into the module's .glsl, applied over the bars options
+  graph: {}                # typed options of the other modules, written only when set (MODULE_OPTIONS in
+  radial: {}               #   src/visualizer/settings.js); every module section is checked, unknown options
+  circle: {}               #   rejected, but only the active module's is applied
+  wave: {}
+  defines: {}              # raw #defines written into the module's .glsl, applied over the typed options
   requests: []             # raw GLava requests (-r), applied after backdrop's
   glava: {shader_dir: /etc/xdg/glava, args: []}
 

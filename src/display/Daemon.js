@@ -1,4 +1,5 @@
 import { spawn as spawnProcess } from 'child_process';
+import { watch as watchFiles } from 'fs';
 import { createRequire } from 'module';
 import fs from 'fs-extra';
 import path from 'path';
@@ -11,8 +12,9 @@ import {
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
-import { notifyMode, notifyPlaying } from '../utils/notify.js';
+import { notifyError, notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager } from '../visualizer/VisualizerManager.js';
+import { visualizerSettings } from '../visualizer/settings.js';
 import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -31,6 +33,9 @@ const IMPORT_PROGRESS_MS = 30_000;
 const { version } = createRequire(import.meta.url)('../../package.json');
 // sockaddr_un.sun_path is 108 bytes including the terminating NUL
 const MAX_SOCKET_PATH = 107;
+
+// Quiet time after the last change to the config file before it is read; editors write a file in steps
+const CONFIG_SETTLE_MS = 300;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -104,7 +109,8 @@ export class Daemon {
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
-    visualizers, reloadConfig = () => config.reloadSection('visualizer')
+    visualizers, reloadConfig = () => config.reloadSection('visualizer'),
+    watch = watchFiles, configSettle = CONFIG_SETTLE_MS
   }) {
     this.config = config;
     this.database = database;
@@ -135,11 +141,17 @@ export class Daemon {
     this.wallpaper = true;
     // Counts control requests applied, so the CLI can tell when its request has been
     this.controlGeneration = 0;
+    // --image-duration/--video-duration from next or menu (next-filters.json), over display.* until cleared
+    this.durations = {};
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn, kill, exec, restartDelay, stopGrace, now
     });
     this.reloadConfig = reloadConfig;
+    this.watch = watch;
+    this.configSettle = configSettle;
+    this.configWatcher = null;
+    this.configTimer = null;
     this.stopping = false;
     this.stopped = null;
   }
@@ -197,6 +209,8 @@ export class Daemon {
 
     // Playback starts from the existing library; new imports are appended as they finish
     this.importing = this.importDirs(monitors[0] ?? null);
+
+    this.watchConfig();
 
     // An interval of 0 turns the timer off (tests drive these directly)
     this.runPurge();
@@ -313,6 +327,7 @@ export class Daemon {
       // No request: the generation still moves so the CLI does not wait for nothing
     }
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
+    if (request.durations) await this.applyDurations();
     if (typeof request.visualizer === 'boolean') {
       await this.visualizers.setEnabled(request.visualizer);
       this.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.visualizers.summary());
@@ -324,6 +339,35 @@ export class Daemon {
       return;
     }
     await this.writeState();
+  }
+
+  imageDuration() {
+    return this.durations.image_duration ?? this.config.get().display.image_duration;
+  }
+
+  videoDuration() {
+    return validVideoDuration(this.durations.video_duration ?? this.config.get().display.video_duration ?? 0);
+  }
+
+  // Re-reads the durations next and the menu stored and applies them to what plays now: the image's
+  // display time, and the video's end, counted from when it started
+  async applyDurations() {
+    try {
+      const { pid, image_duration: image, video_duration: video } = await fs.readJson(nextFiltersPath(this.runtimeDir));
+      this.durations = pid === process.pid ? Object.fromEntries(Object.entries({ image_duration: image, video_duration: video })
+        .filter(([, value]) => value !== undefined)) : {};
+    } catch {
+      this.durations = {};
+    }
+    this.logger.info('Durations', { image: this.imageDuration(), video: this.videoDuration() });
+    for (const screen of [...this.screens.values()]) {
+      try {
+        await screen.client.setProperty('image-display-duration', this.imageDuration());
+      } catch (error) {
+        this.logger.warn('Failed to set image duration', { monitor: screen.monitor.name, error: error.message });
+      }
+      if (screen.media) await this.applyLimits(screen, screen.media, { elapsed: (this.now() - (screen.loadedAt ?? this.now())) / 1000 });
+    }
   }
 
   every(interval, fn) {
@@ -501,7 +545,8 @@ export class Daemon {
       config: this.config.get(),
       mode: getMode(this.database),
       monitor,
-      runtimeDir: this.runtimeDir
+      runtimeDir: this.runtimeDir,
+      imageDuration: this.imageDuration()
     });
     if (!count) {
       this.logger.warn('No media to show', { monitor: monitor.name, mode: getMode(this.database) });
@@ -586,11 +631,12 @@ export class Daemon {
     await notifyPlaying(this.database, { monitor: screen.monitor, media, rating }, { logger: this.logger });
   }
 
-  // Ends videos after display.video_duration. A file outside the library loops in video mode as before.
-  async applyLimits(screen, media) {
+  // Ends videos after the video duration (display.video_duration, or one next or the menu set). A file outside the library loops in video mode as before.
+  // elapsed: seconds the item has played, when the duration changes while it plays
+  async applyLimits(screen, media, { elapsed = 0 } = {}) {
     try {
-      const timeout = validVideoDuration(this.config.get().display.video_duration ?? 0);
-      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout) : { 'loop-file': 'inf', end: 'none' };
+      const timeout = this.videoDuration();
+      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout, elapsed) : { 'loop-file': 'inf', end: 'none' };
       for (const [name, value] of Object.entries(limits)) {
         await screen.client.setProperty(name, value);
       }
@@ -678,6 +724,8 @@ export class Daemon {
     this.stopping = true;
     this.timers.forEach(clearInterval);
     this.timers = [];
+    clearTimeout(this.configTimer);
+    this.configWatcher?.close();
     await this.reconciling;
 
     await this.visualizers.stop();
@@ -721,6 +769,51 @@ export class Daemon {
       this.kill(-child.pid, signal);
     } catch {
       // already exited
+    }
+  }
+
+  // Applies saved changes to the config file's visualizer section without `backdrop visualizer reload`.
+  // The directory is watched rather than the file, since editors often save by renaming a new file over
+  // it; changes are read once the file has been quiet for configSettle.
+  watchConfig() {
+    const file = this.config.configPath;
+    if (!this.watch || !file) return;
+    try {
+      this.configWatcher = this.watch(path.dirname(file), (event, name) => {
+        if (name && name !== path.basename(file)) return;
+        clearTimeout(this.configTimer);
+        this.configTimer = setTimeout(() => this.enqueue(() => this.applyConfigChange()), this.configSettle);
+      });
+      this.configWatcher.on('error', error => this.logger.warn('Config watch failed', { error: error.message }));
+    } catch (error) {
+      this.logger.warn('Not watching the config file; use `backdrop visualizer reload`', { file, error: error.message });
+    }
+  }
+
+  // Restarts the visualizer when its section changed. A file that no longer parses, or a visualizer value
+  // that does not check out, keeps the running visualizer and its settings, and is announced with a
+  // desktop notification, since nobody is at a prompt to see it.
+  async applyConfigChange() {
+    if (this.stopping) return;
+    const settings = this.config.get();
+    const previous = { section: settings.visualizer, user: this.config.userConfig?.visualizer };
+    try {
+      await this.reloadConfig();
+      visualizerSettings(settings.visualizer);
+    } catch (error) {
+      settings.visualizer = previous.section;
+      if (this.config.userConfig) this.config.userConfig.visualizer = previous.user;
+      this.logger.error('Config change not applied, keeping the running visualizer', { error: error.message });
+      await notifyError(`Config not applied: ${error.message}`, { logger: this.logger });
+      return;
+    }
+    if (JSON.stringify(settings.visualizer) === JSON.stringify(previous.section)) return;
+    await this.visualizers.reload();
+    await this.writeState();
+    this.logger.info('Visualizer reloaded after a config change', this.visualizers.summary());
+    // Problems only found when starting it, such as missing GLava shaders
+    if (this.visualizers.error) {
+      await notifyError(`Visualizer off: ${this.visualizers.error}`, { logger: this.logger });
     }
   }
 

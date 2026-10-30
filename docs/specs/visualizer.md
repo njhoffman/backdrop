@@ -81,6 +81,12 @@ error. A bad visualizer section leaves the visualizer off and the wallpaper runn
 counter to move. Turning the wallpaper on restarts every visualizer instance, by the stacking rule above. With
 neither part on, the daemon stops. The switches last until the daemon exits.
 
+The daemon watches the config file's directory (editors often save by renaming a new file over the old
+one) and, 300ms after the last change to the file, re-reads the visualizer section. If it differs from the
+running one, the visualizer restarts with it; a file that no longer parses or a value that does not check
+out keeps the running visualizer and its settings and sends a critical desktop notification. Other
+sections are not applied live yet (see TODO.md).
+
 `backdrop visualizer reload` checks the section, sends the daemon SIGHUP and waits for the reload to show in
 `state.json` (`visualizer.generation`). The daemon re-reads only the visualizer section and restarts only the
 visualizer. Daemons before 2.20.0 have no SIGHUP handler and would exit, so the CLI refuses to signal a daemon

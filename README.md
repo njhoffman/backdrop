@@ -46,7 +46,8 @@ backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
 backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)
 backdrop next --tag ocean   # jump to a matching item; the filter sticks for later nexts (also --query, --keywords)
-backdrop next --clear       # drop the filters and order earlier nexts left in effect
+backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-duration), until --clear
+backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
@@ -141,6 +142,8 @@ usual; it says so when only the other mode has matches. The filters, and `--rand
 `next` or `menu` stay in effect for every later `next` and for the advance after `keep --next`, `skip` and
 `go-next`, until `next --clear` or the daemon restarts; new filters replace the old ones as a set.
 `backdrop status` shows them. The daemon's own advance through the playlist ignores them.
+`--image-duration` and `--video-duration` on `next` or `menu` override `display.image_duration` and
+`display.video_duration` the same way, and the daemon applies them at once to what is playing.
 
 `keep`, `skip` and `go-next` accept `--monitor <name>`. Rating an imported item changes its current rating
 and preserves undo history. Keep moves new downloads from the inbox into the library; this refreshes

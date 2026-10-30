@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-10-30
+
+### Added
+- `next` and `menu` take `--image-duration` and `--video-duration` (seconds, or `90s`, `5m`, `1h`; `0` loops
+  videos forever). Like the filters, they stay in effect until `next --clear` or a daemon restart, and the
+  daemon applies them at once to what is playing. `status` and the menu panel show them.
+- Typed visualizer options for the `graph`, `radial`, `circle` and `wave` modules (colors, sizes, amplify,
+  rotation and more), in sections of their own like `bars`.
+- `pending` lists each query's pending items as aligned columns: pending, images, videos and how many of the
+  query's items are already downloaded, with a total row.
+
+### Changed
+- An unknown option in a visualizer module section (`bars.colour`) is reported instead of ignored.
+
+## [2.23.0] - 2026-10-30
+
+### Added
+- The daemon watches its config file: a saved change to the `visualizer` section restarts the visualizer
+  with it, no `backdrop visualizer reload` needed. A save with a mistake (invalid YAML, or a bad visualizer
+  value) keeps the running visualizer and shows a desktop notification naming the problem.
+
 ## [2.22.0] - 2026-10-30
 
 ### Added

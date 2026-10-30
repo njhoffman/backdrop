@@ -215,7 +215,9 @@ rating, with the menu's status right-aligned in the same box: whether next picks
 are the ones `next` keeps using: set them with `backdrop next` or when opening the menu, with
 `--random`/`--no-random` (default `display.order`) and `--query`, `--tag` and `--keywords`. They apply to next
 and to the item after keep and skip (when nothing else matches, those advance as usual) until `next --clear`
-or a daemon restart.
+or a daemon restart. `--image-duration` and `--video-duration` (e.g. `60`, `90s`, `5m`; `0` loops videos
+forever) work the same way, over `display.image_duration` and `display.video_duration`; they apply at once to
+what is playing and are listed with the filters.
 `menu.style: minimal` (or `--style minimal`) is a plain list with icons and keys. Errors appear as desktop
 notifications, since a keybinding has no terminal. Pass rofi options with `menu.rofi_args`, e.g. a
 `-theme-str` to recolor the panel. The daemon makes the preview of each item as it starts playing, and of
@@ -241,7 +243,9 @@ in the bar colors, e.g. `'#33aacc80'`, blends the bars on top of that.
 
 Placement is relative to each monitor (`anchor` bottom, top, left, right, center or fill; sizes in pixels
 or percent; `margin`), or a `rect`. `monitors` picks where it runs and can give a monitor its own placement.
-Options other than the bars ones go in `defines` (GLava `#define`s of the module) and `requests`. Backdrop
+Each module has its own section of typed options (`bars`, `graph`, `radial`, `circle`, `wave`; see
+`config.example.yaml`), and an unknown option is reported rather than ignored. Anything else goes in
+`defines` (GLava `#define`s of the module) and `requests`. Backdrop
 gives GLava its own config folder in the runtime dir, so `~/.config/glava` is not used or changed.
 
 `backdrop stop --wallpaper` turns the wallpaper off and leaves the visualizer running over a black screen,
@@ -251,8 +255,11 @@ which shows what the visualizer alone looks like; `backdrop start --wallpaper` b
 only the visualizer. When neither part is left on, the daemon stops. While the wallpaper is off, commands that
 need it (`next`, `keep`, `menu` and the like) say so; `mode` still records the mode.
 
-After editing the config, `backdrop visualizer reload` applies the visualizer section without touching the
-wallpaper, and reports any mistake in it. `backdrop status` shows where each instance runs. An instance that
+The daemon watches the config file: saving a change to the `visualizer` section restarts the visualizer
+with it, without touching the wallpaper. A save with a mistake (invalid YAML, or a bad visualizer value)
+keeps the running visualizer and shows a desktop notification naming the problem. Changes to other
+sections still need a daemon restart. `backdrop visualizer reload` forces a reload and reports any mistake
+at the prompt. `backdrop status` shows where each instance runs. An instance that
 keeps exiting (for example from a bad `defines` value) is retried five times a minute, then given up on until
 the next reload; the log has its last output.
 

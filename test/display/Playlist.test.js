@@ -129,6 +129,15 @@ describe('Playlist', () => {
       expect(playbackLimits(video(600), 600)).to.deep.equal({ 'loop-file': 'no', end: 'none' });
     });
 
+    it('asks only for the loops still due after the current one when the timeout changes mid-play', () => {
+      // 18s clip, 50s into a new 120s limit: 4s left of this play, then 3 more fit in the remaining 66s
+      expect(playbackLimits(video(18), 120, 50)).to.deep.equal({ 'loop-file': 3, end: 'none' });
+      // Past the new limit already: this play is the last
+      expect(playbackLimits(video(18), 60, 70)).to.deep.equal({ 'loop-file': 'no', end: 'none' });
+      // A long video keeps its end in media time; mpv stops it at once when that has passed
+      expect(playbackLimits(video(1800), 60, 300)).to.deep.equal({ 'loop-file': 'no', end: '60' });
+    });
+
     it('counts playback speed, so a slowed video loops fewer times', () => {
       expect(playbackLimits(video(20, 0.5), 600)).to.deep.equal({ 'loop-file': 14, end: 'none' });
     });

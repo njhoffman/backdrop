@@ -285,18 +285,22 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       percent, resolved per monitor and passed as `setgeometry`; per-monitor overrides under `monitors`. Done in 2.20.0.
 - [x] **Visualizer options from backdrop.** (p2) [feature] Module choice, typed bars options, raw `defines` and
       `requests`, written into a generated config root (`XDG_CONFIG_HOME` pointed at the runtime dir). Done in 2.20.0.
-- [ ] **Typed options for the other modules.** (p3) [feature] graph, radial, circle and wave only take raw `defines`.
-      Add typed, validated options for the ones in use (colors and size first), as `barsDefines` does in
-      `src/visualizer/settings.js`.
+- [x] **Typed options for the other modules.** (p3) [feature] graph, radial, circle and wave have typed options
+      (`MODULE_OPTIONS` in `src/visualizer/settings.js`), written only when set; unknown options are rejected. Done in 2.24.0.
 - [ ] **Stacking is only checked by hand.** (p3) [test] Unit tests use a fake X connection; placement was verified live
       on picom and i3 on 2026-10-30. An integration test on Xephyr or Xvfb (skipped without them, glava or a GL
       context) should start the daemon with the visualizer and check the order of the root's children, also after
       killing mpv and after `stop/start --wallpaper`.
+- [ ] **Apply more config sections live.** (p2) [feature] The config watcher (2.23.0) applies only the `visualizer`
+      section. Extend `Daemon.applyConfigChange` to the display keys the daemon reads per item (`order`, `image_duration`,
+      `video_duration`, `notify`, `allow_upscale`) by taking them into the running config, and `display.monitors` by
+      running `reconcileMonitors`. Keys a running mpv cannot take (`mpv_args`, `xwinwrap_args`) and `paths` should log
+      and notify "restart the daemon to apply" instead. Validate each section first, as the visualizer one is.
 - [ ] **Live colors over --pipe.** (p3) [feature] `glava --pipe=NAME` binds values read from stdin to `@NAME` in the
       shaders, so colors can change without a restart (the bars `COLOR` already uses `@fg:`). One use: tint the bars
       from the current wallpaper's dominant color on each load (from the menu thumbnail).
 - [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP) and `start/stop --wallpaper/--visualizer`
       (`control.json` + SIGUSR1, 2.21.0) exist. Left: changing the module from the CLI, and menu buttons for both parts.
       More requests would outgrow the signal-per-action scheme; a control socket in the runtime dir is the next step.
-- [ ] **Retire the old GLava setup.** (p3) [chore] Once `visualizer.enabled` is on: remove `exec /bin/glava` from
-      `~/.config/i3/config:467` and the `glava.*` aliases. `~/.config/glava/bars.glsl` (`USE_ALPHA 0`) is no longer read.
+- [x] **Retire the old GLava setup.** (p3) [chore] The i3 `exec glava` is gone, the `glava.*` aliases were removed in
+      `~/.shell` 0.23.1 and `~/.config/glava` was deleted (2026-10-30; still in the dotbare history).

@@ -1,12 +1,12 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import fs from 'fs-extra';
-import { Daemon, controlPath, readState } from '../display/Daemon.js';
+import { Daemon, readState } from '../display/Daemon.js';
+import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
-import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
+import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
 } from '../utils/mediaView.js';
@@ -112,24 +112,13 @@ export class DisplayCommand {
     }
   }
 
-  // Asks the running daemon to switch parts on or off ({ wallpaper, visualizer }) through control.json and
-  // SIGUSR1, then waits for its state to show the request applied, or for it to exit
+  // Asks the running daemon to switch parts on or off ({ wallpaper, visualizer }) and reports what is on
+  // afterwards, or that it stopped because nothing was left on
   async request(state, change) {
-    // Daemons before 2.21.0 have no SIGUSR1 handler, and Node exits on an unhandled SIGUSR1
-    if (state.control === undefined) {
-      throw new Error(`The running daemon (pid ${state.pid}) cannot switch parts on or off; restart it with \`backdrop stop && backdrop start\``);
-    }
     if (change.visualizer) visualizerSettings(this.config.get().visualizer);
-    await fs.writeJson(controlPath(this.runtimeDir), { pid: state.pid, ...change });
-    this.kill(state.pid, 'SIGUSR1');
-
-    const deadline = Date.now() + this.timeout;
-    let current = state;
-    while (current && current.control <= state.control) {
-      if (Date.now() > deadline) throw new Error(`The daemon did not answer; see ${this.config.get().paths.logfile}`);
-      await sleep(100);
-      current = await readState(this.runtimeDir);
-    }
+    const current = await sendControl(this.runtimeDir, state, change, {
+      kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
+    });
     if (!current) {
       out.success('Stopped: the wallpaper and visualizer are both off');
       return;
@@ -218,12 +207,14 @@ export class DisplayCommand {
   }
 
   // Filters and order next keeps using, e.g. 'random, query "clouds", tags sky'
-  describeNextFilters({ random, query, tag, keywords }) {
+  describeNextFilters({ random, query, tag, keywords, image_duration: image, video_duration: video }) {
     const parts = [];
     if (random !== undefined) parts.push(random ? 'random' : 'in order');
     if (query?.length) parts.push(`query ${query.map(text => `"${text}"`).join(', ')}`);
     if (tag?.length) parts.push(`tags ${tag.join(', ')}`);
     if (keywords?.length) parts.push(`words ${keywords.join(', ')}`);
+    if (image !== undefined) parts.push(`images ${formatSetting(image)}`);
+    if (video !== undefined) parts.push(`videos ${formatSetting(video)}`);
     return parts.join(', ');
   }
 
@@ -274,7 +265,9 @@ export class DisplayCommand {
   async next(options = {}) {
     // Checked before they are stored, so a mistyped query is not kept
     matchFilters(this.database, options);
-    options = await resolveNextFilters(this.runtimeDir, options, { persist: true });
+    options = await resolveNextFilters(this.runtimeDir, options, {
+      persist: true, kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
+    });
     const random = randomOrder(this.config.get().display, options.random);
     const matches = matchingMedia(this.database, options);
     await this.show(await this.control.next(options.monitor, matches ? { random, matches } : { random }), options);

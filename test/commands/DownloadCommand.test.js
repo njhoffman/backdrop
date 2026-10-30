@@ -129,9 +129,37 @@ describe('DownloadCommand', () => {
       expect(text).to.include(`#${a}  video  3840x2160  landscape  fake  1920x1080 video/mp4`);
       expect(text).to.include(`#${b}  image  800x600  landscape  fake  no suitable variant`);
       expect(text).to.include('    "ocean", "city"');
-      expect(text).to.match(/"ocean"\s+2/);
+      expect(text).to.include([
+        '         pending  images  videos  downloaded',
+        '  "ocean"        2       1       1           0',
+        '  "city"         1       0       1           0',
+        '  total          2       1       1           0'
+      ].join('\n'));
       expect(text).to.include('2 pending: 1 videos, 1 images  target 1920x1080, 1 without a suitable variant');
       expect(command.transfer.called).to.be.false;
+    });
+
+    it('counts items each query already downloaded, once each in the total, of the kinds listed', async () => {
+      const pendingVideo = add(1);
+      const doneVideo = add(2); db.updateMedia(doneVideo, { path: '/v2.mp4' });
+      const doneImage = db.addMedia({ source: 'fake', source_id: 3, kind: 'image', width: 4000, height: 3000, path: '/i3.jpg' });
+      const sky = db.addSearch('fake', 'sky');
+      const Sky = db.addSearch('fake', 'Sky');
+      for (const id of [pendingVideo, doneVideo, doneImage]) db.addSearchResult(sky, id, 1);
+      db.addSearchResult(Sky, doneVideo, 1);
+      db.addSearchResult(db.addSearch('fake', 'sea'), pendingVideo, 1);
+      db.addSearchResult(db.addSearch('fake', 'sea'), doneVideo, 2);
+
+      await command.pending();
+      let text = console.log.args.flat().join('\n');
+      expect(text).to.match(/"sky"\s+1\s+0\s+1\s+2\n/);
+      expect(text).to.match(/"sea"\s+1\s+0\s+1\s+1\n/);
+      // doneVideo was found by both queries but counts once
+      expect(text).to.match(/total\s+1\s+0\s+1\s+2/);
+      console.log.resetHistory();
+      await command.pending({ type: 'videos' });
+      text = console.log.args.flat().join('\n');
+      expect(text).to.match(/"sky"\s+1\s+0\s+1\s+1\n/);
     });
 
     it('works without known monitors and filters by type and number', async () => {

@@ -208,7 +208,7 @@ describe('DisplayCommand', () => {
       expect(await command.start({ visualizer: true }).catch(error => error.message)).to.equal('Visualizer off: GLava shaders not found');
 
       await running({ control: undefined });
-      expect(await command.stop({ wallpaper: true }).catch(error => error.message)).to.include('cannot switch parts on or off; restart it');
+      expect(await command.stop({ wallpaper: true }).catch(error => error.message)).to.include('cannot take this request; restart it');
       await running();
       await command.start({});
       expect(lines.at(-1)).to.include('Already running');
@@ -292,6 +292,14 @@ describe('DisplayCommand', () => {
       lines.length = 0;
       await command.status();
       expect(lines.some(line => line.startsWith('Next'))).to.be.false;
+    });
+
+    it('lists the durations next stored with the filters', async () => {
+      await fs.writeJson(path.join(dir, 'next-filters.json'), { pid: process.pid, tag: ['sky'], image_duration: 90, video_duration: 0 });
+      command.control = { current: async () => ({ path: null }) };
+      await command.status();
+      expect(lines.find(line => line.startsWith('Next'))).to.equal('Next: tags sky, images 90s, videos forever (next --clear to drop)');
+      expect(command.describeNextFilters({ image_duration: 300, video_duration: 7200 })).to.equal('images 5m, videos 2h');
     });
 
     it('prints one line for current --line', async () => {

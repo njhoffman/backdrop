@@ -555,6 +555,19 @@ export class DatabaseManager {
     `).all(mediaId).map(row => row.query);
   }
 
+  // Items with a file that each search query found, by lower-cased query, and how many distinct items
+  // that is across all queries; kinds limits both to those kinds
+  getDownloadedByQuery(kinds = null) {
+    const kindFilter = kinds ? ` AND m.kind IN (${kinds.map(() => '?').join(', ')})` : '';
+    const params = kinds ?? [];
+    const from = `FROM search_results r JOIN searches s ON s.id = r.search_id JOIN media m ON m.id = r.media_id
+      WHERE m.path IS NOT NULL AND m.duplicate_of IS NULL${kindFilter}`;
+    const rows = this.db.prepare(`SELECT lower(s.query) AS query, COUNT(DISTINCT m.id) AS count ${from} GROUP BY lower(s.query)`)
+      .all(...params);
+    const { total } = this.db.prepare(`SELECT COUNT(DISTINCT m.id) AS total ${from}`).get(...params);
+    return { byQuery: new Map(rows.map(row => [row.query, row.count])), total };
+  }
+
   // Distinct queries of every saved search, oldest first
   getSearchQueries() {
     return this.db.prepare('SELECT query FROM searches GROUP BY lower(query) ORDER BY MIN(id)').all().map(row => row.query);

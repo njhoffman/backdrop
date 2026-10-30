@@ -96,6 +96,8 @@ class BackdropApp {
     const queryOption = ['--query <queries...>', 'Only items a search with any of these exact queries found (quote each query)'];
     const tagOption = ['--tag <tags...>', 'Only items with all of these tags (shown under each item)'];
     const keywordsOption = ['--keywords <words...>', 'Match all words against searches, tags or filenames'];
+    const imageDurationOption = ['--image-duration <time>', 'Show each image this long (90, 90s, 5m) until next --clear or a daemon restart'];
+    const videoDurationOption = ['--video-duration <time>', 'Play each video about this long (0 loops forever) until next --clear or a daemon restart'];
 
     program
       .name('backdrop')
@@ -147,7 +149,8 @@ class BackdropApp {
       .option(...randomOption)
       .option(...noRandomOption)
       .option(...queryOption).option(...tagOption).option(...keywordsOption)
-      .option('--clear', 'Drop the filters and order earlier next or menu commands left in effect')
+      .option(...imageDurationOption).option(...videoDurationOption)
+      .option('--clear', 'Drop the filters, order and durations earlier next or menu commands left in effect')
       .option(...lineOption).option(...jsonOption)
       .action(this.action(options => display.next(options)));
 
@@ -201,6 +204,7 @@ class BackdropApp {
       .option('--style <style>', 'panel (buttons and a preview) or minimal (a list); default: menu.style')
       .option(...randomOption).option(...noRandomOption)
       .option(...queryOption).option(...tagOption).option(...keywordsOption)
+      .option(...imageDurationOption).option(...videoDurationOption)
       // The menu stays open until q or Escape since 2.18.0; the old flag is still accepted
       .addOption(new Option('--stay').hideHelp())
       .action(this.action(options => menu.open(options)));

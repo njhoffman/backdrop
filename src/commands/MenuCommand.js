@@ -9,6 +9,7 @@ import { matchFilters } from '../library/match.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { describeNotification, escapeMarkup, notifyError } from '../utils/notify.js';
 import { formatAdjustments } from '../utils/mediaView.js';
+import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 
 export const MENU_STYLES = ['panel', 'minimal'];
@@ -233,6 +234,8 @@ export class MenuCommand {
     if (filters.query?.length) lines.push(field('query', filters.query.map(query => `"${query}"`).join(', ')));
     if (filters.tag?.length) lines.push(field('tags', filters.tag.join(', ')));
     if (filters.keywords?.length) lines.push(field('words', filters.keywords.join(', ')));
+    if (filters.image_duration !== undefined) lines.push(field('images', formatSetting(filters.image_duration)));
+    if (filters.video_duration !== undefined) lines.push(field('videos', formatSetting(filters.video_duration)));
     if (monitors.length > 1) lines.push(`${field('monitor', monitor)}  (Tab)`);
     return lines;
   }

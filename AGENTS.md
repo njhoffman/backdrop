@@ -65,13 +65,16 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   and `state.json` monitors have a null `socket` while the wallpaper is off.
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
   the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's
-  pid (the daemon removes it on start and stop); `next`, `keep --next`, `skip` and `go-next` fill in from it. External tools
+  pid (the daemon removes it on start and stop); `next`, `keep --next`, `skip` and `go-next` fill in from it.
+  It also holds `--image-duration`/`--video-duration`, which the daemon applies itself: the CLI sends a
+  `{ durations: true }` control request (`src/display/control.js`) when they change. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
   adapters (`index.js`, `GlavaVisualizer`) with `prepare()` and `command(monitor, geometry)`; `VisualizerManager`
   owns the processes and places each window directly above its monitor's wallpaper with its opacity
-  (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section.
+  (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section, as does a saved change to the config
+  file (`Daemon.watchConfig`, which keeps the running visualizer and notifies on a mistake).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
   file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
   into `findMedia` filters for `pending`, `download`, the lists and `next`.

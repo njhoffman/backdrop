@@ -148,17 +148,21 @@ export function validVideoDuration(value) {
 // as many whole times as fit, so they never stop mid-clip (loop-file N plays N + 1 times); longer
 // ones stop at the timeout through `end`, which is in media time and so scales with speed.
 // end is a global option in mpv, so every load sets it, including images, to clear the last value.
-export function playbackLimits(media, timeout) {
+// elapsed is how long the item has played when the timeout changes mid-play: mpv counts loops from
+// when loop-file is set, so only the loops still due after the current one are asked for.
+export function playbackLimits(media, timeout, elapsed = 0) {
   if (!media || !MODE_KINDS.video.includes(media.kind)) return { end: 'none' };
   const length = media.duration / (media.speed || 1);
   if (!timeout || !(length > 0)) return { 'loop-file': 'inf', end: 'none' };
   if (length > timeout) return { 'loop-file': 'no', end: String(Math.round(timeout * media.speed * 1000) / 1000) };
-  const plays = Math.floor(timeout / length);
-  return { 'loop-file': plays > 1 ? plays - 1 : 'no', end: 'none' };
+  const current = length - (elapsed % length);
+  const more = Math.floor((timeout - elapsed - current) / length + 1e-9);
+  return { 'loop-file': more > 0 ? more : 'no', end: 'none' };
 }
 
 // Replaces the monitor's mpv playlist with the media for the mode; returns how many items were loaded
-export async function loadPlaylist(client, { database, config, mode, monitor, runtimeDir, random, lastMediaId }) {
+// imageDuration overrides display.image_duration (one next or the menu set)
+export async function loadPlaylist(client, { database, config, mode, monitor, runtimeDir, random, lastMediaId, imageDuration }) {
   const { display } = config;
   const media = orderPlaylist(
     eligibleMedia(database, mode, monitor, { allowUpscale: display.allow_upscale }),
@@ -166,7 +170,7 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ru
     random
   );
 
-  for (const [name, value] of Object.entries(modeProperties(mode, display.image_duration))) {
+  for (const [name, value] of Object.entries(modeProperties(mode, imageDuration ?? display.image_duration))) {
     await client.setProperty(name, value);
   }
 

@@ -98,20 +98,114 @@ function monitors(value, layout) {
   return { all: false, overrides };
 }
 
-// Typed options of the bars module as GLava #defines
+// One color, or two for a gradient across `position` pixels of GRADIENT, as a GLava COLOR. @fg: lets a
+// later --pipe binding replace the color live.
+function gradientColor(key, value, position) {
+  const colors = Array.isArray(value) ? value : [value];
+  if (!colors.length || colors.length > 2) fail(key, 'one color, or two for a gradient', value);
+  const [from, to] = colors.map((item, index) => color(`${key}[${index}]`, item));
+  return to ? `@fg:mix(${from}, ${to}, clamp(${position} / GRADIENT, 0, 1))` : `@fg:${from}`;
+}
+
+// A GLSL float literal
+function glslFloat(value) {
+  return Number.isInteger(value) ? `${value}.0` : String(value);
+}
+
+function number(key, value, { min = -Infinity, above = null } = {}) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || (above !== null && value <= above)) {
+    fail(key, above !== null ? `a number above ${above}` : min === -Infinity ? 'a number' : `a number from ${min}`, value);
+  }
+  return value;
+}
+
+// Converters from a typed option to a #define value, by kind
+const OPTION_KINDS = {
+  count: (key, value) => integer(key, value, { min: 1 }),
+  size: (key, value) => glslFloat(number(key, value, { min: 0 })),
+  width: (key, value) => glslFloat(number(key, value, { above: 0 })),
+  offset: (key, value) => glslFloat(number(key, value)),
+  flag: (key, value) => (boolean(key, value) ? 1 : 0),
+  degrees: (key, value) => `(${glslFloat(number(key, value))} * PI / 180.0)`,
+  foreground: (key, value) => `@fg:${color(key, value)}`,
+  background: (key, value) => `@bg:${color(key, value)}`
+};
+
+// Typed options of the modules other than bars: option name -> [#define, kind or converter]. Only the
+// options given are written; the rest keep GLava's defaults.
+const MODULE_OPTIONS = {
+  graph: {
+    amplify: ['VSCALE', 'count'],
+    colors: ['COLOR', (key, value) => gradientColor(key, value, 'pos')],
+    gradient: ['GRADIENT', 'count'],
+    direction: ['DIRECTION', (key, value) => ({ inward: 1, outward: -1 })[oneOf(key, value, ['inward', 'outward'])]],
+    outline: ['DRAW_OUTLINE', 'flag'],
+    outline_color: ['OUTLINE', 'background'],
+    highlight: ['DRAW_HIGHLIGHT', 'flag'],
+    anti_alias: ['ANTI_ALIAS', 'flag'],
+    join_channels: ['JOIN_CHANNELS', 'flag'],
+    flip: ['INVERT', 'flag']
+  },
+  radial: {
+    radius: ['C_RADIUS', 'size'],
+    line: ['C_LINE', 'size'],
+    bars: ['NBARS', 'count'],
+    width: ['BAR_WIDTH', 'width'],
+    amplify: ['AMPLIFY', 'count'],
+    colors: ['COLOR', (key, value) => gradientColor(key, value, 'd')],
+    gradient: ['GRADIENT', 'count'],
+    rotate: ['ROTATE', 'degrees'],
+    outline_color: ['OUTLINE', 'background'],
+    offset_x: ['CENTER_OFFSET_X', 'offset'],
+    offset_y: ['CENTER_OFFSET_Y', 'offset']
+  },
+  circle: {
+    radius: ['C_RADIUS', 'size'],
+    line: ['C_LINE', 'size'],
+    color: ['OUTLINE', 'foreground'],
+    amplify: ['AMPLIFY', 'count'],
+    rotate: ['ROTATE', 'degrees'],
+    fill: ['C_FILL', 'flag'],
+    smooth: ['C_SMOOTH', 'flag']
+  },
+  wave: {
+    color: ['BASE_COLOR', 'foreground'],
+    min_thickness: ['MIN_THICKNESS', 'size'],
+    max_thickness: ['MAX_THICKNESS', 'size'],
+    amplify: ['AMPLIFY', 'count'],
+    outline_color: ['OUTLINE', 'background']
+  }
+};
+
+const BARS_OPTIONS = ['width', 'gap', 'outline', 'amplify', 'colors', 'gradient', 'direction', 'flip'];
+
+function knownOptions(module, value, known) {
+  if (!isObject(value)) fail(module, 'a mapping', value);
+  for (const name of Object.keys(value)) {
+    if (!known.includes(name)) fail(`${module}.${name}`, `one of the ${module} options (${known.join(', ')})`, name);
+  }
+}
+
+function moduleDefines(module, value) {
+  const options = MODULE_OPTIONS[module];
+  knownOptions(module, value, Object.keys(options));
+  return Object.fromEntries(Object.entries(value).map(([name, item]) => {
+    const [define, kind] = options[name];
+    const convert = typeof kind === 'function' ? kind : OPTION_KINDS[kind];
+    return [define, convert(`${module}.${name}`, item)];
+  }));
+}
+
+// Typed options of the bars module as GLava #defines, with backdrop's defaults for the ones not given
 function barsDefines(value) {
-  if (!isObject(value)) fail('bars', 'a mapping', value);
-  const colors = Array.isArray(value.colors) ? value.colors : [value.colors ?? '#33aacc'];
-  if (!colors.length || colors.length > 2) fail('bars.colors', 'one color, or two for a gradient', value.colors);
-  const [from, to] = colors.map((item, index) => color(`bars.colors[${index}]`, item));
+  knownOptions('bars', value, BARS_OPTIONS);
   return {
     BAR_WIDTH: integer('bars.width', value.width ?? 20, { min: 1 }),
     BAR_GAP: integer('bars.gap', value.gap ?? 1),
     BAR_OUTLINE_WIDTH: integer('bars.outline', value.outline ?? 0),
     AMPLIFY: integer('bars.amplify', value.amplify ?? 200, { min: 1 }),
     GRADIENT: integer('bars.gradient', value.gradient ?? 80, { min: 1 }),
-    // @fg: lets a later --pipe binding replace the color live
-    COLOR: to ? `@fg:mix(${from}, ${to}, clamp(d / GRADIENT, 0, 1))` : `@fg:${from}`,
+    COLOR: gradientColor('bars.colors', value.colors ?? '#33aacc', 'd'),
     DIRECTION: DIRECTIONS[oneOf('bars.direction', value.direction ?? 'inward', Object.keys(DIRECTIONS))],
     FLIP: boolean('bars.flip', value.flip ?? false) ? 1 : 0,
     // Needed for "native" transparency to fade the bars
@@ -136,6 +230,14 @@ function stringList(key, value) {
   return value;
 }
 
+// The active module's typed options; the sections of the other modules are checked too, so a mistake shows
+// before switching to them
+function typedDefines(module, section) {
+  const of = name => (name === 'bars' ? barsDefines(section.bars ?? {}) : moduleDefines(name, section[name] ?? {}));
+  for (const name of MODULES) if (name !== module && section[name] !== undefined) of(name);
+  return of(module);
+}
+
 export function visualizerSettings(section = {}) {
   if (!isObject(section)) fail('', 'a mapping', section);
   const module = oneOf('module', section.module ?? 'bars', MODULES);
@@ -153,7 +255,7 @@ export function visualizerSettings(section = {}) {
     layout,
     monitors: monitors(section.monitors ?? 'all', layout),
     // Typed options first, so raw defines can override them
-    defines: { ...(module === 'bars' ? barsDefines(section.bars ?? {}) : {}), ...defines(section.defines ?? {}) },
+    defines: { ...typedDefines(module, section), ...defines(section.defines ?? {}) },
     requests: stringList('requests', section.requests ?? []),
     glava: {
       shaderDir: text('glava.shader_dir', glava.shader_dir ?? '/etc/xdg/glava', 'a path'),

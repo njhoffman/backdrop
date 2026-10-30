@@ -40,7 +40,14 @@ visualizer:
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # anchor: bottom, top, left, right, center, fill
   # rect: {x: 0, y: 75%, width: 100%, height: 25%}  # overrides placement; pixels or % of the monitor
   bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
-  defines: {}                        # raw GLava #defines for the module, e.g. {C_LINE: 2}; override the bars options
+  # The other modules: only the options set are written, the rest keep GLava's defaults
+  # graph: {amplify: 300, colors: ['#802a2a', '#4f4f92'], gradient: 75, direction: inward, outline: false,
+  #         outline_color: '#262626', highlight: true, anti_alias: false, join_channels: false, flip: false}
+  # radial: {radius: 128, line: 2, bars: 160, width: 4.5, amplify: 300, colors: ['#cc3333', '#cca0a0'],
+  #          gradient: 95, rotate: 90, outline_color: '#333333', offset_x: 0, offset_y: 0}
+  # circle: {radius: 128, line: 1.5, color: '#333333', amplify: 150, rotate: 90, fill: false, smooth: true}
+  # wave: {color: '#b33373', min_thickness: 1, max_thickness: 6, amplify: 500, outline_color: '#262626'}
+  defines: {}                        # raw GLava #defines for the module, e.g. {C_LINE: 2}; override the typed options
   requests: []                       # raw GLava requests, e.g. ['setframerate 60']
   glava: {shader_dir: /etc/xdg/glava, args: []}
 

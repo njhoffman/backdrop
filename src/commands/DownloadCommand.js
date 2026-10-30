@@ -64,6 +64,7 @@ export class DownloadCommand {
     const { kind, target, match } = await this.filters(options, { requireTarget: false });
     const items = this.pendingItems(kind, options.source, match);
     const shown = options.number === undefined ? items : items.slice(0, positiveInteger(options.number, 'Number'));
+    // Per query (first spelling seen): the pending items shown, split by kind
     const byQuery = new Map();
     let unsuitable = 0;
     for (const media of shown) {
@@ -74,7 +75,12 @@ export class DownloadCommand {
         else { unsuitable++; extra.push(fmt.yellow('no suitable variant')); }
       }
       printMedia(this.database, media, { extra });
-      for (const query of this.database.getQueries(media.id)) byQuery.set(query, (byQuery.get(query) ?? 0) + 1);
+      for (const query of this.database.getQueries(media.id)) {
+        const row = byQuery.get(query) ?? { pending: 0, images: 0, videos: 0 };
+        row.pending++;
+        row[media.kind === 'image' ? 'images' : 'videos']++;
+        byQuery.set(query, row);
+      }
     }
     if (!items.length) {
       out.info(hasMatchFilters(match) ? 'Nothing pending matches the filters'
@@ -82,11 +88,7 @@ export class DownloadCommand {
       return { items: [], byQuery };
     }
     out.print();
-    if (byQuery.size) {
-      out.heading(`${icon('query')}By query`);
-      const width = Math.max(...[...byQuery.keys()].map(query => query.length + 2));
-      for (const [query, count] of [...byQuery].sort((a, b) => b[1] - a[1])) out.print(`  ${`"${query}"`.padEnd(width)}  ${count}`);
-    }
+    if (byQuery.size) this.printQueryTable(byQuery, shown, kind);
     const counts = Object.entries(Object.groupBy(items, media => media.kind)).map(([name, list]) => `${list.length} ${name}s`);
     const partial = shown.length < items.length ? ` (showing ${shown.length})` : '';
     out.print(`${mark('info')}${fmt.bold(items.length)} pending: ${counts.join(', ')}${partial}`
@@ -94,6 +96,23 @@ export class DownloadCommand {
       + (unsuitable ? fmt.yellow(`, ${unsuitable} without a suitable variant`) : ''));
     if (!target) out.detail('Monitor size unknown; pass --resolution WIDTHxHEIGHT to see the variant each item would download');
     return { items: shown, byQuery };
+  }
+
+  // The pending items of each query, split into images and videos, with the items it found that were
+  // already downloaded, as aligned columns; the total row counts each item once, however many queries found it
+  printQueryTable(byQuery, shown, kind) {
+    const downloaded = this.database.getDownloadedByQuery(kind);
+    const rows = [...byQuery].sort((a, b) => b[1].pending - a[1].pending)
+      .map(([query, row]) => [`"${query}"`, row.pending, row.images, row.videos, downloaded.byQuery.get(query.toLowerCase()) ?? 0]);
+    const images = shown.filter(media => media.kind === 'image').length;
+    const total = ['total', shown.length, images, shown.length - images, downloaded.total];
+    const header = ['', 'pending', 'images', 'videos', 'downloaded'];
+    const widths = header.map((title, column) => Math.max(title.length, ...[...rows, total].map(row => String(row[column]).length)));
+    const line = cells => cells.map((cell, column) => (column ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[0]))).join('  ');
+    out.heading(`${icon('query')}By query`);
+    out.print(fmt.dim(`  ${line(header)}`));
+    for (const row of rows) out.print(`  ${line(row)}`);
+    out.print(fmt.bold(`  ${line(total)}`));
   }
 
   async download(options = {}) {

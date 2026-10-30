@@ -23,6 +23,27 @@ describe('visualizer settings', () => {
     expect(visualizerSettings({ module: 'radial', defines: { C_RADIUS: 128 } }).defines).to.deep.equal({ C_RADIUS: 128 });
   });
 
+  it('writes only the typed options given for the other modules, as their GLava defines', () => {
+    expect(visualizerSettings({ module: 'graph', graph: { amplify: 250, colors: ['#802A2A', '#4f4f92'], direction: 'outward', outline: true, outline_color: '#262626' } }).defines)
+      .to.deep.equal({ VSCALE: 250, COLOR: '@fg:mix(#802a2a, #4f4f92, clamp(pos / GRADIENT, 0, 1))', DIRECTION: -1, DRAW_OUTLINE: 1, OUTLINE: '@bg:#262626' });
+    expect(visualizerSettings({ module: 'radial', radial: { radius: 100, line: 2.5, bars: 120, width: 4, rotate: 90, offset_y: -10 } }).defines)
+      .to.deep.equal({ C_RADIUS: '100.0', C_LINE: '2.5', NBARS: 120, BAR_WIDTH: '4.0', ROTATE: '(90.0 * PI / 180.0)', CENTER_OFFSET_Y: '-10.0' });
+    expect(visualizerSettings({ module: 'circle', circle: { color: '#33aacc', fill: true } }).defines).to.deep.equal({ OUTLINE: '@fg:#33aacc', C_FILL: 1 });
+    expect(visualizerSettings({ module: 'wave', wave: { color: '#b33373', max_thickness: 5 }, defines: { AMPLIFY: 450 } }).defines)
+      .to.deep.equal({ BASE_COLOR: '@fg:#b33373', MAX_THICKNESS: '5.0', AMPLIFY: 450 });
+    expect(visualizerSettings({ module: 'wave' }).defines).to.deep.equal({});
+  });
+
+  it('checks every module section and rejects unknown options, so typos show', () => {
+    const fails = (section, message) => expect(() => visualizerSettings(section)).to.throw(message);
+    fails({ bars: { colour: '#000000' } }, 'visualizer.bars.colour must be one of the bars options (width, gap, outline');
+    fails({ module: 'radial', radial: { width: 0 } }, 'visualizer.radial.width must be a number above 0');
+    fails({ module: 'graph', graph: { direction: 'up' } }, 'visualizer.graph.direction must be inward, outward');
+    // The section of a module not in use is checked too
+    fails({ module: 'bars', circle: { radius: -1 } }, 'visualizer.circle.radius must be a number from 0');
+    fails({ module: 'wave', wave: 'big' }, 'visualizer.wave must be a mapping');
+  });
+
   it('names the key of a bad value', () => {
     const fails = (section, message) => expect(() => visualizerSettings(section)).to.throw(message);
     fails({ module: 'spiral' }, 'visualizer.module must be bars, graph, radial, circle, wave, not "spiral"');

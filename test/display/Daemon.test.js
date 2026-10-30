@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { EventEmitter } from 'events';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
@@ -52,6 +53,8 @@ describe('Daemon', () => {
       // Tests that sample CPU pass their own /proc reader
       readFile: async () => { throw new Error('no /proc in tests'); },
       monitorInterval: 0,
+      // Tests that watch the config file pass their own
+      watch: null,
       purgeInterval: 0,
       ...overrides
     });
@@ -862,6 +865,123 @@ describe('Daemon', () => {
       await daemon.stop();
       await daemon.reloadVisualizer();
       expect(reloads).to.equal(2);
+    });
+  });
+
+  describe('durations', () => {
+    it('applies durations next stored to what plays now and to later loads, until cleared', async () => {
+      let time = 1_000_000;
+      const daemon = makeDaemon({ now: () => time });
+      await daemon.start();
+      const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/1.mp4', width: 1920, height: 1080, duration: 18 });
+      const [screen] = daemon.screens.values();
+      screen.media = db.getMedia(id);
+      screen.loadedAt = time;
+      time += 50_000;
+
+      await fs.writeJson(nextFiltersPath(tempDir), { pid: process.pid, image_duration: 45, video_duration: 120 });
+      await fs.writeJson(controlPath(tempDir), { pid: process.pid, durations: true });
+      await daemon.applyControl();
+      const { client } = clients.find(item => item.socketPath === screen.socketPath);
+      expect(client.properties).to.include({ 'image-display-duration': 45, 'loop-file': 3, end: 'none' });
+      expect((await readState(tempDir)).control).to.equal(1);
+      // Later loads use them too
+      expect(daemon.imageDuration()).to.equal(45);
+      expect(daemon.videoDuration()).to.equal(120);
+
+      await fs.remove(nextFiltersPath(tempDir));
+      await fs.writeJson(controlPath(tempDir), { pid: process.pid, durations: true });
+      await daemon.applyControl();
+      expect(daemon.imageDuration()).to.equal(config.get().display.image_duration);
+      expect(client.properties['image-display-duration']).to.equal(config.get().display.image_duration);
+      await daemon.stop();
+    });
+  });
+
+  describe('config watch', () => {
+    let watched, calls, visualizers, sections;
+    const fakeWatch = (dir, listener) => {
+      const watcher = new EventEmitter();
+      watcher.close = () => { watcher.closed = true; };
+      watched = { dir, listener, watcher };
+      return watcher;
+    };
+    // The config file as the next reload reads it: a visualizer section, or an Error for a bad file
+    const reloadConfig = async () => {
+      const next = sections.shift();
+      if (next instanceof Error) throw next;
+      config.get().visualizer = next;
+    };
+    const save = async (name = 'config.yaml') => {
+      watched.listener('rename', name);
+      await new Promise(resolve => setTimeout(resolve, 15));
+      await daemon.queue;
+    };
+    let daemon;
+
+    beforeEach(async () => {
+      calls = [];
+      sections = [];
+      visualizers = {
+        override: null, active: true, error: null,
+        configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {},
+        reload: async () => { calls.push('reload'); },
+        describe: () => null, summary: () => ({ enabled: true, error: visualizers.error, generation: 1 })
+      };
+      config.configPath = path.join(tempDir, 'config', 'config.yaml');
+      notifications.length = 0;
+      daemon = makeDaemon({ visualizers, reloadConfig, watch: fakeWatch, configSettle: 5 });
+      await daemon.start();
+    });
+    afterEach(async () => { await daemon.stop(); });
+
+    it('watches the config directory and reloads the visualizer when its section changed', async () => {
+      expect(watched.dir).to.equal(path.join(tempDir, 'config'));
+      sections.push({ ...config.get().visualizer, opacity: 0.5 });
+      // Several events from one save become one reload; other files in the directory are ignored
+      watched.listener('change', 'config.yaml');
+      watched.listener('change', '4913');
+      await save();
+      expect(calls).to.deep.equal(['reload']);
+      expect(config.get().visualizer.opacity).to.equal(0.5);
+
+      // A save that leaves the section as it was restarts nothing
+      sections.push({ ...config.get().visualizer });
+      await save();
+      await save('config.yaml~');
+      expect(calls).to.deep.equal(['reload']);
+      expect(notifications).to.deep.equal([]);
+    });
+
+    it('keeps the running visualizer and announces a bad file or value', async () => {
+      const before = config.get().visualizer;
+      sections.push(new Error('Failed to load config: Nested mappings are not allowed in compact mappings'));
+      await save();
+      sections.push({ ...before, bars: { width: 0 } });
+      await save();
+      expect(calls).to.deep.equal([]);
+      expect(config.get().visualizer).to.equal(before);
+      expect(notifications.map(args => args.at(-1))).to.deep.equal([
+        'Config not applied: Failed to load config: Nested mappings are not allowed in compact mappings',
+        'Config not applied: visualizer.bars.width must be an integer from 1, not 0'
+      ]);
+      expect(notifications[0]).to.include('--urgency=critical');
+
+      // Problems found only when starting it are announced too
+      visualizers.error = 'GLava shaders not found in /x (no bars.glsl); set visualizer.glava.shader_dir';
+      sections.push({ ...before, module: 'radial' });
+      await save();
+      expect(calls).to.deep.equal(['reload']);
+      expect(notifications.at(-1).at(-1)).to.equal(`Visualizer off: ${visualizers.error}`);
+    });
+
+    it('stops watching when the daemon stops', async () => {
+      await daemon.stop();
+      expect(watched.watcher.closed).to.be.true;
+      sections.push({ ...config.get().visualizer, opacity: 0.1 });
+      watched.listener('change', 'config.yaml');
+      await new Promise(resolve => setTimeout(resolve, 15));
+      expect(calls).to.deep.equal([]);
     });
   });
 

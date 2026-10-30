@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { nextFiltersPath, statePath } from '../../src/display/Daemon.js';
-import { clearNextFilters, hasNextFilters, readNextFilters, resolveNextFilters } from '../../src/display/nextFilters.js';
+import { clearNextFilters, hasNextFilters, parseDuration, readNextFilters, resolveNextFilters } from '../../src/display/nextFilters.js';
 
 describe('nextFilters', () => {
   let dir;
@@ -38,6 +38,48 @@ describe('nextFilters', () => {
     expect(await readNextFilters(dir)).to.deep.equal({ keywords: ['dusk'] });
     await clearNextFilters(dir);
     expect(hasNextFilters(await readNextFilters(dir))).to.be.false;
+  });
+
+  it('parses durations in seconds, minutes or hours', () => {
+    expect(parseDuration('--image-duration', '90')).to.equal(90);
+    expect(parseDuration('--image-duration', '1.5m')).to.equal(90);
+    expect(parseDuration('--video-duration', '2h')).to.equal(7200);
+    expect(parseDuration('--video-duration', '0', { allowZero: true })).to.equal(0);
+    expect(() => parseDuration('--image-duration', '0')).to.throw('--image-duration must be a time such as 90, 90s, 5m or 1h, not 0');
+    expect(() => parseDuration('--video-duration', 'soon', { allowZero: true })).to.throw('(0 loops videos forever), not soon');
+  });
+
+  it('stores durations apart from the filters and tells the daemon when they change', async () => {
+    const signals = [];
+    // The daemon answers a control request by moving its state's control counter
+    const kill = (pid, signal) => {
+      signals.push(signal);
+      setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, monitors: [], control: signals.length }), 5);
+    };
+    await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [], control: 0 });
+    const persist = options => resolveNextFilters(dir, options, { persist: true, kill, timeout: 1000 });
+
+    const resolved = await persist({ videoDuration: '2m', query: ['clouds'] });
+    expect(resolved).to.include({ video_duration: 120 });
+    expect(await fs.readJson(nextFiltersPath(dir))).to.include({ video_duration: 120 });
+    expect(await fs.readJson(path.join(dir, 'control.json'))).to.deep.equal({ pid: process.pid, durations: true });
+    expect(signals).to.deep.equal(['SIGUSR1']);
+
+    // New filters keep the durations; an unchanged duration sends nothing
+    await persist({ tag: ['sky'], videoDuration: '120' });
+    expect(await readNextFilters(dir)).to.deep.equal({ tag: ['sky'], video_duration: 120 });
+    expect(signals).to.have.length(1);
+    await persist({ imageDuration: '45' });
+    expect(signals).to.have.length(2);
+    expect(hasNextFilters({ image_duration: 45 })).to.be.true;
+
+    // --clear drops them too, and the daemon hears of it
+    await persist({ clear: true });
+    expect(await readNextFilters(dir)).to.deep.equal({});
+    expect(signals).to.have.length(3);
+    let caught;
+    try { await persist({ imageDuration: 'later' }); } catch (error) { caught = error; }
+    expect(caught.message).to.include('--image-duration must be a time');
   });
 
   it('ignores filters another daemon stored, and stores nothing without a running daemon', async () => {
