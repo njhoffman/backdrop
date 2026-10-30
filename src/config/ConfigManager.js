@@ -84,7 +84,8 @@ export class ConfigManager {
       },
       menu: {
         style: 'panel',
-        rofi_args: []
+        rofi_args: [],
+        workspace: true
       },
       screensaver: {
         idle_minutes: 10,

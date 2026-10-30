@@ -194,19 +194,27 @@ bindsym $mod+Shift+b exec --no-startup-id backdrop menu --no-random --tag ocean
 | Key | Button | Key | Button |
 |-----|--------|-----|--------|
 | `n` | next | `p` | prev |
-| `1` `2` `3` | keep 1-3, then play the next item | `0` | skip |
-| `s` | speed steps | `u` | undo |
+| `1` `2` `3` | keep 1-3, then play the next item | `s` | skip |
+| `v` | speed (velocity) steps | `u` | undo |
 | `m` | switch video/image mode | `d` | dim steps |
 
 The menu stays open after each action until you press `q`, or Escape on the main menu; Escape in the
 speed or dim submenu goes back to the main menu. With more than one monitor, Tab picks the monitor the
 buttons act on. Buttons that do not apply (speed on an image, rating with nothing playing) stay in place,
-faded. The current rating, a changed speed and dim are highlighted.
+faded. The current rating, a changed speed and dim are highlighted. A single click runs a button. The speed
+steps run from 0.4 to 1, and +0.1 stops at 1.
+
+With i3, the menu switches the monitor to an empty workspace named `backdrop` while it is open, so the
+wallpaper is in full view, and returns to the previous workspace when it closes. Set `menu.workspace` to
+another name, or to `false` to stay on the current workspace. Picking another monitor with Tab leaves the
+empty workspace on the first one.
 
 The default `panel` style shows a preview banner, the file name, and under it the resolution, duration and
-rating, with the menu's status right-aligned in the same box: whether next picks randomly and any filters. Those are set when opening
-the menu: `--random`/`--no-random` (default `display.order`) and `--query`, `--tag` and `--keywords`, which
-apply to next and to the item after keep and skip (when nothing else matches, those advance as usual).
+rating, with the menu's status right-aligned in the same box: whether next picks randomly and any filters. Those
+are the ones `next` keeps using: set them with `backdrop next` or when opening the menu, with
+`--random`/`--no-random` (default `display.order`) and `--query`, `--tag` and `--keywords`. They apply to next
+and to the item after keep and skip (when nothing else matches, those advance as usual) until `next --clear`
+or a daemon restart.
 `menu.style: minimal` (or `--style minimal`) is a plain list with icons and keys. Errors appear as desktop
 notifications, since a keybinding has no terminal. Pass rofi options with `menu.rofi_args`, e.g. a
 `-theme-str` to recolor the panel. The daemon makes the preview of each item as it starts playing, and of

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-10-30
+
+### Added
+- Filters stick: `--query`, `--tag`, `--keywords` and `--random`/`--no-random` given to `next` or `menu` apply
+  to every later `next` and to the advance after `keep --next`, `skip` and `go-next`, until `next --clear` or
+  the daemon restarts. New filters replace the old ones as a set. `backdrop status` shows them, and the menu
+  shows the current ones under "random" on every redraw.
+- `menu.workspace` (on by default): with i3, the menu switches its monitor to an empty `backdrop` workspace
+  while open, so the wallpaper is in full view, and returns to the previous workspace when it closes. Give a
+  name to use another workspace, or `false` to stay put.
+
+### Changed
+- Menu keys: speed is `v`, skip is `s` (was `0`). The main menu reads `n 1 2 3 v` / `p s u m d`.
+- Menu speed steps are 0.4, 0.5, 0.65, 0.75, 0.85 and 1, plus -0.1 and +0.1; +0.1 stops at 1. The `speed`
+  command itself is unchanged.
+- A single click on a menu button runs it (rofi needed a double click).
+- The menu shows the resolution and duration in bold.
+
 ## [2.18.0] - 2026-10-28
 
 ### Changed

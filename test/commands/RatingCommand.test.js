@@ -6,6 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { nextFiltersPath, statePath } from '../../src/display/Daemon.js';
 import { notifications } from '../helpers/setup.js';
 
 describe('RatingCommand', () => {
@@ -213,6 +214,21 @@ describe('RatingCommand', () => {
     await command.keep(3, { next: true });
     expect(control.next.calledOnceWithExactly('DP-1', { random: true })).to.be.true;
     expect(lines.join('\n')).to.include('DP-1: nothing playing');
+  });
+
+  it('advances with the filters and order next or the menu stored, and -r here applies once', async () => {
+    const runtime = path.join(dir, 'run');
+    config.set('paths.runtime', runtime);
+    await fs.outputJson(statePath(runtime), { pid: process.pid, monitors: [monitor] });
+    db.addSearchResult(db.addSearch('pexels', 'Ocean'), id, 1);
+    await fs.writeJson(nextFiltersPath(runtime), { pid: process.pid, query: ['ocean'], random: false });
+    config.set('display.order', 'random');
+    await command.keep(2, { next: true });
+    expect(control.next.lastCall.args[1]).to.include({ random: false, fallback: true });
+    await command.keep(2, { next: true, random: true });
+    expect(control.next.lastCall.args[1]).to.include({ random: true, fallback: true });
+    expect(control.next.lastCall.args[1].matches.map(item => item.id)).to.deep.equal([id]);
+    expect(await fs.readJson(nextFiltersPath(runtime))).to.include({ random: false });
   });
 
   it('keep shows the rated item in full, or as one line before the next item with --next', async () => {

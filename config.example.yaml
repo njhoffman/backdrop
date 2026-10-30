@@ -28,6 +28,7 @@ display:
 menu:
   style: panel                       # panel (preview banner and buttons) or minimal (a list)
   rofi_args: []                      # extra rofi options for backdrop menu, e.g. [-theme, ~/.config/rofi/backdrop.rasi]
+  workspace: true                    # i3: show an empty workspace ("backdrop", or a name given here) while the menu is open; false to stay
 
 screensaver:
   idle_minutes: 10

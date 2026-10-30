@@ -134,11 +134,12 @@ class BackdropApp {
 
     program
       .command('next')
-      .description('Play the next item and show it')
+      .description('Play the next item and show it; filters and order given stay in effect until --clear or a daemon restart')
       .option(...monitorOption)
       .option(...randomOption)
       .option(...noRandomOption)
       .option(...queryOption).option(...tagOption).option(...keywordsOption)
+      .option('--clear', 'Drop the filters and order earlier next or menu commands left in effect')
       .option(...lineOption).option(...jsonOption)
       .action(this.action(options => display.next(options)));
 

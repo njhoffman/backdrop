@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { DisplayControl } from '../display/DisplayControl.js';
+import { resolveNextFilters } from '../display/nextFilters.js';
 import { queueRandom, queueMatching, randomOrder } from '../display/Playlist.js';
 import { matchingMedia } from '../library/match.js';
 import { out, fmt } from '../utils/output.js';
@@ -24,6 +25,7 @@ export class RatingCommand {
   async keep(rating = 1, options = {}) {
     if (!/^[1-3]$/.test(String(rating))) throw new Error('Rating must be an integer from 1 to 3');
     const { media, monitor } = await this.current(options);
+    if (options.next) options = await this.nextOptions(options);
     // Checked before rating so a bad display.order does not leave a rating without the advance
     const random = options.next && this.random(options);
     const json = wantsJson(options);
@@ -44,9 +46,10 @@ export class RatingCommand {
   }
 
   // Removing the playing entry advances mpv, so --random moves a random entry up to play next first.
-  // With --query/--tag/--keywords (from the menu) a matching entry goes first when there is one.
+  // With filters stored by next or the menu, a matching entry goes first when there is one.
   async skip(options = {}) {
     const { media, monitor } = await this.current(options);
+    options = await this.nextOptions(options);
     const random = this.random(options);
     const matches = matchingMedia(this.database, options);
     const playing = await this.control.switchTo(monitor.name, async client => {
@@ -56,6 +59,11 @@ export class RatingCommand {
     });
     await this.show(playing, options);
     return playing.result;
+  }
+
+  // The filters and order next and the menu stored; -r/--no-random here apply to this advance only
+  nextOptions(options) {
+    return resolveNextFilters(this.config.get().paths.runtime, options);
   }
 
   random(options) {
@@ -179,7 +187,7 @@ export class RatingCommand {
   async goNext(options = {}) {
     const { media, monitor, rating } = await this.current(options);
     if (!rating) throw new Error('Rate this item with keep or skip before go-next');
-    await this.advance(monitor, options);
+    await this.advance(monitor, await this.nextOptions(options));
     return media;
   }
 }

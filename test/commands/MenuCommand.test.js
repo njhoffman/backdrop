@@ -6,15 +6,20 @@ import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MenuCommand, minimalView, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
+import { statePath } from '../../src/display/Daemon.js';
+import { readNextFilters } from '../../src/display/nextFilters.js';
 import { thumbnailFor } from '../../src/library/thumbnail.js';
 import { notifications } from '../helpers/setup.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('MenuCommand', () => {
   const monitors = [{ name: 'DP-1', width: 1920, height: 1080 }, { name: 'HDMI-1', width: 1920, height: 1080 }];
-  let db, config, display, rating, shown, picks, command, playing, thumbnail;
+  let db, config, display, rating, shown, picks, command, playing, thumbnail, workspace, leave, runtime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    runtime = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-menu-'));
+    // readState treats the state as live because this test process's pid is running
+    await fs.writeJson(statePath(runtime), { pid: process.pid, monitors });
     db = new DatabaseManager(); db.initialize(':memory:');
     const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/local-1.mp4', original_name: 'ocean-waves.mp4',
       width: 3840, height: 2160, duration: 18, fps: 25, speed: 0.8 });
@@ -41,11 +46,16 @@ describe('MenuCommand', () => {
       return index;
     };
     thumbnail = sinon.stub().resolves('/cache/thumbnails/1.jpg');
-    config = makeConfig();
-    command = new MenuCommand(config, db, silentLogger, { display, rating, view, thumbnail });
+    config = makeConfig({ 'paths.runtime': runtime });
+    leave = sinon.stub().resolves();
+    workspace = sinon.stub().resolves(leave);
+    command = new MenuCommand(config, db, silentLogger, { display, rating, view, thumbnail, workspace });
     notifications.length = 0;
   });
-  afterEach(() => db.close());
+  afterEach(async () => {
+    db.close();
+    await fs.remove(runtime);
+  });
 
   const labels = menu => menu.entries.map(entry => entry.label);
   const flagged = (menu, flag) => menu.entries.flatMap(entry => (entry[flag] ? [entry.label] : []));
@@ -56,18 +66,18 @@ describe('MenuCommand', () => {
     expect(shown).to.have.length(2);
     expect(labels(shown[0])).to.deep.equal(['next', 'keep 1', 'keep 2', 'keep 3', 'speed ▸', 'prev', 'skip', 'undo',
       'mode: switch to images', 'dim ▸']);
-    expect(shown[0].entries.map(entry => entry.key)).to.deep.equal(['n', '1', '2', '3', 's', 'p', '0', 'u', 'm', 'd']);
+    expect(shown[0].entries.map(entry => entry.key)).to.deep.equal(['n', '1', '2', '3', 'v', 'p', 's', 'u', 'm', 'd']);
     // Nerd Font glyphs are private-use characters that editors can drop silently
     expect(shown[0].entries.every(entry => /[\u2605\uf000-\uf8ff]/.test(entry.icon))).to.be.true;
     expect(shown[0]).to.include({ title: 'ocean-waves.mp4', preview: '/cache/thumbnails/1.jpg', columns: 5 });
     expect(shown[0].keys).to.deep.equal(['q', 'Tab']);
-    expect(shown[0].message).to.equal(`#${playing.media.id}  video  3840x2160\n0:18 · 25 fps · ★★☆ · DP-1\nocean, waves\n<b>speed 0.8</b>`);
+    expect(shown[0].message).to.equal(
+      `#${playing.media.id}  video  <b>3840x2160</b>\n<b>0:18</b> · 25 fps · ★★☆ · DP-1\nocean, waves\n<b>speed 0.8</b>`);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2', 'speed ▸']);
     expect(shown[0].entries[4].caption).to.equal('speed 0.8');
     expect(flagged(shown[0], 'disabled')).to.deep.equal([]);
-    // display.order defaults to random, so keep's advance is random too
-    expect(rating.keep.calledOnceWithExactly(3, { monitor: 'DP-1', random: true, query: undefined, tag: undefined,
-      keywords: undefined, next: true })).to.be.true;
+    // The order and filters for the advance are the stored ones, which keep reads itself
+    expect(rating.keep.calledOnceWithExactly(3, { monitor: 'DP-1', next: true })).to.be.true;
   });
 
   it('keeps every slot, fading what does not apply, and ignores picks of faded buttons', async () => {
@@ -90,43 +100,75 @@ describe('MenuCommand', () => {
   });
 
   it('runs buttons by key and stays open until q or Escape on the main menu', async () => {
-    picks = [{ key: 'n' }, { key: 'p' }, { key: '0' }, { key: 'u' }, { key: 'm' }, null];
+    picks = [{ key: 'n' }, { key: 'p' }, { key: 's' }, { key: 'u' }, { key: 'm' }, null];
     await command.open();
     expect(shown).to.have.length(6);
-    expect(display.next.calledOnceWith(sinon.match({ monitor: 'DP-1', random: true }))).to.be.true;
+    expect(display.next.calledOnceWithExactly({ monitor: 'DP-1' })).to.be.true;
     expect(display.prev.calledOnceWithExactly({ monitor: 'DP-1' })).to.be.true;
-    expect(rating.skip.calledOnceWith(sinon.match({ monitor: 'DP-1', random: true }))).to.be.true;
+    expect(rating.skip.calledOnceWithExactly({ monitor: 'DP-1' })).to.be.true;
     expect(rating.undo.calledOnce).to.be.true;
     expect(display.mode.calledOnceWithExactly('image', { monitor: 'DP-1' })).to.be.true;
   });
 
-  it('shows random and the filters it was opened with, and passes them to next, keep and skip', async () => {
+  it('stores the order and filters it was opened with for next, and shows the stored ones on each redraw', async () => {
     db.addSearch('pexels', 'Ocean Waves');
     picks = [{ key: 'n' }, { key: '2' }];
+    // next run elsewhere while the menu is open changes what the next redraw shows
+    display.next.callsFake(async () => fs.writeJson(path.join(runtime, 'next-filters.json'), { pid: process.pid, tag: ['sky'] }));
     await command.open({ random: false, query: ['ocean waves'], tag: ['sunset', 'sea'] });
     expect(shown[0].status).to.deep.equal([
       'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'monitor  <b>DP-1</b>  (Tab)'
     ]);
-    const filters = { monitor: 'DP-1', random: false, query: ['ocean waves'], tag: ['sunset', 'sea'], keywords: undefined };
-    expect(display.next.calledOnceWithExactly(filters)).to.be.true;
-    expect(rating.keep.calledOnceWithExactly(2, { ...filters, next: true })).to.be.true;
+    // display.order defaults to random
+    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'monitor  <b>DP-1</b>  (Tab)']);
 
+    // Opening without any keeps what is stored; a mistyped query fails before anything is stored
+    await command.open();
+    expect(shown.at(-1).status[1]).to.equal('tags  <b>sky</b>');
     let caught;
     try { await command.open({ query: ['ocean'] }); } catch (error) { caught = error; }
     expect(caught.message).to.include('No search used the query "ocean"');
     expect(notifications.at(-1).join(' ')).to.include('No search used the query');
+    expect(await readNextFilters(runtime)).to.deep.equal({ tag: ['sky'] });
+  });
+
+  it('shows the menu workspace while open and returns from it however the menu closes', async () => {
+    await command.open();
+    expect(workspace.calledOnceWith('backdrop', 'DP-1')).to.be.true;
+    expect(leave.calledOnce).to.be.true;
+
+    config.set('menu.workspace', 'wall');
+    display.control.selected.rejects(new Error('backdrop daemon is not running'));
+    let caught;
+    try { await command.open(); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('backdrop daemon is not running');
+    expect(workspace.lastCall.args[0]).to.equal('wall');
+    expect(leave.calledTwice).to.be.true;
+
+    config.set('menu.workspace', false);
+    display.control.selected.resolves({ monitor: monitors[0], ...playing });
+    await command.open();
+    expect(workspace.lastCall.args[0]).to.be.null;
   });
 
   it('steps speed in a submenu until Escape returns to the main menu; q there closes it', async () => {
     db.setSpeed(playing.media.id, 1);
     playing.media = db.getMedia(playing.media.id);
-    picks = [{ key: 's' }, '0.75', '+0.1', null, 'dim ▸', { key: 'q' }];
+    picks = [{ key: 'v' }, '0.65', '+0.1', null, 'dim ▸', { key: 'q' }];
     await command.open();
-    expect(display.speed.args).to.deep.equal([['0.75', { monitor: 'DP-1' }], ['+0.1', { monitor: 'DP-1' }]]);
+    expect(labels(shown[1])).to.deep.equal(['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1']);
+    // The fake leaves the speed at 1, where +0.1 stops
+    expect(display.speed.args).to.deep.equal([['0.65', { monitor: 'DP-1' }], ['1', { monitor: 'DP-1' }]]);
     expect(shown.map(menu => menu.prompt)).to.deep.equal(['backdrop', 'speed (now 1)', 'speed (now 1)', 'speed (now 1)', 'backdrop', 'dim (now 0)']);
-    expect(shown[1]).to.include({ columns: 7 });
+    expect(shown[1]).to.include({ columns: 8 });
     expect(flagged(shown[1], 'active')).to.deep.equal(['1']);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2']);
+
+    db.setSpeed(playing.media.id, 0.85);
+    playing.media = db.getMedia(playing.media.id);
+    picks = [{ key: 'v' }, '+0.1', null];
+    await command.open();
+    expect(display.speed.lastCall.args[0]).to.equal('+0.1');
   });
 
   it('retargets another monitor with Tab, and offers no Tab with one monitor', async () => {
@@ -197,7 +239,7 @@ describe('MenuCommand', () => {
       expect(await minimalView(['-theme', 'x.rasi'], spawn)(menu)).to.equal(1);
       expect(calls[0].file).to.equal('rofi');
       expect(calls[0].args).to.deep.equal(['-dmenu', '-i', '-no-custom', '-format', 'i',
-        '-kb-element-next', '', '-kb-custom-1', '1', '-kb-custom-2', '0', '-kb-custom-3', 'q', '-kb-custom-4', 'Tab',
+        '-kb-element-next', '', '-me-select-entry', '', '-me-accept-entry', 'MousePrimary', '-kb-custom-1', '1', '-kb-custom-2', '0', '-kb-custom-3', 'q', '-kb-custom-4', 'Tab',
         '-p', 'backdrop', '-mesg', 'msg\nrandom  <b>on</b>  ·  tags  "sea" it\'s a\\b', '-a', '1', '-theme', 'x.rasi']);
       expect(calls[0].input()).to.equal('I  1  keep 1\nJ  0  speed ▸\na|b <c>\n');
     });

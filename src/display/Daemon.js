@@ -37,6 +37,11 @@ export function statePath(runtimeDir) {
   return path.join(runtimeDir, 'state.json');
 }
 
+// Filters for next that last as long as this daemon (see nextFilters.js); removed when it starts and stops
+export function nextFiltersPath(runtimeDir) {
+  return path.join(runtimeDir, 'next-filters.json');
+}
+
 export function isProcessRunning(pid) {
   try {
     process.kill(pid, 0);
@@ -146,6 +151,7 @@ export class Daemon {
     }
 
     await fs.ensureDir(this.runtimeDir, 0o700);
+    await fs.remove(nextFiltersPath(this.runtimeDir));
     this.stopped = new Promise(resolve => { this.resolveStopped = resolve; });
 
     try {
@@ -577,6 +583,7 @@ export class Daemon {
     this.screens.clear();
     await this.importing;
     await fs.remove(statePath(this.runtimeDir));
+    await fs.remove(nextFiltersPath(this.runtimeDir));
 
     this.logger.info('Daemon stopped');
     this.resolveStopped?.();

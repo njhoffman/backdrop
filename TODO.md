@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-10-28
+Reviewed: 2026-10-30
 
 ## 1. Existing bugs and tech debt
 
@@ -36,6 +36,12 @@ Reviewed: 2026-10-28
       `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped.
+- [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
+      `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
+      and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
+- [ ] **Tests default to the real data and cache paths.** (p2) [test] `makeConfig()` still leaves `paths.data`,
+      `paths.thumbnails`, `paths.logfile` and the media folders at their XDG defaults; a test that forgets to override
+      one writes into the user's library. Point every `paths.*` at a per-run temp directory in `makeConfig()`.
 - [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
 
 ## 2. Rename to backdrop
@@ -230,6 +236,9 @@ Reviewed: 2026-10-28
       the next playlist entry (`prefetchThumbnails` in `src/display/Daemon.js`), but next is random by default and picks an
       arbitrary entry, so the redrawn menu still waits about 0.4s for ffmpeg. Fix: backfill thumbnails for every eligible
       item in the background (nice'd, a few per minute), or queue the random pick first and make its thumbnail before advancing.
+- [ ] **Menu workspace stays on the first monitor after Tab.** (p3) [feature] `menu.workspace` empties the monitor the menu
+      opened on; picking another with Tab leaves that one covered. `MenuCommand.open` could leave and re-enter the workspace
+      (`src/utils/workspace.js`) on the new output when the target changes.
 - [ ] **Menu rendering is only checked by hand.** (p2) [test] Unit tests check the rofi arguments, not what rofi does with
       them: a status with quotes or line breaks inside a `-theme-str` string failed rofi's theme parser, and a horizontal
       info box that expanded hid the second row of buttons, with every test passing. Both were found by rendering into

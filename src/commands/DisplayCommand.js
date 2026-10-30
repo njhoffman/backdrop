@@ -2,8 +2,9 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
 import { DisplayControl } from '../display/DisplayControl.js';
+import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
-import { matchingMedia } from '../library/match.js';
+import { matchFilters, matchingMedia } from '../library/match.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
@@ -89,6 +90,8 @@ export class DisplayCommand {
     }
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid})`)}`);
+    const next = this.describeNextFilters(await readNextFilters(this.runtimeDir));
+    if (next) out.row('Next', `${next} ${fmt.dim('(next --clear to drop)')}`);
     if (!state.monitors.length) {
       out.field('info', fmt.yellow('waiting for the monitors in display.monitors to become active'));
       return;
@@ -129,6 +132,16 @@ export class DisplayCommand {
       });
     }
     return { mode, daemon: { running: Boolean(state), pid: state?.pid ?? null }, monitors };
+  }
+
+  // Filters and order next keeps using, e.g. 'random, query "clouds", tags sky'
+  describeNextFilters({ random, query, tag, keywords }) {
+    const parts = [];
+    if (random !== undefined) parts.push(random ? 'random' : 'in order');
+    if (query?.length) parts.push(`query ${query.map(text => `"${text}"`).join(', ')}`);
+    if (tag?.length) parts.push(`tags ${tag.join(', ')}`);
+    if (keywords?.length) parts.push(`words ${keywords.join(', ')}`);
+    return parts.join(', ');
   }
 
   adjustments(media) {
@@ -174,7 +187,11 @@ export class DisplayCommand {
   }
 
   // --query, --tag and --keywords jump to a matching item instead; the playlist itself stays as it was
+  // Filters and order given here stay in effect until next --clear or a daemon restart
   async next(options = {}) {
+    // Checked before they are stored, so a mistyped query is not kept
+    matchFilters(this.database, options);
+    options = await resolveNextFilters(this.runtimeDir, options, { persist: true });
     const random = randomOrder(this.config.get().display, options.random);
     const matches = matchingMedia(this.database, options);
     await this.show(await this.control.next(options.monitor, matches ? { random, matches } : { random }), options);

@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events';
+import os from 'os';
+import path from 'path';
 import { ConfigManager } from '../../src/config/ConfigManager.js';
 
 // Stands in for MpvClient: records commands and answers get_property from `properties`
@@ -60,6 +62,8 @@ export class FakeChild extends EventEmitter {
 export function makeConfig(overrides = {}) {
   const manager = new ConfigManager('/nonexistent/config.yaml');
   manager.config = manager.getDefaultConfig();
+  // Never the real runtime dir: a running daemon's state there would make commands act on it
+  manager.config.paths.runtime = path.join(os.tmpdir(), `backdrop-test-${process.pid}-missing`);
   manager.userConfig = {};
   for (const [key, value] of Object.entries(overrides)) {
     manager.set(key, value);

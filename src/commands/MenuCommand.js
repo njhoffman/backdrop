@@ -4,15 +4,18 @@ import { fileURLToPath } from 'url';
 import { DisplayCommand } from './DisplayCommand.js';
 import { RatingCommand } from './RatingCommand.js';
 import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
+import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { describeNotification, escapeMarkup, notifyError } from '../utils/notify.js';
 import { formatAdjustments } from '../utils/mediaView.js';
+import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 
 export const MENU_STYLES = ['panel', 'minimal'];
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
 
-const SPEEDS = ['0.5', '0.75', '1', '1.25', '1.5', '+0.1', '-0.1'];
+// Wallpaper videos only ever play slowed down, so +0.1 stops at 1 (see stepMenu)
+const SPEEDS = ['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1'];
 const DIMS = ['0', '20', '40', '60', '+10', '-10'];
 
 // Nerd Font glyphs (Font Awesome code points), as in the CLI's nerd symbol set. The star is the plain
@@ -32,9 +35,11 @@ const MAIN_COLUMNS = 5;
 // Runs rofi -dmenu on the given input and resolves to the picked index, { key } for one of keys, or null
 // when dismissed. -format i returns the index, so labels never have to be parsed back; -no-custom rejects
 // typed text. keys are bound to kb-custom-1.., which make rofi exit with 10..; Tab moves between entries
-// by default, so it is unbound first.
+// by default, so it is unbound first. A single click runs an entry: rofi's default selects on click and
+// accepts on double click.
 function runRofi(args, input, spawnProcess, keys = []) {
-  const keyArgs = keys.flatMap((key, index) => [`-kb-custom-${index + 1}`, key]);
+  const keyArgs = ['-me-select-entry', '', '-me-accept-entry', 'MousePrimary',
+    ...keys.flatMap((key, index) => [`-kb-custom-${index + 1}`, key])];
   if (keys.includes('Tab')) keyArgs.unshift('-kb-element-next', '');
   return new Promise((resolve, reject) => {
     const child = spawnProcess('rofi', ['-dmenu', '-i', '-no-custom', '-format', 'i', ...keyArgs, ...args],
@@ -118,12 +123,13 @@ export function panelView(extraArgs = [], spawnProcess = spawn, theme = PANEL_TH
 
 // A rofi menu over the playback and rating commands for the monitor under the pointer (or --monitor).
 // It stays open after each action until q, or Escape on the main menu; Escape in a submenu goes back.
-// --random/--no-random and --query/--tag/--keywords apply to next and to the advance after keep and skip,
-// and are shown beside the item's details; they are set only from the command line.
+// --random/--no-random and --query/--tag/--keywords are stored like next's (see nextFilters.js), apply to
+// next and to the advance after keep and skip, and are shown beside the item's details. With i3 the menu
+// shows an empty workspace (menu.workspace) while open, so the wallpaper is in full view.
 // Menus are built as { prompt, title, message, status, preview, entries: [{ icon, label, caption, key,
 // active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key } or null.
 export class MenuCommand {
-  constructor(config, database, logger, { display, rating, view, thumbnail = thumbnailFor } = {}) {
+  constructor(config, database, logger, { display, rating, view, thumbnail = thumbnailFor, workspace = enterWorkspace } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
@@ -131,6 +137,7 @@ export class MenuCommand {
     this.rating = rating ?? new RatingCommand(config, database, logger, { control: this.display.control });
     this.view = view;
     this.thumbnail = thumbnail;
+    this.workspace = workspace;
   }
 
   get control() {
@@ -155,30 +162,34 @@ export class MenuCommand {
   // every redraw would fail the same way.
   async open(options = {}) {
     let monitor;
+    let leave;
     try {
       const style = this.style(options.style);
-      // The filters are checked once here, so a mistyped query fails before the menu opens
+      const workspace = workspaceName(this.config.get().menu?.workspace);
+      // The filters are checked here, so a mistyped query fails before the menu opens or is stored
       matchFilters(this.database, options);
-      this.current = {
-        style, show: this.viewFor(style),
-        random: randomOrder(this.config.get().display, options.random),
-        filters: { query: options.query, tag: options.tag, keywords: options.keywords }
-      };
+      this.current = { style, show: this.viewFor(style) };
       monitor = (await this.control.targetMonitor(options.monitor)).name;
+      await resolveNextFilters(this.config.get().paths.runtime, options, { persist: true });
+      leave = await this.workspace(workspace, monitor, { logger: this.logger });
     } catch (error) {
       await notifyError(error.message, { logger: this.logger });
       throw error;
     }
-    for (;;) {
-      let result;
-      try {
-        result = await this.mainMenu(monitor);
-      } catch (error) {
-        await notifyError(error.message, { logger: this.logger });
-        throw error;
+    try {
+      for (;;) {
+        let result;
+        try {
+          result = await this.mainMenu(monitor);
+        } catch (error) {
+          await notifyError(error.message, { logger: this.logger });
+          throw error;
+        }
+        if (result.quit) return;
+        if (result.monitor) monitor = result.monitor;
       }
-      if (result.quit) return;
-      if (result.monitor) monitor = result.monitor;
+    } finally {
+      await leave();
     }
   }
 
@@ -199,7 +210,7 @@ export class MenuCommand {
     if (!media) {
       return { media: null, rating: null, title: monitor.name, message: escapeMarkup(`${monitor.name}: nothing from the library playing`) };
     }
-    const { summary, body } = describeNotification({ monitor, media, rating, tags: this.database.getTags(media.id) });
+    const { summary, body } = describeNotification({ monitor, media, rating, tags: this.database.getTags(media.id) }, { bold: true });
     const adjustments = formatAdjustments(media);
     const name = media.source === 'local' && media.original_name ? media.original_name : path.basename(media.path);
     const preview = this.current.style === 'panel'
@@ -207,14 +218,16 @@ export class MenuCommand {
       : null;
     return {
       media, rating, preview, title: name,
-      message: [escapeMarkup(summary), body, adjustments && `<b>${escapeMarkup(adjustments)}</b>`].filter(Boolean).join('\n')
+      message: [summary, body, adjustments && `<b>${escapeMarkup(adjustments)}</b>`].filter(Boolean).join('\n')
     };
   }
 
-  // Order and filters for next, and the target monitor when there is more than one, as Pango markup lines
-  // without attributes (see rasiMarkup): the name, then the value in bold
-  status(monitor, monitors) {
-    const { random, filters } = this.current;
+  // Order and filters for next as stored now (next can change them while the menu is open), and the
+  // target monitor when there is more than one, as Pango markup lines without attributes (see
+  // rasiMarkup): the name, then the value in bold
+  async status(monitor, monitors) {
+    const filters = await readNextFilters(this.config.get().paths.runtime);
+    const random = randomOrder(this.config.get().display, filters.random);
     const field = (name, value) => `${name}  <b>${escapeMarkup(value)}</b>`;
     const lines = [field('random', random ? 'on' : 'off')];
     if (filters.query?.length) lines.push(field('query', filters.query.map(query => `"${query}"`).join(', ')));
@@ -228,14 +241,14 @@ export class MenuCommand {
     return this.current.show(menu);
   }
 
-  // Two fixed rows: next, keep 1-3, speed over prev, skip, undo, mode, dim, with keys n 1 2 3 s and
-  // p 0 u m d. Buttons that do not apply to
-  // the item stay in place, faded, and do nothing. Keep and skip always move on to the next item.
+  // Two fixed rows: next, keep 1-3, speed over prev, skip, undo, mode, dim, with keys n 1 2 3 v and
+  // p s u m d. Buttons that do not apply to the item stay in place, faded, and do nothing. Keep and skip
+  // always move on to the next item, with the stored filters and order like next.
   async mainMenu(monitor) {
     const item = await this.describe(monitor);
     const { media } = item;
     const { monitors } = await this.control.state();
-    const target = { monitor, random: this.current.random, ...this.current.filters };
+    const target = { monitor };
     const video = Boolean(media && MODE_KINDS.video.includes(media.kind));
     const other = otherMode(getMode(this.database));
     const keep = value => ({
@@ -245,10 +258,10 @@ export class MenuCommand {
     const entries = [
       { icon: ICONS.next, label: 'next', key: 'n', run: () => this.display.next(target) },
       keep(1), keep(2), keep(3),
-      { icon: ICONS.speed, label: 'speed ▸', caption: video && media.speed !== 1 ? `speed ${media.speed}` : 'speed', key: 's',
+      { icon: ICONS.speed, label: 'speed ▸', caption: video && media.speed !== 1 ? `speed ${media.speed}` : 'speed', key: 'v',
         disabled: !video, active: video && media.speed !== 1, run: () => this.stepMenu(monitor, 'speed', SPEEDS) },
       { icon: ICONS.prev, label: 'prev', key: 'p', run: () => this.display.prev({ monitor }) },
-      { icon: ICONS.skip, label: 'skip', key: '0', disabled: !media, run: () => this.rating.skip(target) },
+      { icon: ICONS.skip, label: 'skip', key: 's', disabled: !media, run: () => this.rating.skip(target) },
       { icon: ICONS.undo, label: 'undo', key: 'u', run: () => this.rating.undo() },
       { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: 'mode', key: 'm', run: () => this.display.mode(other, { monitor }) },
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
@@ -257,7 +270,7 @@ export class MenuCommand {
     const keys = [QUIT_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : [])];
 
     const picked = await this.show({ prompt: 'backdrop', title: item.title, message: item.message, preview: item.preview,
-      status: this.status(monitor, monitors), entries, keys, columns: MAIN_COLUMNS });
+      status: await this.status(monitor, monitors), entries, keys, columns: MAIN_COLUMNS });
     if (picked === null || picked.key === QUIT_KEY) return { quit: true };
     if (picked.key === MONITOR_KEY) return this.attempt(() => this.monitorMenu(monitor));
     const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
@@ -279,8 +292,14 @@ export class MenuCommand {
         entries, keys: [QUIT_KEY], columns: values.length });
       if (picked === null) return {};
       if (picked.key === QUIT_KEY) return { quit: true };
-      await this.display[kind](values[picked], { monitor });
+      await this.display[kind](this.step(kind, values[picked], current), { monitor });
     }
+  }
+
+  // +0.1 on speed stops at 1
+  step(kind, value, current) {
+    if (kind !== 'speed' || value !== '+0.1') return value;
+    return Math.round(current * 100) + 10 > 100 ? '1' : value;
   }
 
   async monitorMenu(current) {

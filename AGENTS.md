@@ -20,7 +20,8 @@ npm link                 # install the `backdrop` binary globally
 
 To run the CLI without touching your real config or data, point the XDG variables at a scratch
 directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`. Keep `XDG_RUNTIME_DIR`
-short: mpv socket paths must fit in 107 bytes. `test/display/mpv.integration.test.js` runs a headless mpv
+short: mpv socket paths must fit in 107 bytes. `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
+at a missing directory, so a test never reaches a running daemon; tests that need state set their own. `test/display/mpv.integration.test.js` runs a headless mpv
 and is skipped when mpv or ffmpeg is missing.
 
 Requires Node.js 22.13+ (built-in `node:sqlite`).
@@ -59,7 +60,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
   `loop-file`/`end`, records frame rates from mpv, samples mpv CPU and decoder on each health check (`src/display/cpu.js`,
   `playback_stats`), writes `state.json` atomically and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
-  `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. External tools
+  `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
+  the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's
+  pid (the daemon removes it on start and stop); `next`, `keep --next`, `skip` and `go-next` fill in from it. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
   file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
@@ -73,7 +76,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
   rating and display commands from `rofi -dmenu`; it builds menus as data and draws them with `panelView`
   (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`,
-  which the daemon also makes on each load) or `minimalView`; views bind entry keys to `-kb-custom-N` and resolve
+  which the daemon also makes on each load) or `minimalView`; with i3 it shows an empty workspace while open
+  (`src/utils/workspace.js`, `menu.workspace`); views bind entry keys to `-kb-custom-N` and resolve
   to an index, `{ key }` or null; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
   format in `docs/specs/json.md`) and `setJsonOutput`, which moves every other stdout line to stderr.
   `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts.

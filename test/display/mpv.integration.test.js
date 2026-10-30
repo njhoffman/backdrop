@@ -162,7 +162,10 @@ describe('mpv integration', function () {
     await client.command('loadfile', files[0], 'replace');
     for (const file of files.slice(1)) await client.command('loadfile', file, 'append');
     await waitFor(async () => (await client.getProperty('path')) === files[0]);
-    const control = new DisplayControl({ config: makeConfig(), database: db });
+    // removeMedia walks the monitors in the daemon's state
+    const runtime = path.join(tempDir, 'run');
+    await fs.outputJson(path.join(runtime, 'state.json'), { pid: process.pid, monitors: [{ name: 'TEST-1' }] });
+    const control = new DisplayControl({ config: makeConfig({ 'paths.runtime': runtime }), database: db });
     control.targetMonitor = async () => ({ name: 'TEST-1' });
     control.withClient = async (monitor, fn) => fn(client);
 

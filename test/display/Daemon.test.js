@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { Daemon, buildCommand, readState, statePath, isProcessRunning } from '../../src/display/Daemon.js';
+import { Daemon, buildCommand, readState, statePath, nextFiltersPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
@@ -171,6 +171,16 @@ describe('Daemon', () => {
       expect(spawned).to.have.length(1);
       expect(warnings).to.deep.include(['Configured monitors not active, waiting for them', { missing: ['DP-9'] }]);
       await daemon.stop();
+    });
+
+    it('drops the filters next stored when it starts and stops', async () => {
+      await fs.outputJson(nextFiltersPath(tempDir), { pid: process.pid, query: ['clouds'] });
+      const daemon = makeDaemon();
+      await daemon.start();
+      expect(await fs.pathExists(nextFiltersPath(tempDir))).to.be.false;
+      await fs.outputJson(nextFiltersPath(tempDir), { pid: process.pid, query: ['clouds'] });
+      await daemon.stop();
+      expect(await fs.pathExists(nextFiltersPath(tempDir))).to.be.false;
     });
 
     it('waits for configured monitors when none is active, and picks them up on hotplug', async () => {

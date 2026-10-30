@@ -34,16 +34,19 @@ function ratingText(rating) {
 //   #412  video  3840×2160
 //   0:18 · 25 fps · ★★☆ · DP-1
 //   ocean, waves, aerial
-export function describeNotification({ monitor, media, rating, tags = [] }) {
+// With bold (the menu), the summary is markup too and the resolution and duration are in bold
+export function describeNotification({ monitor, media, rating, tags = [] }, { bold = false } = {}) {
+  const strong = text => (bold ? `<b>${escapeMarkup(text)}</b>` : escapeMarkup(text));
   const details = [];
-  if (media.kind !== 'image' && Number.isFinite(media.duration)) details.push(formatClock(media.duration));
-  if (media.kind !== 'image' && media.fps) details.push(`${Math.round(media.fps * 100) / 100} fps`);
-  details.push(ratingText(rating), monitor.name);
+  if (media.kind !== 'image' && Number.isFinite(media.duration)) details.push(strong(formatClock(media.duration)));
+  if (media.kind !== 'image' && media.fps) details.push(escapeMarkup(`${Math.round(media.fps * 100) / 100} fps`));
+  details.push(escapeMarkup(ratingText(rating)), escapeMarkup(monitor.name));
   const body = [details.join(' · ')];
-  if (tags.length) body.push(tags.join(', '));
+  if (tags.length) body.push(escapeMarkup(tags.join(', ')));
+  const resolution = formatResolution(media.width, media.height);
   return {
-    summary: `#${media.id}  ${media.kind}  ${formatResolution(media.width, media.height)}`,
-    body: escapeMarkup(body.join('\n'))
+    summary: bold ? `${escapeMarkup(`#${media.id}  ${media.kind}`)}  ${strong(resolution)}` : `#${media.id}  ${media.kind}  ${resolution}`,
+    body: body.join('\n')
   };
 }
 
