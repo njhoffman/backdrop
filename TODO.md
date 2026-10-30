@@ -38,6 +38,12 @@ Reviewed: 2026-10-30
       accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. Warn on
       unknown top-level and section keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries`
       does for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
+- [ ] **axios has known vulnerabilities.** (p2) [chore] `npm audit` (2026-10-30) reports high-severity advisories for
+      axios 1.0.0-1.19.0 (DoS, SSRF through NO_PROXY, prototype pollution), used by the Pexels adapter. Run `npm audit fix`,
+      or bump axios in `package.json`, and run the source tests.
+- [ ] **mpv integration test flaked once under load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
+      during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
+      replace them with polling on mpv properties.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped.
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
@@ -272,9 +278,9 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [x] **Run GLava from the daemon.** (p2) [feature] `visualizer` config section; `VisualizerManager` runs one instance
       per monitor after its wallpaper, restarts it (five times a minute, then gives up until reload), follows hotplug
       and stops with the daemon. Done in 2.20.0.
-- [x] **Keep GLava stacked above the wallpaper.** (p1) [bug] Done by start order instead of restacking: a GLava that maps
-      after the wallpaper lands directly above it, so the daemon restarts a monitor's visualizer after restarting its
-      wallpaper. `xdotool windowlower` was not an option (missing from xdotool 3.20160805).
+- [x] **Keep GLava stacked above the wallpaper.** (p1) [bug] 2.20.0 relied on start order after misreading the stack
+      (`xwininfo -children` lists top to bottom), which left GLava under the wallpaper. Done in 2.22.0: each instance is
+      restacked directly above its wallpaper over an X connection (`src/display/x11.js`) after every start of either.
 - [x] **Placement per monitor.** (p2) [feature] `placement` (anchor, width, height, margin) or `rect`, in pixels or
       percent, resolved per monitor and passed as `setgeometry`; per-monitor overrides under `monitors`. Done in 2.20.0.
 - [x] **Visualizer options from backdrop.** (p2) [feature] Module choice, typed bars options, raw `defines` and
@@ -282,10 +288,10 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [ ] **Typed options for the other modules.** (p3) [feature] graph, radial, circle and wave only take raw `defines`.
       Add typed, validated options for the ones in use (colors and size first), as `barsDefines` does in
       `src/visualizer/settings.js`.
-- [ ] **Stacking is checked by one measurement.** (p3) [test] The start-order rule rests on one observation on picom and
-      i3 (GLava mapped after xwinwrap lands right above it). An integration test on Xephyr or Xvfb (skipped without
-      them, glava or a GL context) should start the daemon with the visualizer and check the order of the root's
-      children, also after killing mpv.
+- [ ] **Stacking is only checked by hand.** (p3) [test] Unit tests use a fake X connection; placement was verified live
+      on picom and i3 on 2026-10-30. An integration test on Xephyr or Xvfb (skipped without them, glava or a GL
+      context) should start the daemon with the visualizer and check the order of the root's children, also after
+      killing mpv and after `stop/start --wallpaper`.
 - [ ] **Live colors over --pipe.** (p3) [feature] `glava --pipe=NAME` binds values read from stdin to `@NAME` in the
       shaders, so colors can change without a restart (the bars `COLOR` already uses `@fg:`). One use: tint the bars
       from the current wallpaper's dominant color on each load (from the menu thumbnail).

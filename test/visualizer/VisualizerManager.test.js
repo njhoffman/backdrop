@@ -1,18 +1,30 @@
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import { VisualizerManager } from '../../src/visualizer/VisualizerManager.js';
-import { FakeChild, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { FakeChild, FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 describe('VisualizerManager', () => {
-  let config, monitors, spawned, kills, prepared, logs, manager, time;
+  let config, monitors, screens, spawned, kills, prepared, logs, manager, time, windows, xcalls, above;
   const monitor = (name, x = 0) => ({ name, x, y: 0, width: 2560, height: 1440 });
 
   function makeManager(overrides = {}) {
     return new VisualizerManager({
       config, logger: { ...silentLogger, error: (message, meta) => logs.push(['error', message, meta]), warn: (message, meta) => logs.push(['warn', message, meta]) },
-      monitors,
+      monitors, screens,
+      exec: async (file, args) => {
+        if (file === 'xdotool' && windows.has(args[2])) return `${windows.get(args[2])}\n`;
+        throw new Error('exit 1');
+      },
+      // xwinwrap's window 0x1200001 holds mpv's 0x3600002
+      x11: async fn => fn({
+        setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
+        topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
+        stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
+        isAbove: async () => above.shift() ?? true
+      }),
+      windowAttempts: 2, windowDelay: 0, settleDelay: 0,
       spawn: (file, args, options) => {
         const child = new FakeChild(2000 + spawned.length);
         child.stderr = new EventEmitter();
@@ -28,6 +40,7 @@ describe('VisualizerManager', () => {
       create: (settings, { runtimeDir }) => ({
         settings, runtimeDir,
         prepare: async () => { prepared.push(settings.module); },
+        title: target => `backdrop-visualizer-${target.name}`,
         command: (target, geometry) => ({ file: 'glava', args: [target.name, `${geometry.width}x${geometry.height}+${geometry.x}+${geometry.y}`], env: {} })
       }),
       ...overrides
@@ -37,6 +50,10 @@ describe('VisualizerManager', () => {
   beforeEach(() => {
     config = makeConfig({ 'visualizer.enabled': true });
     monitors = new Map([['DP-3', monitor('DP-3')]]);
+    screens = new Map([['DP-3', { client: new FakeMpvClient({ 'window-id': 0x3600002 }) }]]);
+    windows = new Map([['^backdrop-visualizer-DP-3$', 0x3400002]]);
+    xcalls = [];
+    above = [];
     spawned = []; kills = []; prepared = []; logs = [];
     time = 0;
     manager = makeManager();
@@ -71,19 +88,34 @@ describe('VisualizerManager', () => {
     expect(manager.describe('HDMI-1')).to.be.null;
   });
 
-  it('starts an instance again after its wallpaper restarted, outside its restart budget', async () => {
+  it('gives each instance its opacity and stacks it directly above its wallpaper, checking again after it settles', async () => {
+    config.set('visualizer.opacity', 0.6);
+    above = [false];
     await manager.configure();
     await manager.sync();
-    time = 1000;
-    await manager.restart('DP-3');
-    expect(kills).to.deep.equal([[-2000, 'SIGTERM']]);
-    expect(spawned.map(item => item.args[0])).to.deep.equal(['DP-3', 'DP-3']);
-    expect(manager.entries.get('DP-3').restarts).to.deep.equal([]);
-    // Its own exit was expected, so it is not restarted a second time
-    await tick();
-    expect(spawned).to.have.length(2);
-    await manager.restart('HDMI-1');
-    expect(spawned).to.have.length(2);
+    expect(await manager.entries.get('DP-3').placed).to.be.true;
+    expect(xcalls).to.deep.equal([
+      ['opacity', 0x3400002, 0.6], ['topLevel', 0x3600002], ['stackAbove', 0x3400002, 0x1200001],
+      // GLava lowered itself after the first restack, so it is restacked once more
+      ['stackAbove', 0x3400002, 0x1200001]
+    ]);
+    xcalls = [];
+    expect(await manager.restack('DP-3')).to.be.true;
+    expect(xcalls.filter(call => call[0] === 'stackAbove')).to.have.length(1);
+    expect(await manager.restack('HDMI-1')).to.be.false;
+  });
+
+  it('leaves an instance at the bottom without a wallpaper, and warns when its window never shows', async () => {
+    screens.clear();
+    await manager.configure();
+    await manager.sync();
+    expect(await manager.entries.get('DP-3').placed).to.be.true;
+    expect(xcalls).to.deep.equal([['opacity', 0x3400002, 0.8]]);
+
+    windows.clear();
+    await manager.reload();
+    expect(await manager.entries.get('DP-3').placed).to.be.false;
+    expect(logs.map(log => log[1])).to.include('Visualizer window not found, cannot place it');
   });
 
   it('follows monitor changes: moves on a new geometry, stops on removal', async () => {
@@ -125,7 +157,7 @@ describe('VisualizerManager', () => {
     expect(manager.summary().generation).to.equal(2);
   });
 
-  it('switches on and off over visualizer.enabled, and restarts every instance over new wallpapers', async () => {
+  it('switches on and off over visualizer.enabled, and places every instance over new wallpapers', async () => {
     config.set('visualizer.enabled', false);
     await manager.configure();
     await manager.sync();
@@ -134,15 +166,17 @@ describe('VisualizerManager', () => {
     expect(prepared).to.deep.equal(['bars']);
     expect(spawned).to.have.length(1);
     expect(manager.summary().enabled).to.be.true;
-    await manager.restartAll();
-    expect(spawned).to.have.length(2);
+    xcalls = [];
+    await manager.restackAll();
+    expect(xcalls.some(call => call[0] === 'stackAbove')).to.be.true;
+    expect(spawned).to.have.length(1);
     await manager.setEnabled(false);
     expect(manager.entries.size).to.equal(0);
     expect(manager.summary().enabled).to.be.false;
     // The switch outlasts a reload of the section
     config.set('visualizer.enabled', true);
     await manager.reload();
-    expect(spawned).to.have.length(2);
+    expect(spawned).to.have.length(1);
   });
 
   it('stops every instance on shutdown without restarting them', async () => {

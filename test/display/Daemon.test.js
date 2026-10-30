@@ -743,10 +743,10 @@ describe('Daemon', () => {
         on: false,
         get active() { return this.override ?? this.on; },
         setEnabled: async on => { calls.push(['visualizer', on]); visualizers.override = on; },
-        restartAll: async () => { calls.push('restartAll'); },
+        restackAll: async () => { calls.push('restackAll'); },
         configure: async () => { calls.push('configure'); },
         sync: async () => { calls.push('sync'); },
-        restart: async name => { calls.push(['restart', name]); },
+        restack: name => { calls.push(['restack', name]); },
         reload: async () => { calls.push('reload'); },
         stop: async () => { calls.push('stop'); },
         describe: name => (name === 'HDMI-1' ? { module: 'bars', geometry: '1080x480+2560+1440' } : null),
@@ -785,7 +785,7 @@ describe('Daemon', () => {
       expect(await readState(tempDir)).to.be.null;
     });
 
-    it('switches the wallpaper and visualizer on and off on request, restarting the visualizer over new wallpapers', async () => {
+    it('switches the wallpaper and visualizer on and off on request, placing the visualizer over new wallpapers', async () => {
       const daemon = makeDaemon({ visualizers, ...exitOnKill });
       await daemon.start({ visualizer: true });
       expect(spawned).to.have.length(2);
@@ -802,7 +802,7 @@ describe('Daemon', () => {
 
       await control(daemon, { wallpaper: true });
       expect(spawned).to.have.length(4);
-      expect(calls.at(-1)).to.equal('restartAll');
+      expect(calls.at(-1)).to.equal('restackAll');
       state = await readState(tempDir);
       expect(state.monitors.every(monitor => monitor.socket)).to.be.true;
 
@@ -833,12 +833,12 @@ describe('Daemon', () => {
       expect(calls.at(-1)).to.equal('stop');
     });
 
-    it('follows monitor changes and starts it again over a restarted wallpaper', async () => {
+    it('follows monitor changes and places it again over a restarted wallpaper', async () => {
       const daemon = makeDaemon({ visualizers });
       await daemon.start();
       spawned[1].child.exit(1);
       await new Promise(resolve => setTimeout(resolve, 10));
-      expect(calls).to.deep.include(['restart', 'HDMI-1']);
+      expect(calls).to.deep.include(['restack', 'HDMI-1']);
       layout = 'Monitors: 1\n 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n';
       await daemon.checkMonitors();
       expect(calls.filter(call => call === 'sync')).to.have.length(2);

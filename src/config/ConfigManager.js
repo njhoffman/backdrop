@@ -94,6 +94,7 @@ export class ConfigManager {
         module: 'bars',
         audio: 'pulseaudio',
         source: 'auto',
+        opacity: 0.8,
         placement: { anchor: 'bottom', width: '100%', height: '25%', margin: 0 },
         bars: { width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: 'inward', flip: false },
         defines: {},

@@ -30,6 +30,11 @@ function text(key, value, expected) {
   return value.trim();
 }
 
+function fraction(key, value) {
+  if (typeof value !== 'number' || !(value >= 0 && value <= 1)) fail(key, 'a number from 0 to 1', value);
+  return value;
+}
+
 function boolean(key, value) {
   if (typeof value !== 'boolean') fail(key, 'true or false', value);
   return value;
@@ -143,6 +148,8 @@ export function visualizerSettings(section = {}) {
     module,
     audio: oneOf('audio', section.audio ?? 'pulseaudio', AUDIO_BACKENDS),
     source: text('source', section.source ?? 'auto', 'a device, sink or path, or auto'),
+    // The whole window's opacity over the wallpaper, set as _NET_WM_WINDOW_OPACITY for the compositor
+    opacity: fraction('opacity', section.opacity ?? 0.8),
     layout,
     monitors: monitors(section.monitors ?? 'all', layout),
     // Typed options first, so raw defines can override them

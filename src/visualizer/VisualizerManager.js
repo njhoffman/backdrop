@@ -1,3 +1,4 @@
+import { withX11 } from '../display/x11.js';
 import { createVisualizer } from './index.js';
 import { layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
@@ -5,6 +6,12 @@ const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
 // Lines of an instance's output kept for the log when it exits; GLava reports little else
 const OUTPUT_LINES = 20;
+// Polls for an instance's window and the wallpaper's after a start
+const WINDOW_ATTEMPTS = 50;
+const WINDOW_DELAY_MS = 100;
+// GLava lowers itself once its window maps, which can come after the window is found, so placement is
+// checked again after this long
+const SETTLE_MS = 500;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -13,21 +20,29 @@ export function formatGeometry({ x, y, width, height }) {
 }
 
 // One visualizer instance per monitor the visualizer section names, above that monitor's wallpaper.
-// Stacking relies on order: GLava stacks itself low when its window maps, which lands it directly above
-// a wallpaper window that already exists, so an instance always starts after its monitor's wallpaper.
-// The daemon calls configure() and sync() once the wallpapers run, sync() after monitor changes,
-// restart() after it restarts a crashed wallpaper (whose new window would cover the visualizer),
-// reload() on SIGHUP, setEnabled() for `backdrop start/stop --visualizer`, and stop() on shutdown.
-// monitors is the daemon's map of monitor name to monitor, kept whether or not wallpapers run. An instance that keeps exiting is given up on until the next
+// GLava stacks itself at the bottom when its window maps, below the wallpaper, so each instance is
+// placed once its window exists: given visualizer.opacity and stacked directly above its monitor's
+// wallpaper window, below every other window (place()). The daemon calls configure() and sync() once the
+// wallpapers run, sync() after monitor changes, restack() after it starts a wallpaper, reload() on SIGHUP,
+// setEnabled() for `backdrop start/stop --visualizer`, and stop() on shutdown. monitors is the daemon's
+// map of monitor name to monitor, kept whether or not wallpapers run; screens maps names to running
+// wallpapers ({ client }, mpv's IPC client). An instance that keeps exiting is given up on until the next
 // reload; a bad visualizer section leaves the visualizer off and the wallpaper running.
 export class VisualizerManager {
   constructor({
-    config, logger, monitors, spawn, kill,
-    restartDelay = 1000, stopGrace = 2000, now = Date.now, create = createVisualizer
+    config, logger, monitors, screens = new Map(), spawn, kill, exec, x11 = withX11,
+    restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
+    settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer
   }) {
     this.config = config;
     this.logger = logger;
     this.monitors = monitors;
+    this.screens = screens;
+    this.exec = exec;
+    this.x11 = x11;
+    this.windowAttempts = windowAttempts;
+    this.windowDelay = windowDelay;
+    this.settleDelay = settleDelay;
     this.spawn = spawn;
     this.kill = kill;
     this.restartDelay = restartDelay;
@@ -122,27 +137,79 @@ export class VisualizerManager {
     child.on('error', error => this.logger.error('Failed to launch visualizer', { monitor: monitor.name, file, error: error.message }));
     child.on('exit', (code, signal) => { entry.exited = this.handleExit(entry, code, signal); });
     this.logger.info('Visualizer started', { monitor: monitor.name, module: this.settings.module, geometry: formatGeometry(geometry) });
+    // In the background: the window takes a moment to appear
+    entry.placed = this.place(monitor.name);
     return entry;
   }
 
-  // Starts a monitor's instance again so it maps above a wallpaper that was just restarted. Not counted
-  // against its restart budget; one given up on stays off until reload.
-  async restart(name) {
+  // Sets the instance's opacity and stacks it directly above its monitor's wallpaper, then checks again
+  // once GLava has had time to lower itself. Without a running wallpaper it stays at the bottom, over
+  // the bare root window. Resolves to whether the instance ended up above the wallpaper (or none runs).
+  async place(name) {
     const entry = this.entries.get(name);
-    if (!entry || entry.failed || this.stopping) return;
-    this.entries.delete(name);
-    await this.stopEntry(entry);
-    if (this.stopping || this.entries.has(name)) return;
+    if (!entry || entry.failed) return false;
     try {
-      this.start(entry.monitor, entry.geometry, entry.restarts);
+      entry.window ??= await this.findWindow(this.adapter.title(entry.monitor), entry);
+      if (!entry.window) {
+        if (this.current(name, entry)) this.logger.warn('Visualizer window not found, cannot place it', { monitor: name });
+        return false;
+      }
+      return await this.x11(async x => {
+        await x.setOpacity(entry.window, this.settings.opacity);
+        const wallpaper = await this.wallpaperWindow(name, x);
+        if (!wallpaper) return true;
+        await x.stackAbove(entry.window, wallpaper);
+        await sleep(this.settleDelay);
+        if (!this.current(name, entry)) return false;
+        if (!await x.isAbove(entry.window, wallpaper)) await x.stackAbove(entry.window, wallpaper);
+        return true;
+      });
     } catch (error) {
-      this.logger.error('Failed to restart visualizer', { monitor: name, error: error.message });
+      if (this.current(name, entry)) this.logger.warn('Failed to place the visualizer above the wallpaper', { monitor: name, error: error.message });
+      return false;
     }
   }
 
-  // After wallpapers were started under running instances, so each maps above its wallpaper again
-  async restartAll() {
-    for (const name of [...this.entries.keys()]) await this.restart(name);
+  // After the daemon starts a wallpaper. xwinwrap lowers itself, which already leaves the instance above
+  // it; placing again keeps that true whatever order the two windows mapped in.
+  restack(name) {
+    if (!this.entries.has(name)) return Promise.resolve(false);
+    return this.place(name);
+  }
+
+  restackAll() {
+    return Promise.all([...this.entries.keys()].map(name => this.restack(name)));
+  }
+
+  // Whether entry is still the running instance for its monitor
+  current(name, entry) {
+    return !this.stopping && this.entries.get(name) === entry && entry.child.exitCode === null && entry.child.signalCode === null;
+  }
+
+  async findWindow(title, entry) {
+    const pattern = `^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    for (let attempt = 0; attempt < this.windowAttempts && this.current(entry.monitor.name, entry); attempt++) {
+      try {
+        const id = (await this.exec('xdotool', ['search', '--name', pattern])).trim().split('\n')[0];
+        if (id) return Number(id);
+      } catch {
+        // xdotool exits 1 until the window exists
+      }
+      await sleep(this.windowDelay);
+    }
+    return null;
+  }
+
+  // The wallpaper's top-level window on a monitor (xwinwrap's, holding mpv's), or null without a wallpaper
+  async wallpaperWindow(name, x) {
+    for (let attempt = 0; attempt < this.windowAttempts; attempt++) {
+      const client = this.screens.get(name)?.client;
+      if (!client) return null;
+      const id = await client.getProperty('window-id').catch(() => null);
+      if (id) return x.topLevel(id);
+      await sleep(this.windowDelay);
+    }
+    return null;
   }
 
   async handleExit(entry, code, signal) {

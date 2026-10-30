@@ -8,7 +8,7 @@ describe('visualizer settings', () => {
 
   it('accepts the default section, disabled, with the bars options as GLava defines', () => {
     const settings = visualizerSettings(makeConfig().get().visualizer);
-    expect(settings).to.include({ enabled: false, engine: 'glava', module: 'bars', audio: 'pulseaudio', source: 'auto' });
+    expect(settings).to.include({ enabled: false, engine: 'glava', module: 'bars', audio: 'pulseaudio', source: 'auto', opacity: 0.8 });
     expect(settings.defines).to.deep.equal({
       BAR_WIDTH: 20, BAR_GAP: 1, BAR_OUTLINE_WIDTH: 0, AMPLIFY: 200, GRADIENT: 80,
       COLOR: '@fg:mix(#000000, #33aacc, clamp(d / GRADIENT, 0, 1))', DIRECTION: 0, FLIP: 0, USE_ALPHA: 1
@@ -27,6 +27,8 @@ describe('visualizer settings', () => {
     const fails = (section, message) => expect(() => visualizerSettings(section)).to.throw(message);
     fails({ module: 'spiral' }, 'visualizer.module must be bars, graph, radial, circle, wave, not "spiral"');
     fails({ enabled: 'yes' }, 'visualizer.enabled must be true or false');
+    fails({ opacity: 1.5 }, 'visualizer.opacity must be a number from 0 to 1');
+    fails({ opacity: '80%' }, 'visualizer.opacity must be a number from 0 to 1');
     fails({ bars: { width: 0 } }, 'visualizer.bars.width must be an integer from 1');
     fails({ bars: { colors: ['#000', '#fff'] } }, 'visualizer.bars.colors[0] must be a color');
     fails({ bars: { colors: [] } }, 'visualizer.bars.colors must be one color, or two');

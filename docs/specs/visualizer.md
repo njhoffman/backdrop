@@ -41,19 +41,33 @@ Typed options exist only for the bars module; `defines` covers the rest, applied
 
 ## Stacking
 
-xwinwrap and GLava are both unmanaged and stack themselves low when they map. A GLava window that maps after
-the wallpaper's lands directly above it (measured on 2026-10-30: xwinwrap at position 65 of the root's
-children, GLava at 66). Backdrop relies on that order instead of restacking windows:
+xwinwrap and GLava are both unmanaged and lower themselves to the bottom of the stack when they map, so the
+one mapped last ends up lowest. GLava, started after the wallpaper, lands under it: with picom drawing the
+wallpaper at 95% opacity, the bars showed only as a faint ghost (2.20.0 and 2.21.0, which relied on start
+order after misreading `xwininfo -children`: it lists the root's children top to bottom).
 
-- instances start after their monitor's wallpaper, at daemon start and after monitor changes;
-- when the daemon restarts a crashed or unresponsive wallpaper, it restarts that monitor's instance too
-  (`VisualizerManager.restart`), so the instance maps last again.
+Since 2.22.0 backdrop places each instance itself (`VisualizerManager.place`), over its own X connection
+(`src/display/x11.js`, the `x11` npm package):
 
-Restacking with `xdotool windowlower` was rejected because xdotool 3.20160805 (still shipped by some
-distributions) has no such command. Raising GLava instead would put it above every window.
+- find the instance's window by its title (`xdotool search --name`);
+- set `_NET_WM_WINDOW_OPACITY` from `visualizer.opacity`;
+- find the wallpaper's top-level window: mpv's `window-id`, up through `QueryTree` to the child of the root
+  (xwinwrap's window);
+- `ConfigureWindow` with that window as sibling and stack mode Above: the instance sits directly above its
+  wallpaper and below everything else; then check again after 500ms, since GLava lowers itself once its
+  window maps, which can come after the window is found.
+
+Placement runs after every instance start and after every wallpaper start. Without a running wallpaper the
+instance stays at the bottom, over the bare root window. Rejected: `xdotool windowlower` (missing from
+xdotool 3.20160805), raising GLava (it would cover every window), python-xlib (a Python dependency).
 
 Wallpaper changes (next, playlist advances, mode switches, speed and dim) reuse the running mpv, so they never
-restart the visualizer.
+touch the visualizer.
+
+## Opacity
+
+`visualizer.opacity` (0 to 1, default 0.8) is the whole window's opacity, which compositors such as picom
+apply. The alpha of the bar colors (`'#33aacc80'`) blends the bars themselves on top of that.
 
 ## Lifecycle
 

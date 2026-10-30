@@ -236,6 +236,9 @@ visualizer:
   bars: {width: 20, gap: 1, amplify: 200, colors: ['#000000', '#33aacc']}
 ```
 
+`opacity` (0 to 1, default 0.8) sets how much of the wallpaper shows through the whole visualizer; an alpha
+in the bar colors, e.g. `'#33aacc80'`, blends the bars on top of that.
+
 Placement is relative to each monitor (`anchor` bottom, top, left, right, center or fill; sizes in pixels
 or percent; `margin`), or a `rect`. `monitors` picks where it runs and can give a monitor its own placement.
 Options other than the bars ones go in `defines` (GLava `#define`s of the module) and `requests`. Backdrop

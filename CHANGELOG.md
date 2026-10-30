@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-10-30
+
+### Added
+- `visualizer.opacity` (0 to 1, default 0.8): how much of the wallpaper shows through the visualizer.
+
+### Fixed
+- The visualizer sat under the wallpaper, so it showed only as a faint ghost through it (and clearly only
+  with the wallpaper off). Backdrop now stacks each visualizer window directly above its monitor's
+  wallpaper, and still below every other window, whenever either one starts.
+
 ## [2.21.0] - 2026-10-30
 
 ### Added

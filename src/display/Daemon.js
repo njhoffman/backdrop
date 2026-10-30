@@ -137,7 +137,7 @@ export class Daemon {
     this.controlGeneration = 0;
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
-      config, logger, monitors: this.monitors, spawn, kill, restartDelay, stopGrace, now
+      config, logger, monitors: this.monitors, screens: this.screens, spawn, kill, exec, restartDelay, stopGrace, now
     });
     this.reloadConfig = reloadConfig;
     this.stopping = false;
@@ -282,8 +282,8 @@ export class Daemon {
     }
   }
 
-  // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. New wallpaper windows
-  // map above running visualizers, so those start again on top.
+  // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. Running visualizers are
+  // placed above the new wallpaper windows.
   async setWallpaper(on) {
     if (on === this.wallpaper || this.stopping) return;
     this.wallpaper = on;
@@ -291,7 +291,7 @@ export class Daemon {
       for (const monitor of [...this.monitors.values()]) {
         if (!this.screens.has(monitor.name)) await this.startWallpaper(monitor);
       }
-      await this.visualizers.restartAll();
+      await this.visualizers.restackAll();
     } else {
       const screens = [...this.screens.values()];
       this.screens.clear();
@@ -636,8 +636,8 @@ export class Daemon {
     }
     try {
       await this.startScreen(screen.monitor);
-      // The new wallpaper window maps above the visualizer, so that is started again on top
-      await this.visualizers.restart(screen.monitor.name);
+      // Keeps the visualizer above the new wallpaper window
+      this.visualizers.restack(screen.monitor.name);
       await this.writeState();
     } catch (error) {
       this.logger.error('Failed to restart monitor', { monitor: screen.monitor.name, error: error.message });

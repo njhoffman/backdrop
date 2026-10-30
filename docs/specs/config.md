@@ -43,6 +43,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   module: bars             # bars, graph, radial, circle, wave
   audio: pulseaudio        # pulseaudio or fifo
   source: auto             # GLava setsource: a sink or device, or the fifo path
+  opacity: 0.8             # window opacity (_NET_WM_WINDOW_OPACITY), 0 to 1
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # sizes in pixels or % of the monitor
   rect: null               # {x, y, width, height} relative to the monitor; overrides placement
   bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
