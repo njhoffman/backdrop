@@ -14,7 +14,7 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'engine', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace'];
+const SHARED_KEYS = ['enabled', 'engine', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
 const INSTANCE_KEYS = ['name', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
@@ -342,6 +342,8 @@ function normalize(raw, prefix) {
     // Run only while the audio source plays, stopping silenceGrace seconds after it goes quiet
     onlyWhilePlaying: boolean(`${prefix}only_while_playing`, raw.only_while_playing ?? false),
     silenceGrace: number(`${prefix}silence_grace`, raw.silence_grace ?? 10, { min: 0 }),
+    // Dims the wallpaper at least this far (0-100, like `backdrop dim`) while the audio source plays
+    wallpaperDim: integer(`${prefix}wallpaper_dim`, raw.wallpaper_dim ?? 0, { max: 100 }),
     glava: {
       shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
       args: stringList(`${prefix}glava.args`, glava.args ?? [])
@@ -349,6 +351,9 @@ function normalize(raw, prefix) {
   };
   if (settings.onlyWhilePlaying && settings.audio !== 'pulseaudio') {
     fail(`${prefix}only_while_playing`, 'false with audio: fifo (only PulseAudio or PipeWire output can be watched)', true);
+  }
+  if (settings.wallpaperDim && settings.audio !== 'pulseaudio') {
+    fail(`${prefix}wallpaper_dim`, '0 with audio: fifo (only PulseAudio or PipeWire output can be watched)', settings.wallpaperDim);
   }
 
   const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
@@ -437,8 +442,8 @@ export function lookAsPreset(section = {}, { preset, live } = {}) {
 // The visualizer section normalized, with its active preset laid over it: preset (`backdrop visualizer
 // preset`) when given, else visualizer.preset, then the visualizer menu's changes (live). Every preset is
 // checked, so a mistake in one shows before it is used. Returns { enabled, engine, audio, source,
-// onlyWhilePlaying, silenceGrace, glava, instances: [{ name, module, opacity, layout, monitors, palette, pipe,
-// defines, requests }], preset, presets }.
+// onlyWhilePlaying, silenceGrace, wallpaperDim, glava, instances: [{ name, module, opacity, layout, monitors,
+// palette, pipe, defines, requests }], preset, presets }.
 export function visualizerSettings(section = {}, { preset, live } = {}) {
   if (!isObject(section)) fail('', 'a mapping', section);
   const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));

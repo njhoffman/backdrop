@@ -177,7 +177,8 @@ export class DisplayControl {
     return { monitor, media, speed };
   }
 
-  // Dims the playing item now and stores it for future plays; images and videos alike
+  // Dims the playing item now and stores it for future plays; images and videos alike. While music plays with
+  // visualizer.wallpaper_dim the wallpaper shows the stronger of the two (shown), as the daemon does.
   async dim(spec, monitorName) {
     const { monitor, media } = await this.current(monitorName);
     if (!media) {
@@ -186,8 +187,10 @@ export class DisplayControl {
 
     const dim = parseDim(spec, media.dim);
     this.database.setDim(media.id, dim);
-    await this.withClient(monitor, client => client.setProperty('brightness', brightnessFor(dim)));
-    return { monitor, media, dim };
+    const musicDim = (await this.state({ required: false }))?.visualizer?.musicDim ?? 0;
+    const shown = Math.max(dim, musicDim);
+    await this.withClient(monitor, client => client.setProperty('brightness', brightnessFor(shown)));
+    return { monitor, media, dim, shown };
   }
 
   // Appends media to every running monitor's playlist; returns { [monitor]: count }, empty when not running

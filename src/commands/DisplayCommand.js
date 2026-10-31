@@ -315,8 +315,8 @@ export class DisplayCommand {
   }
 
   async dim(value, options) {
-    const { monitor, dim } = await this.control.dim(value, options.monitor);
-    out.print(`${monitor.name}: dim ${fmt.cyan(dim)}`);
+    const { monitor, dim, shown = dim } = await this.control.dim(value, options.monitor);
+    out.print(`${monitor.name}: dim ${fmt.cyan(dim)}${shown > dim ? fmt.dim(` (${shown} while music plays)`) : ''}`);
   }
 
   // With the daemon running, the reload also shows what the target monitor now plays

@@ -67,6 +67,8 @@ describe('visualizer settings', () => {
     fails({ visualisation: true }, 'visualizer.visualisation must be one of the visualizer settings');
     fails({ silence_grace: -1 }, 'visualizer.silence_grace must be a number from 0');
     fails({ only_while_playing: true, audio: 'fifo' }, 'visualizer.only_while_playing must be false with audio: fifo');
+    fails({ wallpaper_dim: 101 }, 'visualizer.wallpaper_dim must be an integer from 0 to 100');
+    fails({ wallpaper_dim: 20, audio: 'fifo' }, 'visualizer.wallpaper_dim must be 0 with audio: fifo');
   });
 
   it('builds each instance from the shared settings and its own, in list order', () => {

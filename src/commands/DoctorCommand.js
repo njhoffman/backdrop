@@ -25,7 +25,7 @@ const TOOLS = [
   { name: 'rofi', need: 'backdrop menu', wanted: () => true },
   { name: 'glava', need: 'the visualizer', wanted: config => Boolean(config.visualizer?.enabled) },
   { name: 'notify-send', need: 'desktop notifications', wanted: config => config.display?.notify !== 'off' },
-  { name: 'pactl', need: 'visualizer.only_while_playing', wanted: config => Boolean(config.visualizer?.only_while_playing) },
+  { name: 'pactl', need: 'visualizer.only_while_playing or wallpaper_dim', wanted: config => Boolean(config.visualizer?.only_while_playing || config.visualizer?.wallpaper_dim) },
   { name: 'i3-msg', need: 'menu.workspace', wanted: config => config.menu?.workspace !== false }
 ];
 

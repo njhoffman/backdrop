@@ -277,6 +277,19 @@ describe('DisplayControl', () => {
         expect(db.getMedia(image).dim).to.equal(0);
       });
 
+      it('keeps the music dim while it is stronger, storing the item\'s own', async () => {
+        const image = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png' });
+        clientFor('DP-1').properties.path = '/m/i.png';
+        const state = await fs.readJson(statePath(tempDir));
+        await fs.writeJson(statePath(tempDir), { ...state, visualizer: { musicDim: 30 } });
+
+        expect(await control.dim('10')).to.include({ dim: 10, shown: 30 });
+        expect(db.getMedia(image).dim).to.equal(10);
+        expect(clientFor('DP-1').properties.brightness).to.equal(-30);
+        expect(await control.dim('45')).to.include({ dim: 45, shown: 45 });
+        expect(clientFor('DP-1').properties.brightness).to.equal(-45);
+      });
+
       it('refuses idle monitors', async () => {
         let message;
         try { await control.dim('10'); } catch (error) { message = error.message; }

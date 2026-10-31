@@ -211,8 +211,8 @@ function startXvfb() {
         }
       });
       await command.open({ page: 'visualizer' });
-      // Visualizer keys: e p m o a l c r s, then q, from 10
-      expect(runs.map(run => run.code)).to.deep.equal([16, 0, 1, 13, 1, 1]);
+      // Visualizer keys: e w p m o a l c r s, then q, from 10
+      expect(runs.map(run => run.code)).to.deep.equal([17, 0, 1, 14, 1, 1]);
       expect(sent).to.deep.equal([{ visualizer_set: { instance: 'main', changes: { palette: { source: 'config' } } } }]);
       cleanStderr();
     } finally {

@@ -25,6 +25,17 @@ export function formatGeometry({ x, y, width, height }) {
 
 const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}`;
 
+// What GLava reads when it starts, so a change to it needs a restart. Left out: each instance's opacity (a
+// window property), how colors are picked from the wallpaper (palette.pick and min_contrast, sent over the
+// pipe) and wallpaper_dim, which running instances take as they are, and the preset names.
+function startSettings(settings) {
+  const { preset, presets, instances, wallpaperDim, ...shared } = settings;
+  return JSON.stringify({
+    ...shared,
+    instances: instances.map(({ opacity, palette, ...rest }) => ({ ...rest, palette: { source: palette.source } }))
+  });
+}
+
 // The visualizer section's instances on each monitor they name, above that monitor's wallpaper. GLava stacks
 // itself at the bottom when its window maps, below the wallpaper, so a monitor's instances are placed once
 // their windows exist: each given its opacity and stacked above the wallpaper in the section's order, the
@@ -33,7 +44,8 @@ const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}
 // config changes, setEnabled() for `backdrop start/stop --visualizer`, setPreset() for `backdrop visualizer
 // preset`, and stop() on shutdown. monitors is the daemon's map of monitor name to monitor, kept whether or not
 // wallpapers run; screens maps names to running wallpapers ({ client }, mpv's IPC client). With
-// visualizer.only_while_playing an AudioWatcher stops the instances while the audio source is silent. An
+// visualizer.only_while_playing an AudioWatcher stops the instances while the audio source is silent; with
+// visualizer.wallpaper_dim it tells the daemon (onMusicDim) how far to dim the wallpaper while it plays. An
 // instance that keeps exiting is given up on until the next reload; a bad visualizer section leaves the
 // visualizer off and the wallpaper running.
 export class VisualizerManager {
@@ -42,12 +54,14 @@ export class VisualizerManager {
     audioWatcher = options => new AudioWatcher(options),
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
-    colorsFor = () => null, pipeGap = PIPE_GAP_MS
+    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim
     });
+    // The music dim last reported to onMusicDim
+    this.reportedDim = 0;
     this.entries = new Map();
     this.adapters = new Map();
     this.settings = null;
@@ -73,8 +87,7 @@ export class VisualizerManager {
   async configure() {
     this.generation++;
     try {
-      const options = { live: this.live, ...(this.presetOverride === undefined ? {} : { preset: this.presetOverride }) };
-      const settings = visualizerSettings(this.config.get().visualizer, options);
+      const settings = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
       const runtimeDir = this.config.get().paths.runtime;
       const adapters = new Map(settings.instances.map(instance => [instance.name, this.create(settings, instance, { runtimeDir })]));
       const prepared = this.override ?? settings.enabled;
@@ -102,6 +115,26 @@ export class VisualizerManager {
     return Boolean(this.settings?.onlyWhilePlaying) && this.audio.playing === false;
   }
 
+  // How far to dim the wallpaper (0-100) while the visualizer is on and its audio source plays, else 0
+  get musicDim() {
+    const dim = this.settings?.wallpaperDim ?? 0;
+    return dim && this.active && !this.stopping && this.audio.playing === true ? dim : 0;
+  }
+
+  // Tells the daemon when musicDim changed
+  noteMusicDim() {
+    const dim = this.musicDim;
+    if (dim === this.reportedDim) return;
+    this.reportedDim = dim;
+    this.logger.info(dim ? 'Music playing, wallpaper dimmed' : 'Wallpaper dim restored', { dim });
+    const failed = error => this.logger.error('Failed to dim the wallpaper for music', { error: error.message });
+    try {
+      Promise.resolve(this.onMusicDim(dim)).catch(failed);
+    } catch (error) {
+      failed(error);
+    }
+  }
+
   // Root-window geometry for an instance on a monitor, or null when it does not run there now
   wanted(instance, monitor) {
     if (!this.active || this.silenced) return null;
@@ -125,12 +158,68 @@ export class VisualizerManager {
   // Lays the visualizer menu's changes for one instance over the others it made ({ instance, changes }), or
   // drops them all (null). A change that does not check out is refused and leaves the visualizer as it was.
   // reload: false only records the change, for a caller that reloads next (a preset switch)
+  // Opacity and the wallpaper color pick apply to the running instances; any other change restarts them.
   async setLive(change, { reload = true } = {}) {
     const live = change ? { ...this.live, [change.instance]: deepMerge(this.live[change.instance] ?? {}, change.changes) } : {};
-    const options = { live, ...(this.presetOverride === undefined ? {} : { preset: this.presetOverride }) };
-    visualizerSettings(this.config.get().visualizer, options);
+    const next = visualizerSettings(this.config.get().visualizer, this.settingsOptions(live));
     this.live = live;
-    if (reload) await this.reload();
+    if (!reload) return;
+    if (this.runsWith(next)) await this.takeLive(next);
+    else await this.reload();
+  }
+
+  // The options for visualizerSettings: the menu's changes and a preset switched from the command line
+  settingsOptions(live = this.live) {
+    return { live, ...(this.presetOverride === undefined ? {} : { preset: this.presetOverride }) };
+  }
+
+  // Whether the running instances can take these settings without a restart
+  runsWith(next) {
+    return this.prepared && this.enabled && Boolean(this.settings) && startSettings(this.settings) === startSettings(next);
+  }
+
+  // Takes settings that differ only in what applies live: each running instance gets its new opacity and its
+  // colors picked again
+  async takeLive(next) {
+    this.settings = next;
+    const changed = new Set();
+    for (const entry of this.entries.values()) {
+      const instance = next.instances.find(item => item.name === entry.instance.name);
+      if (!instance) continue;
+      if (instance.opacity !== entry.instance.opacity) changed.add(entry);
+      entry.instance = instance;
+      entry.adapter.instance = instance;
+    }
+    const withWindow = [...changed].filter(entry => entry.window);
+    if (withWindow.length) {
+      try {
+        await this.x11(async x => {
+          for (const entry of withWindow) await x.setOpacity(entry.window, entry.instance.opacity);
+        });
+      } catch (error) {
+        this.logger.warn('Failed to set visualizer opacity', { error: error.message });
+      }
+    }
+    await Promise.all([...this.monitors.keys()].map(name => this.recolor(name)));
+    // wallpaper_dim may have turned the audio watch on or off, or changed the dim
+    await this.watchAudio();
+  }
+
+  // After a saved change to the config file: takes it like a menu change when the running instances can,
+  // else reloads
+  async refresh() {
+    let next = null;
+    try {
+      next = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
+    } catch {
+      // The reload reports it and turns the visualizer off
+    }
+    if (next && this.runsWith(next)) {
+      this.generation++;
+      await this.takeLive(next);
+      return;
+    }
+    await this.reload();
   }
 
   // Lays a preset over the section until the daemon exits (null: none, whatever visualizer.preset says)
@@ -139,27 +228,36 @@ export class VisualizerManager {
     await this.reload();
   }
 
-  // Watches the audio source while only_while_playing applies, and stops watching otherwise
+  // Watches the audio source while only_while_playing or wallpaper_dim applies, and stops watching otherwise
   async watchAudio() {
-    const wanted = Boolean(this.settings?.onlyWhilePlaying) && this.active && !this.stopping;
+    const wanted = Boolean(this.settings?.onlyWhilePlaying || this.settings?.wallpaperDim) && this.active && !this.stopping;
     const { source, silenceGrace } = this.settings ?? {};
     const current = this.audio.watcher;
-    if (current && wanted && current.source === source && current.grace === silenceGrace * 1000) return;
+    if (current && wanted && current.source === source && current.grace === silenceGrace * 1000) {
+      this.noteMusicDim();
+      return;
+    }
     current?.stop();
     this.audio = { watcher: null, playing: null };
-    if (!wanted) return;
+    if (!wanted) {
+      this.noteMusicDim();
+      return;
+    }
     const watcher = this.audioWatcher({
       source, grace: silenceGrace * 1000, spawn: this.spawn, exec: this.exec, logger: this.logger,
       onChange: playing => this.onAudio(watcher, playing)
     });
     this.audio.watcher = watcher;
     this.audio.playing = await watcher.start();
-    if (this.audio.playing === false) this.logger.info('Audio is silent, visualizer waits for it');
+    if (this.audio.playing === false && this.settings?.onlyWhilePlaying) this.logger.info('Audio is silent, visualizer waits for it');
+    this.noteMusicDim();
   }
 
   async onAudio(watcher, playing) {
     if (this.audio.watcher !== watcher || this.stopping) return;
     this.audio.playing = playing;
+    this.noteMusicDim();
+    if (!this.settings?.onlyWhilePlaying) return;
     this.logger.info(playing ? 'Audio playing, visualizer starts' : 'Audio silent, visualizer stops');
     try {
       await this.sync();
@@ -424,6 +522,7 @@ export class VisualizerManager {
   async stop() {
     this.stopping = true;
     this.audio.watcher?.stop();
+    this.noteMusicDim();
     await this.stopAll();
   }
 
@@ -450,6 +549,8 @@ export class VisualizerManager {
       instances: (this.settings?.instances ?? []).map(instance => instance.name),
       silenced: this.silenced,
       compositor: this.compositor,
+      // How far the wallpaper is dimmed for music now (visualizer.wallpaper_dim), for `backdrop dim`
+      musicDim: this.musicDim,
       // The visualizer menu's changes, by instance
       live: this.live
     };

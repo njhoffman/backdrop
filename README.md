@@ -16,7 +16,7 @@ them through mpv with one IPC socket per monitor.
 - Per-video playback speed and per-item dimming, remembered for future plays
 - Monitors attached, removed or resized while running are picked up automatically
 - Automatic import of local wallpapers as approved items (`local-1.jpg`, `local-2.mp4`, ...)
-- Screensaver after a period of inactivity, from rated videos or stream links such as YouTube
+- Planned: a screensaver after a period of inactivity, from rated videos or stream links such as YouTube
 - A music visualizer (GLava) above the wallpaper on each monitor, placed and styled from the config, with
   several at once, presets, and an option to run only while music plays
 
@@ -25,7 +25,9 @@ them through mpv with one IPC socket per monitor.
 - Node.js 22.13 or later (uses the built-in `node:sqlite`)
 - X11 with `xwinwrap`, `mpv`, `xrandr` and `xdotool`; `ffprobe` for media dimensions; `yt-dlp` for stream links
 - A Pexels API key for Pexels search
-- For the visualizer: `glava` and a compositor such as picom
+- For the visualizer: `glava` and a compositor such as picom; `pactl` for `only_while_playing`
+
+`backdrop doctor` checks all of these and names the feature each optional tool is for.
 
 ## Install
 
@@ -76,7 +78,7 @@ backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line p
 backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
 backdrop menu               # rofi panel for the item under the pointer, with keys: n 1 2 3 v / p s u m d, q quits
 backdrop menu --tag ocean   # sets the filter like next does (also --query, --no-random)
-backdrop menu visualizer    # the visualizer menu (also z in the menu): module, opacity, colors, presets, save
+backdrop menu visualizer    # the visualizer menu (also z in the menu): module, opacity, colors, presets, save, wallpaper on/off
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id

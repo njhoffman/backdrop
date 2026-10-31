@@ -9,6 +9,8 @@ one mpv wallpaper per monitor, ratings, and Pexels search and download.
 - Node.js 22.13 or later
 - `mpv`, `xwinwrap`, `xrandr` and `xdotool` for playback
 - `ffprobe` (from ffmpeg) for import and download; `ffmpeg` itself is only needed by the test suite
+- Optional, for the music visualizer: `glava`, a compositor (picom or similar), and `pactl` for
+  `only_while_playing`
 
 To check them all at once:
 
@@ -18,6 +20,9 @@ for tool in mpv xwinwrap xrandr xdotool ffprobe ffmpeg; do
   command -v "$tool" >/dev/null || echo "missing: $tool"
 done
 ```
+
+Once backdrop is installed (step 1), `backdrop doctor` checks these and the optional tools, with the feature
+each one is for.
 
 ## 1. Make the command available
 
@@ -199,7 +204,8 @@ bindsym $mod+Shift+b exec --no-startup-id backdrop menu --no-random --tag ocean
 | `v` | speed (velocity) steps | `u` | undo |
 | `m` | switch video/image mode | `d` | dim steps |
 
-`z` opens the visualizer menu (also `backdrop menu visualizer` on its own): on/off (`e`), preset (`p`),
+`z` opens the visualizer menu (also `backdrop menu visualizer` on its own): on/off (`e`), the wallpaper
+under it on/off (`w`, for music with a bare desktop; it stays on while the visualizer is off), preset (`p`),
 module (`m`), opacity (`o`), amplify (`a`), position (`l`), colors (`c`: fixed, from the wallpaper by
 vivid/dominant/complement, or a swatch), reset (`r`) and save as preset (`s`). Changes apply at once and last
 until the daemon restarts; save writes the current look into `visualizer.presets` in your config, leaving the
@@ -251,7 +257,10 @@ list order is the stacking order. Presets are named looks under `presets` that c
 including the instances. Four ship with backdrop (`subtle`, `ring`, `wave`, `party`); `backdrop visualizer
 preset` lists them, `backdrop visualizer preset party` switches until the daemon restarts, `--next` cycles
 and `--clear` goes back to `visualizer.preset`. With `only_while_playing: true` the visualizer stops after
-`silence_grace` seconds without sound from the output it listens to, and starts again when sound returns.
+`silence_grace` seconds without sound from the output it listens to, and starts again when sound returns
+(it follows the output with `pactl subscribe`, so it needs `pactl`). `wallpaper_dim: 30` dims the wallpaper
+while music plays (to at least 30, like `backdrop dim 30`) so the bars stand out, and restores each item's own dim
+once the music stops; it works with or without `only_while_playing`.
 
 `opacity` (0 to 1, default 0.8) sets how much of the wallpaper shows through the whole visualizer; an alpha
 in the bar colors, e.g. `'#33aacc80'`, blends the bars on top of that.

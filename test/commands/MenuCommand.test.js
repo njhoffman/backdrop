@@ -392,7 +392,7 @@ describe('MenuCommand', () => {
       const menu = shown[1];
       expect(menu.prompt).to.equal('visualizer');
       expect(menu.entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
-        ['on', 'preset', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'reset', 'save']);
+        ['on', 'wallpaper', 'preset', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'reset', 'save']);
       expect(menu.entries.find(entry => entry.label === 'reset').disabled).to.equal(true);
       expect(menu.status).to.deep.equal(['preset  <b>none</b>', 'colors  <b>#33aacc</b>']);
       expect(shown[2].prompt).to.equal('backdrop');
@@ -445,6 +445,29 @@ describe('MenuCommand', () => {
       picks = ['turn off', 'turn on', 'preset ▸', 'ring', 'preset ▸', 'none', null];
       await open().open({ page: 'visualizer' });
       expect(requests).to.deep.equal([{ visualizer: false }, { visualizer: true }, { preset: 'ring' }, { preset: null }]);
+    });
+
+    it('turns the wallpaper off and on, but not off while the visualizer is off', async () => {
+      const sendWallpaper = async (runtimeDir, state, change) => {
+        requests.push(change);
+        if (typeof change.wallpaper === 'boolean') wallpaperOn = change.wallpaper;
+        return { monitors, visualizer: vis, wallpaper: wallpaperOn };
+      };
+      let wallpaperOn = true;
+      display.control.state = sinon.stub().callsFake(async () => ({ monitors, visualizer: vis, wallpaper: wallpaperOn }));
+      picks = ['wallpaper off', 'wallpaper on', null];
+      await open({ control: sendWallpaper }).open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([{ wallpaper: false }, { wallpaper: true }]);
+      const captions = shown.map(menu => menu.entries.find(entry => entry.key === 'w').caption);
+      expect(captions).to.deep.equal(['wallpaper', 'no wallpaper', 'wallpaper']);
+
+      vis.enabled = false;
+      shown.length = 0;
+      requests.length = 0;
+      picks = ['wallpaper off', null];
+      await open({ control: sendWallpaper }).open({ page: 'visualizer' });
+      expect(shown[0].entries.find(entry => entry.key === 'w').disabled).to.equal(true);
+      expect(requests).to.deep.equal([]);
     });
 
     it('saves the look as a preset in the file, keeping its comments, and switches to it', async () => {

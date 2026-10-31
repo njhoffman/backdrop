@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.38.0] - 2026-10-31
+
+### Added
+- `visualizer.wallpaper_dim` (0-100, default 0: off) dims the wallpaper while the visualizer is on and music plays,
+  so the bars stand out without changing their colors. Each item shows the stronger of its own dim and this one, and
+  gets its own back `silence_grace` seconds after the music stops or when the visualizer turns off. It works with
+  or without `only_while_playing` and needs `pactl`. A saved change applies without restarting the visualizer.
+  `backdrop dim` still stores the item's dim, and says when the music dim shows instead.
+
+### Fixed
+- Visualizer colors taken from the wallpaper keep their contrast after `backdrop dim` changes the playing item's
+  dim. Before, they were checked against the dim the item had when it loaded until the next item.
+
+## [2.37.0] - 2026-10-31
+
+### Changed
+- Changing the visualizer's opacity, or how colors are picked from the wallpaper (`palette.pick`, `min_contrast`),
+  no longer restarts GLava, so the visualizer stays on screen instead of going blank for about a second. This applies
+  to the visualizer menu and to a saved change to the config file. Other changes (module, amplify, position, fixed
+  colors) still restart it, since GLava reads them when it starts.
+
+## [2.36.0] - 2026-10-31
+
+### Added
+- The visualizer menu has a wallpaper button (`w`) that turns the wallpaper off and on, like
+  `backdrop stop/start --wallpaper`, so music can play over a bare desktop without leaving the menu. It cannot turn
+  the wallpaper off while the visualizer is off, since that would stop the daemon.
+
+## [2.35.1] - 2026-10-31
+
+### Changed
+- Docs: README no longer lists the screensaver as a feature (it is planned), README and GETTING_STARTED list `pactl`
+  for `only_while_playing` and point to `backdrop doctor` for checking every tool, and the design spec links the
+  visualizer and JSON specs.
+
 ## [2.35.0] - 2026-10-31
 
 ### Added

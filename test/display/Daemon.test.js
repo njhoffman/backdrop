@@ -990,6 +990,7 @@ describe('Daemon', () => {
         override: null, active: true, error: null,
         configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {},
         reload: async () => { calls.push('reload'); },
+        refresh: async () => { calls.push('refresh'); },
         describe: () => [], summary: () => ({ enabled: true, error: visualizers.error, generation: 1 })
       };
       config.configPath = path.join(tempDir, 'config', 'config.yaml');
@@ -1013,21 +1014,21 @@ describe('Daemon', () => {
       expect(daemon.importWatcher.watching).to.deep.equal([]);
     });
 
-    it('watches the config directory and reloads the visualizer when its section changed', async () => {
+    it('watches the config directory and refreshes the visualizer when its section changed', async () => {
       expect(watched.dir).to.equal(path.join(tempDir, 'config'));
       sections.push({ ...config.get().visualizer, opacity: 0.5 });
-      // Several events from one save become one reload; other files in the directory are ignored
+      // Several events from one save become one refresh; other files in the directory are ignored
       watched.listener('change', 'config.yaml');
       watched.listener('change', '4913');
       await save();
-      expect(calls).to.deep.equal(['reload']);
+      expect(calls).to.deep.equal(['refresh']);
       expect(config.get().visualizer.opacity).to.equal(0.5);
 
-      // A save that leaves the section as it was restarts nothing
+      // A save that leaves the section as it was changes nothing
       sections.push({ ...config.get().visualizer });
       await save();
       await save('config.yaml~');
-      expect(calls).to.deep.equal(['reload']);
+      expect(calls).to.deep.equal(['refresh']);
       expect(notifications).to.deep.equal([]);
     });
 
@@ -1049,7 +1050,7 @@ describe('Daemon', () => {
       visualizers.error = 'GLava shaders not found in /x (no bars.glsl); set visualizer.glava.shader_dir';
       sections.push({ ...before, module: 'radial' });
       await save();
-      expect(calls).to.deep.equal(['reload']);
+      expect(calls).to.deep.equal(['refresh']);
       expect(notifications.at(-1).at(-1)).to.equal(`Visualizer off: ${visualizers.error}`);
     });
 
@@ -1213,6 +1214,53 @@ describe('Daemon', () => {
     });
   });
 
+  describe('wallpaper dim while music plays', () => {
+    let daemon, visualizers;
+    beforeEach(async () => {
+      visualizers = {
+        override: null, active: true, error: null, musicDim: 0,
+        configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {}, reload: async () => {},
+        describe: () => [], summary: () => ({ enabled: true, musicDim: visualizers.musicDim })
+      };
+      daemon = makeDaemon({ visualizers });
+      await daemon.start();
+    });
+    afterEach(async () => { await daemon.stop(); });
+
+    const load = async filePath => {
+      clients[0].client.emit('property-change', { event: 'property-change', name: 'path', data: filePath });
+      await tick();
+    };
+
+    it('shows the stronger of the item\'s dim and the music dim, and restores the item\'s own (read again) after', async () => {
+      const id = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', dim: 10 });
+      const { client } = clients[0];
+      await load('/m/a.png');
+      expect(client.properties.brightness).to.equal(-10);
+
+      visualizers.musicDim = 30;
+      await daemon.applyDims();
+      expect(client.properties.brightness).to.equal(-30);
+      // A load while music plays starts dimmed
+      await load('/m/a.png');
+      expect(client.properties.brightness).to.equal(-30);
+      expect((await readState(tempDir)).visualizer.musicDim).to.equal(30);
+
+      // `backdrop dim` stored a stronger dim meanwhile: it wins, and stays after the music
+      db.setDim(id, 50);
+      await daemon.applyDims();
+      expect(client.properties.brightness).to.equal(-50);
+      db.setDim(id, 5);
+      visualizers.musicDim = 0;
+      await daemon.applyDims();
+      expect(client.properties.brightness).to.equal(-5);
+    });
+
+    it('observes mpv\'s brightness', async () => {
+      expect(clients[0].client.commands).to.deep.include(['observe_property', 3, 'brightness']);
+    });
+  });
+
   describe('visualizer colors from the wallpaper', () => {
     let daemon, sampled, recolored, wants, release;
     const instance = { name: 'main', pipe: { fg: '#000000ff' }, palette: { source: 'wallpaper', pick: 'vivid', minContrast: 1 } };
@@ -1284,6 +1332,25 @@ describe('Daemon', () => {
       await first;
       expect(daemon.samples.has('DP-1')).to.equal(false);
       expect(recolored).to.deep.equal([]);
+    });
+
+    it('recolors when mpv\'s brightness changes, checking contrast against what shows now', async () => {
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      await load('/m/a.png');
+      await daemon.sampling.get('DP-1')?.done;
+      recolored.length = 0;
+      const monitor = daemon.monitors.get('DP-1');
+      const strict = { ...instance, palette: { ...instance.palette, minContrast: 5 } };
+      // Against the undimmed wallpaper the pick is lightened for contrast
+      expect(daemon.colorsFor(monitor, strict, monitor)).to.deep.equal({ fg: '#95ff95ff' });
+      const { client } = daemon.screens.get('DP-1');
+      client.emit('property-change', { event: 'property-change', name: 'brightness', data: -60 });
+      client.emit('property-change', { event: 'property-change', name: 'brightness', data: -60 });
+      await tick();
+      expect(recolored).to.deep.equal(['DP-1']);
+      expect(daemon.screens.get('DP-1').brightness).to.equal(-60);
+      // Dimmed by 60 the wallpaper is dark enough for the plain green
+      expect(daemon.colorsFor(monitor, strict, monitor)).to.deep.equal({ fg: '#00c800ff' });
     });
 
     it('logs a failed sample and keeps the configured colors', async () => {

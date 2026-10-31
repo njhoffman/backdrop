@@ -89,6 +89,16 @@ source or server events, reads the state of the output the visualizer listens to
 daemon does not stop for it when the wallpaper is off. When the state cannot be read, sound is assumed. Only
 `audio: pulseaudio` can be watched.
 
+`wallpaper_dim` (0-100, default 0: off) dims the wallpaper while the visualizer is on and the same watcher reports
+sound, so the bars stand out without changing their colors. It is a floor: each monitor shows the stronger of its
+item's own dim and `wallpaper_dim` (`Daemon.shownDim`), and goes back to the item's dim, read again from the
+database, `silence_grace` seconds after the sound stops or when the visualizer turns off. The manager reports the
+change (`musicDim`, also in `state.json`'s visualizer summary) and the daemon sets each mpv's brightness;
+`backdrop dim` stores the item's dim and shows the stronger of the two the same way. It needs no
+`only_while_playing`: the watcher runs for either, and only `only_while_playing` stops the instances. The daemon
+observes mpv's `brightness`, so colors from the wallpaper are checked for contrast against what shows after any
+change to it.
+
 ## Colors from the wallpaper
 
 With `palette.source: wallpaper`, a visualizer takes its foreground colors from the wallpaper under it and
@@ -127,7 +137,10 @@ colors (palette source and pick, or a fixed swatch for the module's color option
 instance, changes } }`. The manager keeps these changes by instance (`live`, in `state.json`'s visualizer
 summary) and lays them over the section after the active preset (`applyLive` in `settings.js`) until the daemon
 restarts; the menu checks each change against the section first, and the manager refuses one that does not
-check out, leaving the visualizer as it was. `reset` sends `visualizer_reset`. `save` asks for a name and writes
+check out, leaving the visualizer as it was. GLava reads its settings when it starts, so a change restarts the
+instance (about a second blank), except opacity, which is set on the running window, and the wallpaper color pick
+(`palette.pick`, `min_contrast`), which picks again and sends the colors over the pipe (`startSettings` in
+`VisualizerManager.js` holds what needs a restart). `reset` sends `visualizer_reset`. `save` asks for a name and writes
 the active preset with the changes (`lookAsPreset`) to `visualizer.presets.<name>` by splicing only that entry's
 lines into the file (`spliceYaml` in `ConfigManager.js`), so the file's comments and layout stay; it then sends
 `{ reload_config, visualizer_reset, preset }` so the daemon switches to the saved preset in one reload. An
@@ -166,7 +179,8 @@ neither part on, the daemon stops. The switches last until the daemon exits.
 
 The daemon watches the config file's directory (editors often save by renaming a new file over the old
 one) and, 300ms after the last change to the file, re-reads the visualizer section. If it differs from the
-running one, the visualizer restarts with it; a file that no longer parses or a value that does not check
+running one, the visualizer restarts with it (or takes it live, as for a menu change, when only opacity or the
+color pick changed); a file that no longer parses or a value that does not check
 out keeps the running visualizer and its settings and sends a critical desktop notification. Other
 sections are not applied live yet (see TODO.md).
 

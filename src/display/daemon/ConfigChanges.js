@@ -43,8 +43,9 @@ export class ConfigChanges {
   // Applies a saved config file. The whole file is loaded and checked again first: a file that no longer
   // parses, a value that does not check out, or a visualizer section that does not, keeps every running
   // setting and is announced with a desktop notification, since nobody is at a prompt to see it. Then the
-  // visualizer restarts when its section changed, and every other changed setting is applied by its kind
-  // (LIVE_SETTINGS); ones a running mpv cannot take are announced as needing a restart.
+  // visualizer restarts when its section changed, unless only what it takes live did (opacity, the color pick),
+  // and every other changed setting is applied by its kind (LIVE_SETTINGS); ones a running mpv cannot take are
+  // announced as needing a restart.
   async apply() {
     if (this.daemon.stopping) return;
     const previousWarnings = this.daemon.config.warnings ?? [];
@@ -65,7 +66,8 @@ export class ConfigChanges {
 
     if (JSON.stringify(next.visualizer) !== JSON.stringify(settings.visualizer)) {
       settings.visualizer = next.visualizer;
-      await this.daemon.visualizers.reload();
+      // Opacity and the wallpaper color pick apply to the running instances; other changes restart them
+      await this.daemon.visualizers.refresh();
       await this.daemon.writeState();
       this.daemon.logger.info('Visualizer reloaded after a config change', this.daemon.visualizers.summary());
       // Problems only found when starting it, such as missing GLava shaders

@@ -167,6 +167,7 @@ export class Daemon {
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
       colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
+      onMusicDim: () => this.applyDims(),
       ...(createVisualizer ? { create: createVisualizer } : {})
     });
     this.reloadConfig = reloadConfig;
@@ -459,6 +460,8 @@ export class Daemon {
         this.onFileLoaded(screen, event.data);
       } else if (event.name === 'container-fps' && event.data) {
         this.onFrameRate(screen, event.data);
+      } else if (event.name === 'brightness' && typeof event.data === 'number') {
+        this.onBrightness(screen, event.data);
       }
     });
     screen.client.on('end-file', event => {
@@ -469,6 +472,7 @@ export class Daemon {
     });
     await screen.client.observeProperty(1, 'path');
     await screen.client.observeProperty(2, 'container-fps');
+    await screen.client.observeProperty(3, 'brightness');
 
     await this.loadScreenPlaylist(screen);
   }
@@ -488,6 +492,38 @@ export class Daemon {
     }
   }
 
+  // The dim an item shows with: its own, or visualizer.wallpaper_dim while music plays if that is more
+  shownDim(media) {
+    return Math.max(media?.dim ?? 0, this.visualizers.musicDim ?? 0);
+  }
+
+  // Sets every wallpaper's brightness again when the music dim changes, with each item's dim read again
+  // (`backdrop dim` may have changed it since it loaded)
+  async applyDims() {
+    if (this.stopping) return;
+    await Promise.all([...this.screens.values()].map(async screen => {
+      if (!screen.client || !screen.media) return;
+      screen.media = this.database.getMedia(screen.media.id) ?? screen.media;
+      try {
+        await screen.client.setProperty('brightness', brightnessFor(this.shownDim(screen.media)));
+      } catch (error) {
+        this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
+      }
+    }));
+    await this.writeState();
+  }
+
+  // mpv's brightness changed (a load, the music dim, or `backdrop dim`): visualizer colors from the wallpaper
+  // are checked for contrast against what shows now
+  onBrightness(screen, brightness) {
+    if (screen.brightness === brightness) return;
+    screen.brightness = brightness;
+    if (!this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) return;
+    Promise.resolve(this.visualizers.recolor?.(screen.monitor.name)).catch(error => {
+      this.logger.warn('Visualizer recolor failed', { monitor: screen.monitor.name, error: error.message });
+    });
+  }
+
   // Applies the stored speed and dim and remembers the item so a restart resumes it.
   // Brightness is set on every load because mpv keeps it from the previous file.
   async onFileLoaded(screen, filePath) {
@@ -495,7 +531,7 @@ export class Daemon {
     screen.media = media;
     screen.loadedAt = this.now();
     try {
-      await screen.client.setProperty('brightness', brightnessFor(media?.dim ?? 0));
+      await screen.client.setProperty('brightness', brightnessFor(this.shownDim(media)));
     } catch (error) {
       this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
     }

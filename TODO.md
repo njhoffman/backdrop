@@ -214,6 +214,8 @@ Reviewed: 2026-10-31
       (`control-<pid>-<n>.json`) that the daemon handles in name order, or take an exclusive lock (`open` with `wx`)
       around write-signal-wait. Since 2.28.0 the visualizer menu sends `visualizer_set` requests too (each awaited, so
       the menu alone is safe), and a keybinding firing during a menu change would lose one of them.
+      A control socket in the runtime dir (one connection per request, answered when applied) would fix this and
+      replace the signal-per-action scheme as requests grow (the menu's wallpaper button in 2.36.0, and dim changes).
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -391,12 +393,14 @@ Reviewed: 2026-10-31
       Done in 2.32.1: `describe` checks the monitor's socket in the daemon's state first and does not ask mpv when it is
       null; the main menu keeps its grid with the mpv buttons faded and binds `w` to `start --wallpaper` (no free slot
       for a button); the visualizer menu opens without a preview. Checked live with the wallpaper off.
-- [ ] **Docs claim and omit a few things.** (p3) [docs] README's feature list includes the screensaver, which is not
+- [x] **Docs claim and omit a few things.** (p3) [docs] README's feature list includes the screensaver, which is not
       built (its intro and GETTING_STARTED say so). The prerequisites in README and GETTING_STARTED do not list what the
       visualizer needs: `glava`, a compositor (picom), and `pactl` for `only_while_playing`. `docs/specs/main.md` has no
       pointer to `docs/specs/visualizer.md`. Rechecked 2026-10-31: README's prerequisites now list `glava` and a
       compositor; still open: the screensaver bullet in README's feature list, `pactl`, and the main.md pointer.
       `backdrop doctor` (2.32.0) lists every optional tool with the feature that needs it, so the docs could point there.
+      Done in 2.35.1: the screensaver bullet marked planned, `pactl` listed, GETTING_STARTED and README point to
+      `backdrop doctor`, and main.md links `visualizer.md` and `json.md`.
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
@@ -503,17 +507,22 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       idle (PulseAudio/PipeWire sink not RUNNING, via `pactl subscribe`) and bring them back when sound starts, with
       a short grace period. Saves GPU on a silent desktop and removes the flat line of an idle module.
       Done in 2.25.0: `only_while_playing` and `silence_grace` (`src/visualizer/audio.js`).
-- [ ] **Dim the wallpaper while music plays.** (p3) [feature] Optionally lower the wallpaper's brightness by
+- [x] **Dim the wallpaper while music plays.** (p3) [feature] Optionally lower the wallpaper's brightness by
       `visualizer.wallpaper_dim` while the visualizer has audio, and restore the item's own dim when it stops, so
       the bars stand out without changing their colors. Reuses the per-item dim path in the daemon.
+      Done in 2.38.0: a floor over the item's dim while the visualizer is on and has sound (the audio watcher now runs
+      for either setting), restored from the database after; `backdrop dim` reads `musicDim` from the state. Instant:
+      mpv's `brightness` has no fade.
 - [ ] **Visualizer as the screensaver.** (p3) [feature] Let a screensaver playlist be a visualizer preset: a full-screen
       instance (e.g. radial or wave, `placement: {anchor: fill}`) over a dimmed or black wallpaper when idle, ties in
       with project 7.
-- [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP), `start/stop --wallpaper/--visualizer`
+- [x] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP), `start/stop --wallpaper/--visualizer`
       and `backdrop visualizer preset` (control requests) exist, and presets cover switching modules. The visualizer menu
       (2.28.0) has on/off and preset buttons; a menu button for the wallpaper part is left. More requests would outgrow the signal-per-action
       scheme and its single `control.json` (see "Control requests can be lost"); a control socket in the runtime dir
       is the next step.
+      Done in 2.36.0: a wallpaper on/off button (`w`) in the visualizer menu, faded while the visualizer is off (both
+      off stops the daemon). The control socket moved to "Control requests can be lost".
 - [x] **`backdrop visualizer check`.** (p3) [feature] A mistake in raw `defines`, or a GLava version whose shaders differ,
       only shows as GLava exiting with code 1 and no message, then being given up on after five restarts. Start each
       instance of the section and of every preset at 1x1 for two seconds, as was done by hand on 2026-10-30, and report
@@ -527,14 +536,22 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `status`.
       Done in 2.29.0: checked on every placement (picom often starts after the daemon), logged on change, `compositor`
       in the visualizer summary, a `status` line and `daemon.compositor` in `status --json`.
-- [ ] **Every visualizer menu change restarts GLava.** (p3) [perf] Opacity, amplify, module and the rest go through
+- [x] **Every visualizer menu change restarts GLava.** (p3) [perf] Opacity, amplify, module and the rest go through
       `setLive` and `reload()`, so each step in the menu blanks the visualizer for about a second. Opacity is a window
       property (`X11.setOpacity`) and colors already change over the pipe; apply those two without a restart and keep the
       restart for settings GLava reads at start.
-- [ ] **Wallpaper colors do not follow `backdrop dim`.** (p3) [bug] The contrast check uses the item's dim from when it
+      Done in 2.37.0: opacity and the wallpaper pick (`palette.pick`, `min_contrast`) apply to running instances, from
+      the menu and from a saved config file (`VisualizerManager.refresh`); everything else still restarts.
+- [ ] **Fixed visualizer colors restart GLava.** (p3) [perf] A swatch or a `colors` change compiles into a `#define`,
+      so it restarts the instance. Piping colors for fixed palettes too (`--pipe` always on, values from the config)
+      would make them live, at the cost of GLava drawing nothing until the first piped values arrive at every start.
+- [x] **Wallpaper colors do not follow `backdrop dim`.** (p3) [bug] The contrast check uses the item's dim from when it
       loaded (`sampleMedia` stores it); `backdrop dim` on the playing item changes the brightness without a recolor, so
       the picks can lose contrast until the next load. Recolor when the daemon sees a dim change (DisplayControl sets it
       over mpv directly, so the daemon would need a control request or to observe mpv's `brightness`).
+      Done in 2.38.0: the daemon observes mpv's `brightness`, recolors on a change, and checks contrast against it.
+- [ ] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches brightness in one step when music starts or
+      stops; stepping it over half a second or so would look smoother (mpv has no fade for `brightness`).
 - [ ] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
       `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
       disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a

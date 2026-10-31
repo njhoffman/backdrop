@@ -14,7 +14,8 @@ Durations (`display.image_duration`, `display.video_duration`) take the times th
 
 The daemon applies a saved file without a restart (`Daemon.applyConfigChange`): it loads and checks the whole
 file again, keeps every running setting on a mistake (with a notification), restarts the visualizer when its
-section changed, and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
+section changed (only `opacity`, `palette.pick` or `palette.min_contrast` apply to the running instances without
+one), and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
 `allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
 reconciles the monitors; `library.import_dirs` and `watch_imports` import the folders and watch them again. `display.mpv_args`, `xwinwrap_args` and
@@ -67,6 +68,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   opacity: 0.8             # window opacity (_NET_WM_WINDOW_OPACITY), 0 to 1
   only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only)
   silence_grace: 10        # seconds of silence before they stop
+  wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
                            #   ring, wave, party (src/visualizer/presets.js); cannot set enabled, preset or presets

@@ -84,7 +84,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, compositor: null, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -185,6 +185,58 @@ describe('VisualizerManager', () => {
     expect(watchers).to.have.length(1);
     await manager.setEnabled(false);
     expect(watchers[0].stopped).to.be.true;
+  });
+
+  describe('wallpaper dim while music plays', () => {
+    let dims;
+    beforeEach(() => {
+      dims = [];
+      manager = makeManager({ onMusicDim: dim => dims.push(dim) });
+    });
+
+    it('watches the audio without only_while_playing and reports the dim, keeping the instances on silence', async () => {
+      config.set('visualizer.wallpaper_dim', 30);
+      await manager.configure();
+      await manager.sync();
+      expect(watchers).to.have.length(1);
+      expect(manager.musicDim).to.equal(30);
+      expect(dims).to.deep.equal([30]);
+
+      await watchers[0].onChange(false);
+      expect(dims).to.deep.equal([30, 0]);
+      expect(manager.entries.size).to.equal(1);
+      expect(manager.summary()).to.include({ silenced: false, musicDim: 0 });
+      await watchers[0].onChange(true);
+      expect(dims).to.deep.equal([30, 0, 30]);
+      expect(spawned).to.have.length(1);
+    });
+
+    it('restores the wallpaper when the visualizer turns off or the daemon stops', async () => {
+      config.set('visualizer.wallpaper_dim', 30);
+      await manager.configure();
+      await manager.sync();
+      await manager.setEnabled(false);
+      expect(dims).to.deep.equal([30, 0]);
+      await manager.setEnabled(true);
+      expect(dims).to.deep.equal([30, 0, 30]);
+      await manager.stop();
+      expect(dims).to.deep.equal([30, 0, 30, 0]);
+    });
+
+    it('takes a saved wallpaper_dim without restarting GLava, and stops watching when it goes back to 0', async () => {
+      await manager.configure();
+      await manager.sync();
+      expect(watchers).to.have.length(0);
+      config.set('visualizer.wallpaper_dim', 25);
+      await manager.refresh();
+      expect(spawned).to.have.length(1);
+      expect(watchers).to.have.length(1);
+      expect(dims).to.deep.equal([25]);
+      config.set('visualizer.wallpaper_dim', 0);
+      await manager.refresh();
+      expect(watchers[0].stopped).to.be.true;
+      expect(dims).to.deep.equal([25, 0]);
+    });
   });
 
   it('waits for sound before starting when the source is silent at start', async () => {
@@ -369,20 +421,72 @@ describe('VisualizerManager', () => {
   });
 
   describe('menu changes', () => {
-    it('merges each instance\'s changes, restarts with them, and drops them on reset', async () => {
+    it('merges each instance\'s changes, restarts with the ones GLava reads at start, and drops them on reset', async () => {
       await manager.configure();
       await manager.sync();
+      await entry().placed;
       await manager.setLive({ instance: 'main', changes: { opacity: 0.5 } });
       await manager.setLive({ instance: 'main', changes: { bars: { amplify: 120 } } });
       expect(manager.summary().live).to.deep.equal({ main: { opacity: 0.5, bars: { amplify: 120 } } });
       expect(manager.settings.instances[0]).to.include({ opacity: 0.5 });
       expect(manager.settings.instances[0].defines.AMPLIFY).to.equal(120);
-      // Each change restarts the instance with the new settings
-      expect(spawned).to.have.length(3);
+      // Opacity applied to the running window; amplify restarted it
+      expect(spawned).to.have.length(2);
+      expect(xcalls).to.deep.include(['opacity', 0x3400002, 0.5]);
 
       await manager.setLive(null);
       expect(manager.summary().live).to.deep.equal({});
       expect(manager.settings.instances[0]).to.include({ opacity: 0.8 });
+      expect(spawned).to.have.length(3);
+    });
+
+    it('sets opacity on the running window without a restart', async () => {
+      await manager.configure();
+      await manager.sync();
+      await entry().placed;
+      xcalls.length = 0;
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.3 } });
+      expect(spawned).to.have.length(1);
+      expect(kills).to.deep.equal([]);
+      expect(xcalls).to.deep.equal([['opacity', 0x3400002, 0.3]]);
+      expect(entry().instance.opacity).to.equal(0.3);
+      // A restart after a crash keeps the new opacity
+      expect(entry().adapter.instance.opacity).to.equal(0.3);
+    });
+
+    it('picks wallpaper colors again without a restart, and restarts when the color source changes', async () => {
+      const picks = [];
+      manager = makeManager({ colorsFor: (target, instance) => { picks.push(instance.palette.pick); return { fg: '#112233ff', fg2: '#445566ff' }; }, pipeGap: 0 });
+      config.set('visualizer.palette', { source: 'wallpaper', pick: 'vivid' });
+      await manager.configure();
+      await manager.sync();
+      spawned[0].child.stdin = { write: () => {}, on: () => {}, destroyed: false };
+      await manager.setLive({ instance: 'main', changes: { palette: { pick: 'complement' } } });
+      expect(spawned).to.have.length(1);
+      expect(picks.at(-1)).to.equal('complement');
+
+      await manager.setLive({ instance: 'main', changes: { palette: { source: 'config' } } });
+      expect(spawned).to.have.length(2);
+    });
+
+    it('takes a saved config change live when it can, else reloads', async () => {
+      await manager.configure();
+      await manager.sync();
+      await entry().placed;
+      const generation = manager.summary().generation;
+      config.set('visualizer.opacity', 0.6);
+      await manager.refresh();
+      expect(spawned).to.have.length(1);
+      expect(manager.summary().generation).to.equal(generation + 1);
+      expect(xcalls).to.deep.include(['opacity', 0x3400002, 0.6]);
+
+      config.set('visualizer.module', 'radial');
+      await manager.refresh();
+      expect(spawned).to.have.length(2);
+
+      config.set('visualizer.module', 'spiral');
+      await manager.refresh();
+      expect(manager.summary().error).to.include('visualizer.module must be');
     });
 
     it('refuses a change that does not check out, leaving the visualizer as it was', async () => {

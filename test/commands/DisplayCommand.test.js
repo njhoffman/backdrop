@@ -369,4 +369,10 @@ describe('DisplayCommand', () => {
     expect(command.control.dim.calledOnceWithExactly('+10', 'DP-2')).to.be.true;
     expect(lines).to.deep.equal(['DP-2: dim 30']);
   });
+
+  it('says when the music dim shows instead of the stored one', async () => {
+    command.control = { dim: sinon.stub().resolves({ monitor: { name: 'DP-2' }, dim: 10, shown: 30 }) };
+    await command.dim('10', {});
+    expect(lines).to.deep.equal(['DP-2: dim 10 (30 while music plays)']);
+  });
 });

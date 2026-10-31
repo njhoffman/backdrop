@@ -38,9 +38,9 @@ const VISUALIZER_KEY = 'z';
 const WALLPAPER_KEY = 'w';
 const INSTANCE_KEY = 'i';
 
-// Font Awesome glyphs for the visualizer menu: power, list, cube, adjust, volume, arrows, brush, undo, save
+// Font Awesome glyphs for the visualizer menu: power, image, list, cube, adjust, volume, arrows, brush, undo, save
 const VISUALIZER_ICONS = {
-  power: '\uf011', preset: '\uf03a', module: '\uf1b2', opacity: '\uf042', amplify: '\uf028',
+  power: '\uf011', wallpaper: '\uf03e', preset: '\uf03a', module: '\uf1b2', opacity: '\uf042', amplify: '\uf028',
   position: '\uf047', colors: '\uf1fc', reset: '\uf0e2', save: '\uf0c7', instance: '\uf001'
 };
 const OPACITIES = ['0.2', '0.4', '0.6', '0.8', '1', '-0.1', '+0.1'];
@@ -382,9 +382,9 @@ export class MenuCommand {
     return { monitor: monitors[picked].name };
   }
 
-  // The visualizer: on/off, preset, module, opacity, amplify, position and colors of one instance, applied
-  // live through control requests (visualizer_set) and kept until the daemon restarts; reset drops them and
-  // save writes the look into the config as a preset. With several instances it asks which one first (i
+  // The visualizer: on/off, the wallpaper under it on/off, and preset, module, opacity, amplify, position and
+  // colors of one instance, applied live through control requests (visualizer_set) and kept until the daemon
+  // restarts; reset drops them and save writes the look into the config as a preset. With several instances it asks which one first (i
   // switches). Resolves like the other menus: { quit: true } for q, {} for Escape.
   async visualizerMenu(monitor) {
     let instance = null;
@@ -401,10 +401,14 @@ export class MenuCommand {
       const options = { preset: visualizer.preset ?? null, live: visualizer.live ?? {} };
       const look = instanceLook(section, options, instance);
       const on = Boolean(visualizer.enabled);
+      const wallpaper = state.wallpaper !== false;
       const item = await this.describe(monitor);
       const entries = [
         { icon: VISUALIZER_ICONS.power, label: on ? 'turn off' : 'turn on', caption: on ? 'on' : 'off', key: 'e', active: on,
           run: () => this.sendVisualizer(state, { visualizer: !on }) },
+        // Turning the wallpaper off with the visualizer off would stop the daemon, so that is left to the CLI
+        { icon: VISUALIZER_ICONS.wallpaper, label: wallpaper ? 'wallpaper off' : 'wallpaper on', caption: wallpaper ? 'wallpaper' : 'no wallpaper',
+          key: 'w', active: wallpaper, disabled: wallpaper && !on, run: () => this.sendVisualizer(state, { wallpaper: !wallpaper }) },
         { icon: VISUALIZER_ICONS.preset, label: 'preset ▸', caption: options.preset ?? 'preset', key: 'p', active: Boolean(options.preset),
           run: () => this.presetMenu(state, section, options.preset) },
         { icon: VISUALIZER_ICONS.module, label: 'module ▸', caption: look.module, key: 'm',

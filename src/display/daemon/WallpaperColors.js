@@ -18,8 +18,12 @@ export class WallpaperColors {
       this.sampleScreen(monitor.name);
       return null;
     }
+    // Contrast against the brightness mpv shows now (the item's dim, `backdrop dim` since, or the music dim);
+    // the sample's own is the item's dim when it loaded
+    const brightness = this.daemon.screens.get(monitor.name)?.brightness;
+    const sample = typeof brightness === 'number' ? { ...cached.sample, dim: Math.max(0, -brightness) } : cached.sample;
     try {
-      return paletteColors(cached.sample, monitor, geometry, instance);
+      return paletteColors(sample, monitor, geometry, instance);
     } catch (error) {
       this.daemon.logger.warn('Visualizer colors failed', { monitor: monitor.name, instance: instance.name, error: error.message });
       return null;

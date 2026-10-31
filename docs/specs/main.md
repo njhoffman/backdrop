@@ -4,7 +4,8 @@ backdrop is a wallpaper and screensaver manager for X11. It collects images and 
 sources that have a public API (Pexels first) and from local folders, lets the user rate them, and
 displays them as wallpaper and screensaver through mpv controlled over IPC sockets.
 
-Detailed specs: [config.md](config.md), [database.md](database.md), [sources.md](sources.md). The pre-rename command behavior is
+Detailed specs: [config.md](config.md), [database.md](database.md), [sources.md](sources.md),
+[visualizer.md](visualizer.md) (the GLava music visualizer), [json.md](json.md) (`--json` output). The pre-rename command behavior is
 in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open work is tracked in `TODO.md`.
 
 ## Decisions
