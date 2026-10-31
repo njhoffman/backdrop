@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { program, CommanderError, Option } from 'commander';
+import { program, Argument, CommanderError, Option } from 'commander';
 import { createRequire } from 'module';
 import fs from 'fs-extra';
 import { ConfigManager } from './config/ConfigManager.js';
@@ -200,7 +200,8 @@ class BackdropApp {
 
     program
       .command('menu')
-      .description('Open a rofi menu to rate, navigate, adjust and switch the item under the pointer')
+      .description('Open a rofi menu to rate, navigate, adjust and switch the item under the pointer; menu visualizer for the visualizer')
+      .addArgument(new Argument('[page]', 'visualizer: only the visualizer menu').choices(['main', 'visualizer']))
       .option(...monitorOption)
       .option('--style <style>', 'panel (buttons and a preview) or minimal (a list); default: menu.style')
       .option(...randomOption).option(...noRandomOption)
@@ -208,7 +209,7 @@ class BackdropApp {
       .option(...imageDurationOption).option(...videoDurationOption)
       // The menu stays open until q or Escape since 2.18.0; the old flag is still accepted
       .addOption(new Option('--stay').hideHelp())
-      .action(this.action(options => menu.open(options)));
+      .action(this.action((page, options) => menu.open({ ...options, page })));
 
     program
       .command('rescan')

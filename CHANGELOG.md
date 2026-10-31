@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-10-31
+
+### Added
+- A visualizer menu: `backdrop menu visualizer`, or `z` in `backdrop menu`. It turns the visualizer on and off,
+  switches presets, and changes the module, opacity, amplify, position and colors (fixed, a color swatch, or from
+  the wallpaper by vivid, dominant or complement) live, until the daemon restarts; `reset` drops the changes.
+  With several visualizers it asks which one to change. `save` writes the current look into your config as a
+  preset, leaving the rest of the file and its comments untouched.
+
+## [2.27.1] - 2026-10-31
+
+### Changed
+- Development: the rofi menus are tested with real rofi on a virtual X server (Xvfb, skipped without it): theme
+  and markup errors, key bindings and exit codes, and the main, step and monitor menus.
+
 ## [2.27.0] - 2026-10-31
 
 ### Added

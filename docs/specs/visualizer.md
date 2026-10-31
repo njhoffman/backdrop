@@ -119,6 +119,20 @@ an instance starts (the wallpaper's when sampled, else the configured ones), and
 dropping the rest of what arrived together, so lines go out 100 ms apart. A raw `defines` entry for the piped
 color is rejected. `status` shows each instance's current colors.
 
+## Menu
+
+`backdrop menu visualizer`, or `z` in the main menu, changes one instance live (`MenuCommand.visualizerMenu`):
+on/off and preset through the existing control requests, and module, opacity, amplify, position (anchor) and
+colors (palette source and pick, or a fixed swatch for the module's color option) as `{ visualizer_set: {
+instance, changes } }`. The manager keeps these changes by instance (`live`, in `state.json`'s visualizer
+summary) and lays them over the section after the active preset (`applyLive` in `settings.js`) until the daemon
+restarts; the menu checks each change against the section first, and the manager refuses one that does not
+check out, leaving the visualizer as it was. `reset` sends `visualizer_reset`. `save` asks for a name and writes
+the active preset with the changes (`lookAsPreset`) to `visualizer.presets.<name>` by splicing only that entry's
+lines into the file (`spliceYaml` in `ConfigManager.js`), so the file's comments and layout stay; it then sends
+`{ reload_config, visualizer_reset, preset }` so the daemon switches to the saved preset in one reload. An
+existing name, the built-in ones included, is replaced only after a confirmation.
+
 ## Opacity
 
 `visualizer.opacity` (0 to 1, default 0.8) is the whole window's opacity, which compositors such as picom

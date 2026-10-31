@@ -378,11 +378,68 @@ export function presetsOf(section = {}) {
   return { ...BUILTIN_PRESETS, ...own };
 }
 
+// Changes from the visualizer menu ({ instance name: settings }) laid over the section with its preset: over
+// the section itself when it has no instances (its one instance is main), else over each named instance
+export function applyLive(raw, live) {
+  if (!live || !Object.keys(live).length) return raw;
+  if (!isObject(live)) fail('live', 'a mapping of instance names to settings', live);
+  for (const [name, changes] of Object.entries(live)) {
+    if (!isObject(changes)) fail(`live.${name}`, 'a mapping of settings', changes);
+    knownKeys(`live.${name}`, changes, INSTANCE_KEYS.filter(key => key !== 'name'), 'visualizer instance settings');
+  }
+  if (raw.instances === undefined) return live.main ? deepMerge(raw, live.main) : raw;
+  if (!Array.isArray(raw.instances)) return raw;
+  return { ...raw, instances: raw.instances.map(item => (isObject(item) && live[item.name] ? deepMerge(item, live[item.name]) : item)) };
+}
+
+// The section as the active preset and the menu's changes make it, before normalizing
+function effectiveRaw(section, { preset, live } = {}) {
+  const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));
+  const active = preset !== undefined ? preset : section.preset ?? null;
+  const presets = presetsOf(section);
+  const raw = active !== null && presets[active] ? deepMerge(base, presets[active]) : base;
+  return { raw: applyLive(raw, live), active };
+}
+
+// GLava's own amplify for the modules backdrop does not default (bars: backdrop's 200)
+const AMPLIFY_DEFAULTS = { bars: 200, graph: 300, radial: 300, circle: 150, wave: 500 };
+
+// What the visualizer menu shows and steps for one instance: { module, opacity, anchor, palette: { source,
+// pick, min_contrast }, amplify, colors (the module's color option, as a list) }
+export function instanceLook(section = {}, options = {}, name = 'main') {
+  const { raw } = effectiveRaw(section, options);
+  const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
+  const item = raw.instances === undefined ? defaults : deepMerge(defaults, (raw.instances ?? []).find(entry => entry?.name === name) ?? {});
+  const module = item.module ?? 'bars';
+  const { option, fallback } = PIPED_COLORS[module];
+  const colors = item[module]?.[option] ?? fallback;
+  return {
+    module,
+    opacity: item.opacity ?? 0.8,
+    anchor: item.placement?.anchor ?? 'bottom',
+    palette: { source: 'config', pick: 'vivid', min_contrast: 3, ...item.palette },
+    amplify: item[module]?.amplify ?? AMPLIFY_DEFAULTS[module],
+    colors: Array.isArray(colors) ? colors : [colors],
+    colorOption: option
+  };
+}
+
+// The look of the active preset with the menu's changes, as one preset to save: for a section without
+// instances the preset's settings with main's changes, else the instances list with each one's changes
+export function lookAsPreset(section = {}, { preset, live } = {}) {
+  const active = preset !== undefined ? preset : section.preset ?? null;
+  const own = active !== null ? presetsOf(section)[active] ?? {} : {};
+  const { raw } = effectiveRaw(section, { preset, live: {} });
+  if (raw.instances === undefined) return deepMerge(own, live?.main ?? {});
+  return { ...own, instances: applyLive(raw, live).instances };
+}
+
 // The visualizer section normalized, with its active preset laid over it: preset (`backdrop visualizer
-// preset`) when given, else visualizer.preset. Every preset is checked, so a mistake in one shows before it
-// is used. Returns { enabled, engine, audio, source, onlyWhilePlaying, silenceGrace, glava, instances:
-// [{ name, module, opacity, layout, monitors, palette, pipe, defines, requests }], preset, presets }.
-export function visualizerSettings(section = {}, { preset } = {}) {
+// preset`) when given, else visualizer.preset, then the visualizer menu's changes (live). Every preset is
+// checked, so a mistake in one shows before it is used. Returns { enabled, engine, audio, source,
+// onlyWhilePlaying, silenceGrace, glava, instances: [{ name, module, opacity, layout, monitors, palette, pipe,
+// defines, requests }], preset, presets }.
+export function visualizerSettings(section = {}, { preset, live } = {}) {
   if (!isObject(section)) fail('', 'a mapping', section);
   const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));
   const presets = presetsOf(section);
@@ -393,9 +450,12 @@ export function visualizerSettings(section = {}, { preset } = {}) {
     normalize(deepMerge(base, value), `presets.${name}.`);
   }
   const active = preset !== undefined ? preset : section.preset ?? null;
-  if (active === null) return { ...settings, preset: null, presets: Object.keys(presets) };
+  if (active === null) {
+    const current = live && Object.keys(live).length ? normalize(applyLive(base, live), '') : settings;
+    return { ...current, preset: null, presets: Object.keys(presets) };
+  }
   if (!presets[active]) fail('preset', `one of the presets (${Object.keys(presets).join(', ')})`, active);
-  return { ...normalize(deepMerge(base, presets[active]), `presets.${active}.`), preset: active, presets: Object.keys(presets) };
+  return { ...normalize(applyLive(deepMerge(base, presets[active]), live), `presets.${active}.`), preset: active, presets: Object.keys(presets) };
 }
 
 // An instance's layout on a monitor, or null when it does not run there

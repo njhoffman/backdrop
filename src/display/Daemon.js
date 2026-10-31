@@ -343,6 +343,20 @@ export class Daemon {
     }
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
     if (request.durations) await this.applyDurations();
+    // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
+    if (request.reload_config) await this.reloadConfig().catch(error => this.logger.error('Config reload failed', { error: error.message }));
+    if (request.visualizer_reset) {
+      await this.visualizers.setLive(null, { reload: request.preset === undefined })
+        .catch(error => this.logger.error('Visualizer reset failed', { error: error.message }));
+    }
+    if (request.visualizer_set) {
+      try {
+        await this.visualizers.setLive(request.visualizer_set);
+        this.logger.info('Visualizer changed from the menu', { change: request.visualizer_set });
+      } catch (error) {
+        this.logger.error('Visualizer change refused', { error: error.message });
+      }
+    }
     if (request.preset !== undefined) {
       await this.visualizers.setPreset(request.preset);
       this.logger.info('Visualizer preset', this.visualizers.summary());

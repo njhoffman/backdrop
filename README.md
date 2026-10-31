@@ -75,6 +75,7 @@ backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line p
 backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
 backdrop menu               # rofi panel for the item under the pointer, with keys: n 1 2 3 v / p s u m d, q quits
 backdrop menu --tag ocean   # sets the filter like next does (also --query, --no-random)
+backdrop menu visualizer    # the visualizer menu (also z in the menu): module, opacity, colors, presets, save
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id

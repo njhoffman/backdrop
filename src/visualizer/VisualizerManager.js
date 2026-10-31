@@ -1,7 +1,7 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { createVisualizer } from './index.js';
-import { layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
+import { deepMerge, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -58,6 +58,8 @@ export class VisualizerManager {
     // daemon exits; undefined preset means visualizer.preset
     this.override = null;
     this.presetOverride = undefined;
+    // Changes from the visualizer menu by instance name, over the preset until the daemon exits or a reset
+    this.live = {};
     this.prepared = false;
     this.audio = { watcher: null, playing: null };
     // One placement at a time per monitor, so instances starting together stack in order
@@ -68,7 +70,7 @@ export class VisualizerManager {
   async configure() {
     this.generation++;
     try {
-      const options = this.presetOverride === undefined ? {} : { preset: this.presetOverride };
+      const options = { live: this.live, ...(this.presetOverride === undefined ? {} : { preset: this.presetOverride }) };
       const settings = visualizerSettings(this.config.get().visualizer, options);
       const runtimeDir = this.config.get().paths.runtime;
       const adapters = new Map(settings.instances.map(instance => [instance.name, this.create(settings, instance, { runtimeDir })]));
@@ -115,6 +117,17 @@ export class VisualizerManager {
     if (!this.prepared) await this.configure();
     else await this.watchAudio();
     await this.sync();
+  }
+
+  // Lays the visualizer menu's changes for one instance over the others it made ({ instance, changes }), or
+  // drops them all (null). A change that does not check out is refused and leaves the visualizer as it was.
+  // reload: false only records the change, for a caller that reloads next (a preset switch)
+  async setLive(change, { reload = true } = {}) {
+    const live = change ? { ...this.live, [change.instance]: deepMerge(this.live[change.instance] ?? {}, change.changes) } : {};
+    const options = { live, ...(this.presetOverride === undefined ? {} : { preset: this.presetOverride }) };
+    visualizerSettings(this.config.get().visualizer, options);
+    this.live = live;
+    if (reload) await this.reload();
   }
 
   // Lays a preset over the section until the daemon exits (null: none, whatever visualizer.preset says)
@@ -422,7 +435,9 @@ export class VisualizerManager {
       enabled: this.enabled, error: this.error, generation: this.generation,
       preset: this.settings?.preset ?? null, presets: this.settings?.presets ?? [],
       instances: (this.settings?.instances ?? []).map(instance => instance.name),
-      silenced: this.silenced
+      silenced: this.silenced,
+      // The visualizer menu's changes, by instance
+      live: this.live
     };
   }
 }

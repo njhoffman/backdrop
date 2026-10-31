@@ -303,12 +303,16 @@ Reviewed: 2026-10-30
 - [ ] **Menu workspace stays on the first monitor after Tab.** (p3) [feature] `menu.workspace` empties the monitor the menu
       opened on; picking another with Tab leaves that one covered. `MenuCommand.open` could leave and re-enter the workspace
       (`src/utils/workspace.js`) on the new output when the target changes.
-- [ ] **Menu rendering is only checked by hand.** (p2) [test] Unit tests check the rofi arguments, not what rofi does with
+- [x] **Menu rendering is only checked by hand.** (p2) [test] Unit tests check the rofi arguments, not what rofi does with
       them: a status with quotes or line breaks inside a `-theme-str` string failed rofi's theme parser, and a horizontal
       info box that expanded hid the second row of buttons, with every test passing. Both were found by rendering into
       Xephyr and taking a screenshot. An integration test on a nested or virtual X server (Xvfb or Xephyr, skipped when
       missing, like the mpv one) should open the panel, check rofi reports no theme error, and send keys with `xdotool`
       to check the custom exit codes (10 + N).
+      Done in 2.27.1: `test/commands/menu.integration.test.js` runs both views and the real main, step and monitor menus
+      on Xvfb, requires an empty rofi stderr (a bad -theme-str prints "Failed to parse" and exits 65; a markup error is
+      a Pango warning) and checks exit codes from xdotool keys. Reintroducing the raw line break in `rasiMarkup` fails
+      it. Layout (the hidden second row) is not asserted; each menu's screenshot is kept when a test fails.
 - [x] **Unused dependencies.** (p3) [chore] `pexels` and `progress` are no longer imported anywhere (the Pexels adapter uses axios); remove them, and `ProgressBar.js` with the progress-bar item. Done, along with chalk.
 - [x] **Shell completions.** (p3) [feature] Generate zsh and bash completions for commands and options, completing `--monitor` from the running daemon's
       `state.json` and `mode` from video/image.
@@ -404,11 +408,15 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       Ship a few built-in ones (subtle bottom bars, centered radial, full-screen wave) users can copy. Later: a preset
       per mode (video/image), per tag or query, or remembered per media item like speed and dim.
       Done in 2.25.0: `visualizer.presets`, built-ins in `src/visualizer/presets.js`, `backdrop visualizer preset`. Per mode, tag or item still open.
-- [ ] **Visualizer rofi menu.** (p2) [feature] A second menu (`backdrop menu visualizer`, or a key from the main menu)
+- [x] **Visualizer rofi menu.** (p2) [feature] A second menu (`backdrop menu visualizer`, or a key from the main menu)
       in the same panel style: on/off, preset picker, module picker, opacity and amplify steps, anchor picker, color
       source (fixed, wallpaper, album) and a few color swatches. Changes apply live through control requests and
       last until the daemon restarts; a "save" button writes the current look into the config as a preset.
       Needs the control channel to grow past signals (see "CLI and menu controls").
+      Done in 2.28.0: `backdrop menu visualizer` and `z`; changes as `visualizer_set` control requests (control.json
+      already carried JSON, so no new channel was needed), kept per instance until restart, `reset`, and `save` into
+      `visualizer.presets` by a line splice that keeps the config's comments. Color source "album" left out (no such
+      source yet). Every change restarts the instance (GLava reads its settings at start), about a second.
 - [x] **Show the visualizer only while audio plays.** (p3) [feature] Stop or hide instances when the audio source is
       idle (PulseAudio/PipeWire sink not RUNNING, via `pactl subscribe`) and bring them back when sound starts, with
       a short grace period. Saves GPU on a silent desktop and removes the flat line of an idle module.
@@ -420,8 +428,8 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       instance (e.g. radial or wave, `placement: {anchor: fill}`) over a dimmed or black wallpaper when idle, ties in
       with project 7.
 - [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP), `start/stop --wallpaper/--visualizer`
-      and `backdrop visualizer preset` (control requests) exist, and presets cover switching modules. Left: menu buttons
-      for both parts and for presets (see "Visualizer rofi menu"). More requests would outgrow the signal-per-action
+      and `backdrop visualizer preset` (control requests) exist, and presets cover switching modules. The visualizer menu
+      (2.28.0) has on/off and preset buttons; a menu button for the wallpaper part is left. More requests would outgrow the signal-per-action
       scheme and its single `control.json` (see "Control requests can be lost"); a control socket in the runtime dir
       is the next step.
 - [ ] **`backdrop visualizer check`.** (p3) [feature] A mistake in raw `defines`, or a GLava version whose shaders differ,

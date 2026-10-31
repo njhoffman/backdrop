@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
-import { ConfigManager } from '../../src/config/ConfigManager.js';
+import { ConfigManager, spliceYaml } from '../../src/config/ConfigManager.js';
 
 const ENV_KEYS = ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'PEXELS_API'];
 
@@ -211,6 +211,62 @@ describe('ConfigManager', () => {
 
       expect(configManager.getSource('unsplash')).to.deep.equal({ access_key: 'xyz' });
       expect(configManager.getSource('pexels').per_page).to.equal(80);
+    });
+  });
+
+  describe('editing the file in place', () => {
+    const file = [
+      '# backdrop config',
+      'display:',
+      '  image_duration: 300           # aligned comment',
+      'visualizer:',
+      '  enabled: true',
+      '  bars: { colors: [\'#000000\', \'#33aacc\'], amplify: 300 }',
+      '  glava:',
+      '    args: []                    # last entry',
+      '',
+      '# ----- reference -----',
+      '# visualizer:',
+      '#   presets: {}',
+      ''
+    ].join('\n');
+
+    it('inserts a new entry after the mapping\'s last one, every other byte unchanged', () => {
+      const edited = spliceYaml(file, ['visualizer', 'presets', 'calm'], { opacity: 0.4, bars: { colors: ['#112233', '#445566'] } });
+      const added = ['  presets:', '    calm:', '      opacity: 0.4', '      bars:', '        colors:', '          - "#112233"', '          - "#445566"'].join('\n');
+      expect(edited).to.equal(file.replace('# last entry\n', `# last entry\n${added}\n`));
+    });
+
+    it('replaces an existing entry in place, keeping the lines after it', () => {
+      const once = spliceYaml(file, ['visualizer', 'presets', 'calm'], { opacity: 0.4 });
+      const twice = spliceYaml(once, ['visualizer', 'presets', 'calm'], { opacity: 0.9 });
+      expect(twice).to.equal(once.replace('opacity: 0.4', 'opacity: 0.9'));
+      const other = spliceYaml(twice, ['visualizer', 'presets', 'wave'], { module: 'wave' });
+      expect(other).to.include('    calm:\n      opacity: 0.9\n    wave:\n      module: wave\n\n# ----- reference');
+      expect(spliceYaml(file, ['display', 'image_duration'], 60)).to.equal(file.replace('  image_duration: 300           # aligned comment', '  image_duration: 60'));
+    });
+
+    it('adds a missing section at the end, and fills an empty file', () => {
+      expect(spliceYaml('library:\n  trash_days: 3\n', ['visualizer', 'presets', 'a'], { opacity: 1 }))
+        .to.equal('library:\n  trash_days: 3\nvisualizer:\n  presets:\n    a:\n      opacity: 1\n');
+      expect(spliceYaml('', ['visualizer', 'presets', 'a'], { opacity: 1 })).to.equal('visualizer:\n  presets:\n    a:\n      opacity: 1\n');
+    });
+
+    it('refuses a layout it cannot edit by lines, and a file that does not parse', () => {
+      expect(() => spliceYaml('visualizer: {enabled: true}\n', ['visualizer', 'presets', 'a'], {})).to.throw('visualizer is not a block mapping');
+      expect(() => spliceYaml('visualizer: [1]\n', ['visualizer', 'presets', 'a'], {})).to.throw('visualizer is not a block mapping');
+      expect(() => spliceYaml('a: [\n', ['a'], 1)).to.throw('Failed to edit config');
+    });
+
+    it('writes through a temporary file and reports what the file sets', async () => {
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeFile(configPath, file);
+      expect(await configManager.fileHas(['visualizer', 'presets', 'calm'])).to.equal(false);
+      await configManager.setInFile(['visualizer', 'presets', 'calm'], { opacity: 0.4 });
+      expect(await configManager.fileHas(['visualizer', 'presets', 'calm'])).to.equal(true);
+      expect(await fs.readdir(path.dirname(configPath))).to.deep.equal(['config.yaml']);
+      await configManager.initialize();
+      expect(configManager.get().visualizer.presets).to.deep.equal({ calm: { opacity: 0.4 } });
     });
   });
 

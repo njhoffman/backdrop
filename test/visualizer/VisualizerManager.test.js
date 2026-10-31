@@ -82,7 +82,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -363,6 +363,42 @@ describe('VisualizerManager', () => {
       expect(manager.wantsWallpaperColors('DP-3')).to.equal(false);
       await manager.recolor('DP-3');
       expect(writes).to.deep.equal([]);
+    });
+  });
+
+  describe('menu changes', () => {
+    it('merges each instance\'s changes, restarts with them, and drops them on reset', async () => {
+      await manager.configure();
+      await manager.sync();
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.5 } });
+      await manager.setLive({ instance: 'main', changes: { bars: { amplify: 120 } } });
+      expect(manager.summary().live).to.deep.equal({ main: { opacity: 0.5, bars: { amplify: 120 } } });
+      expect(manager.settings.instances[0]).to.include({ opacity: 0.5 });
+      expect(manager.settings.instances[0].defines.AMPLIFY).to.equal(120);
+      // Each change restarts the instance with the new settings
+      expect(spawned).to.have.length(3);
+
+      await manager.setLive(null);
+      expect(manager.summary().live).to.deep.equal({});
+      expect(manager.settings.instances[0]).to.include({ opacity: 0.8 });
+    });
+
+    it('refuses a change that does not check out, leaving the visualizer as it was', async () => {
+      await manager.configure();
+      await manager.sync();
+      const error = await manager.setLive({ instance: 'main', changes: { module: 'spiral' } }).catch(caught => caught);
+      expect(error.message).to.include('visualizer.module must be');
+      expect(manager.summary()).to.include({ error: null });
+      expect(manager.summary().live).to.deep.equal({});
+      expect(spawned).to.have.length(1);
+    });
+
+    it('keeps the changes over a preset switched later, and records without reloading when asked', async () => {
+      await manager.configure();
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.3 } }, { reload: false });
+      expect(manager.settings.instances[0]).to.include({ opacity: 0.8 });
+      await manager.setPreset('subtle');
+      expect(manager.settings.instances[0]).to.include({ opacity: 0.3 });
     });
   });
 });

@@ -754,6 +754,10 @@ describe('Daemon', () => {
         setEnabled: async on => { calls.push(['visualizer', on]); visualizers.override = on; },
         restackAll: async () => { calls.push('restackAll'); },
         setPreset: async name => { calls.push(['preset', name]); },
+        setLive: async (change, options) => {
+          if (change?.changes?.opacity === 9) throw new Error('visualizer.opacity must be a number from 0 to 1, not 9');
+          calls.push(['live', change, options]);
+        },
         configure: async () => { calls.push('configure'); },
         sync: async () => { calls.push('sync'); },
         restack: name => { calls.push(['restack', name]); },
@@ -773,6 +777,29 @@ describe('Daemon', () => {
       await fs.writeJson(controlPath(tempDir), { pid: process.pid, ...request });
       await daemon.applyControl();
     };
+
+    it('applies the visualizer menu\'s requests: a change, a refused one, and a saved preset with the changes dropped', async () => {
+      const errors = [];
+      let reloaded = 0;
+      const daemon = makeDaemon({ visualizers, reloadConfig: async () => { reloaded++; },
+        logger: { ...silentLogger, error: (message, meta) => errors.push([message, meta.error]) } });
+      await daemon.start({ visualizer: true });
+      calls.length = 0;
+      await control(daemon, { visualizer_set: { instance: 'main', changes: { opacity: 0.5 } } });
+      await control(daemon, { visualizer_set: { instance: 'main', changes: { opacity: 9 } } });
+      expect(errors).to.deep.equal([['Visualizer change refused', 'visualizer.opacity must be a number from 0 to 1, not 9']]);
+      await control(daemon, { reload_config: true, visualizer_reset: true, preset: 'mine' });
+      expect(reloaded).to.equal(1);
+      // The reset only records: the preset switch right after it reloads once
+      expect(calls.filter(call => Array.isArray(call))).to.deep.equal([
+        ['live', { instance: 'main', changes: { opacity: 0.5 } }, undefined],
+        ['live', null, { reload: false }],
+        ['preset', 'mine']
+      ]);
+      await control(daemon, { visualizer_reset: true });
+      expect(calls.at(-1)).to.deep.equal(['live', null, { reload: true }]);
+      await daemon.stop();
+    });
 
     it('starts without wallpapers, tracking monitors for the visualizer, and refuses to start with nothing on', async () => {
       const daemon = makeDaemon({ visualizers });

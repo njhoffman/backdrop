@@ -60,6 +60,77 @@ export function unknownKeys(user, defaults, prefix = '') {
   return warnings;
 }
 
+const isBlockMap = node => YAML.isMap(node) && !node.flow;
+
+function lineStart(text, offset) {
+  return text.lastIndexOf('\n', offset - 1) + 1;
+}
+
+// Where an entry's own text ends: its deepest last value. A block collection's range runs on over the
+// blank lines and comments after it, up to the next content, which would take those lines into the entry.
+function entryEnd(pair) {
+  const { value } = pair;
+  if (!value) return pair.key.range[1];
+  if ((YAML.isMap(value) || YAML.isSeq(value)) && !value.flow && value.items.length) {
+    const last = value.items.at(-1);
+    return YAML.isPair(last) ? entryEnd(last) : entryEnd({ key: last, value: last });
+  }
+  return value.range[1];
+}
+
+// The end of the line holding offset (its line break's index, or the end of text)
+function lineEndAt(text, offset) {
+  const end = text.indexOf('\n', offset);
+  return end === -1 ? text.length : end;
+}
+
+// keys: value in YAML block style, each line indented by indent
+function renderBlock(keys, value, indent) {
+  const nested = keys.reduceRight((inner, key) => ({ [key]: inner }), value);
+  return YAML.stringify(nested, { indent: 2, lineWidth: 0 }).trimEnd().split('\n').map(line => `${' '.repeat(indent)}${line}`).join('\n');
+}
+
+// text with keys set to value by replacing or inserting only that entry's lines, found through the parsed
+// document's source ranges. The deepest existing block mapping on the path gets the missing rest of it as a
+// new last entry, at the indentation of its other keys; an existing entry is replaced in place. The result
+// is parsed again and checked, so a layout this cannot edit fails instead of writing a wrong file.
+export function spliceYaml(text, keys, value) {
+  const doc = YAML.parseDocument(text);
+  if (doc.errors.length) throw new Error(`Failed to edit config: ${doc.errors[0].message}`);
+  let parent = doc.contents;
+  let output;
+  if (parent === null || (YAML.isMap(parent) && !parent.items.length)) {
+    output = `${text}${text && !text.endsWith('\n') ? '\n' : ''}${renderBlock(keys, value, 0)}\n`;
+  } else {
+    for (let depth = 0; ; depth++) {
+      if (!isBlockMap(parent)) throw new Error(`Failed to edit config: ${keys.slice(0, depth).join('.') || 'the file'} is not a block mapping`);
+      const pair = parent.items.find(item => YAML.isScalar(item.key) && item.key.value === keys[depth]);
+      const column = parent.items[0].key.range[0] - lineStart(text, parent.items[0].key.range[0]);
+      if (pair && depth === keys.length - 1) {
+        // The entry's own lines, from its key to the end of its value, trailing comment included
+        const start = lineStart(text, pair.key.range[0]);
+        const end = lineEndAt(text, Math.max(pair.key.range[1], entryEnd(pair) - 1));
+        output = `${text.slice(0, start)}${renderBlock([keys[depth]], value, column)}${text.slice(end)}`;
+        break;
+      }
+      if (pair && isBlockMap(pair.value)) {
+        parent = pair.value;
+        continue;
+      }
+      if (pair) throw new Error(`Failed to edit config: ${keys.slice(0, depth + 1).join('.')} is not a block mapping`);
+      // After the last entry's lines
+      const at = lineEndAt(text, entryEnd(parent.items.at(-1)) - 1);
+      output = `${text.slice(0, at)}\n${renderBlock(keys.slice(depth), value, column)}${text.slice(at)}`;
+      break;
+    }
+  }
+  const check = YAML.parseDocument(output);
+  if (check.errors.length || JSON.stringify(check.getIn(keys)?.toJSON?.() ?? check.getIn(keys)) !== JSON.stringify(value)) {
+    throw new Error('Failed to edit config: the edited file would not hold the value');
+  }
+  return output;
+}
+
 export class ConfigManager {
   constructor(configPath = null) {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
@@ -222,6 +293,22 @@ export class ConfigManager {
     } catch (error) {
       throw new Error(`Failed to save config: ${error.message}`);
     }
+  }
+
+  // Sets one value in the file itself (keys: ['visualizer', 'presets', 'calm']), leaving every other byte as
+  // it was, comments and their alignment included, unlike save(), which writes the whole file anew (see
+  // spliceYaml). Written to a temporary file and renamed, so a watching daemon never reads half of it.
+  async setInFile(keys, value) {
+    const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
+    const temporary = `${this.configPath}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, spliceYaml(text, keys, value));
+    await fs.rename(temporary, this.configPath);
+  }
+
+  // Whether the file itself sets keys (['visualizer', 'presets', 'calm'])
+  async fileHas(keys) {
+    const text = await fs.readFile(this.configPath, 'utf8').catch(() => '');
+    return YAML.parseDocument(text).hasIn(keys);
   }
 
   set(key, value) {

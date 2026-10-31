@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { layoutFor, resolveGeometry, visualizerSettings } from '../../src/visualizer/settings.js';
+import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings } from '../../src/visualizer/settings.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 describe('visualizer settings', () => {
@@ -193,6 +193,51 @@ describe('visualizer settings', () => {
         .to.throw('visualizer.defines.COLOR must be left out with palette.source: wallpaper (set bars.colors instead)');
       // Without the wallpaper source a raw COLOR stays allowed
       expect(main({ defines: { COLOR: '#ff0000' } }).defines.COLOR).to.equal('#ff0000');
+    });
+  });
+
+  describe('menu changes (live)', () => {
+    const section = {
+      opacity: 0.8, bars: { amplify: 300, colors: ['#000000', '#33aacc'] },
+      presets: { faint: { opacity: 0.4 }, duo: { instances: [{ name: 'low' }, { name: 'ring', module: 'radial' }] } }
+    };
+
+    it('lays changes over the section without instances, after the preset', () => {
+      const live = { main: { opacity: 0.5, bars: { amplify: 120 } } };
+      const settings = visualizerSettings(section, { live });
+      expect(settings.instances[0]).to.include({ opacity: 0.5 });
+      expect(settings.instances[0].defines.AMPLIFY).to.equal(120);
+      // Colors the change left alone stay
+      expect(settings.instances[0].defines.COLOR).to.equal('@fg:mix(#000000, #33aacc, clamp(d / GRADIENT, 0, 1))');
+      expect(visualizerSettings(section, { preset: 'faint', live: { main: { module: 'wave' } } }).instances[0]).to.include({ opacity: 0.4, module: 'wave' });
+    });
+
+    it('lays changes over the named instances, and checks them', () => {
+      const settings = visualizerSettings(section, { preset: 'duo', live: { ring: { opacity: 0.3 } } });
+      expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['low', 'bars', 0.8], ['ring', 'radial', 0.3]]);
+      expect(() => visualizerSettings(section, { live: { main: { opacity: 3 } } })).to.throw('visualizer.opacity must be a number from 0 to 1');
+      expect(() => applyLive({}, { main: { enabled: true } })).to.throw('visualizer.live.main.enabled must be one of the visualizer instance settings');
+      expect(applyLive({ a: 1 }, {})).to.deep.equal({ a: 1 });
+    });
+
+    it('describes an instance as the menu shows it', () => {
+      expect(instanceLook(section)).to.deep.equal({
+        module: 'bars', opacity: 0.8, anchor: 'bottom', palette: { source: 'config', pick: 'vivid', min_contrast: 3 },
+        amplify: 300, colors: ['#000000', '#33aacc'], colorOption: 'colors'
+      });
+      const ring = instanceLook(section, { preset: 'duo', live: { ring: { placement: { anchor: 'center' }, palette: { source: 'wallpaper' } } } }, 'ring');
+      expect(ring).to.include({ module: 'radial', anchor: 'center', amplify: 300 });
+      expect(ring.palette.source).to.equal('wallpaper');
+      expect(ring.colors).to.deep.equal(['#cc3333', '#cca0a0']);
+      expect(instanceLook({ module: 'wave' })).to.include({ amplify: 500, colorOption: 'color' });
+    });
+
+    it('turns the active preset and the changes into one preset to save', () => {
+      expect(lookAsPreset(section, { preset: 'faint', live: { main: { bars: { amplify: 100 } } } })).to.deep.equal({ opacity: 0.4, bars: { amplify: 100 } });
+      expect(lookAsPreset(section, { live: {} })).to.deep.equal({});
+      expect(lookAsPreset(section, { preset: 'duo', live: { ring: { opacity: 0.3 } } })).to.deep.equal({
+        instances: [{ name: 'low' }, { name: 'ring', module: 'radial', opacity: 0.3 }]
+      });
     });
   });
 });

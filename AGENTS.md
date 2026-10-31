@@ -23,7 +23,8 @@ directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DI
 short: mpv socket paths must fit in 107 bytes. `test/helpers/setup.js` does this for the whole test run (removed
 afterwards), and `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
 at a missing directory, so a test never reaches a running daemon; tests that need state set their own. `test/display/mpv.integration.test.js` runs a headless mpv
-and is skipped when mpv or ffmpeg is missing.
+and is skipped when mpv or ffmpeg is missing. `test/commands/menu.integration.test.js` draws the menus with real rofi on its own Xvfb
+(skipped without Xvfb, rofi, xdotool or ImageMagick's `import`).
 
 Requires Node.js 22.13+ (built-in `node:sqlite`).
 
@@ -94,7 +95,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
-  rating and display commands from `rofi -dmenu`; it builds menus as data and draws them with `panelView`
+  rating and display commands from `rofi -dmenu`, and the visualizer (`menu visualizer` or `z`: live `visualizer_set`
+  control requests, presets saved with `ConfigManager.setInFile`, which splices lines and keeps comments); it builds menus as data and draws them with `panelView`
   (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`,
   which the daemon also makes on each load) or `minimalView`; with i3 it shows an empty workspace while open
   (`src/utils/workspace.js`, `menu.workspace`); views bind entry keys to `-kb-custom-N` and resolve

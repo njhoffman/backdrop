@@ -199,6 +199,13 @@ bindsym $mod+Shift+b exec --no-startup-id backdrop menu --no-random --tag ocean
 | `v` | speed (velocity) steps | `u` | undo |
 | `m` | switch video/image mode | `d` | dim steps |
 
+`z` opens the visualizer menu (also `backdrop menu visualizer` on its own): on/off (`e`), preset (`p`),
+module (`m`), opacity (`o`), amplify (`a`), position (`l`), colors (`c`: fixed, from the wallpaper by
+vivid/dominant/complement, or a swatch), reset (`r`) and save as preset (`s`). Changes apply at once and last
+until the daemon restarts; save writes the current look into `visualizer.presets` in your config, leaving the
+rest of the file and its comments as they were. With several visualizer instances it asks which one to change
+(`i` switches).
+
 The menu stays open after each action until you press `q`, or Escape on the main menu; Escape in the
 speed or dim submenu goes back to the main menu. With more than one monitor, Tab picks the monitor the
 buttons act on. Buttons that do not apply (speed on an image, rating with nothing playing) stay in place,

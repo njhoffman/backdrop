@@ -70,7 +70,7 @@ describe('MenuCommand', () => {
     // Nerd Font glyphs are private-use characters that editors can drop silently
     expect(shown[0].entries.every(entry => /[\u2605\uf000-\uf8ff]/.test(entry.icon))).to.be.true;
     expect(shown[0]).to.include({ title: 'ocean-waves.mp4', preview: '/cache/thumbnails/1.jpg', columns: 5 });
-    expect(shown[0].keys).to.deep.equal(['q', 'Tab']);
+    expect(shown[0].keys).to.deep.equal(['q', 'z', 'Tab']);
     expect(shown[0].message).to.equal(
       `#${playing.media.id}  video  <b>3840x2160</b>\n<b>0:18</b> · 25 fps · ★★☆ · DP-1\nocean, waves\n<b>speed 0.8</b>`);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2', 'speed ▸']);
@@ -117,10 +117,10 @@ describe('MenuCommand', () => {
     display.next.callsFake(async () => fs.writeJson(path.join(runtime, 'next-filters.json'), { pid: process.pid, tag: ['sky'] }));
     await command.open({ random: false, query: ['ocean waves'], tag: ['sunset', 'sea'] });
     expect(shown[0].status).to.deep.equal([
-      'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'monitor  <b>DP-1</b>  (Tab)'
+      'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'visualizer  <b>menu</b>  (z)', 'monitor  <b>DP-1</b>  (Tab)'
     ]);
     // display.order defaults to random
-    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'monitor  <b>DP-1</b>  (Tab)']);
+    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'visualizer  <b>menu</b>  (z)', 'monitor  <b>DP-1</b>  (Tab)']);
 
     // Opening without any keeps what is stored; a mistyped query fails before anything is stored
     await command.open();
@@ -181,7 +181,7 @@ describe('MenuCommand', () => {
     display.control.state.resolves({ monitors: [monitors[0]] });
     picks = [];
     await command.open({ stay: true });
-    expect(shown.at(-1).keys).to.deep.equal(['q']);
+    expect(shown.at(-1).keys).to.deep.equal(['q', 'z']);
     expect(shown.at(-1).status.some(line => line.includes('monitor'))).to.be.false;
   });
 
@@ -321,6 +321,133 @@ describe('MenuCommand', () => {
       expect(await thumbnailFor({ id: 11, kind: 'image', path: file }, dir, { exec, nice: true })).to.equal(path.join(dir, '11.jpg'));
       expect(exec.firstCall.args[0]).to.equal('nice');
       expect(exec.firstCall.args[1].slice(0, 3)).to.deep.equal(['-n', '19', 'ffmpeg']);
+    });
+  });
+
+  describe('visualizer menu', () => {
+    let vis, requests, asked, configFile;
+    // The daemon's side of the control requests: changes merge per instance, reset drops them
+    const sendControl = async (runtimeDir, state, change) => {
+      requests.push(change);
+      if (change.visualizer_set) {
+        const { instance, changes } = change.visualizer_set;
+        if (!change.refuse) vis.live = { ...vis.live, [instance]: { ...(vis.live[instance] ?? {}), ...changes } };
+      }
+      if (change.visualizer_reset) vis.live = {};
+      if (change.preset !== undefined) vis.preset = change.preset;
+      if (typeof change.visualizer === 'boolean') vis.enabled = change.visualizer;
+      return { monitors, visualizer: vis };
+    };
+    const open = (overrides = {}) => new MenuCommand(config, db, silentLogger, {
+      display, rating, thumbnail, workspace, view: command.view, control: sendControl, ask: async prompt => { asked.push(prompt); return asked.answer ?? null; }, ...overrides
+    });
+
+    beforeEach(async () => {
+      requests = [];
+      asked = [];
+      vis = { enabled: true, error: null, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], live: {} };
+      display.control.state = sinon.stub().callsFake(async () => ({ monitors, visualizer: vis }));
+      configFile = path.join(runtime, 'config.yaml');
+      await fs.writeFile(configFile, 'visualizer:\n  enabled: true     # kept\n  bars: { amplify: 300 }\n');
+      config.configPath = configFile;
+      config.set('visualizer', { enabled: true, bars: { amplify: 300 } });
+    });
+
+    it('opens from the main menu with z and as `menu visualizer`, showing the instance\'s settings', async () => {
+      picks = [{ key: 'z' }, null, { key: 'q' }];
+      await open().open();
+      const menu = shown[1];
+      expect(menu.prompt).to.equal('visualizer');
+      expect(menu.entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
+        ['on', 'preset', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'reset', 'save']);
+      expect(menu.entries.find(entry => entry.label === 'reset').disabled).to.equal(true);
+      expect(menu.status).to.deep.equal(['preset  <b>none</b>', 'colors  <b>#33aacc</b>']);
+      expect(shown[2].prompt).to.equal('backdrop');
+
+      shown.length = 0;
+      picks = [null];
+      await open().open({ page: 'visualizer' });
+      expect(shown.map(item => item.prompt)).to.deep.equal(['visualizer']);
+    });
+
+    it('applies steps, picks, colors and reset live through control requests', async () => {
+      picks = [
+        'opacity ▸', '0.4', '+0.1', null,
+        'module ▸', 'radial',
+        'colors ▸', 'wallpaper complement', 'ember', null,
+        'reset', null
+      ];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([
+        { visualizer_set: { instance: 'main', changes: { opacity: 0.4 } } },
+        { visualizer_set: { instance: 'main', changes: { opacity: 0.5 } } },
+        { visualizer_set: { instance: 'main', changes: { module: 'radial' } } },
+        { visualizer_set: { instance: 'main', changes: { palette: { source: 'wallpaper', pick: 'complement' } } } },
+        // radial has a gradient: the swatch's pair, as fixed colors
+        { visualizer_set: { instance: 'main', changes: { palette: { source: 'config' }, radial: { colors: ['#3d0c02', '#ff7a33'] } } } },
+        { visualizer_reset: true }
+      ]);
+      const colorsMenu = shown.find(item => item.prompt === 'colors');
+      expect(colorsMenu.entries.find(entry => entry.label === 'ember').icon).to.equal('<span foreground="#3d0c02">\u25cf</span><span foreground="#ff7a33">\u25cf</span>');
+      const changed = shown.filter(item => item.prompt === 'visualizer').at(-2);
+      expect(changed.status.at(-1)).to.equal('changed  <b>until restart (r resets)</b>');
+    });
+
+    it('checks a change before sending it, and reports one the daemon refused', async () => {
+      config.set('visualizer.bars', { amplify: 300, colors: ['#000000', '#33aacc', '#ffffff'] });
+      picks = ['opacity ▸', '0.4', null, null];
+      await open().open({ page: 'visualizer' }).catch(() => {});
+      expect(requests).to.deep.equal([]);
+      expect(notifications.at(-1).at(-1)).to.include('visualizer.bars.colors must be one color, or two for a gradient');
+
+      config.set('visualizer.bars', { amplify: 300 });
+      notifications.length = 0;
+      picks = ['opacity ▸', '0.4', null, null];
+      const refusing = async (runtimeDir, state, change) => { requests.push(change); return { monitors, visualizer: vis }; };
+      await open({ control: refusing }).open({ page: 'visualizer' });
+      expect(notifications.at(-1).at(-1)).to.include('The daemon refused the change');
+    });
+
+    it('turns it off and on, and switches presets', async () => {
+      picks = ['turn off', 'turn on', 'preset ▸', 'ring', 'preset ▸', 'none', null];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([{ visualizer: false }, { visualizer: true }, { preset: 'ring' }, { preset: null }]);
+    });
+
+    it('saves the look as a preset in the file, keeping its comments, and switches to it', async () => {
+      vis.live = { main: { opacity: 0.5 } };
+      asked.answer = 'evening';
+      picks = ['save as preset', null];
+      await open().open({ page: 'visualizer' });
+      expect(asked).to.deep.equal(['preset name']);
+      expect(await fs.readFile(configFile, 'utf8')).to.equal(
+        'visualizer:\n  enabled: true     # kept\n  bars: { amplify: 300 }\n  presets:\n    evening:\n      opacity: 0.5\n');
+      expect(requests).to.deep.equal([{ reload_config: true, visualizer_reset: true, preset: 'evening' }]);
+    });
+
+    it('asks before replacing a preset, and rejects a bad name', async () => {
+      asked.answer = 'ring';
+      picks = ['save as preset', 'keep it', null];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([]);
+      expect(shown.find(item => item.prompt === 'replace?').title).to.equal('replace preset ring?');
+
+      asked.answer = 'my look';
+      picks = ['save as preset', null];
+      await open().open({ page: 'visualizer' });
+      expect(notifications.at(-1).at(-1)).to.include('A preset name is letters, digits, - and _, not "my look"');
+    });
+
+    it('asks which instance to change when there are several, and i switches', async () => {
+      vis.instances = ['low', 'ring'];
+      config.set('visualizer.instances', [{ name: 'low' }, { name: 'ring', module: 'radial' }]);
+      picks = ['ring', 'module ▸', 'wave', { key: 'i' }, 'low', null];
+      await open().open({ page: 'visualizer' });
+      expect(shown[0].prompt).to.equal('instance');
+      expect(shown[1].title).to.equal('visualizer  ·  ring');
+      expect(shown[1].status[0]).to.equal('instance  <b>ring</b>  (i)');
+      expect(requests).to.deep.equal([{ visualizer_set: { instance: 'ring', changes: { module: 'wave' } } }]);
+      expect(shown.at(-1).title).to.equal('visualizer  ·  low');
     });
   });
 });
