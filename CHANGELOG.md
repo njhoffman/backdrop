@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.38.1] - 2026-10-31
+
+### Fixed
+- `config.example.yaml` lists `library.watch_imports` (2.34.0) and `visualizer.wallpaper_dim` (2.38.0).
+
 ## [2.38.0] - 2026-10-31
 
 ### Added
