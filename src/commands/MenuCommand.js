@@ -1,3 +1,4 @@
+import { checkSetting } from '../config/schema.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,7 +15,7 @@ import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
 import { ANCHORS, MODULES, PALETTE_PICKS, instanceLook, lookAsPreset, presetsOf, visualizerSettings } from '../visualizer/settings.js';
 
-export const MENU_STYLES = ['panel', 'minimal'];
+export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
 
 // Wallpaper videos only ever play slowed down, so +0.1 stops at 1 (see stepMenu)
@@ -190,9 +191,7 @@ export class MenuCommand {
   }
 
   style(requested) {
-    const style = requested ?? this.config.get().menu?.style ?? 'panel';
-    if (!MENU_STYLES.includes(style)) throw new Error(`menu.style must be ${MENU_STYLES.join(' or ')}, not ${style}`);
-    return style;
+    return checkSetting('menu.style', requested ?? this.config.get().menu?.style ?? 'panel');
   }
 
   viewFor(style) {

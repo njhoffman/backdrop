@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { ChildRegistry, childrenPath, processStart, reapOrphans } from '../../src/display/children.js';
+import { ChildRegistry, childrenPath, findOrphans, processStart, reapOrphans } from '../../src/display/children.js';
 import { FakeChild } from '../helpers/fakes.js';
 
 const exited = child => (child.exitCode !== null || child.signalCode !== null
@@ -104,6 +104,18 @@ describe('child processes', () => {
       };
       await reapOrphans(dir, { kill, isRunning: () => false, readStart: () => leader, grace: 60 });
       expect(kills).to.deep.equal([[-20, 'SIGTERM'], [-20, 'SIGKILL']]);
+    });
+
+    it('finds what a dead daemon left without signalling anything', async () => {
+      await writeRecord([{ pid: 40, group: true, command: 'xwinwrap', start: 'a' }, { pid: 41, group: false, command: 'pactl', start: 'b' }]);
+      const starts = { 40: 'a', 41: 'changed' };
+      expect(findOrphans(dir, { isRunning: () => false, readStart: pid => starts[pid] })).to.deep.equal({
+        daemon: 999999, orphans: [{ pid: 40, group: true, command: 'xwinwrap', start: 'a' }]
+      });
+      expect(await fs.pathExists(childrenPath(dir))).to.equal(true);
+      expect(findOrphans(dir, { isRunning: () => true })).to.equal(null);
+      await fs.remove(childrenPath(dir));
+      expect(findOrphans(dir)).to.equal(null);
     });
 
     it('leaves a running daemon and a missing record alone', async () => {

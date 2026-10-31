@@ -43,6 +43,7 @@ backdrop --help   # creates ~/.config/backdrop/config.yaml on first run
 backdrop start              # one mpv wallpaper per monitor, in the background
 backdrop                    # same as backdrop status
 backdrop status             # mode, what each monitor is playing, and mpv's recent CPU use and decoder
+backdrop doctor             # checks tools, X, the config, the daemon and the library; names the fix for each problem
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
 backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)

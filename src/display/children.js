@@ -83,16 +83,26 @@ export class ChildRegistry {
 // reused pid is never touched; without /proc nothing is. A group is then waited on as a whole, since mpv
 // outlives xwinwrap: Linux does not reuse a pid while a process group still holds it as its id.
 // Returns the processes signalled.
-export async function reapOrphans(runtimeDir, {
-  kill = process.kill, isRunning = defaultIsRunning, readStart = processStart, grace = REAP_GRACE_MS, logger
-} = {}) {
+// The recorded processes of a dead daemon that still run (start time unchanged), without touching them:
+// { daemon, orphans }, or null when there is no record or its daemon runs (backdrop doctor)
+export function findOrphans(runtimeDir, { isRunning = defaultIsRunning, readStart = processStart } = {}) {
   let record;
   try {
     record = JSON.parse(fs.readFileSync(childrenPath(runtimeDir), 'utf8'));
   } catch {
-    return [];
+    return null;
   }
-  if (isRunning(record.daemon)) return [];
+  if (isRunning(record.daemon)) return null;
+  const orphans = (record.children ?? []).filter(child => child.start !== null && readStart(child.pid) === child.start);
+  return { daemon: record.daemon, orphans };
+}
+
+export async function reapOrphans(runtimeDir, {
+  kill = process.kill, isRunning = defaultIsRunning, readStart = processStart, grace = REAP_GRACE_MS, logger
+} = {}) {
+  const found = findOrphans(runtimeDir, { isRunning, readStart });
+  if (!found) return [];
+  const record = { daemon: found.daemon };
 
   const running = child => child.start !== null && readStart(child.pid) === child.start;
   const groupRunning = child => {
@@ -103,7 +113,7 @@ export async function reapOrphans(runtimeDir, {
       return false;
     }
   };
-  const orphans = (record.children ?? []).filter(running);
+  const { orphans } = found;
   const alive = () => orphans.filter(child => (child.group ? groupRunning(child) : running(child)));
   const signal = (children, name) => {
     for (const child of children) {

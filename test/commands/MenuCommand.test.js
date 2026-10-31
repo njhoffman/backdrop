@@ -192,7 +192,7 @@ describe('MenuCommand', () => {
     config.set('menu.style', 'fancy');
     let caught;
     try { await command.open(); } catch (error) { caught = error; }
-    expect(caught.message).to.equal('menu.style must be panel or minimal, not fancy');
+    expect(caught.message).to.equal('menu.style must be panel or minimal, not "fancy"');
   });
 
   it('announces a failed action and stays open, but closes when it cannot read what plays', async () => {

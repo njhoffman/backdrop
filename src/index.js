@@ -19,6 +19,7 @@ import { ListCommand } from './commands/ListCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
 import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { SystemdCommand } from './commands/SystemdCommand.js';
+import { DoctorCommand } from './commands/DoctorCommand.js';
 import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerCommand.js';
 import { configureOutput, out, printVersion, setJsonOutput } from './utils/output.js';
 
@@ -31,12 +32,21 @@ class BackdropApp {
     this.logger = null;
   }
 
-  async initialize() {
+  // tolerant (backdrop doctor) keeps going on invalid config values, which the command then reports; output
+  // falls back to its defaults when output.* is among them
+  async initialize({ tolerant = false } = {}) {
     try {
-      await this.config.initialize();
-      configureOutput({ config: this.config });
+      await this.config.initialize({ tolerant });
+      try {
+        configureOutput({ config: this.config });
+      } catch (error) {
+        if (!tolerant) throw error;
+        configureOutput();
+      }
       if (this.config.created) out.notice(`Created default config file at: ${this.config.configPath}`);
       for (const warning of this.config.warnings) out.warn(warning);
+      // Not fatal: the daemon runs the wallpaper without the visualizer
+      if (this.config.visualizerError) out.warn(`${this.config.visualizerError} (the visualizer stays off until this is fixed)`);
 
       const config = this.config.get();
       await this.ensureDirectories();
@@ -87,6 +97,7 @@ class BackdropApp {
     const stats = new StatsCommand(this.config, this.database, this.logger);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
     const systemd = new SystemdCommand(this.config, this.database, this.logger);
+    const doctor = new DoctorCommand(this.config, this.database, this.logger, { version });
     const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
@@ -295,12 +306,16 @@ class BackdropApp {
       .option('--clear', 'Go back to visualizer.preset')
       .option('--check', 'With reload: check every instance and preset first, and reload only if all run')
       .action(this.action((action, name, options) => visualizer.run(action, name, options)));
+    program.command('doctor').description('Check tools, the X display, the config, the daemon and the library, naming the fix for each problem')
+      .option('--visualizer', 'Also start every visualizer and preset briefly (visualizer check)')
+      .option(...jsonOption)
+      .action(this.action(options => doctor.run(options)));
     program.command('systemd').description('Print a systemd user unit for the daemon, e.g. backdrop systemd > ~/.config/systemd/user/backdrop.service')
       .action(this.action(() => systemd.print(version)));
   }
 
   async run() {
-    await this.initialize();
+    await this.initialize({ tolerant: process.argv[2] === 'doctor' });
     this.setupCommands();
     // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);

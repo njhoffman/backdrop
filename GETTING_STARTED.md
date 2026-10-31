@@ -270,10 +270,13 @@ which shows what the visualizer alone looks like; `backdrop start --wallpaper` b
 only the visualizer. When neither part is left on, the daemon stops. While the wallpaper is off, commands that
 need it (`next`, `keep`, `menu` and the like) say so; `mode` still records the mode.
 
-The daemon watches the config file: saving a change to the `visualizer` section restarts the visualizer
-with it, without touching the wallpaper. A save with a mistake (invalid YAML, or a bad visualizer value)
-keeps the running visualizer and shows a desktop notification naming the problem. Changes to other
-sections still need a daemon restart. `backdrop visualizer reload` forces a reload and reports any mistake
+The daemon watches the config file and applies a saved change: a change to the `visualizer` section restarts
+the visualizer with it, without touching the wallpaper; `display.order`, `notify`, `image_duration` and
+`video_duration` (also on what plays now), `allow_upscale` and `library.min_width`/`min_height` (the playlists
+reload), `display.monitors`, `library.import_dirs` (the new folders are imported), `trash_days` and
+`default_import_rating` apply at once. `display.mpv_args`, `xwinwrap_args` and `paths` need a daemon restart,
+and a save that changes them says so in a notification. A save with a mistake (invalid YAML, or a value that
+does not check out) keeps every running setting and shows a desktop notification naming the problem. `backdrop visualizer reload` forces a reload and reports any mistake
 at the prompt. `backdrop status` shows where each instance runs. An instance that
 keeps exiting (for example from a bad `defines` value) is retried five times a minute, then given up on until
 the next reload; the log has its last output. `backdrop visualizer check` catches that first: it starts every
@@ -283,6 +286,13 @@ a compositor runs: without one (picom, for example) the area around the bars sho
 reports too.
 
 ## Current limitations and troubleshooting
+
+Start with `backdrop doctor`: it checks the tools backdrop needs (and the optional ones for the features you
+use), the X display and a compositor, every config value, the daemon (running, behind the CLI's version, or
+left processes behind after a crash) and the library (database integrity, items whose files are missing), and
+names the command that fixes each problem. It changes nothing; `--visualizer` also runs `visualizer check`,
+`--json` prints the results for scripts. It runs even when the config has invalid values, which every other
+command refuses.
 
 - X11 is supported; Wayland is out of scope.
 - The screensaver is not implemented yet.

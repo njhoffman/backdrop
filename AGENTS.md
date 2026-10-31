@@ -83,8 +83,11 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   the section holds `instances` (defaults from the section itself) and `presets` (`presets.js` ships built-in ones,
   laid over with `deepMerge`); `audio.js` follows `pactl subscribe` for `only_while_playing`; `VisualizerManager`
   owns the processes and places each window directly above its monitor's wallpaper with its opacity
-  (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section, as does a saved change to the config
-  file (`Daemon.watchConfig`, which keeps the running visualizer and notifies on a mistake).
+  (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section. A saved change to the config
+  file (`Daemon.watchConfig`, `applyConfigChange`) loads and checks the whole file again (`readConfig`), keeping every
+  running setting and notifying on a mistake; it restarts the visualizer when its section changed and applies other
+  settings by kind (`LIVE_SETTINGS`: taken in, durations, playlist reload, monitors, imports), notifying for ones
+  that need a restart.
   With `palette.source: wallpaper` (`palette.js`) the daemon samples each load and the manager pipes `fg`/`fg2` colors to
   GLava's stdin, one line per 100 ms (`colorsFor`, `recolor`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
@@ -104,7 +107,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   (`src/utils/workspace.js`, `menu.workspace`); views bind entry keys to `-kb-custom-N` and resolve
   to an index, `{ key }` or null; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
   format in `docs/specs/json.md`) and `setJsonOutput`, which moves every other stdout line to stderr.
-  `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts.
+  `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts. `DoctorCommand` only reads: tools, X,
+  config (loaded tolerantly for it, `initialize({ tolerant })`), daemon state and `findOrphans`, and the library.
 
 ## Conventions
 

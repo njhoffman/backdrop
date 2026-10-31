@@ -41,6 +41,19 @@ const CONFIG_SETTLE_MS = 300;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Settings a saved config change applies to the running daemon, by how: taken in (read where used),
+// durations (also changed on what plays now), eligibility (playlists reloaded), monitors (layout
+// reconciled) or imports (the folders imported). Any other display, library or paths setting needs a
+// restart: mpv's and xwinwrap's arguments are given when they start.
+const LIVE_SETTINGS = {
+  'display.order': 'taken', 'display.notify': 'taken',
+  'library.trash_days': 'taken', 'library.default_import_rating': 'taken',
+  'display.image_duration': 'durations', 'display.video_duration': 'durations',
+  'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
+  'display.monitors': 'monitors',
+  'library.import_dirs': 'imports'
+};
+
 export function statePath(runtimeDir) {
   return path.join(runtimeDir, 'state.json');
 }
@@ -112,6 +125,12 @@ export class Daemon {
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
+    // The whole config file loaded and checked again, for a saved change; throws on a mistake in it
+    readConfig = async () => {
+      const fresh = new config.constructor(config.configPath);
+      await fresh.loadConfig();
+      return fresh;
+    },
     watch = watchFiles, configSettle = CONFIG_SETTLE_MS,
     readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger }),
     samplePalette = (media, monitor) => sampleMedia(media, monitor),
@@ -163,6 +182,7 @@ export class Daemon {
       ...(createVisualizer ? { create: createVisualizer } : {})
     });
     this.reloadConfig = reloadConfig;
+    this.readConfig = readConfig;
     this.watch = watch;
     this.configSettle = configSettle;
     this.configWatcher = null;
@@ -576,16 +596,21 @@ export class Daemon {
     await screen.client.observeProperty(1, 'path');
     await screen.client.observeProperty(2, 'container-fps');
 
+    await this.loadScreenPlaylist(screen);
+  }
+
+  // The monitor's eligible items as mpv's playlist, resuming the last one shown when it is still eligible
+  async loadScreenPlaylist(screen) {
     const count = await loadPlaylist(screen.client, {
       database: this.database,
       config: this.config.get(),
       mode: getMode(this.database),
-      monitor,
+      monitor: screen.monitor,
       runtimeDir: this.runtimeDir,
       imageDuration: this.imageDuration()
     });
     if (!count) {
-      this.logger.warn('No media to show', { monitor: monitor.name, mode: getMode(this.database) });
+      this.logger.warn('No media to show', { monitor: screen.monitor.name, mode: getMode(this.database) });
     }
   }
 
@@ -856,9 +881,9 @@ export class Daemon {
     }
   }
 
-  // Applies saved changes to the config file's visualizer section without `backdrop visualizer reload`.
-  // The directory is watched rather than the file, since editors often save by renaming a new file over
-  // it; changes are read once the file has been quiet for configSettle.
+  // Applies saved changes to the config file without a restart (see applyConfigChange). The directory is
+  // watched rather than the file, since editors often save by renaming a new file over it; changes are read
+  // once the file has been quiet for configSettle.
   watchConfig() {
     const file = this.config.configPath;
     if (!this.watch || !file) return;
@@ -874,32 +899,82 @@ export class Daemon {
     }
   }
 
-  // Restarts the visualizer when its section changed. A file that no longer parses, or a visualizer value
-  // that does not check out, keeps the running visualizer and its settings, and is announced with a
-  // desktop notification, since nobody is at a prompt to see it.
+  // Applies a saved config file. The whole file is loaded and checked again first: a file that no longer
+  // parses, a value that does not check out, or a visualizer section that does not, keeps every running
+  // setting and is announced with a desktop notification, since nobody is at a prompt to see it. Then the
+  // visualizer restarts when its section changed, and every other changed setting is applied by its kind
+  // (LIVE_SETTINGS); ones a running mpv cannot take are announced as needing a restart.
   async applyConfigChange() {
     if (this.stopping) return;
-    const settings = this.config.get();
-    const previous = { section: settings.visualizer, user: this.config.userConfig?.visualizer, warnings: this.config.warnings ?? [] };
+    const previousWarnings = this.config.warnings ?? [];
+    let fresh;
     try {
-      await this.reloadConfig();
-      visualizerSettings(settings.visualizer);
+      fresh = await this.readConfig();
+      visualizerSettings(fresh.get().visualizer);
     } catch (error) {
-      settings.visualizer = previous.section;
-      if (this.config.userConfig) this.config.userConfig.visualizer = previous.user;
-      this.logger.error('Config change not applied, keeping the running visualizer', { error: error.message });
+      this.logger.error('Config change not applied, keeping the running settings', { error: error.message });
       await notifyError(`Config not applied: ${error.message}`, { logger: this.logger });
       return;
     }
-    await this.reportConfigWarnings(previous.warnings);
-    if (JSON.stringify(settings.visualizer) === JSON.stringify(previous.section)) return;
-    await this.visualizers.reload();
-    await this.writeState();
-    this.logger.info('Visualizer reloaded after a config change', this.visualizers.summary());
-    // Problems only found when starting it, such as missing GLava shaders
-    if (this.visualizers.error) {
-      await notifyError(`Visualizer off: ${this.visualizers.error}`, { logger: this.logger });
+    this.config.warnings = fresh.warnings ?? [];
+    await this.reportConfigWarnings(previousWarnings);
+    const next = fresh.get();
+    const settings = this.config.get();
+    if (this.config.userConfig && fresh.userConfig) this.config.userConfig = fresh.userConfig;
+
+    if (JSON.stringify(next.visualizer) !== JSON.stringify(settings.visualizer)) {
+      settings.visualizer = next.visualizer;
+      await this.visualizers.reload();
+      await this.writeState();
+      this.logger.info('Visualizer reloaded after a config change', this.visualizers.summary());
+      // Problems only found when starting it, such as missing GLava shaders
+      if (this.visualizers.error) {
+        await notifyError(`Visualizer off: ${this.visualizers.error}`, { logger: this.logger });
+      }
     }
+    await this.applySettings(next);
+  }
+
+  // Takes the changed settings outside the visualizer section from a checked config and applies each by its
+  // kind; returns the keys applied and the ones that need a restart
+  async applySettings(next) {
+    const settings = this.config.get();
+    const changed = [];
+    for (const section of ['display', 'library', 'paths']) {
+      const keys = new Set([...Object.keys(settings[section] ?? {}), ...Object.keys(next[section] ?? {})]);
+      for (const key of keys) {
+        if (JSON.stringify(settings[section]?.[key]) !== JSON.stringify(next[section]?.[key])) changed.push(`${section}.${key}`);
+      }
+    }
+    // Read by the CLI only, which loads the file on every run; kept current for anything else that asks
+    for (const section of ['sources', 'menu', 'output', 'screensaver']) settings[section] = next[section];
+
+    const restart = changed.filter(key => LIVE_SETTINGS[key] === undefined);
+    const applied = changed.filter(key => LIVE_SETTINGS[key] !== undefined);
+    for (const key of applied) {
+      const [section, name] = key.split('.');
+      settings[section][name] = next[section][name];
+    }
+    const kinds = new Set(applied.map(key => LIVE_SETTINGS[key]));
+    if (applied.length) this.logger.info('Config applied', { settings: applied });
+    if (kinds.has('durations')) await this.applyDurations();
+    if (kinds.has('eligibility')) {
+      for (const screen of [...this.screens.values()]) {
+        try {
+          await this.loadScreenPlaylist(screen);
+        } catch (error) {
+          this.logger.warn('Failed to reload the playlist', { monitor: screen.monitor.name, error: error.message });
+        }
+      }
+    }
+    if (kinds.has('monitors')) await this.checkMonitors();
+    if (kinds.has('imports')) this.importing = this.importing.then(() => this.importDirs([...this.monitors.values()][0] ?? null));
+    if (restart.length) {
+      this.logger.warn('Config changes that need a daemon restart', { settings: restart });
+      await notifyError(`Restart the daemon to apply: ${restart.join(', ')} (backdrop stop, then backdrop start)`, { logger: this.logger });
+    }
+    if (applied.length) await this.writeState();
+    return { applied, restart };
   }
 
   // Unknown keys a save added, announced once each: nobody is at a prompt to see the CLI's warnings

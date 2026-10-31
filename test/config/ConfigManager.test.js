@@ -270,6 +270,30 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('invalid values', () => {
+    it('fails the load listing every invalid value, and converts durations', async () => {
+      await writeConfig({ display: { image_duration: '5m', notify: 'loud' }, library: { trash_days: -1 } });
+      const error = await configManager.initialize().catch(caught => caught);
+      expect(error.message).to.include(`invalid values in ${configPath}:`)
+        .and.include('display.notify must be commands, all or off, not "loud"')
+        .and.include('library.trash_days must be a whole number from 0, not -1');
+      await writeConfig({ display: { image_duration: '5m' } });
+      await configManager.initialize();
+      expect(configManager.get().display.image_duration).to.equal(300);
+      expect(configManager.errors).to.deep.equal([]);
+    });
+
+    it('keeps going when tolerant, and leaves a bad visualizer section as a warning', async () => {
+      await writeConfig({ display: { notify: 'loud' }, visualizer: { module: 'spiral' } });
+      await configManager.initialize({ tolerant: true });
+      expect(configManager.errors).to.deep.equal(['display.notify must be commands, all or off, not "loud"']);
+      expect(configManager.visualizerError).to.include('visualizer.module must be');
+      await writeConfig({ visualizer: { module: 'spiral' } });
+      await configManager.initialize();
+      expect(configManager.visualizerError).to.include('visualizer.module must be');
+    });
+  });
+
   describe('unknown keys', () => {
     it('has no warnings for a config that only uses known keys', async () => {
       await writeConfig({ ...configManager.getUserDefaults(), paths: { media: '~/walls' } });
@@ -308,8 +332,14 @@ describe('ConfigManager', () => {
         screensaver: { streams: [{ url: 'x' }] },
         menu: 'minimal'
       });
-      await configManager.initialize();
+      // Loaded tolerantly: the values themselves are the schema's to report
+      await configManager.initialize({ tolerant: true });
       expect(configManager.warnings).to.deep.equal([]);
+      expect(configManager.errors).to.deep.equal([
+        'display.mpv_args must be a list of strings, not [{"odd":true}]',
+        'menu must be a mapping of settings, not "minimal"'
+      ]);
+      expect(configManager.visualizerError).to.include('visualizer.colour must be one of the visualizer settings');
     });
 
     it('updates the warnings from the whole file when one section is reloaded', async () => {

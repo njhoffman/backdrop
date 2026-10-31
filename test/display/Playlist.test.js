@@ -157,7 +157,9 @@ describe('Playlist', () => {
     it('rejects a negative or non-numeric video_duration', () => {
       expect(validVideoDuration(0)).to.equal(0);
       expect(() => validVideoDuration(-1)).to.throw('display.video_duration');
-      expect(() => validVideoDuration('10m')).to.throw('display.video_duration');
+      // The same times the CLI takes
+      expect(validVideoDuration('10m')).to.equal(600);
+      expect(() => validVideoDuration('ten')).to.throw('display.video_duration');
     });
   });
 
@@ -252,7 +254,7 @@ describe('Playlist', () => {
       expect(randomOrder({ order: 'random' })).to.be.true;
       expect(randomOrder({})).to.be.true;
       expect(randomOrder({ order: 'random' }, false)).to.be.false;
-      expect(() => randomOrder({ order: 'sorted' })).to.throw('display.order must be shuffle or random, not sorted');
+      expect(() => randomOrder({ order: 'sorted' })).to.throw('display.order must be shuffle or random, not "sorted"');
     });
 
     it('moves a picked entry right after the current one, skipping copies of the current file', async () => {

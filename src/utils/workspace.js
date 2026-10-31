@@ -1,3 +1,4 @@
+import { checkSetting } from '../config/schema.js';
 import { run as defaultRun } from '../display/Monitors.js';
 
 export const DEFAULT_WORKSPACE = 'backdrop';
@@ -6,8 +7,7 @@ export const DEFAULT_WORKSPACE = 'backdrop';
 export function workspaceName(setting) {
   if (setting === false || setting === null) return null;
   if (setting === undefined || setting === true) return DEFAULT_WORKSPACE;
-  if (typeof setting === 'string' && setting.trim()) return setting.trim();
-  throw new Error(`menu.workspace must be true, false or a workspace name, not ${JSON.stringify(setting)}`);
+  return checkSetting('menu.workspace', setting).trim();
 }
 
 // An i3 command argument in double quotes

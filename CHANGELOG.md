@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-10-31
+
+### Added
+- `backdrop doctor` checks the tools backdrop needs, the X display and a compositor, every config value, the
+  daemon (running, a version behind the CLI, or processes left after a crash) and the library (database
+  integrity, items whose files are missing), and names the command that fixes each problem. It changes
+  nothing, runs even with an invalid config, and exits 1 on a failure; `--visualizer` adds `visualizer check`,
+  `--json` prints the results.
+
+## [2.31.0] - 2026-10-31
+
+### Added
+- Saving the config file now applies most settings to the running daemon, not just the visualizer section:
+  `display.order`, `notify`, `image_duration` and `video_duration` (also on what plays now), `allow_upscale` and
+  `library.min_width`/`min_height` (the playlists reload), `display.monitors`, `library.import_dirs` (the new
+  folders are imported), `trash_days` and `default_import_rating`. A change to `display.mpv_args`,
+  `xwinwrap_args` or `paths` shows a notification that the daemon needs a restart.
+
+### Changed
+- A saved config with any value that does not check out keeps every running setting, with a notification
+  naming the problem; before, only the visualizer section was checked.
+
+## [2.30.0] - 2026-10-31
+
+### Changed
+- Every config value is checked when the config loads: a mistake such as `image_duration: 5 minutes` or
+  `notify: loud` now stops every command at once with each problem listed by key, instead of failing later
+  inside mpv or one command. A problem in the visualizer section is a warning; the rest still runs.
+
+### Added
+- `display.image_duration` and `display.video_duration` take the same times as `--image-duration`: `90`, `90s`,
+  `5m` or `1h`.
+
 ## [2.29.1] - 2026-10-31
 
 ### Changed

@@ -5,7 +5,22 @@ settings below on first run. Values in the file are deep merged over the default
 key, arrays and scalars replace the default. A key that no setting uses is reported with the closest known
 key, e.g. `Unknown config key "visualization"; closest: "visualizer"`: on stderr by every command, under
 `Config` in `status` (`config_warnings` in `status --json`), in the daemon log at start, and as a desktop
-notification when a save adds one while the daemon runs. The file still loads. The `visualizer` section checks
+notification when a save adds one while the daemon runs. The file still loads.
+
+Values are checked when the file loads (`src/config/schema.js`): a value that does not check out stops every
+command with each problem listed by key, e.g. `display.notify must be commands, all or off, not "loud"`.
+Durations (`display.image_duration`, `display.video_duration`) take the times the CLI's `--image-duration` does
+(`90`, `90s`, `5m`, `1h`) and become seconds.
+
+The daemon applies a saved file without a restart (`Daemon.applyConfigChange`): it loads and checks the whole
+file again, keeps every running setting on a mistake (with a notification), restarts the visualizer when its
+section changed, and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
+`default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
+`allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
+reconciles the monitors; `library.import_dirs` imports the folders. `display.mpv_args`, `xwinwrap_args` and
+`paths` need a restart, which a notification names. `sources`, `menu` and `output` are read by the CLI on each
+run. The visualizer section is the exception: a problem there is a
+warning, and the daemon runs the wallpaper without the visualizer. The `visualizer` section checks
 its own keys and rejects unknown ones.
 
 ```yaml

@@ -30,10 +30,17 @@ Reviewed: 2026-10-30
       Agents may read it as project guidance that contradicts `AGENTS.md`. Deleted and added to `.gitignore` in case the tool regenerates it.
 - [x] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
       Replaced with a prerequisites list and a `command -v` check; limitations updated for purge, missing files and health checks.
-- [ ] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
+- [x] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
       a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
-- [ ] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
+      Done in 2.32.0: `backdrop doctor` (`src/commands/DoctorCommand.js`), read-only, `--json`, `--visualizer`; also a daemon
+      behind the CLI's version and processes a crash left (`findOrphans`). On this machine it found the daemon a
+      version behind after a bump.
+- [x] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
       `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
+      Done in 2.30.0: `src/config/schema.js` checks every key outside the visualizer section when the config loads and
+      fails with every problem listed (tolerant for `backdrop doctor`); durations take 90/90s/5m/1h. The checks that
+      were spread over Playlist, notify, purge, workspace and MenuCommand call it. A bad visualizer section stays a
+      warning, as the daemon already ran without it.
 - [x] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
       accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. The
       visualizer section rejects unknown keys since 2.24.0/2.25.0; top-level sections and the other sections still do
@@ -362,11 +369,15 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `place()` fails the start case; the mpv-restart and wallpaper on/off cases pass either way (a new xwinwrap
       lowers itself below the visualizer), so they guard the restart paths and the visualizer surviving
       `stop --wallpaper`, not the restack itself.
-- [ ] **Apply more config sections live.** (p2) [feature] The config watcher (2.23.0) applies only the `visualizer`
+- [x] **Apply more config sections live.** (p2) [feature] The config watcher (2.23.0) applies only the `visualizer`
       section. Extend `Daemon.applyConfigChange` to the display keys the daemon reads per item (`order`, `image_duration`,
       `video_duration`, `notify`, `allow_upscale`) by taking them into the running config, and `display.monitors` by
       running `reconcileMonitors`. Keys a running mpv cannot take (`mpv_args`, `xwinwrap_args`) and `paths` should log
       and notify "restart the daemon to apply" instead. Validate each section first, as the visualizer one is.
+      Done in 2.31.0: `applyConfigChange` loads and checks the whole file (`readConfig`), then applies by kind
+      (`LIVE_SETTINGS` in `src/display/Daemon.js`), also `library.min_width/min_height`, `import_dirs`, `trash_days` and
+      `default_import_rating`. Checked live: `image_duration: 4m` applied as 240 s, an `mpv_args` change notified.
+      Reloading a playlist for an eligibility change restarts the item on screen.
 - [x] **Live value channel into GLava (--pipe).** (p2) [feature] Foundation for every color item below. Start each instance
       with `--pipe=fg:vec4 --pipe=bg:vec4` (and more bindings as needed) and keep its stdin open in `VisualizerManager`;
       writing `fg = #rrggbbaa\n` changes the color without a restart. The typed color options already emit `@fg:`/`@bg:`

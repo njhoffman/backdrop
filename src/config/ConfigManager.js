@@ -3,6 +3,8 @@ import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
 import { closestMatches } from '../utils/closest.js';
+import { validateConfig } from './schema.js';
+import { visualizerSettings } from '../visualizer/settings.js';
 
 const APP_NAME = 'backdrop';
 
@@ -131,6 +133,16 @@ export function spliceYaml(text, keys, value) {
   return output;
 }
 
+// The visualizer section's problem as a message, or null
+function visualizerProblem(section) {
+  try {
+    visualizerSettings(section);
+    return null;
+  } catch (error) {
+    return error.message;
+  }
+}
+
 export class ConfigManager {
   constructor(configPath = null) {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
@@ -140,6 +152,10 @@ export class ConfigManager {
     this.created = false;
     // Keys in the file that no setting uses, most likely typos; the CLI and the daemon report them
     this.warnings = [];
+    // Values that do not check out (schema.js); loading fails on them unless tolerant (backdrop doctor)
+    this.errors = [];
+    // A visualizer section that does not check out: not fatal, the daemon runs the wallpaper without it
+    this.visualizerError = null;
   }
 
   getDefaultPaths() {
@@ -219,12 +235,13 @@ export class ConfigManager {
     return { ...this.getUserDefaults(), paths: this.getDefaultPaths() };
   }
 
-  async initialize() {
+  // tolerant keeps going on invalid values, leaving them in errors (backdrop doctor reports them)
+  async initialize({ tolerant = false } = {}) {
     try {
       await fs.ensureDir(path.dirname(this.configPath));
 
       if (await fs.pathExists(this.configPath)) {
-        await this.loadConfig();
+        await this.loadConfig({ tolerant });
       } else {
         await this.createDefaultConfig();
       }
@@ -233,12 +250,18 @@ export class ConfigManager {
     }
   }
 
-  async loadConfig() {
+  // Every value is checked (schema.js, converting durations to seconds); one that does not check out fails
+  // the load with every problem listed, unless tolerant
+  async loadConfig({ tolerant = false } = {}) {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf8');
       this.userConfig = YAML.parse(configContent) || {};
       this.warnings = unknownKeys(this.userConfig, this.getDefaultConfig());
-      this.config = this.normalize(deepMerge(this.getDefaultConfig(), this.userConfig));
+      const merged = deepMerge(this.getDefaultConfig(), this.userConfig);
+      this.errors = validateConfig(merged);
+      this.visualizerError = visualizerProblem(merged.visualizer);
+      if (this.errors.length && !tolerant) throw new Error(`invalid values in ${this.configPath}:\n  ${this.errors.join('\n  ')}`);
+      this.config = this.normalize(merged);
     } catch (error) {
       throw new Error(`Failed to load config: ${error.message}`);
     }
@@ -270,9 +293,10 @@ export class ConfigManager {
     for (const key of Object.keys(config.paths)) {
       config.paths[key] = this.expandPath(config.paths[key]);
     }
-    config.library.import_dirs = config.library.import_dirs.map(dir => this.expandPath(dir));
+    // Not a list only in a tolerant load, where the error is already recorded
+    if (Array.isArray(config.library?.import_dirs)) config.library.import_dirs = config.library.import_dirs.map(dir => this.expandPath(dir));
 
-    if (!config.sources.pexels.api_key && process.env.PEXELS_API) {
+    if (config.sources?.pexels && !config.sources.pexels.api_key && process.env.PEXELS_API) {
       config.sources.pexels.api_key = process.env.PEXELS_API;
     }
 

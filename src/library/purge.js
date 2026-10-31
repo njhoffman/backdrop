@@ -1,13 +1,10 @@
+import { checkSetting } from '../config/schema.js';
 import fs from 'fs-extra';
 import path from 'path';
 
 // Validated library.trash_days; 0 disables purging
 export function trashDays(config) {
-  const days = config.get().library.trash_days;
-  if (!Number.isInteger(days) || days < 0) {
-    throw new Error(`library.trash_days must be a whole number of days, 0 to disable (got ${days})`);
-  }
-  return days;
+  return checkSetting('library.trash_days', config.get().library.trash_days);
 }
 
 // Deletes trash files whose skip is older than library.trash_days. The media row and ratings stay,

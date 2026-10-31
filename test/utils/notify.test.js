@@ -73,6 +73,6 @@ describe('notify', () => {
     config.set('display.notify', 'off');
     await notifyCommand(config, db, playing);
     expect(recorded).to.have.length(1);
-    expect(() => notifyMode({ notify: 'always' })).to.throw('display.notify must be commands, all, off');
+    expect(() => notifyMode({ notify: 'always' })).to.throw('display.notify must be commands, all or off, not "always"');
   });
 });

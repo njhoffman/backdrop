@@ -1,8 +1,9 @@
+import { checkSetting } from '../config/schema.js';
 import { run } from '../display/Monitors.js';
 import { out, formatClock, formatResolution } from './output.js';
 
 // commands: navigation commands notify; all: the daemon notifies on every load, commands included; off
-export const NOTIFY_MODES = ['commands', 'all', 'off'];
+export { NOTIFY_MODES } from '../config/schema.js';
 
 // Tests replace exec so notify-send never runs
 const settings = { exec: run };
@@ -12,11 +13,7 @@ export function configureNotify({ exec } = {}) {
 }
 
 export function notifyMode(display) {
-  const mode = display.notify ?? 'commands';
-  if (!NOTIFY_MODES.includes(mode)) {
-    throw new Error(`display.notify must be ${NOTIFY_MODES.join(', ')}, not ${mode}`);
-  }
-  return mode;
+  return checkSetting('display.notify', display.notify ?? 'commands');
 }
 
 // Notification bodies and rofi messages are Pango markup

@@ -951,17 +951,26 @@ describe('Daemon', () => {
       watched = { dir, listener, watcher };
       return watcher;
     };
-    // The config file as the next reload reads it: a visualizer section, or an Error for a bad file;
-    // { section, warnings } also sets the file's unknown-key warnings
-    const reloadConfig = async () => {
+    // The config file as the next load reads it: a visualizer section, an Error for a bad file, { section,
+    // warnings } for a visualizer section with the file's unknown-key warnings, or { settings } with other
+    // settings by key ('display.order': 'shuffle')
+    const readConfig = async () => {
       const next = sections.shift();
       if (next instanceof Error) throw next;
-      if (next?.warnings) {
-        config.warnings = next.warnings;
-        config.get().visualizer = next.section;
+      const base = structuredClone(config.get());
+      let warnings = config.warnings ?? [];
+      if (next?.settings) {
+        for (const [key, value] of Object.entries(next.settings)) {
+          const [section, name] = key.split('.');
+          base[section][name] = value;
+        }
+      } else if (next?.warnings) {
+        warnings = next.warnings;
+        base.visualizer = next.section;
       } else {
-        config.get().visualizer = next;
+        base.visualizer = next;
       }
+      return { get: () => base, warnings };
     };
     const save = async (name = 'config.yaml') => {
       watched.listener('rename', name);
@@ -981,7 +990,7 @@ describe('Daemon', () => {
       };
       config.configPath = path.join(tempDir, 'config', 'config.yaml');
       notifications.length = 0;
-      daemon = makeDaemon({ visualizers, reloadConfig, watch: fakeWatch, configSettle: 5 });
+      daemon = makeDaemon({ visualizers, readConfig, watch: fakeWatch, configSettle: 5 });
       await daemon.start();
     });
     afterEach(async () => { await daemon.stop(); });
@@ -1011,7 +1020,7 @@ describe('Daemon', () => {
       sections.push({ ...before, bars: { width: 0 } });
       await save();
       expect(calls).to.deep.equal([]);
-      expect(config.get().visualizer).to.equal(before);
+      expect(config.get().visualizer).to.deep.equal(before);
       expect(notifications.map(args => args.at(-1))).to.deep.equal([
         'Config not applied: Failed to load config: Nested mappings are not allowed in compact mappings',
         'Config not applied: visualizer.bars.width must be an integer from 1, not 0'
@@ -1031,7 +1040,7 @@ describe('Daemon', () => {
       const warnings = [];
       const logger = { ...silentLogger, warn: (message, meta) => message === 'Unknown config keys' && warnings.push(meta.warnings) };
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
-      daemon = makeDaemon({ visualizers, reloadConfig, watch: fakeWatch, configSettle: 5, logger });
+      daemon = makeDaemon({ visualizers, readConfig, watch: fakeWatch, configSettle: 5, logger });
       await daemon.start();
       expect(warnings).to.deep.equal([config.warnings]);
 
@@ -1048,6 +1057,44 @@ describe('Daemon', () => {
       expect(warnings.at(-1)).to.deep.equal([typo]);
       expect(calls).to.deep.equal([]);
       config.warnings = [];
+    });
+
+    it('applies other settings by their kind: taken in, durations, playlists, monitors and imports', async () => {
+      const client = clients[0].client;
+      // A playlist load is a loadlist, or a playlist-clear when nothing is eligible (as in this empty library)
+      const loads = () => client.commands.filter(command => command[0] === 'loadlist' || command[0] === 'playlist-clear').length;
+      const imported = [];
+      daemon.importer = { importDirs: async dirs => { imported.push(dirs); return { imported: [] }; } };
+      const before = loads();
+      sections.push({ settings: {
+        'display.order': 'shuffle', 'library.trash_days': 7, 'display.image_duration': 42,
+        'display.allow_upscale': true, 'display.monitors': ['DP-1'], 'library.import_dirs': ['/new']
+      } });
+      await save();
+      const settings = config.get();
+      expect(settings.display).to.include({ order: 'shuffle', image_duration: 42, allow_upscale: true });
+      expect(settings.library).to.include({ trash_days: 7 });
+      expect(client.properties['image-display-duration']).to.equal(42);
+      expect(loads()).to.be.above(before);
+      // The monitor list changed: the layout was read again and HDMI-1 dropped
+      expect([...daemon.monitors.keys()]).to.deep.equal(['DP-1']);
+      await daemon.importing;
+      expect(imported).to.deep.equal([['/new']]);
+      expect(notifications).to.deep.equal([]);
+    });
+
+    it('announces settings that need a restart, without taking them, and keeps everything on a bad value', async () => {
+      const args = config.get().display.mpv_args;
+      sections.push({ settings: { 'display.mpv_args': ['--hwdec=no'], 'display.order': 'shuffle' } });
+      await save();
+      expect(config.get().display.mpv_args).to.deep.equal(args);
+      expect(config.get().display.order).to.equal('shuffle');
+      expect(notifications.at(-1).at(-1)).to.equal('Restart the daemon to apply: display.mpv_args (backdrop stop, then backdrop start)');
+
+      sections.push(new Error('Failed to load config: invalid values in /c.yaml:\n  display.notify must be commands, all or off, not "loud"'));
+      await save();
+      expect(notifications.at(-1).at(-1)).to.include('Config not applied').and.include('display.notify must be');
+      expect(config.get().display.order).to.equal('shuffle');
     });
 
     it('stops watching when the daemon stops', async () => {

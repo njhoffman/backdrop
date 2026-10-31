@@ -1,3 +1,4 @@
+import { checkSetting } from '../config/schema.js';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -66,15 +67,12 @@ export function orderPlaylist(media, lastMediaId, random = Math.random) {
   return shuffled;
 }
 
-export const ORDERS = ['shuffle', 'random'];
+export { ORDERS } from '../config/schema.js';
 
 // Whether a navigation command picks a random next item: --random or --no-random when given,
 // otherwise display.order. The daemon's own advances always follow the shuffled playlist.
 export function randomOrder(display, requested) {
-  const order = display.order ?? 'random';
-  if (!ORDERS.includes(order)) {
-    throw new Error(`display.order must be ${ORDERS.join(' or ')}, not ${order}`);
-  }
+  const order = checkSetting('display.order', display.order ?? 'random');
   return requested === undefined ? order === 'random' : Boolean(requested);
 }
 
@@ -138,10 +136,7 @@ export function modeProperties(mode, imageDuration) {
 }
 
 export function validVideoDuration(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`display.video_duration must be a number of seconds, 0 to loop forever, not ${value}`);
-  }
-  return value;
+  return checkSetting('display.video_duration', value);
 }
 
 // mpv properties that end a video after about `timeout` seconds of wall time. Shorter videos loop
