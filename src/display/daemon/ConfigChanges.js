@@ -12,7 +12,7 @@ const LIVE_SETTINGS = {
   'display.image_duration': 'durations', 'display.video_duration': 'durations',
   'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
   'display.monitors': 'monitors',
-  'library.import_dirs': 'imports'
+  'library.import_dirs': 'imports', 'library.watch_imports': 'imports'
 };
 
 // The config file watcher and how a saved change reaches the running daemon (LIVE_SETTINGS), for a Daemon
@@ -109,7 +109,10 @@ export class ConfigChanges {
       }
     }
     if (kinds.has('monitors')) await this.daemon.checkMonitors();
-    if (kinds.has('imports')) this.daemon.importing = this.daemon.importing.then(() => this.daemon.importDirs([...this.daemon.monitors.values()][0] ?? null));
+    if (kinds.has('imports')) {
+      this.daemon.importWatcher.start();
+      this.daemon.importing = this.daemon.importing.then(() => this.daemon.importDirs(this.daemon.firstMonitor()));
+    }
     if (restart.length) {
       this.daemon.logger.warn('Config changes that need a daemon restart', { settings: restart });
       await notifyError(`Restart the daemon to apply: ${restart.join(', ')} (backdrop stop, then backdrop start)`, { logger: this.daemon.logger });

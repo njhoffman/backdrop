@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { parseProbe, parseFrameRate, probeMedia, meetsMinimum } from '../../src/library/probe.js';
+import { parseProbe, parseFrameRate, probeMedia, meetsMinimum, isAnimatedWebp, UnsupportedMedia, ANIMATED_WEBP } from '../../src/library/probe.js';
 
 const probeJson = (stream, format) => ({ streams: stream ? [stream] : [], format });
 
@@ -59,6 +59,47 @@ describe('probe', () => {
     });
   });
 
+  describe('animated WebP', () => {
+    // RIFF header, WEBP, then the first chunk's FourCC and size, and the VP8X flags byte
+    const header = (fourcc, flags = 0) => Buffer.concat([
+      Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from(`WEBP${fourcc}`), Buffer.alloc(4), Buffer.from([flags])
+    ]);
+    const still = { kind: 'image', width: 2560, height: 1440, duration: null, fps: null };
+    const exec = info => async () => JSON.stringify(info
+      ? { streams: [{ width: info.width, height: info.height }], format: { format_name: 'webp_pipe' } }
+      : { streams: [{ width: 0, height: 0 }], format: { format_name: 'webp_pipe' } });
+
+    it('is recognized by the animation flag of the extended chunk', () => {
+      expect(isAnimatedWebp(header('VP8X', 0x02))).to.be.true;
+      expect(isAnimatedWebp(header('VP8X', 0x12))).to.be.true;
+      expect(isAnimatedWebp(header('VP8X', 0x10))).to.be.false;
+      expect(isAnimatedWebp(header('VP8 ', 0x02))).to.be.false;
+      expect(isAnimatedWebp(Buffer.from('RIFF'))).to.be.false;
+    });
+
+    it('is rejected with its reason when FFmpeg cannot decode it', async () => {
+      let error;
+      await probeMedia('/a.webp', exec(null), async () => header('VP8X', 0x02)).catch(caught => { error = caught; });
+
+      expect(error).to.be.instanceOf(UnsupportedMedia);
+      expect(error.message).to.equal(ANIMATED_WEBP);
+    });
+
+    it('plays as an animation when FFmpeg can decode it', async () => {
+      expect((await probeMedia('/a.WEBP', exec(still), async () => header('VP8X', 0x02))).kind).to.equal('gif');
+    });
+
+    it('leaves still WebP and other formats alone, reading no header for them', async () => {
+      let reads = 0;
+      const read = async () => { reads++; return header('VP8X', 0); };
+
+      expect(await probeMedia('/a.webp', exec(still), read)).to.deep.equal(still);
+      expect(await probeMedia('/a.webp', exec(null), read)).to.be.null;
+      expect(await probeMedia('/a.png', exec(still), read)).to.deep.equal(still);
+      expect(reads).to.equal(2);
+    });
+  });
+
   describe('meetsMinimum', () => {
     it('compares the long and short sides so orientation does not matter', () => {
       expect(meetsMinimum({ width: 1024, height: 768 }, 1024, 768)).to.be.true;
@@ -104,6 +145,17 @@ describe('probe', () => {
       expect((await probeMedia(gif)).kind).to.equal('gif');
       expect(await probeMedia(mp4)).to.deep.include({ kind: 'video', width: 1280, height: 720, fps: 10 });
       expect((await probeMedia(gif)).fps).to.equal(5);
+    });
+
+    it('rejects or animates an animated WebP, depending on the FFmpeg', async function () {
+      const encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
+      if (!encoders.includes('libwebp_anim')) this.skip();
+      const webp = make('a.webp', '-i', 'testsrc2=size=320x240:rate=5:duration=1', '-c:v', 'libwebp_anim', '-loop', '0');
+
+      const result = await probeMedia(webp).catch(error => error);
+
+      if (result instanceof Error) expect(result.message).to.equal(ANIMATED_WEBP);
+      else expect(result.kind).to.equal('gif');
     });
 
     it('returns null for files that are not media', async () => {

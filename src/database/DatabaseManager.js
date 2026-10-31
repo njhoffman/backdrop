@@ -600,6 +600,11 @@ export class DatabaseManager {
     return this.db.prepare('SELECT * FROM imported_files WHERE source_path = ?').get(sourcePath) ?? null;
   }
 
+  // Source files whose last import attempt ended with this detail, e.g. probe.js's ANIMATED_WEBP
+  importedFilesWithDetail(detail) {
+    return this.db.prepare('SELECT * FROM imported_files WHERE detail = ? ORDER BY source_path').all(detail);
+  }
+
   recordImportedFile({ source_path, size, mtime_ms, sha256 = null, media_id = null, status, detail = null }) {
     if (!IMPORT_STATUSES.includes(status)) {
       throw new Error(`Invalid import status: ${status}`);

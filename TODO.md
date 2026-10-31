@@ -249,30 +249,46 @@ Reviewed: 2026-10-31
       Done: `backdrop import`, rescanned on every daemon start; copies (originals untouched), dedupes by SHA-256, skips unchanged files by size/mtime, rejects < 1024x768.
 - [x] **Consistent names for imports.** (p2) [feature] Rename imported files to a sequential `local-<n>.<ext>` (no category detection, decided 2026-10-21).
       Keep the original filename and path in the DB; never reuse a number after deletion.
-- [ ] **Watch mode for import directories.** (p3) [feature] Pick up new files while the daemon runs (fs.watch / inotify) instead of only on start or `backdrop import`.
+- [x] **Watch mode for import directories.** (p3) [feature] Pick up new files while the daemon runs (fs.watch / inotify) instead of only on start or `backdrop import`.
+      Done (v2.34.0): `library.watch_imports` (default on) watches the folders recursively; a change, once quiet for 2s, runs the usual
+      import over every folder, leaving files changed in the last 2s for another pass. Changes a network share gets from other
+      machines are not seen (inotify) and wait for the next start or `backdrop import`.
 - [x] **No command to remove an item from the library.** (p2) [feature] `backdrop remove <id>` or `backdrop remove --current [--monitor <name>]`
       deletes the file and media row after removing all playlist references. `imported_files` keeps the source record so unchanged originals are not re-imported.
-- [ ] **Animated WebP imports as a still image.** (p3) [bug] ffprobe cannot decode animated WebP, so `probe.js` classifies it as `image`; detect the ANIM chunk and treat it as `gif`.
+- [x] **Animated WebP imports as a still image.** (p3) [bug] ffprobe cannot decode animated WebP, so `probe.js` classifies it as `image`; detect the ANIM chunk and treat it as `gif`.
+      Done (v2.34.1): the premise was wrong. FFmpeg 7.1 reports a 0x0 picture, so these were rejected as `unsupported` ("no picture
+      stream"), and mpv 0.40 cannot play them either. Now the VP8X animation flag gives the reason, `doctor` lists the files with a
+      conversion hint, and an FFmpeg that decodes them (probe succeeds) imports them as `gif`.
+- [ ] **Unsupported imports are never retried.** (p3) [feature] `imported_files` keeps `unsupported` with the file's size and mtime,
+      so an unchanged file is skipped even after an FFmpeg upgrade could read it (animated WebP with FFmpeg 8). `backdrop import --retry`
+      (or `rescan`) could clear those records, or the record could note the ffprobe version it was checked with.
 - [x] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
       Done: the daemon logs the file total and progress every 30s; `backdrop import` shows a progress bar.
 - [x] **Edit rating during playback.** (p2) [feature] `keep N` changes the effective current rating for imported items;
       prior ratings remain as undo history, and repeated ratings do not duplicate playlist entries or restart media already in the library.
-- [ ] **Concurrent imports can collide.** (p3) [bug] `backdrop import` and the daemon's startup import can scan the same folders at once; both may copy a file
+- [x] **Concurrent imports can collide.** (p3) [bug] `backdrop import` and the daemon's startup import can scan the same folders at once; both may copy a file
       before either commits, so the second likely fails on the unique `sha256` and is recorded as `failed`. Take a lock file in the data dir for the duration of an import,
       and have the second importer wait or skip.
+      Done (v2.33.2): since v2.2.0 a lost race was already recorded as a duplicate and its copy removed; what remained was the
+      doubled hashing and copying and a used `local-<n>` number. `import.lock` beside the media directory (pid and start time,
+      so a crashed holder is taken over) now runs one import at a time: `backdrop import` waits, the daemon skips.
 - [ ] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
       and descriptions, and lists filter with `--tag`. Since v2.17.0 `pending`, `download` and `next` also take `--tag`
       and `--query` (`src/library/match.js`), but `next` only jumps once. Next: show tag counts in `stats`, add a `tags`
       command listing them, and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
-- [ ] **No shell completion for `--query` values.** (p3) [feature] `--query` must match a saved search exactly, so completing
+- [x] **No shell completion for `--query` values.** (p3) [feature] `--query` must match a saved search exactly, so completing
       it from `searches` (a helper like the monitors one in `src/commands/CompletionCommand.js`, reading the database or a
       `backdrop queries` listing) would save typing and typos; `--tag` could complete from `media_tags` the same way.
+      Done (v2.35.0): both scripts read saved queries (newest first) and tags (most used first) from the database with the
+      `sqlite3` CLI, whose path is written into the script, falling back to the hidden `backdrop complete-values` without it.
 - [x] **Frame rate unknown until a video plays.** (p3) [feature] Videos added before v7 get `fps` from mpv the first time
       they play. A `backdrop rescan` (ffprobe over existing files) would fill it at once and could also re-check sizes.
       Done: `backdrop rescan` fills missing frame rates; `--all` re-checks kind, size and duration of every file.
-- [ ] **ffprobe takes about 0.4s per file.** (p3) [perf] It decodes part of each file to fill in stream details, so `rescan` of
+- [x] **ffprobe takes about 0.4s per file.** (p3) [perf] It decodes part of each file to fill in stream details, so `rescan` of
       204 videos took 74s at two cores (2026-10-28), and large imports pay the same. Probe several files at once in `rescan`
       and `Importer` (a small worker pool), or lower `-probesize`/`-analyzeduration` if the fields stay correct.
+      Done (v2.33.1): most of the time is ffprobe starting up (about 0.15s of 0.19s on 2026-10-31), and lower probe sizes saved
+      about 5%, so `rescan` and imports now hash and probe four files at once (two in the daemon) and still add them in path order.
 
 ## 6. Resolution-aware quality filter
 

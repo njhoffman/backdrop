@@ -61,6 +61,7 @@ const SECTIONS = {
   },
   library: {
     import_dirs: strings,
+    watch_imports: boolean,
     default_import_rating: integer(1, 3),
     min_width: integer(0),
     min_height: integer(0),

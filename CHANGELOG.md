@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-10-31
+
+### Added
+- Shell completion for `--query` and `--tag`. `--query` offers your saved search queries, newest first; `--tag` offers
+  the library's tags, most used first. Values with spaces are quoted. The scripts read the database with the `sqlite3`
+  CLI when it is installed, and otherwise ask backdrop itself, which is slower. Regenerate an installed script
+  (`backdrop completion zsh` or `bash`) to get this.
+
+## [2.34.1] - 2026-10-31
+
+### Fixed
+- Animated WebP files in import folders are reported as "animated WebP, which this FFmpeg cannot decode" instead of
+  "no picture stream", and `backdrop doctor` lists them with a hint to convert each to GIF. FFmpeg 7 and mpv cannot
+  play them. With an FFmpeg that can, they are imported and play as animations, like GIFs.
+
+## [2.34.0] - 2026-10-31
+
+### Added
+- The daemon imports new files as they appear in `library.import_dirs`, including in new subfolders, and adds them to
+  the playlists. Before, it imported only when it started. A file still being copied in is imported once it stops
+  changing. `library.watch_imports: false` turns this off, and a saved change to either setting applies without a
+  restart. Folders on a network share see only changes made on this machine; other machines' changes still wait for
+  the next start or `backdrop import`.
+
+## [2.33.2] - 2026-10-31
+
+### Fixed
+- Only one import runs at a time. `backdrop import` waits (and says so) while the daemon is importing, and the daemon
+  skips its startup import while `backdrop import` runs, which covers the same folders. Before, both could hash and
+  copy the same files, and the slower one used up a `local-<n>` number. A lock left by a crashed import is taken over.
+
+## [2.33.1] - 2026-10-31
+
+### Changed
+- `backdrop rescan` and imports probe four files at once (the daemon's imports two, to leave CPU for playback), about
+  1.7 times faster on large libraries. Files are still added and reported in path order, so `local-<n>` numbers
+  follow the file names as before.
+
 ## [2.33.0] - 2026-10-31
 
 ### Changed

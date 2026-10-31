@@ -246,7 +246,7 @@ describe('Daemon', () => {
       const daemon = makeDaemon({
         importer: {
           importDirs: async (dirs, options) => {
-            calls.push({ dirs, resolution: options.resolution, stopping: options.shouldStop() });
+            calls.push({ dirs, resolution: options.resolution, stopping: options.shouldStop(), whenLocked: options.whenLocked, concurrency: options.concurrency });
             return { imported: [fits] };
           }
         }
@@ -255,7 +255,8 @@ describe('Daemon', () => {
       await daemon.start();
       await daemon.importing;
 
-      expect(calls).to.deep.equal([{ dirs: ['/walls'], resolution: '2560x1440', stopping: false }]);
+      // Skips while `backdrop import` runs, and probes fewer files at once than the CLI
+      expect(calls).to.deep.equal([{ dirs: ['/walls'], resolution: '2560x1440', stopping: false, whenLocked: 'skip', concurrency: 2 }]);
       const appended = clients.map(c => c.client.commands.filter(cmd => cmd[0] === 'loadfile'));
       expect(appended).to.deep.equal([[['loadfile', '/m/1.mp4', 'append-play']], [['loadfile', '/m/1.mp4', 'append-play']]]);
       await daemon.stop();
@@ -944,11 +945,13 @@ describe('Daemon', () => {
   });
 
   describe('config watch', () => {
-    let watched, calls, visualizers, sections;
-    const fakeWatch = (dir, listener) => {
+    let watched, calls, visualizers, sections, importWatches;
+    // The config directory's watch, and import folders' (recursive, with options) apart from it
+    const fakeWatch = (dir, options, listener = options) => {
       const watcher = new EventEmitter();
       watcher.close = () => { watcher.closed = true; };
-      watched = { dir, listener, watcher };
+      if (typeof options === 'object') importWatches.push({ dir, options, watcher });
+      else watched = { dir, listener, watcher };
       return watcher;
     };
     // The config file as the next load reads it: a visualizer section, an Error for a bad file, { section,
@@ -982,6 +985,7 @@ describe('Daemon', () => {
     beforeEach(async () => {
       calls = [];
       sections = [];
+      importWatches = [];
       visualizers = {
         override: null, active: true, error: null,
         configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {},
@@ -994,6 +998,20 @@ describe('Daemon', () => {
       await daemon.start();
     });
     afterEach(async () => { await daemon.stop(); });
+
+    it('watches import folders while running and stops when a saved file turns watching off', async () => {
+      const folder = path.join(tempDir, 'walls');
+      await fs.ensureDir(folder);
+      daemon.importer = { importDirs: async () => ({ imported: [] }) };
+      sections.push({ settings: { 'library.import_dirs': [folder] } });
+      await save();
+      expect(importWatches.map(entry => [entry.dir, entry.watcher.closed])).to.deep.equal([[folder, undefined]]);
+
+      sections.push({ settings: { 'library.watch_imports': false } });
+      await save();
+      expect(importWatches[0].watcher.closed).to.be.true;
+      expect(daemon.importWatcher.watching).to.deep.equal([]);
+    });
 
     it('watches the config directory and reloads the visualizer when its section changed', async () => {
       expect(watched.dir).to.equal(path.join(tempDir, 'config'));

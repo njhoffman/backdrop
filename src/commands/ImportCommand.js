@@ -48,6 +48,7 @@ export class ImportCommand {
     try {
       summary = await this.importer.importDirs(targets, {
         resolution: await this.ratingResolution(),
+        onWait: ({ pid }) => out.info(`Waiting for another import${pid ? ` (pid ${pid})` : ''} to finish`),
         onStart: total => { bar = new ProgressBar({ label: 'Importing', total }); },
         onFile: (file, outcome, done) => {
           bar?.update(done, path.basename(file));

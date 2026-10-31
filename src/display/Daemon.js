@@ -22,6 +22,7 @@ import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
 import { Health } from './daemon/Health.js';
+import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -32,6 +33,8 @@ const HEALTH_INTERVAL_MS = 30_000;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Monitor layout changes (hotplug, xrandr) are picked up this often
 const MONITOR_POLL_MS = 5000;
+// Files the daemon's imports hash and probe at once, fewer than the CLI so playback keeps its CPU
+const DAEMON_IMPORT_CONCURRENCY = 2;
 // The startup import logs how far it is at most this often
 const IMPORT_PROGRESS_MS = 30_000;
 
@@ -110,7 +113,7 @@ export class Daemon {
       await fresh.loadConfig();
       return fresh;
     },
-    watch = watchFiles, configSettle = CONFIG_SETTLE_MS,
+    watch = watchFiles, configSettle = CONFIG_SETTLE_MS, importSettle = IMPORT_SETTLE_MS,
     readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger }),
     samplePalette = (media, monitor) => sampleMedia(media, monitor),
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
@@ -159,6 +162,7 @@ export class Daemon {
     this.configChanges = new ConfigChanges(this);
     this.wallpaperColors = new WallpaperColors(this);
     this.health = new Health(this);
+    this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
@@ -233,6 +237,7 @@ export class Daemon {
     this.importing = this.importDirs(monitors[0] ?? null);
 
     this.watchConfig();
+    this.importWatcher.start();
 
     // An interval of 0 turns the timer off (tests drive these directly)
     this.runPurge();
@@ -376,21 +381,33 @@ export class Daemon {
     return this.health.recordDecoder(screen);
   }
 
-  async importDirs(monitor) {
+  // The monitor imports record their default rating against
+  firstMonitor() {
+    return [...this.monitors.values()][0] ?? null;
+  }
+
+  // Imports library.import_dirs and appends what is new to every playlist; returns the import summary.
+  // settle (watched folders) leaves files that are still changing for a later pass.
+  async importDirs(monitor, { settle = 0 } = {}) {
     const dirs = this.config.get().library.import_dirs;
     if (!dirs.length) {
-      return;
+      return null;
     }
 
     try {
       let total = 0;
       let lastReport = Date.now();
-      const { imported } = await this.importer.importDirs(dirs, {
+      // A `backdrop import` already running covers the same folders and adds its finds to the playlists
+      const summary = await this.importer.importDirs(dirs, {
         resolution: monitor ? `${monitor.width}x${monitor.height}` : null,
+        whenLocked: 'skip',
+        settle,
         shouldStop: () => this.stopping,
+        concurrency: DAEMON_IMPORT_CONCURRENCY,
         onStart: count => {
           total = count;
-          this.logger.info('Import started', { files: total });
+          // A watched folder's change rescans every folder; only the full imports are worth a line
+          if (!settle) this.logger.info('Import started', { files: total });
         },
         onFile: (file, outcome, done) => {
           if (Date.now() - lastReport >= this.importProgressInterval && done < total) {
@@ -399,8 +416,9 @@ export class Daemon {
           }
         }
       });
+      const { imported } = summary;
       if (!imported.length || this.stopping) {
-        return;
+        return summary;
       }
 
       const mode = getMode(this.database);
@@ -410,8 +428,10 @@ export class Daemon {
         });
         this.logger.info('Added imported media to playlist', { monitor: screen.monitor.name, added });
       }
+      return summary;
     } catch (error) {
-      this.logger.error('Import on startup failed', { error: error.message });
+      this.logger.error('Import failed', { error: error.message });
+      return null;
     }
   }
 
@@ -656,6 +676,7 @@ export class Daemon {
     this.timers = [];
     clearTimeout(this.configTimer);
     this.configWatcher?.close();
+    this.importWatcher.stop();
     await this.reconciling;
 
     await this.visualizers.stop();

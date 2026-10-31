@@ -16,6 +16,7 @@ describe('ImportCommand', () => {
     const importer = {
       importDirs: async (dirs, options) => {
         calls.push({ dirs, resolution: options.resolution });
+        options.onWait({ pid: 4242 });
         options.onFile('/src/a.png', { status: 'imported' });
         options.onFile('/src/b.png', { status: 'unchanged' });
         options.onFile('/src/c.png', { status: 'too_small', detail: '320x240' });
@@ -46,6 +47,11 @@ describe('ImportCommand', () => {
   it('imports the configured directories by default', async () => {
     await makeCommand().import();
     expect(calls[0].dirs).to.deep.equal(['/walls/a', '/walls/b']);
+  });
+
+  it('says when it waits for another import to finish', async () => {
+    await makeCommand().import();
+    expect(plain()).to.include('Waiting for another import (pid 4242) to finish');
   });
 
   it('imports directories given on the command line, resolved and expanded', async () => {

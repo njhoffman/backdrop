@@ -4,6 +4,8 @@ import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Importer, hashFile } from '../../src/library/Importer.js';
+import { UnsupportedMedia } from '../../src/library/probe.js';
+import { ImportLock, importLockPath } from '../../src/library/importLock.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 // Fake ffprobe: files are text whose content names their kind and size, e.g. "video 3840x2160"
@@ -175,9 +177,9 @@ describe('Importer', () => {
   it('records failures and keeps going', async () => {
     await write('a.png', 'image 2000x2000');
     await write('b.png', 'image 2001x2000');
-    let calls = 0;
+    // Probes run in parallel, so the failure is tied to a file rather than to the first call
     importer.probe = async file => {
-      if (++calls === 1) {
+      if (file.endsWith('a.png')) {
         throw new Error('probe crashed');
       }
       return fakeProbe(file);
@@ -221,5 +223,112 @@ describe('Importer', () => {
 
     expect(warnings).to.deep.equal([path.join(tempDir, 'missing')]);
     expect(summary.scanned).to.equal(1);
+  });
+
+  it('probes several files at once but adds them in path order', async () => {
+    for (const name of ['a', 'b', 'c', 'd', 'e']) await write(`${name}.png`, `image 2000x2000 ${name}`);
+    let running = 0;
+    let most = 0;
+    // Later files finish probing first
+    const delays = { 'a.png': 40, 'b.png': 30, 'c.png': 20, 'd.png': 10, 'e.png': 0 };
+    importer.probe = async file => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise(resolve => setTimeout(resolve, delays[path.basename(file)]));
+      running--;
+      return fakeProbe(file);
+    };
+
+    const summary = await run({ concurrency: 3 });
+
+    expect(most).to.equal(3);
+    expect(summary.imported.map(id => db.getMedia(id).original_name)).to.deep.equal(['a.png', 'b.png', 'c.png', 'd.png', 'e.png']);
+    expect(summary.imported.map(id => db.getMedia(id).source_id)).to.deep.equal(['1', '2', '3', '4', '5']);
+  });
+
+  it('keeps one copy of content that appears twice in the same run', async () => {
+    await write('a.png', 'image 2000x2000');
+    await write('copy/a.png', 'image 2000x2000');
+
+    const summary = await run({ concurrency: 4 });
+
+    expect(summary.imported).to.have.length(1);
+    expect(summary.duplicates).to.equal(1);
+    expect(await fs.readdir(config.getPath('media'))).to.deep.equal(['local-1.png']);
+  });
+
+  it('records a file that fails to read as failed without stopping the run', async () => {
+    await write('a.png', 'image 2000x2000');
+    await write('b.png', 'image 2000x2000 b');
+    const realHash = importer.prepare.bind(importer);
+    importer.prepare = file => (file.endsWith('a.png') ? Promise.reject(new Error('EIO')) : realHash(file));
+
+    const summary = await run();
+
+    expect(summary.failed).to.equal(1);
+    expect(summary.imported).to.have.length(1);
+    expect(db.getImportedFile(path.join(source, 'a.png'))).to.include({ status: 'failed', detail: 'EIO' });
+  });
+
+  describe('with another import running', () => {
+    let other;
+    beforeEach(async () => {
+      await write('a.png', 'image 2000x2000');
+      // Another live process (this test's parent) holds the lock
+      other = new ImportLock(importLockPath(config), { pid: process.ppid });
+      expect(other.tryAcquire()).to.be.true;
+      importer.lock.pollMs = 5;
+    });
+    afterEach(() => other.release());
+
+    it('skips at once when asked to, reporting the lock', async () => {
+      const summary = await run({ whenLocked: 'skip' });
+
+      expect(summary).to.include({ locked: true, scanned: 0 });
+      expect(await fs.pathExists(config.getPath('media'))).to.be.false;
+    });
+
+    it('otherwise waits for it, then imports and frees the lock', async () => {
+      const waits = [];
+      setTimeout(() => other.release(), 30);
+
+      const summary = await run({ onWait: holder => waits.push(holder) });
+
+      expect(waits).to.deep.equal([{ pid: process.ppid }]);
+      expect(summary.imported).to.have.length(1);
+      expect(await fs.pathExists(importLockPath(config))).to.be.false;
+    });
+  });
+
+  it('frees the lock when an import throws', async () => {
+    importer.findFiles = async () => { throw new Error('EACCES'); };
+
+    let error;
+    await run().catch(caught => { error = caught; });
+
+    expect(error.message).to.equal('EACCES');
+    expect(await fs.pathExists(importLockPath(config))).to.be.false;
+  });
+
+  it('leaves files changed within the settle time for a later pass, recording nothing', async () => {
+    const file = await write('a.png', 'image 2000x2000');
+
+    const early = await run({ settle: 60_000 });
+    expect(early).to.include({ recent: 1, scanned: 1 });
+    expect(early.imported).to.deep.equal([]);
+    expect(db.getImportedFile(file)).to.not.be.ok;
+
+    const later = await run({ settle: 1 });
+    expect(later.imported).to.have.length(1);
+  });
+
+  it('records why a file is unsupported when the probe says', async () => {
+    const file = await write('a.webp', 'animated');
+    importer.probe = async () => { throw new UnsupportedMedia('animated WebP'); };
+
+    const summary = await run();
+
+    expect(summary.unsupported).to.equal(1);
+    expect(db.getImportedFile(file)).to.include({ status: 'unsupported', detail: 'animated WebP' });
   });
 });

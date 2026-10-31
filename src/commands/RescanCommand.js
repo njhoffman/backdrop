@@ -1,6 +1,8 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { probeMedia } from '../library/probe.js';
+import { IMPORT_CONCURRENCY } from '../library/Importer.js';
+import { inOrder } from '../utils/pool.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { out, fmt, ProgressBar, displayPath, formatClock, formatFps } from '../utils/output.js';
 
@@ -37,18 +39,23 @@ export class RescanCommand {
     const bar = new ProgressBar({ label: 'Rescanning', total: items.length });
     const replaced = [];
     try {
-      for (const media of items) {
-        bar.update(summary.scanned, path.basename(media.path));
-        summary.scanned++;
-        if (!await fs.pathExists(media.path)) {
-          summary.missing.push(media);
-          out.warn(`#${media.id}: missing ${displayPath(media.path)}`);
-          continue;
-        }
+      // Probes run several at once; results are applied and printed in library order
+      const probe = async media => {
+        if (!await fs.pathExists(media.path)) return { missing: true };
         const info = await this.probe(media.path).catch(error => {
           this.logger.warn('Rescan probe failed', { mediaId: media.id, error: error.message });
           return null;
         });
+        return { info };
+      };
+      for await (const { item: media, result: { missing, info } } of inOrder(items, probe, { concurrency: IMPORT_CONCURRENCY })) {
+        bar.update(summary.scanned, path.basename(media.path));
+        summary.scanned++;
+        if (missing) {
+          summary.missing.push(media);
+          out.warn(`#${media.id}: missing ${displayPath(media.path)}`);
+          continue;
+        }
         if (!info) {
           summary.failed.push(media);
           out.error(`#${media.id}: cannot probe ${displayPath(media.path)}`);

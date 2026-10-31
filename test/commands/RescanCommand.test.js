@@ -64,4 +64,25 @@ describe('RescanCommand', () => {
     expect(process.exitCode).to.equal(1);
     expect(lines.join('\n')).to.include('missing 1, failed 1');
   });
+
+  it('probes several files at once and reports them in library order', async () => {
+    const ids = [];
+    for (const [name, ms] of [['a.mp4', 30], ['b.mp4', 20], ['c.mp4', 10], ['d.mp4', 0], ['e.mp4', 0]]) {
+      ids.push(await add(name, { kind: 'video' }, { kind: 'video', width: 1920, height: 1080, duration: 10, fps: 25, ms }));
+    }
+    let running = 0;
+    let most = 0;
+    probe.callsFake(async file => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise(resolve => setTimeout(resolve, probed[file].ms));
+      running--;
+      return probed[file];
+    });
+    const summary = await command.rescan();
+    expect(most).to.equal(4);
+    expect(summary.updated).to.deep.equal(ids);
+    const order = lines.filter(line => /fps \? →/.test(line)).map(line => line.split(' ')[0]);
+    expect(order).to.deep.equal(ids.map(id => `#${id}`));
+  });
 });

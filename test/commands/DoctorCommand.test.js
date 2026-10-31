@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DoctorCommand } from '../../src/commands/DoctorCommand.js';
+import { ANIMATED_WEBP } from '../../src/library/probe.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('DoctorCommand', () => {
@@ -101,6 +102,19 @@ describe('DoctorCommand', () => {
     const checks = await doctor().run();
     expect(byName(checks, 'files')).to.include({ status: 'warn', detail: '4 of 5 items have no file (#2, #3, #4, ...)' });
     expect(byName(checks, 'files').hint).to.include('backdrop rescan --all');
+  });
+
+  it('names animated WebP the import could not take, while the files are still there', async () => {
+    const record = (file, detail) => db.recordImportedFile({ source_path: file, size: 1, mtime_ms: 1, status: 'unsupported', detail });
+    record('/walls/a.webp', ANIMATED_WEBP);
+    record('/walls/gone.webp', ANIMATED_WEBP);
+    record('/walls/junk.png', 'no picture stream');
+    files.add('/walls/a.webp').add('/walls/junk.png');
+
+    const checks = await doctor().run();
+
+    expect(byName(checks, 'animated WebP')).to.include({ status: 'warn', detail: '1 not imported: FFmpeg cannot decode them (a.webp)' });
+    expect(byName(checks, 'animated WebP').hint).to.include('magick a.webp a.gif');
   });
 
   it('runs the visualizer check with --visualizer, and prints JSON', async () => {

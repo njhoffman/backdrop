@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import { run } from '../display/Monitors.js';
 
 export const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'];
@@ -52,8 +53,36 @@ export function parseProbe(json) {
   return { kind, width, height, duration, fps };
 }
 
-export async function probeMedia(file, exec = run) {
-  return parseProbe(await exec('ffprobe', [...PROBE_ARGS, file]));
+// A probe that found nothing playable, with the reason (Importer records it as the file's detail)
+export class UnsupportedMedia extends Error {}
+
+// `backdrop doctor` lists files skipped for this and how to convert them
+export const ANIMATED_WEBP = 'animated WebP, which this FFmpeg cannot decode';
+
+// Animated WebP sets the animation flag (0x02) of the extended format chunk: RIFF....WEBPVP8X, flags at byte 20
+export function isAnimatedWebp(header) {
+  return header.length >= 21 && header.toString('latin1', 0, 4) === 'RIFF' && header.toString('latin1', 8, 16) === 'WEBPVP8X'
+    && (header[20] & 0x02) !== 0;
+}
+
+async function readHeader(file, length = 21) {
+  const handle = await fs.open(file, 'r');
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(length), 0, length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+// FFmpeg before 8 has no animated WebP decoder: ffprobe reports a 0x0 picture and mpv cannot play it,
+// so such a file is rejected with that reason. One FFmpeg can decode plays as an animation, like a GIF.
+export async function probeMedia(file, exec = run, header = readHeader) {
+  const info = parseProbe(await exec('ffprobe', [...PROBE_ARGS, file]));
+  if (!/\.webp$/i.test(file)) return info;
+  const animated = isAnimatedWebp(await header(file));
+  if (animated && !info) throw new UnsupportedMedia(ANIMATED_WEBP);
+  return animated ? { ...info, kind: 'gif' } : info;
 }
 
 // Long side against the larger minimum, short side against the smaller, so portrait media

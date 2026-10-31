@@ -185,6 +185,7 @@ export class ConfigManager {
       },
       library: {
         import_dirs: [],
+        watch_imports: true,
         default_import_rating: 2,
         min_width: 1024,
         min_height: 768,

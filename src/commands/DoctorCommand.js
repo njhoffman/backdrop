@@ -4,6 +4,7 @@ import { readState, statePath } from '../display/Daemon.js';
 import { findOrphans } from '../display/children.js';
 import { withX11 } from '../display/x11.js';
 import { checkVisualizer } from '../visualizer/check.js';
+import { ANIMATED_WEBP } from '../library/probe.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath } from '../utils/output.js';
 
@@ -144,6 +145,7 @@ export class DoctorCommand {
     } catch (error) {
       add('library', 'database', 'fail', error.message);
     }
+    await this.checkAnimatedWebp(add);
     const items = this.database.findMedia({ downloaded: true }).filter(item => item.path);
     const missing = [];
     for (const item of items) if (!await this.pathExists(item.path)) missing.push(item);
@@ -154,6 +156,18 @@ export class DoctorCommand {
     const shown = missing.slice(0, MISSING_SHOWN).map(item => `#${item.id}`).join(', ');
     add('library', 'files', 'warn', `${missing.length} of ${items.length} items have no file (${shown}${missing.length > MISSING_SHOWN ? ', ...' : ''})`,
       'backdrop rescan --all lists them; backdrop remove <id> drops one');
+  }
+
+  // Animated WebP in the import folders that this FFmpeg could not decode, still there to convert
+  async checkAnimatedWebp(add) {
+    const files = [];
+    for (const row of this.database.importedFilesWithDetail(ANIMATED_WEBP)) {
+      if (await this.pathExists(row.source_path)) files.push(row.source_path);
+    }
+    if (!files.length) return;
+    const shown = files.slice(0, MISSING_SHOWN).map(file => path.basename(file)).join(', ');
+    add('library', 'animated WebP', 'warn', `${files.length} not imported: FFmpeg cannot decode them (${shown}${files.length > MISSING_SHOWN ? ', ...' : ''})`,
+      'convert each to GIF beside it (magick a.webp a.gif); the next import picks the GIF up');
   }
 
   async checkVisualizer(settings, add) {

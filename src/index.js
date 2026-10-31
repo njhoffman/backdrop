@@ -299,6 +299,9 @@ class BackdropApp {
     program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
+    // Values for the completion scripts when sqlite3 is not installed; not listed in help or completion
+    program.command('complete-values', { hidden: true }).argument('<kind>', 'queries or tags')
+      .action(this.action(kind => completion.printValues(kind)));
     program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), or try every instance and preset briefly (check)')
       .argument('<action>', VISUALIZER_ACTIONS.join(' or '))
       .argument('[name]', 'Preset to switch to, until the daemon restarts')
@@ -319,7 +322,7 @@ class BackdropApp {
     this.setupCommands();
     // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);
-    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'systemd'].includes(arg))) printVersion(version);
+    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'complete-values', 'systemd'].includes(arg))) printVersion(version);
     try {
       // Bare `backdrop` shows the status
       await program.parseAsync(args.length ? process.argv : [...process.argv, 'status']);

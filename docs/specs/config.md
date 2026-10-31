@@ -17,7 +17,7 @@ file again, keeps every running setting on a mistake (with a notification), rest
 section changed, and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
 `allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
-reconciles the monitors; `library.import_dirs` imports the folders. `display.mpv_args`, `xwinwrap_args` and
+reconciles the monitors; `library.import_dirs` and `watch_imports` import the folders and watch them again. `display.mpv_args`, `xwinwrap_args` and
 `paths` need a restart, which a notification names. `sources`, `menu` and `output` are read by the CLI on each
 run. The visualizer section is the exception: a problem there is a
 warning, and the daemon runs the wallpaper without the visualizer. The `visualizer` section checks
@@ -32,6 +32,8 @@ sources:
 
 library:
   import_dirs: []          # folders scanned by import; files there are already approved
+  watch_imports: true      # the daemon imports files as they appear in import_dirs (inotify: changes
+                           #   made on this machine; a network share's other writers wait for the next start)
   default_import_rating: 2 # rating (1-3) given to imported files
   min_width: 1024          # nothing smaller is imported; long side vs the larger value,
   min_height: 768          #   short side vs the smaller, so portrait media qualifies too

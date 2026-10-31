@@ -72,7 +72,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
   Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
 - **Display** (`src/display/`) - `Daemon` keeps its own concerns in `src/display/daemon/` (`ControlRequests`,
-  `ConfigChanges`, `WallpaperColors`, `Health`): classes given the daemon, whose state stays on it, with the daemon's
+  `ConfigChanges`, `WallpaperColors`, `Health`, `ImportWatcher`): classes given the daemon, whose state stays on it, with the daemon's
   methods forwarding to them; runtime file paths are in `runtimeFiles.js`. It records every child it spawns in `children.json` (`src/display/children.js`,
   pid, process group and `/proc` start time) so `start` and `stop` can end what a crashed daemon left running;
   it runs one xwinwrap+mpv per monitor and writes `state.json` to the
@@ -104,7 +104,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   With `palette.source: wallpaper` (`palette.js`) the daemon samples each load and the manager pipes `fg`/`fg2` colors to
   GLava's stdin, one line per 100 ms (`colorsFor`, `recolor`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
-  file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
+  file in `imported_files` by size/mtime; it hashes and probes several files at once (`src/utils/pool.js`) but adds them
+  in path order, and runs one import at a time across processes (`importLock.js`: the CLI waits, the daemon skips);
+  with `library.watch_imports` the daemon's `ImportWatcher` imports again when a folder changes; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
   into `findMedia` filters for `pending`, `download`, the lists and `next`.
 - **Sources** (`src/sources/`) - `Source` defines normalized search/metadata/download variants and rate limits;
   `SourceRegistry` resolves adapters, with `PexelsSource` first. Credentials are checked on API requests only.
@@ -121,7 +123,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   (`src/utils/workspace.js`, `menu.workspace`); views bind entry keys to `-kb-custom-N` and resolve
   to an index, `{ key }` or null; tests inject a `view`. `--json` goes through `mediaJson`/`playingJson` (`src/utils/mediaView.js`,
   format in `docs/specs/json.md`) and `setJsonOutput`, which moves every other stdout line to stderr.
-  `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts. `DoctorCommand` only reads: tools, X,
+  `SystemdCommand` prints a user unit like `CompletionCommand` prints scripts (which complete `--query`/`--tag` from the
+  database with `sqlite3`, or the hidden `complete-values` command without it). `DoctorCommand` only reads: tools, X,
   config (loaded tolerantly for it, `initialize({ tolerant })`), daemon state and `findOrphans`, and the library.
 
 ## Conventions
