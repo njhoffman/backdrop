@@ -314,8 +314,8 @@ export class Daemon {
     this.logger.info(on ? 'Wallpaper on' : 'Wallpaper off');
   }
 
-  // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer }, each optional), written by the CLI for this
-  // daemon's pid. With neither part left on, the daemon stops.
+  // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer, durations, preset }, each optional), written by
+  // the CLI for this daemon's pid. With neither part left on, the daemon stops.
   async applyControl() {
     if (this.stopping) return;
     let request = {};
@@ -328,6 +328,10 @@ export class Daemon {
     }
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
     if (request.durations) await this.applyDurations();
+    if (request.preset !== undefined) {
+      await this.visualizers.setPreset(request.preset);
+      this.logger.info('Visualizer preset', this.visualizers.summary());
+    }
     if (typeof request.visualizer === 'boolean') {
       await this.visualizers.setEnabled(request.visualizer);
       this.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.visualizers.summary());
@@ -703,7 +707,9 @@ export class Daemon {
         socket: socketPath,
         cpu: cpuPercent(recent.reduce((sum, item) => sum + item.cpuSeconds, 0), recent.reduce((sum, item) => sum + item.seconds, 0)),
         hwdec,
-        visualizer: this.visualizers.describe(monitor.name)
+        // Every instance on the monitor, and the first as visualizer for readers of 2.20.0-2.24.0 state
+        visualizers: this.visualizers.describe(monitor.name),
+        visualizer: this.visualizers.describe(monitor.name)[0] ?? null
       };
     });
     const file = statePath(this.runtimeDir);

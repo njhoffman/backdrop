@@ -747,12 +747,13 @@ describe('Daemon', () => {
         get active() { return this.override ?? this.on; },
         setEnabled: async on => { calls.push(['visualizer', on]); visualizers.override = on; },
         restackAll: async () => { calls.push('restackAll'); },
+        setPreset: async name => { calls.push(['preset', name]); },
         configure: async () => { calls.push('configure'); },
         sync: async () => { calls.push('sync'); },
         restack: name => { calls.push(['restack', name]); },
         reload: async () => { calls.push('reload'); },
         stop: async () => { calls.push('stop'); },
-        describe: name => (name === 'HDMI-1' ? { module: 'bars', geometry: '1080x480+2560+1440' } : null),
+        describe: name => (name === 'HDMI-1' ? [{ instance: 'main', module: 'bars', geometry: '1080x480+2560+1440' }] : []),
         summary: () => ({ enabled: true, error: null, generation: calls.filter(call => call === 'configure' || call === 'reload').length })
       };
     });
@@ -831,9 +832,20 @@ describe('Daemon', () => {
       const state = await readState(tempDir);
       expect(state.version).to.match(/^\d+\.\d+\.\d+/);
       expect(state.visualizer).to.deep.equal({ enabled: true, error: null, generation: 1 });
-      expect(state.monitors.map(monitor => monitor.visualizer)).to.deep.equal([null, { module: 'bars', geometry: '1080x480+2560+1440' }]);
+      expect(state.monitors.map(monitor => monitor.visualizer)).to.deep.equal([null, { instance: 'main', module: 'bars', geometry: '1080x480+2560+1440' }]);
+      expect(state.monitors.map(monitor => monitor.visualizers.length)).to.deep.equal([0, 1]);
       await daemon.stop();
       expect(calls.at(-1)).to.equal('stop');
+    });
+
+    it('switches the preset on request, and back to the configured one with null', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start();
+      await control(daemon, { preset: 'party' });
+      await control(daemon, { preset: null });
+      expect(calls.filter(call => call[0] === 'preset')).to.deep.equal([['preset', 'party'], ['preset', null]]);
+      expect((await readState(tempDir)).control).to.equal(2);
+      await daemon.stop();
     });
 
     it('follows monitor changes and places it again over a restarted wallpaper', async () => {
@@ -926,7 +938,7 @@ describe('Daemon', () => {
         override: null, active: true, error: null,
         configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {},
         reload: async () => { calls.push('reload'); },
-        describe: () => null, summary: () => ({ enabled: true, error: visualizers.error, generation: 1 })
+        describe: () => [], summary: () => ({ enabled: true, error: visualizers.error, generation: 1 })
       };
       config.configPath = path.join(tempDir, 'config', 'config.yaml');
       notifications.length = 0;

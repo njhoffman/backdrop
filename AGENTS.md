@@ -71,7 +71,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
-  adapters (`index.js`, `GlavaVisualizer`) with `prepare()` and `command(monitor, geometry)`; `VisualizerManager`
+  adapters (`index.js`, `GlavaVisualizer`, one per instance) with `prepare()` and `command(monitor, geometry)`;
+  the section holds `instances` (defaults from the section itself) and `presets` (`presets.js` ships built-in ones,
+  laid over with `deepMerge`); `audio.js` follows `pactl subscribe` for `only_while_playing`; `VisualizerManager`
   owns the processes and places each window directly above its monitor's wallpaper with its opacity
   (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section, as does a saved change to the config
   file (`Daemon.watchConfig`, which keeps the running visualizer and notifies on a mistake).

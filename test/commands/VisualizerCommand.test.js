@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
 import { VisualizerCommand } from '../../src/commands/VisualizerCommand.js';
-import { statePath } from '../../src/display/Daemon.js';
+import { controlPath, statePath } from '../../src/display/Daemon.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('VisualizerCommand', () => {
@@ -40,8 +40,8 @@ describe('VisualizerCommand', () => {
     answer = () => setTimeout(() => state({ enabled: true, error: null, generation: 2 }), 20);
     await command().run('reload');
     expect(signals).to.deep.equal([[process.pid, 'SIGHUP']]);
-    expect(lines[0]).to.include('Reloaded the visualizer (glava bars)');
-    expect(lines.slice(1)).to.deep.equal(['  DP-3 bars at 2560x360+0+1080', '  HDMI-1 no visualizer']);
+    expect(lines[0]).to.equal('Reloaded the visualizer');
+    expect(lines.slice(1)).to.deep.equal(['  DP-3 main: bars at 2560x360+0+1080', '  HDMI-1 no visualizer']);
   });
 
   it('reports the error the daemon found, or that it is off', async () => {
@@ -67,6 +67,53 @@ describe('VisualizerCommand', () => {
 
     await state({ enabled: true, error: null, generation: 4 });
     expect(await fails()).to.include('The daemon did not reload the visualizer');
-    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload');
+    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload, preset');
+  });
+
+  describe('preset', () => {
+    // A daemon that answers a control request by applying the preset it names to its state
+    const running = (visualizer = {}) => state({ enabled: true, error: null, generation: 1, preset: null, ...visualizer }, {
+      control: 0,
+      monitors: [{ name: 'DP-3', visualizers: [{ instance: 'main', module: 'bars', geometry: '2560x360+0+1080' }] }]
+    });
+    const answering = () => async () => {
+      const { preset } = await fs.readJson(controlPath(dir));
+      setTimeout(() => state({ enabled: true, error: null, generation: 2, preset }, {
+        control: signals.length,
+        monitors: [{ name: 'DP-3', visualizers: [{ instance: 'base', module: 'bars', geometry: '2560x360+0+1080' }, { instance: 'ring', module: 'radial', geometry: '1024x864+768+288' }] }]
+      }), 5);
+    };
+
+    it('lists the presets with the active one marked', async () => {
+      config.set('visualizer.presets', { calm: { opacity: 0.3 } });
+      await running({ preset: 'ring' });
+      await command().run('preset');
+      expect(lines.slice(0, 5)).to.deep.equal(['  subtle', '* ring', '  wave', '  party', '  calm']);
+    });
+
+    it('switches the running daemon to a named, next or configured preset', async () => {
+      await running();
+      answer = answering();
+      await command().run('preset', 'party');
+      expect(signals).to.deep.equal([[process.pid, 'SIGUSR1']]);
+      expect(lines[0]).to.include('Preset party');
+      expect(lines.slice(1)).to.deep.equal(['  DP-3 base: bars at 2560x360+0+1080', '  DP-3 ring: radial at 1024x864+768+288']);
+
+      // party is active now; --next wraps around to the first
+      await command().run('preset', undefined, { next: true });
+      expect(await fs.readJson(controlPath(dir))).to.deep.equal({ pid: process.pid, preset: 'subtle' });
+      await command().run('preset', undefined, { clear: true });
+      expect(await fs.readJson(controlPath(dir))).to.deep.equal({ pid: process.pid, preset: null });
+      expect(lines.at(-3)).to.include('Preset cleared');
+    });
+
+    it('rejects an unknown preset before signalling, and only advises when the daemon is stopped', async () => {
+      await running();
+      expect(await command().run('preset', 'loud').catch(error => error.message)).to.include('visualizer.preset must be one of the presets');
+      expect(signals).to.deep.equal([]);
+      await fs.remove(statePath(dir));
+      await command().run('preset', 'wave');
+      expect(lines.at(-1)).to.include('Daemon not running; set visualizer.preset');
+    });
   });
 });

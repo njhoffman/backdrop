@@ -238,6 +238,14 @@ visualizer:
   bars: {width: 20, gap: 1, amplify: 200, colors: ['#000000', '#33aacc']}
 ```
 
+Several visualizers can run at once: list them under `instances`, each with a `name` and any instance
+setting (module, placement, opacity, module options); the rest of the section is their default, and the
+list order is the stacking order. Presets are named looks under `presets` that can change any of this,
+including the instances. Four ship with backdrop (`subtle`, `ring`, `wave`, `party`); `backdrop visualizer
+preset` lists them, `backdrop visualizer preset party` switches until the daemon restarts, `--next` cycles
+and `--clear` goes back to `visualizer.preset`. With `only_while_playing: true` the visualizer stops after
+`silence_grace` seconds without sound from the output it listens to, and starts again when sound returns.
+
 `opacity` (0 to 1, default 0.8) sets how much of the wallpaper shows through the whole visualizer; an alpha
 in the bar colors, e.g. `'#33aacc80'`, blends the bars on top of that.
 

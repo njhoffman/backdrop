@@ -25,24 +25,25 @@ export function applyDefines(source, values) {
   return [...lines, ...(added.length ? ['', '/* Added by backdrop */', ...added] : [])].join('\n');
 }
 
-// GLava behind the visualizer adapter: prepare() builds a config root, command() launches one instance on
-// a monitor. GLava reads $XDG_CONFIG_HOME/glava, so pointing that at the root leaves ~/.config/glava
+// GLava behind the visualizer adapter, for one instance of the visualizer section: prepare() builds its
+// config root, command() launches it on a monitor. GLava reads $XDG_CONFIG_HOME/glava, so pointing that at the root leaves ~/.config/glava
 // alone. The root links every file of the installed shaders, as `glava -C` does, except the module's
 // settings file, which is a copy with backdrop's #defines.
 export class GlavaVisualizer {
-  constructor(settings, { root, fs = fsExtra }) {
+  constructor(settings, instance, { root, fs = fsExtra }) {
     this.settings = settings;
+    this.instance = instance;
     this.root = root;
     this.fs = fs;
   }
 
   title(monitor) {
-    return `backdrop-visualizer-${monitor.name}`;
+    return `backdrop-visualizer-${monitor.name}-${this.instance.name}`;
   }
 
   async prepare() {
     const { shaderDir } = this.settings.glava;
-    const { module, defines } = this.settings;
+    const { module, defines } = this.instance;
     if (!await this.fs.pathExists(path.join(shaderDir, `${module}.glsl`))) {
       throw new Error(`GLava shaders not found in ${shaderDir} (no ${module}.glsl); set visualizer.glava.shader_dir`);
     }
@@ -59,7 +60,8 @@ export class GlavaVisualizer {
 
   // geometry is absolute in the root window: { x, y, width, height }
   command(monitor, geometry, env = process.env) {
-    const { audio, module, source, requests, glava } = this.settings;
+    const { audio, source, glava } = this.settings;
+    const { module, requests } = this.instance;
     const all = [
       ...BASE_REQUESTS,
       `setgeometry ${geometry.x} ${geometry.y} ${geometry.width} ${geometry.height}`,

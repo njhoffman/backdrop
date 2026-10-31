@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-10-30
+
+### Added
+- Several visualizers at once: `visualizer.instances` lists them, each with a name and its own module,
+  placement, monitors, opacity and options; the rest of the section is their default. They stack above the
+  wallpaper in list order.
+- Visualizer presets: named looks under `visualizer.presets` that can change any setting, including the
+  instances, and four built-in ones (`subtle`, `ring`, `wave`, `party`). `visualizer.preset` picks one at start;
+  `backdrop visualizer preset` lists them, and `preset <name>`, `--next` and `--clear` switch the running daemon.
+- `visualizer.only_while_playing`: the visualizer stops after `silence_grace` seconds (default 10) without
+  sound from its audio output and starts again when sound returns.
+- `status` and `--json` list every visualizer instance per monitor (`visualizers`), with the active preset.
+
+### Changed
+- Visualizer windows are titled `backdrop-visualizer-<monitor>-<instance>` (the single visualizer is `main`).
+- Unknown keys in the visualizer section or an instance are reported instead of ignored.
+
 ## [2.24.0] - 2026-10-30
 
 ### Added

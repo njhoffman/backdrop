@@ -41,7 +41,7 @@ A library item, as printed by every command below.
 | `keep` (without `--next`) | `{ item }`: the rated item with its new rating |
 | `mode` | `{ mode, monitor, item }`; `monitor` and `item` are null when the daemon is not running |
 | `list-images`, `list-videos` | an array of items, `[]` when nothing matches |
-| `status` | `{ mode, daemon: { running, pid, wallpaper, visualizer }, monitors: [{ name, width, height, eligible, cpu_percent, decoder, visualizer, playing }] }`, where `playing` is an item or null, `cpu_percent`/`decoder` are the daemon's recent samples, and `visualizer` is `{ engine, module, pid, running, geometry }` or null |
+| `status` | `{ mode, daemon: { running, pid, wallpaper, visualizer }, monitors: [{ name, width, height, eligible, cpu_percent, decoder, visualizer, visualizers, playing }] }`, where `playing` is an item or null, `cpu_percent`/`decoder` are the daemon's recent samples, `visualizers` lists `{ instance, engine, module, pid, running, geometry }` per instance in stacking order, and `visualizer` is the first of them or null |
 
 Examples:
 

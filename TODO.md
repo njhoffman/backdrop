@@ -296,9 +296,54 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `video_duration`, `notify`, `allow_upscale`) by taking them into the running config, and `display.monitors` by
       running `reconcileMonitors`. Keys a running mpv cannot take (`mpv_args`, `xwinwrap_args`) and `paths` should log
       and notify "restart the daemon to apply" instead. Validate each section first, as the visualizer one is.
-- [ ] **Live colors over --pipe.** (p3) [feature] `glava --pipe=NAME` binds values read from stdin to `@NAME` in the
-      shaders, so colors can change without a restart (the bars `COLOR` already uses `@fg:`). One use: tint the bars
-      from the current wallpaper's dominant color on each load (from the menu thumbnail).
+- [ ] **Live value channel into GLava (--pipe).** (p2) [feature] Foundation for every color item below. Start each instance
+      with `--pipe=fg:vec4 --pipe=bg:vec4` (and more bindings as needed) and keep its stdin open in `VisualizerManager`;
+      writing `fg = #rrggbbaa\n` changes the color without a restart. The typed color options already emit `@fg:`/`@bg:`
+      defaults (`gradientColor` in `src/visualizer/settings.js`); gradients need two bindings (`fg`, `fg2`) since a pipe
+      value is one vec4. Expose `setColors(name, { fg, fg2, bg })` on the manager, and resend the current values after
+      a restart. Check GLava 1.6.3 reads stdin with `setopacity "native"` and keeps reading after the first value.
+- [ ] **Colors from the wallpaper.** (p2) [feature] On each load, take the dominant colors of the item (from the menu
+      thumbnail the daemon already makes, e.g. `ffmpeg -vf palettegen=max_colors=8` or a k-means over a downscaled
+      frame) and send the visualizer a palette over the pipe: `visualizer.colors: wallpaper | fixed`, with a rule for
+      which color to use (dominant, most saturated, complementary). Sample only the strip under the visualizer's
+      placement and enforce a minimum contrast against it, so the bars never vanish into the image they cover
+      (the problem behind the faint-bars issue of 2.21.0). Cache the palette per media id in the database.
+- [ ] **Animated color transitions.** (p3) [feature] With the pipe channel, fade from the old palette to the new one over
+      `visualizer.transition` seconds (stepped writes at about 30 Hz) on a wallpaper change, instead of jumping.
+      The same loop gives slow effects: hue drift ("rainbow"), time-of-day palettes (warm evening, cool night), or a
+      short brightness pulse on a track change.
+- [ ] **Colors from the album art.** (p3) [feature] Take the palette from the now-playing cover instead of the wallpaper
+      (`visualizer.colors: album`): read `mpris:artUrl` through `playerctl metadata` on track change (Spotify, mpd
+      via mpDris2, browsers), extract the dominant colors as for wallpapers, send them over the pipe. Fall back to
+      the wallpaper palette when no art is available.
+- [x] **Several visualizers at once.** (p2) [feature] Allow a list of instances, each with its own module, placement,
+      monitors, opacity and options: `visualizer.instances: [{ name: base, module: bars, placement: {anchor: bottom} },
+      { name: ring, module: radial, placement: {anchor: center, width: 600, height: 600} }]`, the current single-section
+      form staying as shorthand for one instance. `VisualizerManager` keys entries by monitor and instance name; each
+      gets its own config root (module settings differ per instance) and window title, and is placed above the
+      wallpaper in list order. `status` and `--json` list them per monitor.
+      Done in 2.25.0: `visualizer.instances`, section keys as defaults, stacked in list order.
+- [x] **Presets.** (p2) [feature] Named visualizer looks under `visualizer.presets` (module, options, colors, placement,
+      opacity), applied with `backdrop visualizer preset <name>` (live, like the other control requests, until a
+      daemon restart), `visualizer.preset: <name>` as the default, and `backdrop visualizer preset --next` to cycle.
+      Ship a few built-in ones (subtle bottom bars, centered radial, full-screen wave) users can copy. Later: a preset
+      per mode (video/image), per tag or query, or remembered per media item like speed and dim.
+      Done in 2.25.0: `visualizer.presets`, built-ins in `src/visualizer/presets.js`, `backdrop visualizer preset`. Per mode, tag or item still open.
+- [ ] **Visualizer rofi menu.** (p2) [feature] A second menu (`backdrop menu visualizer`, or a key from the main menu)
+      in the same panel style: on/off, preset picker, module picker, opacity and amplify steps, anchor picker, color
+      source (fixed, wallpaper, album) and a few color swatches. Changes apply live through control requests and
+      last until the daemon restarts; a "save" button writes the current look into the config as a preset.
+      Needs the control channel to grow past signals (see "CLI and menu controls").
+- [x] **Show the visualizer only while audio plays.** (p3) [feature] Stop or hide instances when the audio source is
+      idle (PulseAudio/PipeWire sink not RUNNING, via `pactl subscribe`) and bring them back when sound starts, with
+      a short grace period. Saves GPU on a silent desktop and removes the flat line of an idle module.
+      Done in 2.25.0: `only_while_playing` and `silence_grace` (`src/visualizer/audio.js`).
+- [ ] **Dim the wallpaper while music plays.** (p3) [feature] Optionally lower the wallpaper's brightness by
+      `visualizer.wallpaper_dim` while the visualizer has audio, and restore the item's own dim when it stops, so
+      the bars stand out without changing their colors. Reuses the per-item dim path in the daemon.
+- [ ] **Visualizer as the screensaver.** (p3) [feature] Let a screensaver playlist be a visualizer preset: a full-screen
+      instance (e.g. radial or wave, `placement: {anchor: fill}`) over a dimmed or black wallpaper when idle, ties in
+      with project 7.
 - [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP) and `start/stop --wallpaper/--visualizer`
       (`control.json` + SIGUSR1, 2.21.0) exist. Left: changing the module from the CLI, and menu buttons for both parts.
       More requests would outgrow the signal-per-action scheme; a control socket in the runtime dir is the next step.

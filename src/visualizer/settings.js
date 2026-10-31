@@ -1,3 +1,5 @@
+import { BUILTIN_PRESETS } from './presets.js';
+
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
 // them and `backdrop visualizer reload` prints them.
 
@@ -8,6 +10,22 @@ export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
 const DIRECTIONS = { inward: 0, outward: 1 };
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// Settings shared by every instance, which an instance cannot set for itself
+const SHARED_KEYS = ['enabled', 'engine', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace'];
+// Settings of one visualizer; at the top of the section they are the defaults every instance inherits
+const INSTANCE_KEYS = ['name', 'module', 'monitors', 'placement', 'rect', 'opacity', 'defines', 'requests', ...MODULES];
+// What a preset cannot change
+const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
+
+// Objects merge recursively; lists and scalars from the override replace the base
+export function deepMerge(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override ?? {})) {
+    result[key] = isObject(value) && isObject(base?.[key]) ? deepMerge(base[key], value) : value;
+  }
+  return result;
+}
 
 function fail(key, expected, value) {
   throw new Error(`visualizer.${key} must be ${expected}, not ${JSON.stringify(value)}`);
@@ -75,13 +93,13 @@ function rect(key, value) {
 }
 
 // all, a list of monitor names, or a mapping of names to true or to their own placement/rect
-function monitors(value, layout) {
+function monitors(value, layout, prefix = '') {
   if (value === 'all') return { all: true, overrides: {} };
   if (Array.isArray(value)) {
-    if (!value.every(name => typeof name === 'string' && name)) fail('monitors', 'all, a list of names or a mapping', value);
+    if (!value.every(name => typeof name === 'string' && name)) fail(`${prefix}monitors`, 'all, a list of names or a mapping', value);
     return { all: false, overrides: Object.fromEntries(value.map(name => [name, layout])) };
   }
-  if (!isObject(value)) fail('monitors', 'all, a list of names or a mapping', value);
+  if (!isObject(value)) fail(`${prefix}monitors`, 'all, a list of names or a mapping', value);
   const overrides = {};
   for (const [name, entry] of Object.entries(value)) {
     if (entry === false) continue;
@@ -89,10 +107,10 @@ function monitors(value, layout) {
       overrides[name] = layout;
       continue;
     }
-    if (!isObject(entry)) fail(`monitors.${name}`, 'true, false or a mapping with placement or rect', entry);
+    if (!isObject(entry)) fail(`${prefix}monitors.${name}`, 'true, false or a mapping with placement or rect', entry);
     overrides[name] = {
-      placement: entry.placement ? placement(`monitors.${name}.placement`, { ...entry.placement }) : layout.placement,
-      rect: entry.rect !== undefined ? rect(`monitors.${name}.rect`, entry.rect) : layout.rect
+      placement: entry.placement ? placement(`${prefix}monitors.${name}.placement`, { ...entry.placement }) : layout.placement,
+      rect: entry.rect !== undefined ? rect(`${prefix}monitors.${name}.rect`, entry.rect) : layout.rect
     };
   }
   return { all: false, overrides };
@@ -179,46 +197,48 @@ const MODULE_OPTIONS = {
 
 const BARS_OPTIONS = ['width', 'gap', 'outline', 'amplify', 'colors', 'gradient', 'direction', 'flip'];
 
-function knownOptions(module, value, known) {
-  if (!isObject(value)) fail(module, 'a mapping', value);
+// Rejects keys of a mapping that are not in known, naming what is (key is the mapping's full key)
+function knownKeys(key, value, known, what) {
+  if (!isObject(value)) fail(key, 'a mapping', value);
   for (const name of Object.keys(value)) {
-    if (!known.includes(name)) fail(`${module}.${name}`, `one of the ${module} options (${known.join(', ')})`, name);
+    if (!known.includes(name)) fail(`${key ? `${key}.` : ''}${name}`, `one of the ${what} (${known.join(', ')})`, name);
   }
 }
 
-function moduleDefines(module, value) {
+function moduleDefines(module, value, prefix = '') {
   const options = MODULE_OPTIONS[module];
-  knownOptions(module, value, Object.keys(options));
+  knownKeys(`${prefix}${module}`, value, Object.keys(options), `${module} options`);
   return Object.fromEntries(Object.entries(value).map(([name, item]) => {
     const [define, kind] = options[name];
     const convert = typeof kind === 'function' ? kind : OPTION_KINDS[kind];
-    return [define, convert(`${module}.${name}`, item)];
+    return [define, convert(`${prefix}${module}.${name}`, item)];
   }));
 }
 
 // Typed options of the bars module as GLava #defines, with backdrop's defaults for the ones not given
-function barsDefines(value) {
-  knownOptions('bars', value, BARS_OPTIONS);
+function barsDefines(value, prefix = '') {
+  const key = name => `${prefix}bars.${name}`;
+  knownKeys(`${prefix}bars`, value, BARS_OPTIONS, 'bars options');
   return {
-    BAR_WIDTH: integer('bars.width', value.width ?? 20, { min: 1 }),
-    BAR_GAP: integer('bars.gap', value.gap ?? 1),
-    BAR_OUTLINE_WIDTH: integer('bars.outline', value.outline ?? 0),
-    AMPLIFY: integer('bars.amplify', value.amplify ?? 200, { min: 1 }),
-    GRADIENT: integer('bars.gradient', value.gradient ?? 80, { min: 1 }),
-    COLOR: gradientColor('bars.colors', value.colors ?? '#33aacc', 'd'),
-    DIRECTION: DIRECTIONS[oneOf('bars.direction', value.direction ?? 'inward', Object.keys(DIRECTIONS))],
-    FLIP: boolean('bars.flip', value.flip ?? false) ? 1 : 0,
+    BAR_WIDTH: integer(key('width'), value.width ?? 20, { min: 1 }),
+    BAR_GAP: integer(key('gap'), value.gap ?? 1),
+    BAR_OUTLINE_WIDTH: integer(key('outline'), value.outline ?? 0),
+    AMPLIFY: integer(key('amplify'), value.amplify ?? 200, { min: 1 }),
+    GRADIENT: integer(key('gradient'), value.gradient ?? 80, { min: 1 }),
+    COLOR: gradientColor(key('colors'), value.colors ?? '#33aacc', 'd'),
+    DIRECTION: DIRECTIONS[oneOf(key('direction'), value.direction ?? 'inward', Object.keys(DIRECTIONS))],
+    FLIP: boolean(key('flip'), value.flip ?? false) ? 1 : 0,
     // Needed for "native" transparency to fade the bars
     USE_ALPHA: 1
   };
 }
 
-function defines(value) {
-  if (!isObject(value)) fail('defines', 'a mapping of #define names to values', value);
+function defines(value, prefix = '') {
+  if (!isObject(value)) fail(`${prefix}defines`, 'a mapping of #define names to values', value);
   return Object.fromEntries(Object.entries(value).map(([name, item]) => {
-    if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) fail(`defines.${name}`, 'an upper-case GLSL name', name);
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) fail(`${prefix}defines.${name}`, 'an upper-case GLSL name', name);
     if (typeof item === 'boolean') return [name, item ? 1 : 0];
-    if (typeof item !== 'number' && (typeof item !== 'string' || /[\n\r]/.test(item))) fail(`defines.${name}`, 'a number, string or boolean', item);
+    if (typeof item !== 'number' && (typeof item !== 'string' || /[\n\r]/.test(item))) fail(`${prefix}defines.${name}`, 'a number, string or boolean', item);
     return [name, item];
   }));
 }
@@ -232,43 +252,102 @@ function stringList(key, value) {
 
 // The active module's typed options; the sections of the other modules are checked too, so a mistake shows
 // before switching to them
-function typedDefines(module, section) {
-  const of = name => (name === 'bars' ? barsDefines(section.bars ?? {}) : moduleDefines(name, section[name] ?? {}));
+function typedDefines(module, section, prefix) {
+  const of = name => (name === 'bars' ? barsDefines(section.bars ?? {}, prefix) : moduleDefines(name, section[name] ?? {}, prefix));
   for (const name of MODULES) if (name !== module && section[name] !== undefined) of(name);
   return of(module);
 }
 
-export function visualizerSettings(section = {}) {
-  if (!isObject(section)) fail('', 'a mapping', section);
-  const module = oneOf('module', section.module ?? 'bars', MODULES);
-  const layout = { placement: placement('placement', { ...section.placement }), rect: rect('rect', section.rect) };
-  const glava = section.glava ?? {};
-  if (!isObject(glava)) fail('glava', 'a mapping', glava);
+// One visualizer from its merged settings
+function instance(raw, prefix) {
+  const module = oneOf(`${prefix}module`, raw.module ?? 'bars', MODULES);
+  const layout = { placement: placement(`${prefix}placement`, { ...raw.placement }), rect: rect(`${prefix}rect`, raw.rect) };
   return {
-    enabled: boolean('enabled', section.enabled ?? false),
-    engine: oneOf('engine', section.engine ?? 'glava', ENGINES),
+    name: raw.name,
     module,
-    audio: oneOf('audio', section.audio ?? 'pulseaudio', AUDIO_BACKENDS),
-    source: text('source', section.source ?? 'auto', 'a device, sink or path, or auto'),
-    // The whole window's opacity over the wallpaper, set as _NET_WM_WINDOW_OPACITY for the compositor
-    opacity: fraction('opacity', section.opacity ?? 0.8),
+    // The window's opacity over the wallpaper, set as _NET_WM_WINDOW_OPACITY for the compositor
+    opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
     layout,
-    monitors: monitors(section.monitors ?? 'all', layout),
+    monitors: monitors(raw.monitors ?? 'all', layout, prefix),
     // Typed options first, so raw defines can override them
-    defines: { ...typedDefines(module, section), ...defines(section.defines ?? {}) },
-    requests: stringList('requests', section.requests ?? []),
-    glava: {
-      shaderDir: text('glava.shader_dir', glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
-      args: stringList('glava.args', glava.args ?? [])
-    }
+    defines: { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) },
+    requests: stringList(`${prefix}requests`, raw.requests ?? [])
   };
 }
 
-// The layout for a monitor, or null when the visualizer does not run there
-export function layoutFor(settings, name) {
-  if (!settings.enabled) return null;
-  if (settings.monitors.overrides[name]) return settings.monitors.overrides[name];
-  return settings.monitors.all ? settings.layout : null;
+// The section with any preset laid over it, normalized; prefix leads every key in an error
+function normalize(raw, prefix) {
+  knownKeys(prefix.replace(/\.$/, ''), raw, [...SHARED_KEYS, ...INSTANCE_KEYS.filter(key => key !== 'name')], 'visualizer settings');
+  const glava = raw.glava ?? {};
+  if (!isObject(glava)) fail(`${prefix}glava`, 'a mapping', glava);
+  const settings = {
+    enabled: boolean(`${prefix}enabled`, raw.enabled ?? false),
+    engine: oneOf(`${prefix}engine`, raw.engine ?? 'glava', ENGINES),
+    audio: oneOf(`${prefix}audio`, raw.audio ?? 'pulseaudio', AUDIO_BACKENDS),
+    source: text(`${prefix}source`, raw.source ?? 'auto', 'a device, sink or path, or auto'),
+    // Run only while the audio source plays, stopping silenceGrace seconds after it goes quiet
+    onlyWhilePlaying: boolean(`${prefix}only_while_playing`, raw.only_while_playing ?? false),
+    silenceGrace: number(`${prefix}silence_grace`, raw.silence_grace ?? 10, { min: 0 }),
+    glava: {
+      shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
+      args: stringList(`${prefix}glava.args`, glava.args ?? [])
+    }
+  };
+  if (settings.onlyWhilePlaying && settings.audio !== 'pulseaudio') {
+    fail(`${prefix}only_while_playing`, 'false with audio: fifo (only PulseAudio or PipeWire output can be watched)', true);
+  }
+
+  const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
+  if (raw.instances === undefined) {
+    settings.instances = [instance({ ...defaults, name: 'main' }, prefix)];
+    return settings;
+  }
+  if (!Array.isArray(raw.instances) || !raw.instances.length) fail(`${prefix}instances`, 'a list of visualizers', raw.instances);
+  const names = new Set();
+  settings.instances = raw.instances.map((item, index) => {
+    if (!isObject(item)) fail(`${prefix}instances[${index}]`, 'a mapping', item);
+    const name = item.name;
+    if (typeof name !== 'string' || !/^[A-Za-z0-9_-]+$/.test(name)) fail(`${prefix}instances[${index}].name`, 'a name of letters, digits, - or _', name);
+    if (names.has(name)) fail(`${prefix}instances[${index}].name`, 'unique among the instances', name);
+    names.add(name);
+    const key = `${prefix}instances.${name}.`;
+    knownKeys(key.replace(/\.$/, ''), item, INSTANCE_KEYS, 'visualizer instance settings');
+    return instance(deepMerge(defaults, item), key);
+  });
+  return settings;
+}
+
+// The section's presets, the built-in ones first so the section's can replace them by name
+export function presetsOf(section = {}) {
+  const own = section.presets ?? {};
+  if (!isObject(own)) fail('presets', 'a mapping of preset names to settings', own);
+  return { ...BUILTIN_PRESETS, ...own };
+}
+
+// The visualizer section normalized, with its active preset laid over it: preset (`backdrop visualizer
+// preset`) when given, else visualizer.preset. Every preset is checked, so a mistake in one shows before it
+// is used. Returns { enabled, engine, audio, source, onlyWhilePlaying, silenceGrace, glava, instances:
+// [{ name, module, opacity, layout, monitors, defines, requests }], preset, presets }.
+export function visualizerSettings(section = {}, { preset } = {}) {
+  if (!isObject(section)) fail('', 'a mapping', section);
+  const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));
+  const presets = presetsOf(section);
+  const settings = normalize(base, '');
+  for (const [name, value] of Object.entries(presets)) {
+    if (!isObject(value)) fail(`presets.${name}`, 'a mapping of visualizer settings', value);
+    for (const key of PRESET_EXCLUDED) if (value[key] !== undefined) fail(`presets.${name}.${key}`, 'left out of a preset', value[key]);
+    normalize(deepMerge(base, value), `presets.${name}.`);
+  }
+  const active = preset !== undefined ? preset : section.preset ?? null;
+  if (active === null) return { ...settings, preset: null, presets: Object.keys(presets) };
+  if (!presets[active]) fail('preset', `one of the presets (${Object.keys(presets).join(', ')})`, active);
+  return { ...normalize(deepMerge(base, presets[active]), `presets.${active}.`), preset: active, presets: Object.keys(presets) };
+}
+
+// An instance's layout on a monitor, or null when it does not run there
+export function layoutFor(instanceSettings, name) {
+  if (instanceSettings.monitors.overrides[name]) return instanceSettings.monitors.overrides[name];
+  return instanceSettings.monitors.all ? instanceSettings.layout : null;
 }
 
 function resolve(size, total) {

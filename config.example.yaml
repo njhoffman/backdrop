@@ -37,6 +37,9 @@ visualizer:
   audio: pulseaudio                  # or fifo (source then defaults to /tmp/mpd.fifo)
   source: auto                       # pulseaudio sink or device, or the fifo path
   opacity: 0.8                       # whole visualizer over the wallpaper, 0 to 1 (bar color alpha blends the bars too)
+  only_while_playing: false          # stop it while the audio output is silent (pulseaudio only), start it on sound
+  silence_grace: 10                  # seconds of silence before it stops
+  preset: null                       # preset to start with: built-in subtle, ring, wave, party, or one of presets below
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # anchor: bottom, top, left, right, center, fill
   # rect: {x: 0, y: 75%, width: 100%, height: 25%}  # overrides placement; pixels or % of the monitor
   bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
@@ -49,6 +52,17 @@ visualizer:
   # wave: {color: '#b33373', min_thickness: 1, max_thickness: 6, amplify: 500, outline_color: '#262626'}
   defines: {}                        # raw GLava #defines for the module, e.g. {C_LINE: 2}; override the typed options
   requests: []                       # raw GLava requests, e.g. ['setframerate 60']
+  # Several visualizers at once: the settings above are defaults each instance inherits; list order is stacking order
+  # instances:
+  #   - name: base
+  #   - name: ring
+  #     module: radial
+  #     opacity: 1
+  #     placement: {anchor: center, width: 40%, height: 60%}
+  #     radial: {colors: ['#cc3333', '#ffcc66']}
+  # Named looks laid over this section (any setting, including instances); switch with `backdrop visualizer preset`
+  # presets:
+  #   calm: {opacity: 0.4, module: wave, wave: {color: '#33aacc'}}
   glava: {shader_dir: /etc/xdg/glava, args: []}
 
 screensaver:

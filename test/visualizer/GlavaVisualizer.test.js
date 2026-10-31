@@ -18,6 +18,10 @@ describe('GlavaVisualizer', () => {
   afterEach(async () => { await fs.remove(dir); });
 
   const settings = section => visualizerSettings({ enabled: true, glava: { shader_dir: shaders }, ...section });
+  const glava = (section, options) => {
+    const normalized = settings(section);
+    return new GlavaVisualizer(normalized, normalized.instances[0], options);
+  };
 
   it('replaces the defines a module file has and appends the rest', () => {
     expect(applyDefines('#define A 1\n  #define B 2\n#define AB 3', { B: 5, C: '"x"' }))
@@ -26,9 +30,10 @@ describe('GlavaVisualizer', () => {
   });
 
   it('builds a config root linking the installed shaders, with the module file rewritten', async () => {
-    const root = path.join(dir, 'run', 'visualizer');
+    const root = path.join(dir, 'run', 'visualizer', 'main');
     await fs.outputFile(path.join(root, 'stale'), 'old');
-    const visualizer = createVisualizer(settings({ bars: { width: 9 } }), { runtimeDir: path.join(dir, 'run') });
+    const normalized = settings({ bars: { width: 9 } });
+    const visualizer = createVisualizer(normalized, normalized.instances[0], { runtimeDir: path.join(dir, 'run') });
     expect(visualizer).to.be.instanceOf(GlavaVisualizer);
     await visualizer.prepare();
     expect(await fs.pathExists(path.join(root, 'stale'))).to.be.false;
@@ -42,13 +47,13 @@ describe('GlavaVisualizer', () => {
   it('fails clearly when the shaders are not where shader_dir says', async () => {
     let caught;
     try {
-      await new GlavaVisualizer(settings({ module: 'wave' }), { root: path.join(dir, 'root') }).prepare();
+      await glava({ module: 'wave' }, { root: path.join(dir, 'root') }).prepare();
     } catch (error) { caught = error; }
     expect(caught.message).to.equal(`GLava shaders not found in ${shaders} (no wave.glsl); set visualizer.glava.shader_dir`);
   });
 
   it('launches an unmanaged, click-through, transparent window at the geometry, with its own config root', () => {
-    const visualizer = new GlavaVisualizer(settings({ audio: 'fifo', source: '/tmp/mpd.fifo', requests: ['setframerate 60'], glava: { shader_dir: shaders, args: ['-v'] } }),
+    const visualizer = glava({ audio: 'fifo', source: '/tmp/mpd.fifo', requests: ['setframerate 60'], glava: { shader_dir: shaders, args: ['-v'] } },
       { root: '/run/bd/visualizer' });
     const { file, args, env } = visualizer.command({ name: 'DP-3' }, { x: 1920, y: 1080, width: 2560, height: 360 },
       { PATH: '/bin', XDG_CONFIG_HOME: '/home/u/.config' });
@@ -57,7 +62,7 @@ describe('GlavaVisualizer', () => {
     const requests = args.filter((arg, index) => args[index - 1] === '-r');
     expect(requests).to.include.members([
       'setopacity "native"', 'setxwintype "!-"', 'setclickthrough true', 'setbg 00000000',
-      'setgeometry 1920 1080 2560 360', 'settitle "backdrop-visualizer-DP-3"', 'setsource "/tmp/mpd.fifo"'
+      'setgeometry 1920 1080 2560 360', 'settitle "backdrop-visualizer-DP-3-main"', 'setsource "/tmp/mpd.fifo"'
     ]);
     // User requests come after backdrop's, so they win
     expect(requests.at(-1)).to.equal('setframerate 60');

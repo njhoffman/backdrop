@@ -147,6 +147,10 @@ export class DisplayCommand {
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid}; ${this.describeParts(state)})`)}`);
     if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
+    else if (state.visualizer?.enabled && (state.visualizer.preset || state.visualizer.silenced)) {
+      out.row('Visualizer', [state.visualizer.preset && `preset ${state.visualizer.preset}`, state.visualizer.silenced && 'waiting for sound']
+        .filter(Boolean).join(', '));
+    }
     const next = this.describeNextFilters(await readNextFilters(this.runtimeDir));
     if (next) out.row('Next', `${next} ${fmt.dim('(next --clear to drop)')}`);
     if (!state.monitors.length) {
@@ -166,7 +170,7 @@ export class DisplayCommand {
       // Recent average from the daemon's samples, once it has two
       if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
       out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
-      if (monitor.visualizer) out.field('info', this.describeVisualizer(monitor.visualizer));
+      for (const item of monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : [])) out.field('info', this.describeVisualizer(item));
       if (!path) {
         out.field('info', fmt.yellow('nothing playing'));
         out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
@@ -191,6 +195,7 @@ export class DisplayCommand {
         cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
         decoder: formatDecoder(monitor.hwdec) || null,
         visualizer: monitor.visualizer ?? null,
+        visualizers: monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : []),
         playing: media ? mediaJson(this.database, media, rating) : null
       });
     }
@@ -202,8 +207,9 @@ export class DisplayCommand {
     return { mode, daemon, monitors };
   }
 
-  describeVisualizer({ module, geometry, running }) {
-    return `visualizer ${module} at ${geometry}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
+  describeVisualizer({ instance, module, geometry, running }) {
+    const name = instance && instance !== 'main' ? ` ${instance}` : '';
+    return `visualizer${name} ${module} at ${geometry}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
   }
 
   // Filters and order next keeps using, e.g. 'random, query "clouds", tags sky'

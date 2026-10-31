@@ -64,6 +64,31 @@ xdotool 3.20160805), raising GLava (it would cover every window), python-xlib (a
 Wallpaper changes (next, playlist advances, mode switches, speed and dim) reuse the running mpv, so they never
 touch the visualizer.
 
+## Instances and presets
+
+The section describes a list of instances (`instances`), each a full visualizer (module, placement, opacity,
+module options); keys at the top of the section are defaults the instances inherit, merged as objects. A
+section without `instances` is one instance named `main`, so single-visualizer configs need no list. Each
+instance gets its own GLava config root (`<runtime>/visualizer/<name>`) and window title
+(`backdrop-visualizer-<monitor>-<name>`). Placement stacks a monitor's instances in list order: the first
+directly above the wallpaper, each next one above the one before.
+
+A preset is a mapping laid over the section, objects merged and lists replaced, so it can change anything
+except `enabled`, `preset` and `presets`, including the instance list. Built-in presets live in
+`src/visualizer/presets.js`; the section's `presets` override them by name. `visualizer.preset` picks the one
+used at start; `backdrop visualizer preset <name>` switches the running daemon through a `{ preset }` control
+request until it restarts, and the switch survives config reloads. Every preset is checked when the section is,
+so a mistake in one shows before it is used.
+
+## Audio-only display
+
+With `only_while_playing`, `AudioWatcher` (`src/visualizer/audio.js`) runs `pactl subscribe` and, on sink,
+source or server events, reads the state of the output the visualizer listens to (`pactl get-default-sink` for
+`auto`, else the named sink or source). RUNNING starts the instances at once; anything else stops them after
+`silence_grace` seconds, so pauses between tracks do not. A silenced visualizer still counts as on, so the
+daemon does not stop for it when the wallpaper is off. When the state cannot be read, sound is assumed. Only
+`audio: pulseaudio` can be watched.
+
 ## Opacity
 
 `visualizer.opacity` (0 to 1, default 0.8) is the whole window's opacity, which compositors such as picom

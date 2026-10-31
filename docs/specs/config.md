@@ -44,6 +44,14 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   audio: pulseaudio        # pulseaudio or fifo
   source: auto             # GLava setsource: a sink or device, or the fifo path
   opacity: 0.8             # window opacity (_NET_WM_WINDOW_OPACITY), 0 to 1
+  only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only)
+  silence_grace: 10        # seconds of silence before they stop
+  preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
+  presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
+                           #   ring, wave, party (src/visualizer/presets.js); cannot set enabled, preset or presets
+  instances: null          # [{name, module, monitors, placement, rect, opacity, <module>, defines, requests}];
+                           #   the section's own instance settings are their defaults; list order = stacking order;
+                           #   without it the section is one instance named main
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # sizes in pixels or % of the monitor
   rect: null               # {x, y, width, height} relative to the monitor; overrides placement
   bars: {width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: inward, flip: false}
