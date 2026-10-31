@@ -7,7 +7,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('VisualizerManager', () => {
-  let config, monitors, screens, spawned, kills, prepared, logs, manager, time, windows, xcalls, above, watchers;
+  let config, monitors, screens, spawned, kills, prepared, logs, manager, time, windows, xcalls, above, watchers, compositor;
   const monitor = (name, x = 0) => ({ name, x, y: 0, width: 2560, height: 1440 });
   const entry = (monitorName = 'DP-3', instance = 'main') => manager.entries.get(`${monitorName}\t${instance}`);
 
@@ -37,7 +37,8 @@ describe('VisualizerManager', () => {
         setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
         topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
         stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
-        isAbove: async () => above.shift() ?? true
+        isAbove: async () => above.shift() ?? true,
+        hasCompositor: async () => compositor
       }),
       audioWatcher: options => new FakeWatcher(options),
       windowAttempts: 2, windowDelay: 0, settleDelay: 0,
@@ -70,6 +71,7 @@ describe('VisualizerManager', () => {
     windows = new Map([['^backdrop-visualizer-DP-3-main$', 0x3400002]]);
     xcalls = [];
     above = [];
+    compositor = true;
     spawned = []; kills = []; prepared = []; logs = []; watchers = [];
     time = 0;
     manager = makeManager();
@@ -82,7 +84,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, compositor: null, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -400,5 +402,20 @@ describe('VisualizerManager', () => {
       await manager.setPreset('subtle');
       expect(manager.settings.instances[0]).to.include({ opacity: 0.3 });
     });
+  });
+
+  it('checks for a compositor on every placement, logging only when it goes or comes back', async () => {
+    compositor = false;
+    await manager.configure();
+    await manager.sync();
+    await entry().placed;
+    expect(manager.summary().compositor).to.equal(false);
+    await manager.restack('DP-3');
+    const warnings = () => logs.filter(log => log[0] === 'warn' && log[1].startsWith('No compositor'));
+    expect(warnings()).to.have.length(1);
+    compositor = true;
+    await manager.restack('DP-3');
+    expect(manager.summary().compositor).to.equal(true);
+    expect(logs.some(log => log[1] === 'A compositor runs again')).to.equal(true);
   });
 });

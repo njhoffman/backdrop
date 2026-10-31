@@ -288,11 +288,12 @@ class BackdropApp {
     program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
-    program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), or list and switch presets (preset)')
+    program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), or try every instance and preset briefly (check)')
       .argument('<action>', VISUALIZER_ACTIONS.join(' or '))
       .argument('[name]', 'Preset to switch to, until the daemon restarts')
       .option('--next', 'Switch to the preset after the active one')
       .option('--clear', 'Go back to visualizer.preset')
+      .option('--check', 'With reload: check every instance and preset first, and reload only if all run')
       .action(this.action((action, name, options) => visualizer.run(action, name, options)));
     program.command('systemd').description('Print a systemd user unit for the daemon, e.g. backdrop systemd > ~/.config/systemd/user/backdrop.service')
       .action(this.action(() => systemd.print(version)));

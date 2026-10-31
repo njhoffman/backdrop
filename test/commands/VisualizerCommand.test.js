@@ -67,7 +67,7 @@ describe('VisualizerCommand', () => {
 
     await state({ enabled: true, error: null, generation: 4 });
     expect(await fails()).to.include('The daemon did not reload the visualizer');
-    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload, preset');
+    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload, preset, check');
   });
 
   describe('preset', () => {
@@ -114,6 +114,50 @@ describe('VisualizerCommand', () => {
       await fs.remove(statePath(dir));
       await command().run('preset', 'wave');
       expect(lines.at(-1)).to.include('Daemon not running; set visualizer.preset');
+    });
+  });
+
+  describe('check', () => {
+    const results = [
+      { preset: null, instance: 'main', ok: true },
+      { preset: 'broken', instance: 'main', ok: false, code: 1, signal: null, output: ['Shader compilation failed'] },
+      { preset: 'bad', instance: null, ok: false, error: 'visualizer.presets.bad.module must be bars' }
+    ];
+    const checking = (found, compositor = true) => new VisualizerCommand(config, null, silentLogger, {
+      kill: (pid, signal) => { signals.push([pid, signal]); return answer?.(); }, timeout: 200, pollInterval: 5,
+      check: async () => found, compositor: async () => compositor
+    });
+    let errors;
+    beforeEach(() => {
+      errors = [];
+      sinon.stub(console, 'error').callsFake(line => errors.push(line));
+      process.exitCode = undefined;
+    });
+    afterEach(() => { process.exitCode = undefined; });
+
+    it('lists each instance with its result and output, and fails the command on any failure', async () => {
+      expect(await checking(results, false).run('check')).to.equal(false);
+      expect(lines).to.include.members(['  ok      (no preset)  main', '  failed  broken  main: exited with code 1',
+        '  failed  bad: visualizer.presets.bad.module must be bars', '  Shader compilation failed']);
+      expect(errors.join('\n')).to.include('No compositor runs').and.include('2 of 3 failed');
+      expect(process.exitCode).to.equal(1);
+    });
+
+    it('passes when all run', async () => {
+      expect(await checking([results[0]]).run('check')).to.equal(true);
+      expect(lines.at(-1)).to.equal('All 1 ran');
+      expect(process.exitCode).to.equal(undefined);
+    });
+
+    it('reload --check reloads only when every instance runs', async () => {
+      await state({ enabled: true, error: null, generation: 1 });
+      const error = await checking(results).run('reload', undefined, { check: true }).catch(caught => caught);
+      expect(error.message).to.equal('Not reloaded: fix the visualizers that exited first');
+      expect(signals).to.deep.equal([]);
+
+      answer = () => setTimeout(() => state({ enabled: true, error: null, generation: 2 }), 20);
+      await checking([results[0]]).run('reload', undefined, { check: true });
+      expect(signals).to.deep.equal([[process.pid, 'SIGHUP']]);
     });
   });
 });

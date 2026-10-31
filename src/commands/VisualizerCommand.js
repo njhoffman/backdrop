@@ -1,16 +1,21 @@
 import { readState } from '../display/Daemon.js';
 import { sendControl } from '../display/control.js';
 import { presetsOf, visualizerSettings } from '../visualizer/settings.js';
+import { checkVisualizer, compositorRuns } from '../visualizer/check.js';
 import { out, fmt } from '../utils/output.js';
 
-export const VISUALIZER_ACTIONS = ['reload', 'preset'];
+export const VISUALIZER_ACTIONS = ['reload', 'preset', 'check'];
 const RELOAD_TIMEOUT_MS = 5000;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export class VisualizerCommand {
-  constructor(config, database, logger, { kill = process.kill, timeout = RELOAD_TIMEOUT_MS, pollInterval = 100 } = {}) {
+  constructor(config, database, logger, {
+    kill = process.kill, timeout = RELOAD_TIMEOUT_MS, pollInterval = 100, check = checkVisualizer, compositor = compositorRuns
+  } = {}) {
     this.config = config;
+    this.checker = check;
+    this.compositor = compositor;
     this.logger = logger;
     this.kill = kill;
     this.timeout = timeout;
@@ -23,7 +28,38 @@ export class VisualizerCommand {
 
   async run(action, name, options = {}) {
     if (!VISUALIZER_ACTIONS.includes(action)) throw new Error(`Unknown action ${action}; use ${VISUALIZER_ACTIONS.join(', ')}`);
-    return action === 'preset' ? this.preset(name, options) : this.reload();
+    if (action === 'check') return this.check();
+    if (action === 'preset') return this.preset(name, options);
+    if (options.check && !await this.check()) throw new Error('Not reloaded: fix the visualizers that exited first');
+    return this.reload();
+  }
+
+  // Runs every instance of the section and its presets briefly (see checkVisualizer) and reports each, and
+  // whether a compositor runs. Resolves to whether all of them ran; a failure sets the exit code.
+  async check() {
+    const section = this.config.get().visualizer;
+    out.info('Starting each visualizer for 2 seconds (a 1x1 window at the top left)...');
+    const [results, compositor] = await Promise.all([this.checker(section), this.compositor()]);
+    for (const result of results) {
+      const name = `${result.preset ?? '(no preset)'}  ${result.instance ?? ''}`.trim();
+      if (result.ok) {
+        out.print(`  ${fmt.green('ok')}      ${name}`);
+        continue;
+      }
+      const why = result.error ?? `exited${result.code !== null ? ` with code ${result.code}` : ''}${result.signal ? ` on ${result.signal}` : ''}`;
+      out.print(`  ${fmt.red('failed')}  ${name}: ${why}`);
+      for (const line of result.output ?? []) out.detail(line);
+    }
+    if (compositor === false) out.warn('No compositor runs: the area around the bars shows black (start picom or another compositor)');
+    else if (compositor === null) out.warn('Cannot reach the X display to check for a compositor');
+    const failed = results.filter(result => !result.ok).length;
+    if (failed) {
+      out.error(`${failed} of ${results.length} failed; the lines under each are its output (a bad define shows as a shader compilation error)`);
+      process.exitCode = 1;
+      return false;
+    }
+    out.success(`All ${results.length} ran`);
+    return true;
   }
 
   // Checks the section here first, so a mistake shows at the prompt rather than only in the daemon log,

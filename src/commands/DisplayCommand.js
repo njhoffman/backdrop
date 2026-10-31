@@ -160,6 +160,9 @@ export class DisplayCommand {
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid}; ${this.describeParts(state)})`)}`);
     if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
+    if (state.visualizer?.enabled && state.visualizer.compositor === false) {
+      out.row('Visualizer', fmt.yellow('no compositor runs: the area around the bars shows black (start picom or another compositor)'));
+    }
     else if (state.visualizer?.enabled && (state.visualizer.preset || state.visualizer.silenced)) {
       out.row('Visualizer', [state.visualizer.preset && `preset ${state.visualizer.preset}`, state.visualizer.silenced && 'waiting for sound']
         .filter(Boolean).join(', '));
@@ -215,7 +218,9 @@ export class DisplayCommand {
     const daemon = {
       running: Boolean(state), pid: state?.pid ?? null,
       wallpaper: state ? state.wallpaper !== false : null,
-      visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null
+      visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null,
+      // Whether a compositor ran at the visualizer's last placement; null when not checked
+      compositor: state?.visualizer?.compositor ?? null
     };
     return { mode, daemon, monitors, config_warnings: this.config.warnings ?? [] };
   }

@@ -24,7 +24,9 @@ short: mpv socket paths must fit in 107 bytes. `test/helpers/setup.js` does this
 afterwards), and `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
 at a missing directory, so a test never reaches a running daemon; tests that need state set their own. `test/display/mpv.integration.test.js` runs a headless mpv
 and is skipped when mpv or ffmpeg is missing. `test/commands/menu.integration.test.js` draws the menus with real rofi on its own Xvfb
-(skipped without Xvfb, rofi, xdotool or ImageMagick's `import`).
+(skipped without Xvfb, rofi, xdotool or ImageMagick's `import`), and `test/display/stacking.integration.test.js` runs
+a real daemon there with a stand-in visualizer window (Daemon's `createVisualizer` option), since GLava opens no
+window under Xvfb.
 
 Requires Node.js 22.13+ (built-in `node:sqlite`).
 

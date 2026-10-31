@@ -1,8 +1,9 @@
 import x11 from 'x11';
 
 // The few X requests backdrop makes itself, over its own connection to $DISPLAY: finding a window's
-// top-level ancestor, stacking one window directly above another, and setting the window opacity that
-// compositors such as picom honor. Other X work goes through xrandr and xdotool.
+// top-level ancestor, stacking one window directly above another, setting the window opacity that
+// compositors such as picom honor, and telling whether a compositor runs. Other X work goes through xrandr
+// and xdotool.
 
 const STACK_ABOVE = 0;
 const PROP_MODE_REPLACE = 0;
@@ -16,9 +17,10 @@ function call(client, request, ...args) {
 }
 
 export class X11 {
-  constructor(client, root) {
+  constructor(client, root, screen = 0) {
     this.client = client;
     this.root = root;
+    this.screen = screen;
     this.errors = [];
     client.on('error', error => this.errors.push(error));
   }
@@ -54,6 +56,12 @@ export class X11 {
     await this.check('restack');
   }
 
+  // Whether a compositor runs on the screen: one owns the _NET_WM_CM_S<screen> selection (EWMH)
+  async hasCompositor() {
+    const atom = await call(this.client, 'InternAtom', false, `_NET_WM_CM_S${this.screen}`);
+    return (await call(this.client, 'GetSelectionOwner', atom)) !== 0;
+  }
+
   // _NET_WM_WINDOW_OPACITY, 0 to 1
   async setOpacity(id, opacity) {
     const atom = await call(this.client, 'InternAtom', false, '_NET_WM_WINDOW_OPACITY');
@@ -69,7 +77,9 @@ export async function withX11(fn) {
   });
   const client = display.client;
   try {
-    return await fn(new X11(client, display.screen[0].root));
+    // The screen of $DISPLAY (":0.1" is screen 1); the root window is the first screen's, as before
+    const screen = Number(/\.(\d+)$/.exec(process.env.DISPLAY ?? '')?.[1] ?? 0);
+    return await fn(new X11(client, display.screen[0].root, screen));
   } finally {
     await new Promise(resolve => client.close(() => resolve()));
   }

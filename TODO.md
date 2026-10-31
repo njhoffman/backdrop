@@ -352,10 +352,16 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `requests`, written into a generated config root (`XDG_CONFIG_HOME` pointed at the runtime dir). Done in 2.20.0.
 - [x] **Typed options for the other modules.** (p3) [feature] graph, radial, circle and wave have typed options
       (`MODULE_OPTIONS` in `src/visualizer/settings.js`), written only when set; unknown options are rejected. Done in 2.24.0.
-- [ ] **Stacking is only checked by hand.** (p3) [test] Unit tests use a fake X connection; placement was verified live
+- [x] **Stacking is only checked by hand.** (p3) [test] Unit tests use a fake X connection; placement was verified live
       on picom and i3 on 2026-10-30. An integration test on Xephyr or Xvfb (skipped without them, glava or a GL
       context) should start the daemon with the visualizer and check the order of the root's children, also after
       killing mpv and after `stop/start --wallpaper`.
+      Done in 2.29.1: `test/display/stacking.integration.test.js` runs a real daemon (xwinwrap, mpv) on Xvfb with a
+      stand-in visualizer window (`test/fixtures/standin-visualizer.mjs`) that lowers itself after mapping as GLava
+      does, since GLava opens no window under Xvfb; GLava's own stacking is not covered. Disabling the restack in
+      `place()` fails the start case; the mpv-restart and wallpaper on/off cases pass either way (a new xwinwrap
+      lowers itself below the visualizer), so they guard the restart paths and the visualizer surviving
+      `stop --wallpaper`, not the restack itself.
 - [ ] **Apply more config sections live.** (p2) [feature] The config watcher (2.23.0) applies only the `visualizer`
       section. Extend `Daemon.applyConfigChange` to the display keys the daemon reads per item (`order`, `image_duration`,
       `video_duration`, `notify`, `allow_upscale`) by taking them into the running config, and `display.monitors` by
@@ -432,14 +438,19 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       (2.28.0) has on/off and preset buttons; a menu button for the wallpaper part is left. More requests would outgrow the signal-per-action
       scheme and its single `control.json` (see "Control requests can be lost"); a control socket in the runtime dir
       is the next step.
-- [ ] **`backdrop visualizer check`.** (p3) [feature] A mistake in raw `defines`, or a GLava version whose shaders differ,
+- [x] **`backdrop visualizer check`.** (p3) [feature] A mistake in raw `defines`, or a GLava version whose shaders differ,
       only shows as GLava exiting with code 1 and no message, then being given up on after five restarts. Start each
       instance of the section and of every preset at 1x1 for two seconds, as was done by hand on 2026-10-30, and report
       which ones exit, before they reach the screen. Run it from `visualizer reload` with `--check`.
-- [ ] **Warn when no compositor runs.** (p3) [feature] The visualizer needs one for its transparency; without it the area
+      Done in 2.29.0 (`src/visualizer/check.js`): all at once, each target against only its own preset, with GLava's
+      output (which does name a bad define: "Shader compilation failed ... syntax error"). Checked live on the real
+      display: a broken preset fails alone with exit 1, and `reload --check` refuses.
+- [x] **Warn when no compositor runs.** (p3) [feature] The visualizer needs one for its transparency; without it the area
       around the bars is solid black over the wallpaper. Check for an owner of the `_NET_WM_CM_S<screen>` selection
       (GetSelectionOwner over the existing X connection) when the visualizer starts, log a warning, and show it in
       `status`.
+      Done in 2.29.0: checked on every placement (picom often starts after the daemon), logged on change, `compositor`
+      in the visualizer summary, a `status` line and `daemon.compositor` in `status --json`.
 - [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
       change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
       `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for

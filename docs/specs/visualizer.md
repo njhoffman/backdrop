@@ -138,6 +138,20 @@ existing name, the built-in ones included, is replaced only after a confirmation
 `visualizer.opacity` (0 to 1, default 0.8) is the whole window's opacity, which compositors such as picom
 apply. The alpha of the bar colors (`'#33aacc80'`) blends the bars themselves on top of that.
 
+## Checks
+
+`backdrop visualizer check` (`src/visualizer/check.js`) starts every instance of the section and of each preset,
+built-in ones included, as a 1x1 window at the top left for two seconds, all at once, each target checked
+against a section holding only its own preset so one bad preset fails alone. Instances still running then are
+stopped; ones that exited are reported with their exit code and last output lines (a bad define shows as GLava's
+shader compilation error). It exits 1 on any failure; `visualizer reload --check` runs it first and does not
+reload on a failure. With `audio: fifo` and no writer, GLava waits to open the fifo, which counts as running.
+
+Without a compositor the transparency around the bars shows black. `VisualizerManager.place()` asks whether
+anything owns the `_NET_WM_CM_S<screen>` selection on every placement (a compositor often starts after the
+daemon under i3), logs when that changes, and keeps the answer as `compositor` in `state.json`'s visualizer
+summary; `status` shows a line when it is false, `status --json` has `daemon.compositor`, and the check reports it.
+
 ## Lifecycle
 
 `VisualizerManager` owns one process per monitor (detached, killed as a process group like xwinwrap). An

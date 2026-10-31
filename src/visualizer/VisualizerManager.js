@@ -65,6 +65,9 @@ export class VisualizerManager {
     // One placement at a time per monitor, so instances starting together stack in order
     this.placing = new Map();
     this.stopping = false;
+    // Whether a compositor runs, from the last placement; null until checked. Without one the transparency
+    // around the visualizer shows black.
+    this.compositor = null;
   }
 
   async configure() {
@@ -280,6 +283,7 @@ export class VisualizerManager {
       const placed = entries.filter(entry => entry.window && this.current(entry));
       if (!placed.length) return false;
       return await this.x11(async x => {
+        this.noteCompositor(await x.hasCompositor());
         for (const entry of placed) await x.setOpacity(entry.window, entry.instance.opacity);
         const wallpaper = await this.wallpaperWindow(name, x);
         if (!wallpaper) return !missing.length;
@@ -307,6 +311,15 @@ export class VisualizerManager {
       this.logger.warn('Failed to place the visualizer above the wallpaper', { monitor: name, error: error.message });
       return false;
     }
+  }
+
+  // Logs when the compositor goes missing or comes back; checked on every placement, since with i3 the
+  // compositor often starts after the daemon
+  noteCompositor(present) {
+    if (present === this.compositor) return;
+    if (!present) this.logger.warn('No compositor runs: the visualizer\'s transparency shows black (start picom or another compositor)');
+    else if (this.compositor === false) this.logger.info('A compositor runs again');
+    this.compositor = present;
   }
 
   // After the daemon starts a wallpaper. xwinwrap lowers itself, which already leaves the instances above it;
@@ -436,6 +449,7 @@ export class VisualizerManager {
       preset: this.settings?.preset ?? null, presets: this.settings?.presets ?? [],
       instances: (this.settings?.instances ?? []).map(instance => instance.name),
       silenced: this.silenced,
+      compositor: this.compositor,
       // The visualizer menu's changes, by instance
       live: this.live
     };

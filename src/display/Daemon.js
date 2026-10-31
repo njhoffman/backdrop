@@ -114,7 +114,9 @@ export class Daemon {
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
     watch = watchFiles, configSettle = CONFIG_SETTLE_MS,
     readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger }),
-    samplePalette = (media, monitor) => sampleMedia(media, monitor)
+    samplePalette = (media, monitor) => sampleMedia(media, monitor),
+    // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
+    createVisualizer
   }) {
     this.config = config;
     this.database = database;
@@ -157,7 +159,8 @@ export class Daemon {
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
-      colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry)
+      colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
+      ...(createVisualizer ? { create: createVisualizer } : {})
     });
     this.reloadConfig = reloadConfig;
     this.watch = watch;

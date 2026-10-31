@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-10-31
+
+### Changed
+- Development: the visualizer's placement above the wallpaper is tested with a real daemon, xwinwrap and mpv on a
+  virtual X server: after a start, after mpv dies, and after the wallpaper is switched off and on.
+
+## [2.29.0] - 2026-10-31
+
+### Added
+- `backdrop visualizer check` starts every visualizer of the section and of each preset for two seconds and lists
+  which ones exit, with GLava's output, before a bad define reaches the screen; `backdrop visualizer reload --check`
+  reloads only when all of them run.
+- The daemon notices when no compositor runs (the area around the visualizer then shows black): it logs it,
+  `status` shows it, and `visualizer check` reports it. It checks again on every placement, so a compositor
+  started after the daemon is picked up.
+
 ## [2.28.0] - 2026-10-31
 
 ### Added

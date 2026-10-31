@@ -276,7 +276,11 @@ keeps the running visualizer and shows a desktop notification naming the problem
 sections still need a daemon restart. `backdrop visualizer reload` forces a reload and reports any mistake
 at the prompt. `backdrop status` shows where each instance runs. An instance that
 keeps exiting (for example from a bad `defines` value) is retried five times a minute, then given up on until
-the next reload; the log has its last output.
+the next reload; the log has its last output. `backdrop visualizer check` catches that first: it starts every
+instance of the section and of each preset as a 1x1 window for two seconds and lists which ones exit, with
+GLava's output; `backdrop visualizer reload --check` reloads only when all of them run. Both also say whether
+a compositor runs: without one (picom, for example) the area around the bars shows black, which `status`
+reports too.
 
 ## Current limitations and troubleshooting
 

@@ -68,12 +68,19 @@ describe('DisplayCommand', () => {
       const text = lines.join('\n');
       expect(text).to.include('visualizer bars at 1920x270+0+810\n');
       expect(text).to.include('visualizer glow radial at 1920x270+0+810, colors #e67814 to #1a2b3c80\n');
+      expect(text).to.not.include('no compositor');
       expect(text).to.include('visualizer bars at 3840x540+1920+1620 (gave up after repeated exits; backdrop visualizer reload)');
 
       await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: false, error: 'visualizer.module must be bars', generation: 1 } });
       lines.length = 0;
       await command.status();
       expect(lines).to.include('Visualizer: off: visualizer.module must be bars');
+
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: true, error: null, compositor: false, generation: 1 } });
+      lines.length = 0;
+      await command.status();
+      expect(lines).to.include('Visualizer: no compositor runs: the area around the bars shows black (start picom or another compositor)');
+      expect((await command.statusJson()).daemon.compositor).to.equal(false);
     });
 
     it('points at unplayable files when eligible media exists but nothing loaded', async () => {
@@ -112,7 +119,7 @@ describe('DisplayCommand', () => {
 
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
-      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false } });
+      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null } });
       expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi' });
       expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
       expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
@@ -131,7 +138,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null }, monitors: [], config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null }, monitors: [], config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });
