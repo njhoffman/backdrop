@@ -15,6 +15,7 @@ import { thumbnailFor } from '../library/thumbnail.js';
 import { notifyError, notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager } from '../visualizer/VisualizerManager.js';
 import { visualizerSettings } from '../visualizer/settings.js';
+import { paletteColors, sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
@@ -112,7 +113,8 @@ export class Daemon {
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
     watch = watchFiles, configSettle = CONFIG_SETTLE_MS,
-    readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger })
+    readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger }),
+    samplePalette = (media, monitor) => sampleMedia(media, monitor)
   }) {
     this.config = config;
     this.database = database;
@@ -121,6 +123,10 @@ export class Daemon {
     this.children = new ChildRegistry({ runtimeDir: () => this.runtimeDir, readStart });
     this.spawn = this.children.track(spawn);
     this.reap = reap;
+    // What each monitor shows, sampled for visualizer.palette.source: wallpaper: name -> { mediaId, sample }
+    this.samplePalette = samplePalette;
+    this.samples = new Map();
+    this.sampling = new Map();
     this.exec = exec;
     this.connect = connect;
     this.kill = kill;
@@ -150,7 +156,8 @@ export class Daemon {
     this.durations = {};
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
-      config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now
+      config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
+      colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry)
     });
     this.reloadConfig = reloadConfig;
     this.watch = watch;
@@ -597,6 +604,7 @@ export class Daemon {
       }
     }
     await this.notify(screen, media);
+    if (this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) this.sampleScreen(screen.monitor.name);
     this.prefetchThumbnails(screen, media);
   }
 
@@ -700,6 +708,50 @@ export class Daemon {
     } catch (error) {
       this.logger.error('Failed to restart monitor', { monitor: screen.monitor.name, error: error.message });
     }
+  }
+
+  // A visualizer instance's colors from the item its monitor shows, or null (its configured colors) while
+  // nothing is known: no wallpaper runs, or the item is not sampled yet, in which case sampling starts and
+  // the instance is recolored once it is done
+  colorsFor(monitor, instance, geometry) {
+    const media = this.screens.get(monitor.name)?.media;
+    if (!media) return null;
+    const cached = this.samples.get(monitor.name);
+    if (cached?.mediaId !== media.id) {
+      this.sampleScreen(monitor.name);
+      return null;
+    }
+    try {
+      return paletteColors(cached.sample, monitor, geometry, instance);
+    } catch (error) {
+      this.logger.warn('Visualizer colors failed', { monitor: monitor.name, instance: instance.name, error: error.message });
+      return null;
+    }
+  }
+
+  // Samples what a monitor shows (in the background, once per item) and recolors its visualizers
+  sampleScreen(name) {
+    const screen = this.screens.get(name);
+    const media = screen?.media;
+    if (!media || this.samples.get(name)?.mediaId === media.id || this.sampling.get(name)?.mediaId === media.id) {
+      return this.sampling.get(name)?.done ?? Promise.resolve();
+    }
+    const done = (async () => {
+      try {
+        const sample = await this.samplePalette(media, screen.monitor);
+        // A newer item may have loaded meanwhile; its own sampling recolors
+        if (this.screens.get(name)?.media?.id !== media.id) return;
+        this.samples.set(name, { mediaId: media.id, sample });
+        await this.visualizers.recolor?.(name);
+        await this.writeState();
+      } catch (error) {
+        this.logger.warn('Sampling the wallpaper for visualizer colors failed', { monitor: name, mediaId: media.id, error: error.message });
+      } finally {
+        if (this.sampling.get(name)?.mediaId === media.id) this.sampling.delete(name);
+      }
+    })();
+    this.sampling.set(name, { mediaId: media.id, done });
+    return done;
   }
 
   // Written to a temporary file and renamed, so a CLI command never reads a half-written state.

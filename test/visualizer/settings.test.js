@@ -143,4 +143,56 @@ describe('visualizer settings', () => {
     expect(layoutFor(map, 'DP-1')).to.be.null;
     expect(geometry({ monitors: { 'DP-3': { rect: { x: 0, y: 0, width: 100, height: 100 } } } })).to.deep.equal({ x: 1920, y: 0, width: 100, height: 100 });
   });
+
+  describe('palette', () => {
+    it('keeps the module colors in the shader by default, with nothing piped', () => {
+      const instance = main({});
+      expect(instance.palette).to.deep.equal({ source: 'config', pick: 'vivid', minContrast: 3 });
+      expect(instance.pipe).to.equal(null);
+      expect(instance.defines.COLOR).to.equal('@fg:#33aacc');
+    });
+
+    it('pipes the foreground color with source: wallpaper, sending the configured colors first', () => {
+      const gradient = main({ palette: { source: 'wallpaper', pick: 'complement', min_contrast: 4.5 }, bars: { colors: ['#000000', '#33aacc80'] } });
+      expect(gradient.palette).to.deep.equal({ source: 'wallpaper', pick: 'complement', minContrast: 4.5 });
+      // A space before each comma: GLava reads a default up to whitespace
+      expect(gradient.defines.COLOR).to.equal('mix(@fg:#000000 , @fg2:#33aacc80 , clamp(d / GRADIENT, 0, 1))');
+      expect(gradient.pipe).to.deep.equal({ fg: '#000000ff', fg2: '#33aacc80' });
+
+      const single = main({ palette: { source: 'wallpaper' } });
+      expect(single.defines.COLOR).to.equal('@fg:#33aacc');
+      expect(single.pipe).to.deep.equal({ fg: '#33aaccff' });
+    });
+
+    it('pipes each module\'s own foreground, with GLava\'s colors when none is set', () => {
+      const piped = (module, options = {}) => main({ module, palette: { source: 'wallpaper' }, ...options });
+      expect(piped('graph').defines.COLOR).to.equal('mix(@fg:#802a2a , @fg2:#4f4f92 , clamp(pos / GRADIENT, 0, 1))');
+      expect(piped('radial', { radial: { colors: '#ff0000' } }).pipe).to.deep.equal({ fg: '#ff0000ff' });
+      expect(piped('circle').defines.OUTLINE).to.equal('@fg:#333333');
+      expect(piped('wave', { wave: { color: '#123456' } })).to.deep.include({ pipe: { fg: '#123456ff' } });
+      expect(piped('wave').defines.BASE_COLOR).to.equal('@fg:#b33373');
+    });
+
+    it('applies per instance and in presets', () => {
+      const settings = visualizerSettings({
+        palette: { source: 'wallpaper' },
+        instances: [{ name: 'low' }, { name: 'top', palette: { source: 'config' } }],
+        presets: { plain: { palette: { source: 'config' } } }
+      });
+      expect(settings.instances.map(instance => Boolean(instance.pipe))).to.deep.equal([true, false]);
+      const plain = visualizerSettings({ palette: { source: 'wallpaper' }, presets: { plain: { palette: { source: 'config' } } } }, { preset: 'plain' });
+      expect(plain.instances[0].pipe).to.equal(null);
+    });
+
+    it('rejects bad values, and a raw define of the color it pipes', () => {
+      expect(() => main({ palette: { source: 'album' } })).to.throw('visualizer.palette.source must be config, wallpaper, not "album"');
+      expect(() => main({ palette: { pick: 'loud' } })).to.throw('visualizer.palette.pick must be vivid, dominant, complement');
+      expect(() => main({ palette: { min_contrast: 30 } })).to.throw('visualizer.palette.min_contrast must be a contrast ratio from 1 to 21');
+      expect(() => main({ palette: { colour: 1 } })).to.throw('visualizer.palette.colour must be one of the palette settings');
+      expect(() => main({ palette: { source: 'wallpaper' }, defines: { COLOR: '#ff0000' } }))
+        .to.throw('visualizer.defines.COLOR must be left out with palette.source: wallpaper (set bars.colors instead)');
+      // Without the wallpaper source a raw COLOR stays allowed
+      expect(main({ defines: { COLOR: '#ff0000' } }).defines.COLOR).to.equal('#ff0000');
+    });
+  });
 });

@@ -280,4 +280,89 @@ describe('VisualizerManager', () => {
     await manager.sync();
     expect(spawned).to.have.length(1);
   });
+
+  describe('colors from the wallpaper', () => {
+    let writes, colors;
+    // Children with a stdin that records each write, and the time it came at
+    const pipedManager = () => makeManager({
+      pipeGap: 15,
+      colorsFor: (target, instance, geometry) => colors?.(target, instance, geometry) ?? null,
+      spawn: (file, args, options) => {
+        const child = new FakeChild(2000 + spawned.length);
+        child.stderr = new EventEmitter();
+        child.stdin = Object.assign(new EventEmitter(), { destroyed: false, write: line => { writes.push([Date.now(), line]); } });
+        spawned.push({ file, args, options, child });
+        return child;
+      }
+    });
+
+    beforeEach(() => {
+      writes = [];
+      colors = null;
+      config.set('visualizer.palette', { source: 'wallpaper' });
+      config.set('visualizer.bars', { colors: ['#000000', '#33aacc'] });
+      manager = pipedManager();
+    });
+
+    it('opens stdin and sends the configured colors at once, one line at a time', async () => {
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].options.stdio[0]).to.equal('pipe');
+      await entry().writing;
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+      // Apart, so GLava reads each on its own
+      expect(writes[1][0] - writes[0][0]).to.be.at.least(10);
+      expect(manager.describe('DP-3')[0].colors).to.deep.equal({ fg: '#000000ff', fg2: '#33aaccff' });
+      expect(manager.wantsWallpaperColors('DP-3')).to.equal(true);
+      expect(manager.wantsWallpaperColors('HDMI-1')).to.equal(false);
+    });
+
+    it('starts with the wallpaper\'s colors when known, and recolors only what changed', async () => {
+      const asked = [];
+      colors = (target, instance, geometry) => { asked.push([target.name, instance.name, geometry.height]); return { fg: '#111111ff', fg2: '#222222ff' }; };
+      await manager.configure();
+      await manager.sync();
+      await entry().writing;
+      expect(asked).to.deep.equal([['DP-3', 'main', 360]]);
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #111111ff\n', 'fg2 = #222222ff\n']);
+
+      await manager.recolor('DP-3');
+      expect(writes).to.have.length(2);
+      colors = () => ({ fg: '#333333ff', fg2: '#444444ff' });
+      await manager.recolor('DP-3');
+      expect(writes.slice(2).map(([, line]) => line)).to.deep.equal(['fg = #333333ff\n', 'fg2 = #444444ff\n']);
+      expect(logs.some(log => log[1] === 'Visualizer colors from the wallpaper')).to.equal(true);
+
+      // Unknown again (wallpaper off): back to the configured colors
+      colors = null;
+      await manager.recolor('DP-3');
+      expect(writes.slice(4).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+    });
+
+    it('drops colors superseded before they are written, and sends them again after a restart', async () => {
+      await manager.configure();
+      await manager.sync();
+      colors = () => ({ fg: '#555555ff', fg2: '#666666ff' });
+      await manager.recolor('DP-3');
+      // The configured fg went out, then the newer colors replaced the rest of that write
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg = #555555ff\n', 'fg2 = #666666ff\n']);
+
+      spawned[0].child.exit(1);
+      await pause(30);
+      await entry().writing;
+      expect(spawned).to.have.length(2);
+      expect(writes.slice(3).map(([, line]) => line)).to.deep.equal(['fg = #555555ff\n', 'fg2 = #666666ff\n']);
+    });
+
+    it('leaves stdin closed and colors out of the description with palette.source: config', async () => {
+      config.set('visualizer.palette', { source: 'config' });
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].options.stdio[0]).to.equal('ignore');
+      expect(manager.describe('DP-3')[0]).to.not.have.property('colors');
+      expect(manager.wantsWallpaperColors('DP-3')).to.equal(false);
+      await manager.recolor('DP-3');
+      expect(writes).to.deep.equal([]);
+    });
+  });
 });

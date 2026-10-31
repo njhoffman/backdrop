@@ -59,13 +59,15 @@ describe('DisplayCommand', () => {
     it('shows each monitor\'s visualizer, one given up on, and why the visualizer is off', async () => {
       await fs.writeJson(statePath(dir), {
         pid: process.pid, version: '2.20.0', visualizer: { enabled: true, error: null, generation: 1 },
-        monitors: [{ ...monitors[0], visualizer: { module: 'bars', geometry: '1920x270+0+810', running: true } },
+        monitors: [{ ...monitors[0], visualizers: [{ module: 'bars', geometry: '1920x270+0+810', running: true },
+          { instance: 'glow', module: 'radial', geometry: '1920x270+0+810', running: true, colors: { fg: '#e67814ff', fg2: '#1a2b3c80' } }] },
           { ...monitors[1], visualizer: { module: 'bars', geometry: '3840x540+1920+1620', running: false } }]
       });
       command.control = { current: async () => ({ path: null }) };
       await command.status();
       const text = lines.join('\n');
       expect(text).to.include('visualizer bars at 1920x270+0+810\n');
+      expect(text).to.include('visualizer glow radial at 1920x270+0+810, colors #e67814 to #1a2b3c80\n');
       expect(text).to.include('visualizer bars at 3840x540+1920+1620 (gave up after repeated exits; backdrop visualizer reload)');
 
       await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: false, error: 'visualizer.module must be bars', generation: 1 } });

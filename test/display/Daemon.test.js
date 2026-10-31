@@ -1120,4 +1120,94 @@ describe('Daemon', () => {
       expect(kills.filter(([, signal]) => signal === 'SIGTERM').map(([pid]) => pid)).to.include.members([-1000, -1001]);
     });
   });
+
+  describe('visualizer colors from the wallpaper', () => {
+    let daemon, sampled, recolored, wants, release;
+    const instance = { name: 'main', pipe: { fg: '#000000ff' }, palette: { source: 'wallpaper', pick: 'vivid', minContrast: 1 } };
+    // A sample whose top half is green and bottom half red
+    const sample = () => {
+      const pixels = Buffer.alloc(4 * 4 * 3);
+      for (let index = 0; index < 16; index++) pixels.set(index < 8 ? [0, 200, 0] : [200, 0, 0], index * 3);
+      return { width: 4, height: 4, pixels, dim: 0 };
+    };
+    const load = async filePath => {
+      daemon.screens.get('DP-1').client.emit('property-change', { event: 'property-change', name: 'path', data: filePath });
+      await new Promise(resolve => setTimeout(resolve, 5));
+    };
+
+    beforeEach(async () => {
+      sampled = []; recolored = []; wants = true; release = null;
+      const visualizers = {
+        override: null, active: true, error: null,
+        configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {}, reload: async () => {},
+        describe: () => [], summary: () => ({ enabled: true }),
+        wantsWallpaperColors: () => wants,
+        recolor: async name => { recolored.push(name); }
+      };
+      daemon = makeDaemon({
+        visualizers,
+        samplePalette: async (media, monitor) => {
+          sampled.push([media.path, monitor.name]);
+          if (release) await release;
+          return sample();
+        }
+      });
+      await daemon.start();
+    });
+    afterEach(async () => { await daemon.stop(); });
+
+    it('samples each load once and answers with the colors under the instance', async () => {
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      const monitor = daemon.monitors.get('DP-1');
+      const bottom = { x: monitor.x, y: monitor.y + monitor.height * 3 / 4, width: monitor.width, height: monitor.height / 4 };
+      // Nothing playing yet: the configured colors
+      expect(daemon.colorsFor(monitor, instance, bottom)).to.equal(null);
+
+      await load('/m/a.png');
+      await daemon.sampling.get('DP-1')?.done;
+      expect(sampled).to.deep.equal([['/m/a.png', 'DP-1']]);
+      expect(recolored).to.deep.equal(['DP-1']);
+      expect(daemon.colorsFor(monitor, instance, bottom)).to.deep.equal({ fg: '#c80000ff' });
+      expect(daemon.colorsFor(monitor, instance, { ...bottom, y: monitor.y })).to.deep.equal({ fg: '#00c800ff' });
+      // Asking again does not decode again
+      expect(sampled).to.have.length(1);
+    });
+
+    it('samples on demand when an instance asks before the load sampled, and drops a sample a newer load replaced', async () => {
+      wants = false;
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 2, path: '/m/b.png', width: 2560, height: 1440 });
+      await load('/m/a.png');
+      expect(sampled).to.deep.equal([]);
+
+      // The visualizer turned on later: its first request starts the sampling
+      let finish;
+      release = new Promise(resolve => { finish = resolve; });
+      const monitor = daemon.monitors.get('DP-1');
+      expect(daemon.colorsFor(monitor, instance, monitor)).to.equal(null);
+      expect(sampled).to.deep.equal([['/m/a.png', 'DP-1']]);
+      const first = daemon.sampling.get('DP-1').done;
+      await load('/m/b.png');
+      finish();
+      await first;
+      expect(daemon.samples.has('DP-1')).to.equal(false);
+      expect(recolored).to.deep.equal([]);
+    });
+
+    it('logs a failed sample and keeps the configured colors', async () => {
+      const warnings = [];
+      await daemon.stop();
+      daemon = makeDaemon({
+        visualizers: { ...daemon.visualizers, wantsWallpaperColors: () => true, recolor: async () => {} },
+        samplePalette: async () => { throw new Error('ffmpeg missing'); },
+        logger: { ...silentLogger, warn: (message, meta) => warnings.push([message, meta.error]) }
+      });
+      await daemon.start();
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      await load('/m/a.png');
+      await daemon.sampling.get('DP-1')?.done;
+      expect(warnings).to.deep.include(['Sampling the wallpaper for visualizer colors failed', 'ffmpeg missing']);
+      expect(daemon.colorsFor(daemon.monitors.get('DP-1'), instance, daemon.monitors.get('DP-1'))).to.equal(null);
+    });
+  });
 });

@@ -13,6 +13,9 @@ const WINDOW_DELAY_MS = 100;
 // GLava lowers itself once its window maps, which can come after the window is found, so placement is
 // checked again after this long
 const SETTLE_MS = 500;
+// GLava takes one line from stdin per read and drops the rest of what arrived together, so piped colors are
+// written one line at a time this far apart (several frames)
+const PIPE_GAP_MS = 100;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -38,11 +41,12 @@ export class VisualizerManager {
     config, logger, monitors, screens = new Map(), spawn, kill, exec, x11 = withX11,
     audioWatcher = options => new AudioWatcher(options),
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
-    settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer
+    settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
+    colorsFor = () => null, pipeGap = PIPE_GAP_MS
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap
     });
     this.entries = new Map();
     this.adapters = new Map();
@@ -177,9 +181,18 @@ export class VisualizerManager {
   start(monitor, instance, geometry, restarts = []) {
     const adapter = this.adapters.get(instance.name);
     const { file, args, env } = adapter.command(monitor, geometry);
-    const child = this.spawn(file, args, { detached: true, stdio: ['ignore', 'pipe', 'pipe'], env });
-    const entry = { key: entryKey(monitor.name, instance.name), monitor, instance, adapter, geometry, child, restarts, output: [], failed: false, window: null };
+    const child = this.spawn(file, args, { detached: true, stdio: [instance.pipe ? 'pipe' : 'ignore', 'pipe', 'pipe'], env });
+    const entry = {
+      key: entryKey(monitor.name, instance.name), monitor, instance, adapter, geometry, child, restarts, output: [], failed: false, window: null,
+      colors: null, writing: Promise.resolve()
+    };
     this.entries.set(entry.key, entry);
+    if (instance.pipe) {
+      // GLava draws nothing until every piped value has arrived: the wallpaper's colors when known, else the
+      // configured ones
+      child.stdin?.on('error', () => {});
+      this.sendColors(entry, this.colorsFor(monitor, instance, geometry) ?? instance.pipe);
+    }
     for (const stream of [child.stdout, child.stderr]) {
       stream?.on('data', chunk => {
         entry.output.push(...String(chunk).split('\n').filter(Boolean));
@@ -192,6 +205,39 @@ export class VisualizerManager {
     // In the background: the window takes a moment to appear
     entry.placed = this.placeMonitor(monitor.name);
     return entry;
+  }
+
+  // Writes colors ({ fg, fg2 }) to an instance's stdin, one line at a time (see PIPE_GAP_MS), after any
+  // earlier writes; resolves once written
+  sendColors(entry, colors) {
+    entry.colors = colors;
+    entry.writing = entry.writing.then(async () => {
+      for (const [name, value] of Object.entries(colors)) {
+        if (!entry.child.stdin || entry.child.stdin.destroyed || entry.colors !== colors) return;
+        entry.child.stdin.write(`${name} = ${value}\n`);
+        await sleep(this.pipeGap);
+      }
+    });
+    return entry.writing;
+  }
+
+  // Asks colorsFor again for the instances on a monitor that take their colors from the wallpaper, after the
+  // daemon loads a new item there or samples it; resolves once the new colors are written
+  recolor(name) {
+    const changed = this.monitorEntries(name).flatMap(entry => {
+      if (!entry.instance.pipe) return [];
+      const colors = this.colorsFor(entry.monitor, entry.instance, entry.geometry) ?? entry.instance.pipe;
+      if (JSON.stringify(colors) === JSON.stringify(entry.colors)) return [];
+      this.logger.info('Visualizer colors from the wallpaper', { monitor: name, instance: entry.instance.name, colors });
+      return [this.sendColors(entry, colors)];
+    });
+    return Promise.all(changed);
+  }
+
+  // Whether an instance on the monitor takes its colors from the wallpaper
+  wantsWallpaperColors(name) {
+    const monitor = this.monitors.get(name);
+    return Boolean(monitor) && (this.settings?.instances ?? []).some(instance => instance.pipe && this.wanted(instance, monitor));
   }
 
   // Running instances of a monitor, in the section's order
@@ -362,7 +408,9 @@ export class VisualizerManager {
       if (!entry) return [];
       return [{
         instance: instance.name, engine: this.settings.engine, module: instance.module, pid: entry.child.pid,
-        running: !entry.failed, geometry: formatGeometry(entry.geometry)
+        running: !entry.failed, geometry: formatGeometry(entry.geometry),
+        // The colors last sent from the wallpaper or the config, with palette.source: wallpaper
+        ...(instance.pipe ? { colors: entry.colors } : {})
       }];
     });
   }

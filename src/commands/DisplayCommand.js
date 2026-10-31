@@ -220,9 +220,11 @@ export class DisplayCommand {
     return { mode, daemon, monitors, config_warnings: this.config.warnings ?? [] };
   }
 
-  describeVisualizer({ instance, module, geometry, running }) {
+  // colors are the ones piped from the wallpaper (or the config, until it is sampled); opaque ones lose their alpha
+  describeVisualizer({ instance, module, geometry, running, colors }) {
     const name = instance && instance !== 'main' ? ` ${instance}` : '';
-    return `visualizer${name} ${module} at ${geometry}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
+    const shown = colors ? `, colors ${Object.values(colors).map(value => value.replace(/^(#[0-9a-f]{6})ff$/i, '$1')).join(' to ')}` : '';
+    return `visualizer${name} ${module} at ${geometry}${shown}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
   }
 
   // Filters and order next keeps using, e.g. 'random, query "clouds", tags sky'

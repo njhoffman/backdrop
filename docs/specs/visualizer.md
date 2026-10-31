@@ -89,6 +89,36 @@ source or server events, reads the state of the output the visualizer listens to
 daemon does not stop for it when the wallpaper is off. When the state cannot be read, sound is assumed. Only
 `audio: pulseaudio` can be watched.
 
+## Colors from the wallpaper
+
+With `palette.source: wallpaper`, a visualizer takes its foreground colors from the wallpaper under it and
+changes them on every load, without a restart:
+
+```yaml
+visualizer:
+  palette:
+    source: wallpaper   # or config: the module's colors as set (the default)
+    pick: vivid         # vivid (most colorful main color), dominant (largest) or complement (vivid, hue turned 180)
+    min_contrast: 3     # contrast ratio (1-21) against the strip under the visualizer
+```
+
+`palette` is an instance setting, so instances and presets can set their own. On each load the daemon decodes
+one small sample of what the monitor shows (`sampleMedia` in `src/visualizer/palette.js`: the region mpv's
+`--panscan=1.0` leaves visible, 96 pixels wide, at the lowest CPU priority; videos a second in). For each
+instance it takes the strip under the window, finds its main colors by k-means, picks by the rule and makes
+each pick lighter or darker, keeping its hue, until it has `min_contrast` against the strip's average as shown
+(after the item's dim), so the bars never vanish into the image they cover. A dark way out that ends near black
+loses to a lighter one. A gradient (`bars.colors` with two colors, and graph and radial) takes the first two
+picks; one color takes the first. The configured colors' alpha is kept.
+
+The colors reach GLava over stdin: each instance runs with `--pipe=fg:vec4` (and `fg2` for a gradient), the
+module's color `#define` reads `@fg:` (`mix(@fg:A , @fg2:B , ...)`; GLava reads a default up to whitespace, hence
+the spaces), and `VisualizerManager` writes `fg = #rrggbbaa` lines. Two GLava behaviors shape this, checked with
+GLava 1.6.3: it draws nothing until every piped value has arrived, so the manager writes the colors as soon as
+an instance starts (the wallpaper's when sampled, else the configured ones), and it takes one line per read,
+dropping the rest of what arrived together, so lines go out 100 ms apart. A raw `defines` entry for the piped
+color is rejected. `status` shows each instance's current colors.
+
 ## Opacity
 
 `visualizer.opacity` (0 to 1, default 0.8) is the whole window's opacity, which compositors such as picom

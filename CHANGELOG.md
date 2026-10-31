@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-10-31
+
+### Added
+- Visualizer colors from the wallpaper: with `visualizer.palette.source: wallpaper`, each visualizer takes its
+  colors from the part of the wallpaper under it on every load and changes them without a restart. `pick` chooses
+  `vivid` (the default), `dominant` or `complement`, and `min_contrast` (default 3) keeps the bars visible against
+  the image they cover. It works per instance and in presets; `status` shows the current colors.
+
 ## [2.26.4] - 2026-10-31
 
 ### Fixed

@@ -8,13 +8,15 @@ export const MODULES = ['bars', 'graph', 'radial', 'circle', 'wave'];
 export const AUDIO_BACKENDS = ['pulseaudio', 'fifo'];
 export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
 const DIRECTIONS = { inward: 0, outward: 1 };
+export const PALETTE_SOURCES = ['config', 'wallpaper'];
+export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
 const SHARED_KEYS = ['enabled', 'engine', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
-const INSTANCE_KEYS = ['name', 'module', 'monitors', 'placement', 'rect', 'opacity', 'defines', 'requests', ...MODULES];
+const INSTANCE_KEYS = ['name', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
 const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
 
@@ -215,6 +217,47 @@ function moduleDefines(module, value, prefix = '') {
   }));
 }
 
+// Each module's foreground color: its #define, the typed option that sets it, the color when the option is
+// not given (backdrop's for bars, GLava's own for the rest) and the gradient's position variable
+const PIPED_COLORS = {
+  bars: { define: 'COLOR', option: 'colors', fallback: '#33aacc', position: 'd' },
+  graph: { define: 'COLOR', option: 'colors', fallback: ['#802a2a', '#4f4f92'], position: 'pos' },
+  radial: { define: 'COLOR', option: 'colors', fallback: ['#cc3333', '#cca0a0'], position: 'd' },
+  circle: { define: 'OUTLINE', option: 'color', fallback: '#333333' },
+  wave: { define: 'BASE_COLOR', option: 'color', fallback: '#b33373' }
+};
+
+function paletteSettings(value, prefix) {
+  const key = name => `${prefix}palette.${name}`;
+  knownKeys(`${prefix}palette`, value, ['source', 'pick', 'min_contrast'], 'palette settings');
+  const minContrast = value.min_contrast ?? 3;
+  if (typeof minContrast !== 'number' || !(minContrast >= 1 && minContrast <= 21)) fail(key('min_contrast'), 'a contrast ratio from 1 to 21', minContrast);
+  return {
+    source: oneOf(key('source'), value.source ?? 'config', PALETTE_SOURCES),
+    pick: oneOf(key('pick'), value.pick ?? 'vivid', PALETTE_PICKS),
+    minContrast
+  };
+}
+
+// With palette.source: wallpaper, the module's foreground #define reads its colors from GLava's stdin
+// (--pipe): `@fg:` for one color, `mix(@fg:, @fg2:, ...)` for a gradient, so each end can change. Returns
+// that #define and the configured colors as #rrggbbaa, which the visualizer sends as soon as it starts:
+// GLava draws nothing until every piped value has arrived.
+function pipedColors(module, raw, prefix) {
+  const { define, option, fallback, position } = PIPED_COLORS[module];
+  if (raw.defines?.[define] !== undefined) {
+    fail(`${prefix}defines.${define}`, `left out with palette.source: wallpaper (set ${module}.${option} instead)`, raw.defines[define]);
+  }
+  const value = raw[module]?.[option] ?? fallback;
+  const colors = (Array.isArray(value) ? value : [value]).map((item, index) => color(`${prefix}${module}.${option}[${index}]`, item));
+  const [from, to] = colors;
+  const opaque = item => (item.length === 7 ? `${item}ff` : item);
+  return to
+    // GLava reads a default up to the next whitespace, so a comma right after one would be taken into it
+    ? { define: [define, `mix(@fg:${from} , @fg2:${to} , clamp(${position} / GRADIENT, 0, 1))`], pipe: { fg: opaque(from), fg2: opaque(to) } }
+    : { define: [define, `@fg:${from}`], pipe: { fg: opaque(from) } };
+}
+
 // Typed options of the bars module as GLava #defines, with backdrop's defaults for the ones not given
 function barsDefines(value, prefix = '') {
   const key = name => `${prefix}bars.${name}`;
@@ -262,6 +305,15 @@ function typedDefines(module, section, prefix) {
 function instance(raw, prefix) {
   const module = oneOf(`${prefix}module`, raw.module ?? 'bars', MODULES);
   const layout = { placement: placement(`${prefix}placement`, { ...raw.placement }), rect: rect(`${prefix}rect`, raw.rect) };
+  const palette = paletteSettings(raw.palette ?? {}, prefix);
+  // Typed options first, so raw defines can override them
+  const allDefines = { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) };
+  let pipe = null;
+  if (palette.source === 'wallpaper') {
+    const piped = pipedColors(module, raw, prefix);
+    allDefines[piped.define[0]] = piped.define[1];
+    pipe = piped.pipe;
+  }
   return {
     name: raw.name,
     module,
@@ -269,8 +321,10 @@ function instance(raw, prefix) {
     opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
     layout,
     monitors: monitors(raw.monitors ?? 'all', layout, prefix),
-    // Typed options first, so raw defines can override them
-    defines: { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) },
+    palette,
+    // The values GLava reads from stdin and the configured colors for them ({ fg } or { fg, fg2 }), or null
+    pipe,
+    defines: allDefines,
     requests: stringList(`${prefix}requests`, raw.requests ?? [])
   };
 }
@@ -327,7 +381,7 @@ export function presetsOf(section = {}) {
 // The visualizer section normalized, with its active preset laid over it: preset (`backdrop visualizer
 // preset`) when given, else visualizer.preset. Every preset is checked, so a mistake in one shows before it
 // is used. Returns { enabled, engine, audio, source, onlyWhilePlaying, silenceGrace, glava, instances:
-// [{ name, module, opacity, layout, monitors, defines, requests }], preset, presets }.
+// [{ name, module, opacity, layout, monitors, palette, pipe, defines, requests }], preset, presets }.
 export function visualizerSettings(section = {}, { preset } = {}) {
   if (!isObject(section)) fail('', 'a mapping', section);
   const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));

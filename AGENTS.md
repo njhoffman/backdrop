@@ -82,6 +82,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   owns the processes and places each window directly above its monitor's wallpaper with its opacity
   (`src/display/x11.js`, the `x11` package) after every visualizer or wallpaper start. SIGHUP (`backdrop visualizer reload`) re-reads only that section, as does a saved change to the config
   file (`Daemon.watchConfig`, which keeps the running visualizer and notifies on a mistake).
+  With `palette.source: wallpaper` (`palette.js`) the daemon samples each load and the manager pipes `fg`/`fg2` colors to
+  GLava's stdin, one line per 100 ms (`colorsFor`, `recolor`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source
   file in `imported_files` by size/mtime; `probe.js` wraps ffprobe (kind, rotation-corrected size, duration); `match.js` turns `--query`/`--tag`/`--keywords`
   into `findMedia` filters for `pending`, `download`, the lists and `next`.

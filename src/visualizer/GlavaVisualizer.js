@@ -71,7 +71,12 @@ export class GlavaVisualizer {
     ];
     return {
       file: 'glava',
-      args: [`--audio=${audio}`, `--force-mod=${module}`, ...all.flatMap(request => ['-r', request]), ...glava.args],
+      args: [
+        `--audio=${audio}`, `--force-mod=${module}`, ...all.flatMap(request => ['-r', request]),
+        // Colors from the wallpaper arrive on stdin (VisualizerManager writes them)
+        ...Object.keys(this.instance.pipe ?? {}).map(name => `--pipe=${name}:vec4`),
+        ...glava.args
+      ],
       // PulseAudio keeps its cookie under XDG_CONFIG_HOME, so it is pointed back at the user's own
       env: {
         ...env,

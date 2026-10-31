@@ -70,4 +70,11 @@ describe('GlavaVisualizer', () => {
     expect(env).to.deep.equal({ PATH: '/bin', XDG_CONFIG_HOME: '/run/bd/visualizer', PULSE_COOKIE: '/home/u/.config/pulse/cookie' });
     expect(visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, { PULSE_COOKIE: '/c' }).env.PULSE_COOKIE).to.equal('/c');
   });
+
+  it('reads the piped colors from stdin only with palette.source: wallpaper', () => {
+    const args = section => glava(section, { root: '/r' }).command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, {}).args;
+    expect(args({}).filter(arg => arg.startsWith('--pipe'))).to.deep.equal([]);
+    expect(args({ palette: { source: 'wallpaper' }, bars: { colors: ['#000000', '#ffffff'] } }).filter(arg => arg.startsWith('--pipe')))
+      .to.deep.equal(['--pipe=fg:vec4', '--pipe=fg2:vec4']);
+  });
 });

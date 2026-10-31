@@ -37,6 +37,8 @@ visualizer:
   audio: pulseaudio                  # or fifo (source then defaults to /tmp/mpd.fifo)
   source: auto                       # pulseaudio sink or device, or the fifo path
   opacity: 0.8                       # whole visualizer over the wallpaper, 0 to 1 (bar color alpha blends the bars too)
+  # Colors from the wallpaper under the visualizer, changed on every load (source: config keeps the module's colors)
+  # palette: {source: wallpaper, pick: vivid, min_contrast: 3}  # pick: vivid, dominant or complement
   only_while_playing: false          # stop it while the audio output is silent (pulseaudio only), start it on sound
   silence_grace: 10                  # seconds of silence before it stops
   preset: null                       # preset to start with: built-in subtle, ring, wave, party, or one of presets below

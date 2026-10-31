@@ -357,18 +357,32 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `video_duration`, `notify`, `allow_upscale`) by taking them into the running config, and `display.monitors` by
       running `reconcileMonitors`. Keys a running mpv cannot take (`mpv_args`, `xwinwrap_args`) and `paths` should log
       and notify "restart the daemon to apply" instead. Validate each section first, as the visualizer one is.
-- [ ] **Live value channel into GLava (--pipe).** (p2) [feature] Foundation for every color item below. Start each instance
+- [x] **Live value channel into GLava (--pipe).** (p2) [feature] Foundation for every color item below. Start each instance
       with `--pipe=fg:vec4 --pipe=bg:vec4` (and more bindings as needed) and keep its stdin open in `VisualizerManager`;
       writing `fg = #rrggbbaa\n` changes the color without a restart. The typed color options already emit `@fg:`/`@bg:`
       defaults (`gradientColor` in `src/visualizer/settings.js`); gradients need two bindings (`fg`, `fg2`) since a pipe
       value is one vec4. Expose `setColors(name, { fg, fg2, bg })` on the manager, and resend the current values after
       a restart. Check GLava 1.6.3 reads stdin with `setopacity "native"` and keeps reading after the first value.
-- [ ] **Colors from the wallpaper.** (p2) [feature] On each load, take the dominant colors of the item (from the menu
+      Checked 2026-10-31 (GLava 1.6.3-93, picom, a FIFO sine wave, `--pipe=fg:vec4`): `fg = #rrggbbaa` lines change
+      the bars live and keep working seconds later. With `--pipe` GLava draws nothing until the first value
+      arrives (the `@fg:` default is ignored; the same instance without `--pipe` draws at once), so the manager must
+      write the colors right after each spawn. GLava does not open a window under Xvfb (it loops on X requests before
+      reading its config), so this was checked on the real display with an on-top test window.
+      Done in 2.27.0, bound only with `palette.source: wallpaper`. GLava also takes one line per read and drops
+      the rest of what arrived together, so lines go out 100 ms apart, and reads a `@name:` default up to
+      whitespace, so the gradient is written `mix(@fg:A , @fg2:B , ...)`.
+- [x] **Colors from the wallpaper.** (p2) [feature] On each load, take the dominant colors of the item (from the menu
       thumbnail the daemon already makes, e.g. `ffmpeg -vf palettegen=max_colors=8` or a k-means over a downscaled
       frame) and send the visualizer a palette over the pipe: `visualizer.colors: wallpaper | fixed`, with a rule for
       which color to use (dominant, most saturated, complementary). Sample only the strip under the visualizer's
       placement and enforce a minimum contrast against it, so the bars never vanish into the image they cover
       (the problem behind the faint-bars issue of 2.21.0). Cache the palette per media id in the database.
+      Done in 2.27.0 as `visualizer.palette` (`source`, `pick`, `min_contrast`), sampling the media file rather than
+      the menu thumbnail (a middle crop that misses the bottom strip). Not cached: one ~0.2-0.5 s decode per load at
+      the lowest CPU priority. Saturation is capped by chroma when lightening, and a near-black or near-white way out
+      loses to the other, both found on library items.
+      Checked live on 2026-10-31: the restarted daemon took colors from video #1017 1.7 s after start (3.22:1 and
+      3.01:1 against a mid-grey strip) and recolored on `backdrop next`.
 - [ ] **Animated color transitions.** (p3) [feature] With the pipe channel, fade from the old palette to the new one over
       `visualizer.transition` seconds (stepped writes at about 30 Hz) on a wallpaper change, instead of jumping.
       The same loop gives slow effects: hue drift ("rainbow"), time-of-day palettes (warm evening, cool night), or a
