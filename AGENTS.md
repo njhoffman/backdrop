@@ -13,7 +13,9 @@ the roadmap is `TODO.md`.
 ## Development Commands
 
 ```bash
-npm test                 # Mocha, test/**/*.test.js
+npm test                 # Mocha, test/**/*.test.js (spec reporter, ~840 lines)
+npm run test:brief       # same run with the dot reporter (~30 lines); agents use this
+npx mocha test/display/Playlist.test.js  # one file while iterating
 node src/index.js --help # run the CLI
 npm link                 # install the `backdrop` binary globally
 ```
@@ -33,7 +35,13 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 
 ## Workflow
 
-- Run `npm test` before every commit; routine tests stay offline and never touch the user's XDG data.
+- Run the tests before every commit; routine tests stay offline and never touch the user's XDG data.
+- Keep tool output small, it all lands in the context: run `npm run test:brief` (failures still print in
+  full) or one file with `npx mocha <file>`, never the spec run; pipe long commands through `tail`/`grep`;
+  read `TODO.md` (60 KB), `CHANGELOG.md` (30 KB) and large sources such as `test/display/Daemon.test.js` with
+  Read offset/limit or `grep -n`, not `cat`; use `git diff --stat` before a full diff.
+- Tests must not print: stub `console.log`/`console.error` with sinon (restored in `afterEach`) when a test
+  drives a command that writes output.
 - Semantic versioning in `package.json`, with an annotated `vX.Y.Z` tag per release. Bump once per
   finished change: patch for fixes, minor for features, major for breaking changes.
 - Keep `CHANGELOG.md` (Keep a Changelog) current: entries go under `## [Unreleased]` and move into the

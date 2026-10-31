@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { spawn, execFileSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
@@ -68,6 +69,7 @@ describe('mpv integration', function () {
   });
 
   afterEach(async () => {
+    sinon.restore();
     await client.command('quit').catch(() => {});
     client.close();
     mpv.kill();
@@ -234,6 +236,7 @@ describe('mpv integration', function () {
     await waitFor(async () => (await client.getProperty('path')) === first);
     const control = new DisplayControl({ config, database: db });
     const rating = new RatingCommand(config, db, silentLogger, { control });
+    sinon.stub(console, 'log'); sinon.stub(console, 'error');
 
     await rating.keep(2, { monitor: monitor.name });
     const kept = db.getMedia(id).path;

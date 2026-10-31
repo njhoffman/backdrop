@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.32.4] - 2026-10-31
+
+### Changed
+- Development: `npm run test:brief` runs the suite with Mocha's dot reporter (about 20 lines instead of 840), and
+  the mpv integration test no longer prints rating output into the test log.
+
 ## [2.32.3] - 2026-10-31
 
 ### Changed
