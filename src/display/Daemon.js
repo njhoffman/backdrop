@@ -7,17 +7,21 @@ import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
   getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
-  playbackLimits, validVideoDuration
+  playbackLimits
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
-import { notifyError, notifyMode, notifyPlaying } from '../utils/notify.js';
+import { notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager } from '../visualizer/VisualizerManager.js';
-import { visualizerSettings } from '../visualizer/settings.js';
-import { paletteColors, sampleMedia } from '../visualizer/palette.js';
+import { sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
-import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
+import { cpuPercent } from './cpu.js';
+import { statePath, controlPath, nextFiltersPath } from './runtimeFiles.js';
+import { ControlRequests } from './daemon/ControlRequests.js';
+import { ConfigChanges } from './daemon/ConfigChanges.js';
+import { WallpaperColors } from './daemon/WallpaperColors.js';
+import { Health } from './daemon/Health.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -25,7 +29,6 @@ const RESTART_DELAY_MS = 1000;
 const STOP_GRACE_MS = 2000;
 // An mpv that misses this many IPC health checks in a row is killed and restarted
 const HEALTH_INTERVAL_MS = 30_000;
-const HEALTH_FAILURES = 2;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Monitor layout changes (hotplug, xrandr) are picked up this often
 const MONITOR_POLL_MS = 5000;
@@ -41,32 +44,8 @@ const CONFIG_SETTLE_MS = 300;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// Settings a saved config change applies to the running daemon, by how: taken in (read where used),
-// durations (also changed on what plays now), eligibility (playlists reloaded), monitors (layout
-// reconciled) or imports (the folders imported). Any other display, library or paths setting needs a
-// restart: mpv's and xwinwrap's arguments are given when they start.
-const LIVE_SETTINGS = {
-  'display.order': 'taken', 'display.notify': 'taken',
-  'library.trash_days': 'taken', 'library.default_import_rating': 'taken',
-  'display.image_duration': 'durations', 'display.video_duration': 'durations',
-  'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
-  'display.monitors': 'monitors',
-  'library.import_dirs': 'imports'
-};
 
-export function statePath(runtimeDir) {
-  return path.join(runtimeDir, 'state.json');
-}
-
-// What `backdrop start/stop --wallpaper/--visualizer` asks a running daemon to change (see applyControl)
-export function controlPath(runtimeDir) {
-  return path.join(runtimeDir, 'control.json');
-}
-
-// Filters for next that last as long as this daemon (see nextFilters.js); removed when it starts and stops
-export function nextFiltersPath(runtimeDir) {
-  return path.join(runtimeDir, 'next-filters.json');
-}
+export { statePath, controlPath, nextFiltersPath } from './runtimeFiles.js';
 
 export function isProcessRunning(pid) {
   try {
@@ -175,6 +154,11 @@ export class Daemon {
     this.controlGeneration = 0;
     // --image-duration/--video-duration from next or menu (next-filters.json), over display.* until cleared
     this.durations = {};
+    // Concerns kept in their own modules (src/display/daemon/), each given this daemon
+    this.controls = new ControlRequests(this);
+    this.configChanges = new ConfigChanges(this);
+    this.wallpaperColors = new WallpaperColors(this);
+    this.health = new Health(this);
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
@@ -336,94 +320,28 @@ export class Daemon {
 
   // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. Running visualizers are
   // placed above the new wallpaper windows.
-  async setWallpaper(on) {
-    if (on === this.wallpaper || this.stopping) return;
-    this.wallpaper = on;
-    if (on) {
-      for (const monitor of [...this.monitors.values()]) {
-        if (!this.screens.has(monitor.name)) await this.startWallpaper(monitor);
-      }
-      await this.visualizers.restackAll();
-    } else {
-      const screens = [...this.screens.values()];
-      this.screens.clear();
-      await Promise.all(screens.map(screen => this.stopScreen(screen)));
-    }
-    this.logger.info(on ? 'Wallpaper on' : 'Wallpaper off');
+  setWallpaper(on) {
+    return this.controls.setWallpaper(on);
   }
 
   // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer, durations, preset }, each optional), written by
   // the CLI for this daemon's pid. With neither part left on, the daemon stops.
-  async applyControl() {
-    if (this.stopping) return;
-    let request = {};
-    try {
-      const { pid, ...rest } = await fs.readJson(controlPath(this.runtimeDir));
-      if (pid === process.pid) request = rest;
-      await fs.remove(controlPath(this.runtimeDir));
-    } catch {
-      // No request: the generation still moves so the CLI does not wait for nothing
-    }
-    if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
-    if (request.durations) await this.applyDurations();
-    // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
-    if (request.reload_config) await this.reloadConfig().catch(error => this.logger.error('Config reload failed', { error: error.message }));
-    if (request.visualizer_reset) {
-      await this.visualizers.setLive(null, { reload: request.preset === undefined })
-        .catch(error => this.logger.error('Visualizer reset failed', { error: error.message }));
-    }
-    if (request.visualizer_set) {
-      try {
-        await this.visualizers.setLive(request.visualizer_set);
-        this.logger.info('Visualizer changed from the menu', { change: request.visualizer_set });
-      } catch (error) {
-        this.logger.error('Visualizer change refused', { error: error.message });
-      }
-    }
-    if (request.preset !== undefined) {
-      await this.visualizers.setPreset(request.preset);
-      this.logger.info('Visualizer preset', this.visualizers.summary());
-    }
-    if (typeof request.visualizer === 'boolean') {
-      await this.visualizers.setEnabled(request.visualizer);
-      this.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.visualizers.summary());
-    }
-    this.controlGeneration++;
-    if (!this.wallpaper && !this.visualizers.active) {
-      this.logger.info('Wallpaper and visualizer are off, stopping');
-      await this.stop();
-      return;
-    }
-    await this.writeState();
+  applyControl() {
+    return this.controls.apply();
   }
 
   imageDuration() {
-    return this.durations.image_duration ?? this.config.get().display.image_duration;
+    return this.controls.imageDuration();
   }
 
   videoDuration() {
-    return validVideoDuration(this.durations.video_duration ?? this.config.get().display.video_duration ?? 0);
+    return this.controls.videoDuration();
   }
 
   // Re-reads the durations next and the menu stored and applies them to what plays now: the image's
   // display time, and the video's end, counted from when it started
-  async applyDurations() {
-    try {
-      const { pid, image_duration: image, video_duration: video } = await fs.readJson(nextFiltersPath(this.runtimeDir));
-      this.durations = pid === process.pid ? Object.fromEntries(Object.entries({ image_duration: image, video_duration: video })
-        .filter(([, value]) => value !== undefined)) : {};
-    } catch {
-      this.durations = {};
-    }
-    this.logger.info('Durations', { image: this.imageDuration(), video: this.videoDuration() });
-    for (const screen of [...this.screens.values()]) {
-      try {
-        await screen.client.setProperty('image-display-duration', this.imageDuration());
-      } catch (error) {
-        this.logger.warn('Failed to set image duration', { monitor: screen.monitor.name, error: error.message });
-      }
-      if (screen.media) await this.applyLimits(screen, screen.media, { elapsed: (this.now() - (screen.loadedAt ?? this.now())) / 1000 });
-    }
+  applyDurations() {
+    return this.controls.applyDurations();
   }
 
   every(interval, fn) {
@@ -442,84 +360,20 @@ export class Daemon {
 
   // Supervision otherwise only sees process exits; an mpv that stops answering IPC is killed,
   // and handleExit restarts it within the usual restart budget. A healthy mpv is also sampled for CPU use.
-  async checkHealth() {
-    await Promise.all([...this.screens.values()].map(async screen => {
-      if (this.stopping || screen.checking || screen.child.exitCode !== null || screen.child.signalCode !== null) {
-        return;
-      }
-      screen.checking = true;
-      try {
-        const pid = await screen.client.getProperty('pid');
-        screen.healthFailures = 0;
-        await this.sample(screen, pid);
-      } catch (error) {
-        screen.healthFailures = (screen.healthFailures ?? 0) + 1;
-        this.logger.warn('mpv health check failed', { monitor: screen.monitor.name, failures: screen.healthFailures, error: error.message });
-        if (screen.healthFailures >= HEALTH_FAILURES && !this.stopping) {
-          this.logger.error('mpv is not responding, restarting', { monitor: screen.monitor.name });
-          this.killGroup(screen.child, 'SIGKILL');
-        }
-      } finally {
-        screen.checking = false;
-      }
-    }));
+  checkHealth() {
+    return this.health.checkHealth();
   }
 
   // Measures the CPU mpv used since the previous sample. The interval counts toward the playing item only
   // if that item played through all of it, so a switch never charges one item for another's decoding.
-  async sample(screen, pid) {
-    let cpu;
-    try {
-      cpu = await readCpuSeconds(pid, this.readFile);
-    } catch (error) {
-      this.logger.debug('Cannot read mpv CPU time', { monitor: screen.monitor.name, error: error.message });
-      return;
-    }
-    const at = this.now();
-    const last = screen.sample;
-    screen.sample = { pid, cpu, at, media: screen.media };
-    if (last?.pid === pid && at > last.at && cpu >= last.cpu) {
-      const seconds = (at - last.at) / 1000;
-      const cpuSeconds = cpu - last.cpu;
-      screen.recent = [...(screen.recent ?? []), { seconds, cpuSeconds }].slice(-RECENT_SAMPLES);
-      if (screen.media && screen.media === last.media && screen.loadedAt <= last.at) {
-        try {
-          this.database.addPlaybackSample(screen.media.id, seconds, cpuSeconds);
-        } catch (error) {
-          this.logger.warn('Failed to record playback cost', { mediaId: screen.media.id, error: error.message });
-        }
-      }
-    }
-    await this.recordDecoder(screen);
-    await this.writeState().catch(error => this.logger.warn('Failed to write state', { error: error.message }));
+  sample(screen, pid) {
+    return this.health.sample(screen, pid);
   }
 
   // mpv reports the decoder only once a file is open, and observed properties only fire on changes,
   // so the decoder is read on each sample rather than on load
-  async recordDecoder(screen) {
-    const { media } = screen;
-    if (!media || modeOfKind(media.kind) !== 'video') {
-      screen.hwdec = null;
-      return;
-    }
-    let hwdec;
-    try {
-      hwdec = await screen.client.getProperty('hwdec-current');
-    } catch {
-      return;
-    }
-    screen.hwdec = hwdec || 'no';
-    try {
-      this.database.setDecoder(media.id, screen.hwdec);
-    } catch (error) {
-      this.logger.warn('Failed to record decoder', { mediaId: media.id, error: error.message });
-    }
-    if (isSoftwareDecoder(hwdec) && isLargeVideo(media) && !this.softwareWarned.has(media.id)) {
-      this.softwareWarned.add(media.id);
-      this.logger.warn('Video above 1080p is decoded in software', {
-        monitor: screen.monitor.name, mediaId: media.id, size: `${media.width}x${media.height}`, path: media.path
-      });
-    }
+  recordDecoder(screen) {
+    return this.health.recordDecoder(screen);
   }
 
   async importDirs(monitor) {
@@ -756,44 +610,12 @@ export class Daemon {
   // nothing is known: no wallpaper runs, or the item is not sampled yet, in which case sampling starts and
   // the instance is recolored once it is done
   colorsFor(monitor, instance, geometry) {
-    const media = this.screens.get(monitor.name)?.media;
-    if (!media) return null;
-    const cached = this.samples.get(monitor.name);
-    if (cached?.mediaId !== media.id) {
-      this.sampleScreen(monitor.name);
-      return null;
-    }
-    try {
-      return paletteColors(cached.sample, monitor, geometry, instance);
-    } catch (error) {
-      this.logger.warn('Visualizer colors failed', { monitor: monitor.name, instance: instance.name, error: error.message });
-      return null;
-    }
+    return this.wallpaperColors.colorsFor(monitor, instance, geometry);
   }
 
   // Samples what a monitor shows (in the background, once per item) and recolors its visualizers
   sampleScreen(name) {
-    const screen = this.screens.get(name);
-    const media = screen?.media;
-    if (!media || this.samples.get(name)?.mediaId === media.id || this.sampling.get(name)?.mediaId === media.id) {
-      return this.sampling.get(name)?.done ?? Promise.resolve();
-    }
-    const done = (async () => {
-      try {
-        const sample = await this.samplePalette(media, screen.monitor);
-        // A newer item may have loaded meanwhile; its own sampling recolors
-        if (this.screens.get(name)?.media?.id !== media.id) return;
-        this.samples.set(name, { mediaId: media.id, sample });
-        await this.visualizers.recolor?.(name);
-        await this.writeState();
-      } catch (error) {
-        this.logger.warn('Sampling the wallpaper for visualizer colors failed', { monitor: name, mediaId: media.id, error: error.message });
-      } finally {
-        if (this.sampling.get(name)?.mediaId === media.id) this.sampling.delete(name);
-      }
-    })();
-    this.sampling.set(name, { mediaId: media.id, done });
-    return done;
+    return this.wallpaperColors.sampleScreen(name);
   }
 
   // Written to a temporary file and renamed, so a CLI command never reads a half-written state.
@@ -885,18 +707,7 @@ export class Daemon {
   // watched rather than the file, since editors often save by renaming a new file over it; changes are read
   // once the file has been quiet for configSettle.
   watchConfig() {
-    const file = this.config.configPath;
-    if (!this.watch || !file) return;
-    try {
-      this.configWatcher = this.watch(path.dirname(file), (event, name) => {
-        if (name && name !== path.basename(file)) return;
-        clearTimeout(this.configTimer);
-        this.configTimer = setTimeout(() => this.enqueue(() => this.applyConfigChange()), this.configSettle);
-      });
-      this.configWatcher.on('error', error => this.logger.warn('Config watch failed', { error: error.message }));
-    } catch (error) {
-      this.logger.warn('Not watching the config file; use `backdrop visualizer reload`', { file, error: error.message });
-    }
+    return this.configChanges.watch();
   }
 
   // Applies a saved config file. The whole file is loaded and checked again first: a file that no longer
@@ -904,100 +715,25 @@ export class Daemon {
   // setting and is announced with a desktop notification, since nobody is at a prompt to see it. Then the
   // visualizer restarts when its section changed, and every other changed setting is applied by its kind
   // (LIVE_SETTINGS); ones a running mpv cannot take are announced as needing a restart.
-  async applyConfigChange() {
-    if (this.stopping) return;
-    const previousWarnings = this.config.warnings ?? [];
-    let fresh;
-    try {
-      fresh = await this.readConfig();
-      visualizerSettings(fresh.get().visualizer);
-    } catch (error) {
-      this.logger.error('Config change not applied, keeping the running settings', { error: error.message });
-      await notifyError(`Config not applied: ${error.message}`, { logger: this.logger });
-      return;
-    }
-    this.config.warnings = fresh.warnings ?? [];
-    await this.reportConfigWarnings(previousWarnings);
-    const next = fresh.get();
-    const settings = this.config.get();
-    if (this.config.userConfig && fresh.userConfig) this.config.userConfig = fresh.userConfig;
-
-    if (JSON.stringify(next.visualizer) !== JSON.stringify(settings.visualizer)) {
-      settings.visualizer = next.visualizer;
-      await this.visualizers.reload();
-      await this.writeState();
-      this.logger.info('Visualizer reloaded after a config change', this.visualizers.summary());
-      // Problems only found when starting it, such as missing GLava shaders
-      if (this.visualizers.error) {
-        await notifyError(`Visualizer off: ${this.visualizers.error}`, { logger: this.logger });
-      }
-    }
-    await this.applySettings(next);
+  applyConfigChange() {
+    return this.configChanges.apply();
   }
 
   // Takes the changed settings outside the visualizer section from a checked config and applies each by its
   // kind; returns the keys applied and the ones that need a restart
-  async applySettings(next) {
-    const settings = this.config.get();
-    const changed = [];
-    for (const section of ['display', 'library', 'paths']) {
-      const keys = new Set([...Object.keys(settings[section] ?? {}), ...Object.keys(next[section] ?? {})]);
-      for (const key of keys) {
-        if (JSON.stringify(settings[section]?.[key]) !== JSON.stringify(next[section]?.[key])) changed.push(`${section}.${key}`);
-      }
-    }
-    // Read by the CLI only, which loads the file on every run; kept current for anything else that asks
-    for (const section of ['sources', 'menu', 'output', 'screensaver']) settings[section] = next[section];
-
-    const restart = changed.filter(key => LIVE_SETTINGS[key] === undefined);
-    const applied = changed.filter(key => LIVE_SETTINGS[key] !== undefined);
-    for (const key of applied) {
-      const [section, name] = key.split('.');
-      settings[section][name] = next[section][name];
-    }
-    const kinds = new Set(applied.map(key => LIVE_SETTINGS[key]));
-    if (applied.length) this.logger.info('Config applied', { settings: applied });
-    if (kinds.has('durations')) await this.applyDurations();
-    if (kinds.has('eligibility')) {
-      for (const screen of [...this.screens.values()]) {
-        try {
-          await this.loadScreenPlaylist(screen);
-        } catch (error) {
-          this.logger.warn('Failed to reload the playlist', { monitor: screen.monitor.name, error: error.message });
-        }
-      }
-    }
-    if (kinds.has('monitors')) await this.checkMonitors();
-    if (kinds.has('imports')) this.importing = this.importing.then(() => this.importDirs([...this.monitors.values()][0] ?? null));
-    if (restart.length) {
-      this.logger.warn('Config changes that need a daemon restart', { settings: restart });
-      await notifyError(`Restart the daemon to apply: ${restart.join(', ')} (backdrop stop, then backdrop start)`, { logger: this.logger });
-    }
-    if (applied.length) await this.writeState();
-    return { applied, restart };
+  applySettings(next) {
+    return this.configChanges.applySettings(next);
   }
 
   // Unknown keys a save added, announced once each: nobody is at a prompt to see the CLI's warnings
-  async reportConfigWarnings(previous) {
-    const added = (this.config.warnings ?? []).filter(warning => !previous.includes(warning));
-    if (!added.length) return;
-    this.logger.warn('Unknown config keys', { warnings: added });
-    await notifyError(added.join('\n'), { logger: this.logger });
+  reportConfigWarnings(previous) {
+    return this.configChanges.reportWarnings(previous);
   }
 
   // SIGHUP (`backdrop visualizer reload`): re-reads the visualizer section and restarts only the
   // visualizer. A config file that no longer parses keeps the running visualizer and logs why.
-  async reloadVisualizer() {
-    if (this.stopping) return;
-    try {
-      await this.reloadConfig();
-    } catch (error) {
-      this.logger.error('Visualizer reload failed, keeping the running one', { error: error.message });
-      return;
-    }
-    await this.visualizers.reload();
-    await this.writeState();
-    this.logger.info('Visualizer reloaded', this.visualizers.summary());
+  reloadVisualizer() {
+    return this.configChanges.reloadVisualizer();
   }
 
   // An uncaught error or rejection: stops the children, giving up after a bounded wait, then exits 1

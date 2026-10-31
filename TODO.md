@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-10-30
+Reviewed: 2026-10-31
 
 ## 1. Existing bugs and tech debt
 
@@ -63,22 +63,40 @@ Reviewed: 2026-10-30
       `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
       Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
       Fixed in 2.26.2: a null over a mapping default keeps its defaults, over a list default is an empty list.
-- [ ] **mpv integration test flaked once under load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
+- [ ] **Subprocess and mpv tests fail under heavy load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
       during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
-      replace them with polling on mpv properties.
-- [ ] **Dependencies are several majors behind.** (p3) [chore] `npm outdated` (2026-10-30): commander 11 (15 current),
+      replace them with polling on mpv properties. On 2026-10-31, at a load average of 17, `test/commands/cli.test.js`
+      ("runs offline commands ...") hit its 15 s timeout twice: each `node src/index.js` took about 1.8 s instead of
+      0.3 s, and the test runs many. Give subprocess-heavy tests a timeout scaled to the number of runs, or run the
+      commands in one process where they need no isolation.
+- [ ] **inquirer is six majors behind.** (p3) [chore] Left from the dependency upgrade (2026-10-31: `npm outdated` shows
+      only inquirer 8.2.7 vs 14, and fs-extra and winston minor releases in range). Originally: commander 11 (15 current),
       inquirer 8 (14, ESM-only with a new prompt API, used by the interactive lists), mocha 10 (12), chai 4 (6, ESM-only),
       sinon 17 (22). None is urgent; upgrade commander and the test stack together in one change, inquirer separately
       since its API changed.
       2.26.1 moved commander to 15 and the test stack to mocha 12, chai 6 and sinon 22 with no test changes; left:
       inquirer 14 (`ListCommand`, `SearchCommand`), and mocha 12's own moderate `minimatch` advisory (upstream).
-- [ ] **Daemon.js has grown to about 860 lines.** (p3) [refactor] It holds playback supervision, hotplug, health checks,
-      CPU sampling, imports, purge, control requests, durations, the config watcher and the visualizer glue. Move the
-      control-request handling and durations (`applyControl`, `applyDurations`, `setWallpaper`) and the config watcher
-      (`watchConfig`, `applyConfigChange`) into their own modules with the daemon passed in, as `VisualizerManager`
-      already is, so each can be tested without starting a daemon.
+      inquirer 14 is ESM-only with a new prompt API (`@inquirer/prompts`); both commands take `prompt` as an injected
+      option, so the change is contained there.
+- [x] **Daemon.js has grown to about 1040 lines.** (p2) [refactor] It holds playback supervision, hotplug, health checks,
+      CPU sampling, imports, purge, control requests, durations, the config watcher and live settings (2.31.0), the
+      wallpaper sampling for visualizer colors (2.27.0), crash cleanup and the visualizer glue; it grew by about 180
+      lines on 2026-10-31 alone. Move the control-request handling and durations (`applyControl`, `applyDurations`,
+      `setWallpaper`), the config watcher and live settings (`watchConfig`, `applyConfigChange`, `applySettings`,
+      `LIVE_SETTINGS`) and the color sampling (`colorsFor`, `sampleScreen`) into their own modules with the daemon passed
+      in, as `VisualizerManager` already is, so each can be tested without starting a daemon. Raised to p2: every
+      new daemon feature lands here.
+      Done in 2.32.3: `src/display/daemon/` holds `ControlRequests`, `ConfigChanges` (with `LIVE_SETTINGS`),
+      `WallpaperColors` and `Health`, each given the daemon; its state stays on the daemon and its methods forward, so no
+      test changed. `Daemon.js` is about 790 lines. The move dropped the `modeOfKind` import in `Health.js` (a decoder
+      test caught it); checked live after.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
-      integration tests run instead of being skipped.
+      integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
+      rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
+- [ ] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
+      dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
+      (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed
+      key, before something starts using it.
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
       `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
       and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
@@ -179,11 +197,16 @@ Reviewed: 2026-10-30
       recorded process groups of a dead daemon when their `/proc` start times still match, and an uncaught error
       in the daemon runs `stop()` before exiting. Checked under Xvfb with kill -9: `start` and `stop` both end the
       old xwinwrap+mpv group, waiting on the whole group since mpv outlives xwinwrap.
+- [ ] **An eligibility change restarts the item on screen.** (p3) [feature] Since 2.31.0 a saved change to
+      `display.allow_upscale` or `library.min_width/min_height` reloads each monitor's playlist, which restarts what plays.
+      Keep the current item playing when it is still eligible: rebuild the rest of the playlist around it (as
+      `queueRandom` already moves entries) instead of `loadlist ... replace`.
 - [ ] **Control requests can be lost when two run at once.** (p3) [bug] `control.json` is a single slot: two commands
       at the same moment (e.g. `next --video-duration` and `stop --wallpaper` from keybindings) overwrite each other's
       request, and both see the daemon's `control` counter move and report success. Write one file per request
       (`control-<pid>-<n>.json`) that the daemon handles in name order, or take an exclusive lock (`open` with `wx`)
-      around write-signal-wait.
+      around write-signal-wait. Since 2.28.0 the visualizer menu sends `visualizer_set` requests too (each awaited, so
+      the menu alone is safe), and a keybinding firing during a menu change would lose one of them.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -195,15 +218,20 @@ Reviewed: 2026-10-30
 - [ ] **Other free sources.** (p3) [feature] Only sites with a public API qualify; scraping is out (decided 2026-10-21).
       That excludes MoeWalls and wallsflow.com (checked 2026-10-21: `/api/` redirects to the homepage, no developer docs).
       Candidates: Wallhaven (API with resolution filters), Pixabay (API, has video). Pick after the interface exists.
-- [ ] **Pexels adapter not run against the live API.** (p2) [test] Search, metadata, variants, download and `--upgrade` are only tested against mocked responses.
+- [x] **Pexels adapter not run against the live API.** (p2) [test] Search, metadata, variants, download and `--upgrade` are only tested against mocked responses.
       Run a manual smoke test with a real key, record any differences in `docs/specs/sources.md`, and consider an opt-in live test gated on `PEXELS_API`.
+      Partly done 2026-10-31: a live `search-images` (axios 1.21.0) paged through 161 pages cleanly; metadata, download
+      and `--upgrade` remain untried live.
+      Done in 2.32.2: search, metadata, download and `--upgrade` run live for both kinds (scratch library, one page per
+      kind). Found and fixed: Pexels' fixed-shape crops (`fit=crop`) were picked at small targets; now left out, also
+      from stored rows (`usableVariants`). Opt-in `test/sources/pexels.live.test.js` (`BACKDROP_LIVE_TESTS=1`).
 - [x] **Duplicate downloads are retried forever.** (p2) [bug] When a downloaded file's sha256 matches an existing item, `downloadItem()` throws
       `Duplicate content of #N` and leaves the pending row as `new`, so every `backdrop download` fetches it again, and its search queries never reach the kept copy.
       Record the duplicate (e.g. `media.duplicate_of`), move its `search_results` to the original, and exclude it from pending lists.
       Done: schema v6 `media.duplicate_of` (no foreign key); searches that return a known duplicate credit the original.
 - [ ] **A search has no page cap.** (p3) [feature] `SearchCommand` follows `nextPage` until results run out or the
       rate limit hits, so a broad query with a small `--per-page` spends one request per page (161 for "ocean" at
-      3 per page on 2026-10-31, of Pexels' 200 an hour). Add `--max-pages` (and a `sources.<name>.max_pages`
+      3 per page on 2026-10-31; the live quota headers report a limit of 25,000, so that was about 0.6% of it). Add `--max-pages` (and a `sources.<name>.max_pages`
       default), or warn when `--per-page` is small and the query broad.
 - [ ] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
       a body that stalls mid-transfer, and nothing caps the size. Abort when no data arrives for 30s and when bytes exceed Content-Length (or a configured maximum).
@@ -328,13 +356,21 @@ Reviewed: 2026-10-30
 - [x] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.
       Done: `backdrop systemd` prints a unit with the generating shell's PATH (node through `/usr/bin/env`), restart on failure and a start limit; i3 activation documented in GETTING_STARTED.md.
-- [ ] **The menu cannot open while the wallpaper is off.** (p3) [bug] `MenuCommand.describe` asks mpv for the playing item,
+- [x] **The menu cannot open while the wallpaper is off.** (p2) [bug] `MenuCommand.describe` asks mpv for the playing item,
       which fails with "The wallpaper is off" since 2.21.0, and the menu closes. It should open with the item area showing
-      "wallpaper off", a button for `start --wallpaper`, and the visualizer controls still usable.
+      "wallpaper off", a button for `start --wallpaper`, and the visualizer controls still usable. Raised to p2: since
+      2.28.0 `backdrop menu visualizer` calls `describe` for its preview too, so the visualizer menu is unusable in
+      exactly the audio-only setup (`stop --wallpaper`) where it matters most. `visualizerMenu` should fall back to no
+      preview when nothing plays.
+      Done in 2.32.1: `describe` checks the monitor's socket in the daemon's state first and does not ask mpv when it is
+      null; the main menu keeps its grid with the mpv buttons faded and binds `w` to `start --wallpaper` (no free slot
+      for a button); the visualizer menu opens without a preview. Checked live with the wallpaper off.
 - [ ] **Docs claim and omit a few things.** (p3) [docs] README's feature list includes the screensaver, which is not
       built (its intro and GETTING_STARTED say so). The prerequisites in README and GETTING_STARTED do not list what the
       visualizer needs: `glava`, a compositor (picom), and `pactl` for `only_while_playing`. `docs/specs/main.md` has no
-      pointer to `docs/specs/visualizer.md`.
+      pointer to `docs/specs/visualizer.md`. Rechecked 2026-10-31: README's prerequisites now list `glava` and a
+      compositor; still open: the screensaver bullet in README's feature list, `pactl`, and the main.md pointer.
+      `backdrop doctor` (2.32.0) lists every optional tool with the feature that needs it, so the docs could point there.
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
@@ -405,7 +441,10 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       Checked live on 2026-10-31: the restarted daemon took colors from video #1017 1.7 s after start (3.22:1 and
       3.01:1 against a mid-grey strip) and recolored on `backdrop next`.
 - [ ] **Animated color transitions.** (p3) [feature] With the pipe channel, fade from the old palette to the new one over
-      `visualizer.transition` seconds (stepped writes at about 30 Hz) on a wallpaper change, instead of jumping.
+      `visualizer.transition` seconds on a wallpaper change, instead of jumping. GLava takes one stdin line per read and
+      drops the rest of what arrived together (found in 2.27.0), so the manager writes a line per 100 ms: a fade gets
+      about 10 steps a second, 5 with a gradient (`fg` and `fg2`), not the 30 Hz first planned. Check whether a shorter
+      gap holds up (GLava reads once per frame) before designing the steps.
       The same loop gives slow effects: hue drift ("rainbow"), time-of-day palettes (warm evening, cool night), or a
       short brightness pulse on a track change.
 - [ ] **Colors from the album art.** (p3) [feature] Take the palette from the now-playing cover instead of the wallpaper
@@ -462,6 +501,18 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `status`.
       Done in 2.29.0: checked on every placement (picom often starts after the daemon), logged on change, `compositor`
       in the visualizer summary, a `status` line and `daemon.compositor` in `status --json`.
+- [ ] **Every visualizer menu change restarts GLava.** (p3) [perf] Opacity, amplify, module and the rest go through
+      `setLive` and `reload()`, so each step in the menu blanks the visualizer for about a second. Opacity is a window
+      property (`X11.setOpacity`) and colors already change over the pipe; apply those two without a restart and keep the
+      restart for settings GLava reads at start.
+- [ ] **Wallpaper colors do not follow `backdrop dim`.** (p3) [bug] The contrast check uses the item's dim from when it
+      loaded (`sampleMedia` stores it); `backdrop dim` on the playing item changes the brightness without a recolor, so
+      the picks can lose contrast until the next load. Recolor when the daemon sees a dim change (DisplayControl sets it
+      over mpv directly, so the daemon would need a control request or to observe mpv's `brightness`).
+- [ ] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
+      `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
+      disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a
+      window maps (watch the root's SubstructureNotify), as GLava might, so those cases need `place()` too.
 - [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
       change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
       `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for

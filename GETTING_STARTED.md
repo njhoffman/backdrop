@@ -268,7 +268,8 @@ which shows what the visualizer alone looks like; `backdrop start --wallpaper` b
 `backdrop start --visualizer` and `stop --visualizer` do the same for the visualizer, whatever
 `visualizer.enabled` says, until the daemon restarts. With the daemon stopped, `start --visualizer` starts
 only the visualizer. When neither part is left on, the daemon stops. While the wallpaper is off, commands that
-need it (`next`, `keep`, `menu` and the like) say so; `mode` still records the mode.
+need it (`next`, `keep` and the like) say so; `mode` still records the mode. `backdrop menu` still opens: the
+buttons that need the wallpaper are faded, `w` turns it back on, and `z` opens the visualizer menu.
 
 The daemon watches the config file and applies a saved change: a change to the `visualizer` section restarts
 the visualizer with it, without touching the wallpaper; `display.order`, `notify`, `image_duration` and

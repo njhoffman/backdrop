@@ -3,6 +3,11 @@ import { Source, SourceError } from './Source.js';
 const BASE = 'https://api.pexels.com/v1/';
 const IMAGE_SIZES = ['original', 'large2x', 'large', 'medium', 'small', 'portrait', 'landscape', 'tiny'];
 
+// Pexels' portrait, landscape and tiny sizes are fixed-shape crops (fit=crop) that cut most of the picture
+// away; a wallpaper wants the whole of it. Found on 2026-10-31 against the live API: at a 640x360 target the
+// 800x1200 portrait crop of a landscape photo was the smallest variant that fit.
+const isCrop = url => new URL(url).searchParams.get('fit') === 'crop';
+
 function imageVariant(url, name, width, height) {
   if (!url) return null;
   const params = new URL(url).searchParams;
@@ -60,7 +65,8 @@ export class PexelsSource extends Source {
       author: kind === 'image' ? item.photographer : item.user?.name,
       page_url: item.url, tags: item.alt ? [item.alt] : [],
       variants: kind === 'image'
-        ? IMAGE_SIZES.map(name => imageVariant(item.src?.[name], name, item.width, item.height)).filter(Boolean)
+        ? IMAGE_SIZES.filter(name => item.src?.[name] && !isCrop(item.src[name]))
+          .map(name => imageVariant(item.src[name], name, item.width, item.height)).filter(Boolean)
         : (item.video_files ?? []).filter(file => file.link && file.width && file.height).map(file => ({
           url: file.link, width: file.width, height: file.height, mime: file.file_type
         }))
@@ -86,8 +92,14 @@ export class PexelsSource extends Source {
     return this.normalize(kind, await this.request(kind === 'image' ? `photos/${id}` : `videos/videos/${id}`));
   }
 
+  // Rows saved before 2.32.2 still hold the crops
+  usableVariants(media) {
+    return (media.variants ?? []).filter(variant => variant.url && !isCrop(variant.url));
+  }
+
   async downloadVariants(media) {
-    return media.variants?.length ? media.variants : (await this.metadata(media.kind, media.source_id)).variants;
+    const stored = this.usableVariants(media);
+    return stored.length ? stored : (await this.metadata(media.kind, media.source_id)).variants;
   }
 
   validateKind(kind) {

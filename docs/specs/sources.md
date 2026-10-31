@@ -27,7 +27,10 @@ Photo and video identities are stored as `image:<id>` and `video:<id>` because t
 overlap. Source metadata is refreshed without changing a local file path, status or playback speed.
 
 Video variants use the dimensions of each `video_files` entry. Image variants use `src.original`
-and the dimensions encoded in each resized URL, including `dpr` and cropping. Search output links to
+and the dimensions encoded in each resized URL, including `dpr`. The fixed-shape crops (`src.portrait`,
+`src.landscape` and `src.tiny`, marked `fit=crop`) are left out, also from rows saved before 2.32.2
+(`usableVariants`): a wallpaper wants the whole picture, and at a small target the 800x1200 portrait crop of a
+landscape photo was otherwise the smallest variant that fit. Search output links to
 Pexels, and list/download output includes the photographer or videographer and the item's page URL.
 API access remains subject to Pexels' guidelines.
 
@@ -35,6 +38,12 @@ The adapter records `X-Ratelimit-Limit`, `X-Ratelimit-Remaining` and `X-Ratelimi
 responses. An exhausted observed quota prevents further requests until reset. HTTP 429 stops a search,
 keeping completed pages. Other failures produce a nonzero exit status. `stats` reports the last saved
 quota from a search, without spending another API request.
+
+Checked against the live API on 2026-10-31 (search, metadata, download and `download --upgrade` for images and
+videos): responses matched the mocked shapes, apart from the crop variants above. The quota headers reported a
+limit of 25,000 (remaining counted down per request), not an hourly 200. Videos carry no `alt`, so their tags
+come only from the page slug. `test/sources/pexels.live.test.js` repeats the checks on demand
+(`BACKDROP_LIVE_TESTS=1` with `PEXELS_API`; three API requests).
 
 ## Search and download
 

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.32.3] - 2026-10-31
+
+### Changed
+- Development: the daemon's control requests, config changes, wallpaper colors and health checks moved into their
+  own modules under `src/display/daemon/`; behavior is unchanged.
+
+## [2.32.2] - 2026-10-31
+
+### Fixed
+- Pexels images are downloaded whole: the fixed-shape crops Pexels offers (800x1200 portrait, 1200x627 landscape,
+  280x200) are no longer picked, which happened at small monitor sizes and cut most of the picture away. Items
+  saved by earlier searches are covered too.
+
+### Changed
+- Development: an opt-in test against the live Pexels API (`BACKDROP_LIVE_TESTS=1` with `PEXELS_API`).
+
+## [2.32.1] - 2026-10-31
+
+### Fixed
+- `backdrop menu` and `backdrop menu visualizer` open while the wallpaper is off (`stop --wallpaper`) instead of
+  closing with "The wallpaper is off". The buttons that need the wallpaper are faded, `w` turns it back on, and
+  the visualizer menu works without its preview.
+
 ## [2.32.0] - 2026-10-31
 
 ### Added

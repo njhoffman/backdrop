@@ -32,8 +32,10 @@ const ICONS = {
 // Keys every menu answers besides its buttons': q closes the menu from anywhere, Tab opens the monitor picker
 const QUIT_KEY = 'q';
 const MONITOR_KEY = 'Tab';
-// z opens the visualizer menu from the main one; i picks the instance it changes when there are several
+// z opens the visualizer menu from the main one; i picks the instance it changes when there are several;
+// w turns the wallpaper on while it is off
 const VISUALIZER_KEY = 'z';
+const WALLPAPER_KEY = 'w';
 const INSTANCE_KEY = 'i';
 
 // Font Awesome glyphs for the visualizer menu: power, list, cube, adjust, volume, arrows, brush, undo, save
@@ -259,7 +261,12 @@ export class MenuCommand {
 
   // The playing item: title (its file name), message (summary and details, Pango markup) and, for the
   // panel, a preview banner. e.g. "#412  video  3840x2160\n0:18 · 25 fps · ★★☆ · DP-1\nocean, waves"
+  // With the wallpaper off (the monitor has no mpv socket) there is nothing to ask mpv: wallpaperOff is set
   async describe(monitorName) {
+    const target = (await this.control.state()).monitors?.find(item => item.name === monitorName);
+    if (target && target.socket === null) {
+      return { media: null, rating: null, wallpaperOff: true, title: monitorName, message: escapeMarkup(`${monitorName}: wallpaper off`) };
+    }
     const { monitor, media, rating } = await this.control.selected(monitorName);
     if (!media) {
       return { media: null, rating: null, title: monitor.name, message: escapeMarkup(`${monitor.name}: nothing from the library playing`) };
@@ -291,6 +298,7 @@ export class MenuCommand {
     if (filters.video_duration !== undefined) lines.push(field('videos', formatSetting(filters.video_duration)));
     lines.push(`${field('visualizer', 'menu')}  (${VISUALIZER_KEY})`);
     if (monitors.length > 1) lines.push(`${field('monitor', monitor)}  (Tab)`);
+    if (monitors.find(item => item.name === monitor)?.socket === null) lines.unshift(`${field('wallpaper', 'off')}  (${WALLPAPER_KEY} turns it on)`);
     return lines;
   }
 
@@ -307,30 +315,33 @@ export class MenuCommand {
     const { monitors } = await this.control.state();
     const target = { monitor };
     const video = Boolean(media && MODE_KINDS.video.includes(media.kind));
+    // Buttons that need mpv stay in place, faded, while the wallpaper is off
+    const off = Boolean(item.wallpaperOff);
     const other = otherMode(getMode(this.database));
     const keep = value => ({
       icon: ICONS.keep, label: `keep ${value}`, key: String(value), disabled: !media, active: item.rating?.rating === value,
       run: () => this.rating.keep(value, { ...target, next: true })
     });
     const entries = [
-      { icon: ICONS.next, label: 'next', key: 'n', run: () => this.display.next(target) },
+      { icon: ICONS.next, label: 'next', key: 'n', disabled: off, run: () => this.display.next(target) },
       keep(1), keep(2), keep(3),
       { icon: ICONS.speed, label: 'speed ▸', caption: video && media.speed !== 1 ? `speed ${media.speed}` : 'speed', key: 'v',
         disabled: !video, active: video && media.speed !== 1, run: () => this.stepMenu(monitor, 'speed', SPEEDS) },
-      { icon: ICONS.prev, label: 'prev', key: 'p', run: () => this.display.prev({ monitor }) },
+      { icon: ICONS.prev, label: 'prev', key: 'p', disabled: off, run: () => this.display.prev({ monitor }) },
       { icon: ICONS.skip, label: 'skip', key: 's', disabled: !media, run: () => this.rating.skip(target) },
       { icon: ICONS.undo, label: 'undo', key: 'u', run: () => this.rating.undo() },
       { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: 'mode', key: 'm', run: () => this.display.mode(other, { monitor }) },
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
         disabled: !media, active: Boolean(media?.dim), run: () => this.stepMenu(monitor, 'dim', DIMS) }
     ];
-    const keys = [QUIT_KEY, VISUALIZER_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : [])];
+    const keys = [QUIT_KEY, VISUALIZER_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : []), ...(off ? [WALLPAPER_KEY] : [])];
 
     const picked = await this.show({ prompt: 'backdrop', title: item.title, message: item.message, preview: item.preview,
       status: await this.status(monitor, monitors), entries, keys, columns: MAIN_COLUMNS });
     if (picked === null || picked.key === QUIT_KEY) return { quit: true };
     if (picked.key === MONITOR_KEY) return this.attempt(() => this.monitorMenu(monitor));
     if (picked.key === VISUALIZER_KEY) return this.attempt(() => this.visualizerMenu(monitor));
+    if (picked.key === WALLPAPER_KEY) return this.attempt(() => this.display.start({ wallpaper: true }));
     const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
     if (!entry || entry.disabled) return {};
     return this.attempt(entry.run);

@@ -9,6 +9,9 @@ export class Source {
   async search(params) { throw new Error(`${this.name}: search is not implemented`); }
   async metadata(kind, id) { throw new Error(`${this.name}: metadata is not implemented`); }
   async downloadVariants(media) { return media.variants; }
+  // The stored variants a download may pick from, offline (pending lists them); adapters drop ones that
+  // are not the whole picture
+  usableVariants(media) { return media.variants ?? []; }
 }
 
 export class SourceError extends Error {

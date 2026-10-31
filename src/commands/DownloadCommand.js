@@ -58,6 +58,15 @@ export class DownloadCommand {
     return this.database.findMedia({ downloaded: false, status: 'new', kind, ...(source ? { source } : {}), ...match });
   }
 
+  // The variants stored at search time that a download may use (see Source.usableVariants), offline
+  storedVariants(media) {
+    try {
+      return this.sources.get(media.source).usableVariants(media);
+    } catch {
+      return media.variants ?? [];
+    }
+  }
+
   // Lists media saved by searches and not yet downloaded, offline: the variant shown is chosen from
   // the variants stored at search time (sources that store none pick one at download time)
   async pending(options = {}) {
@@ -70,7 +79,7 @@ export class DownloadCommand {
     for (const media of shown) {
       const extra = [];
       if (target && media.variants?.length) {
-        const variant = selectVariant(media.variants, target, this.config);
+        const variant = selectVariant(this.storedVariants(media), target, this.config);
         if (variant) extra.push(`${fmt.dim(`${icon('download')}`)}${formatResolution(variant.width, variant.height)} ${fmt.dim(variant.mime ?? '')}`.trim());
         else { unsuitable++; extra.push(fmt.yellow('no suitable variant')); }
       }

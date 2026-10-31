@@ -35,7 +35,8 @@ describe('PexelsSource', () => {
     expect(result.nextPage).to.equal(3);
     expect(result.rateLimit.remaining).to.equal(99);
     expect(result.items[0]).to.include({ source: 'pexels', source_id: 'image:7', author: 'Alice', page_url: photo.url });
-    expect(result.items[0].variants.map(v => [v.width, v.height])).to.deep.equal([[4000, 3000], [1733, 1300], [866, 650], [800, 1200]]);
+    // The 800x1200 portrait size is a crop (fit=crop): left out, a wallpaper wants the whole picture
+    expect(result.items[0].variants.map(v => [v.width, v.height])).to.deep.equal([[4000, 3000], [1733, 1300], [866, 650]]);
   });
 
   it('uses the current video endpoint with a distinct identity for matching image IDs', async () => {
@@ -53,7 +54,15 @@ describe('PexelsSource', () => {
     expect(request.firstCall.args[0].pathname).to.equal('/v1/videos/videos/7');
     expect(variants).to.have.length(1);
     config.set('sources.pexels.api_key', '');
-    expect(await source.downloadVariants({ variants })).to.equal(variants);
+    expect(await source.downloadVariants({ variants })).to.deep.equal(variants);
+  });
+
+  it('leaves out crop variants a row saved before 2.32.2 still holds', async () => {
+    const whole = { url: 'https://images.pexels.com/a.jpg?w=940&h=650&dpr=2', width: 1733, height: 1300 };
+    const crop = { url: 'https://images.pexels.com/a.jpg?fit=crop&w=800&h=1200', width: 800, height: 1200 };
+    expect(source.usableVariants({ variants: [whole, crop] })).to.deep.equal([whole]);
+    expect(await source.downloadVariants({ variants: [whole, crop] })).to.deep.equal([whole]);
+    expect(request.called).to.equal(false);
   });
 
   it('validates credentials on request, so construction and unrelated commands work offline', async () => {

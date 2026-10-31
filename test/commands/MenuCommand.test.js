@@ -324,6 +324,39 @@ describe('MenuCommand', () => {
     });
   });
 
+  describe('with the wallpaper off', () => {
+    beforeEach(() => {
+      // The daemon reports a null socket for each monitor while the wallpaper is off
+      const off = monitors.map(monitor => ({ ...monitor, socket: null }));
+      display.control.state = sinon.stub().resolves({ monitors: off, visualizer: { enabled: true, preset: null, presets: [], instances: ['main'], live: {} } });
+      display.control.selected = sinon.stub().rejects(new Error('The wallpaper is off; turn it on with `backdrop start --wallpaper`'));
+      display.start = sinon.stub().resolves();
+    });
+
+    it('opens without asking mpv, fades the buttons that need it, and turns the wallpaper on with w', async () => {
+      picks = [{ key: 'w' }, { key: 'q' }];
+      await command.open();
+      const menu = shown[0];
+      expect(display.control.selected.called).to.equal(false);
+      expect(menu.message).to.equal('DP-1: wallpaper off');
+      expect(menu.preview).to.equal(undefined);
+      expect(menu.entries.filter(entry => entry.disabled).map(entry => entry.label))
+        .to.deep.equal(['next', 'keep 1', 'keep 2', 'keep 3', 'speed ▸', 'prev', 'skip', 'dim ▸']);
+      expect(menu.keys).to.include('w');
+      expect(menu.status[0]).to.equal('wallpaper  <b>off</b>  (w turns it on)');
+      expect(display.start.calledOnceWith({ wallpaper: true })).to.equal(true);
+      expect(notifications).to.deep.equal([]);
+    });
+
+    it('opens the visualizer menu without a preview', async () => {
+      picks = [null];
+      await command.open({ page: 'visualizer' });
+      expect(shown[0].prompt).to.equal('visualizer');
+      expect(shown[0].preview).to.equal(undefined);
+      expect(notifications).to.deep.equal([]);
+    });
+  });
+
   describe('visualizer menu', () => {
     let vis, requests, asked, configFile;
     // The daemon's side of the control requests: changes merge per instance, reset drops them
