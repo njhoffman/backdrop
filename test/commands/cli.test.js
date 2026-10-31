@@ -2,21 +2,29 @@ import { expect } from 'chai';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const entry = fileURLToPath(new URL('../../src/index.js', import.meta.url));
 
+// Each CLI subprocess adds this much to its test's timeout: a run takes about 0.3 s, but 1.8 s or more on a busy
+// machine, and a fixed per-test timeout failed the tests that run many commands (Mocha reads the timeout at the end)
+const RUN_BUDGET = 5000;
+
 describe('CLI command registration', function () {
-  this.timeout(15000);
-  let dir, env;
-  beforeEach(async () => {
+  this.timeout(5000);
+  let dir, env, current;
+  beforeEach(async function () {
+    current = this.currentTest;
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-cli-'));
     env = { ...process.env, PEXELS_API: '',
       ...Object.fromEntries(['CONFIG', 'DATA', 'CACHE', 'RUNTIME_DIR'].map(key => [key === 'RUNTIME_DIR' ? 'XDG_RUNTIME_DIR' : `XDG_${key}_HOME`, path.join(dir, key)])) };
   });
   afterEach(async () => { await fs.remove(dir); });
-  const run = (...args) => spawnSync(process.execPath, [entry, ...args], { env, encoding: 'utf8', timeout: 10000 });
+  const run = (...args) => {
+    current.timeout(current.timeout() + RUN_BUDGET);
+    return spawnSync(process.execPath, [entry, ...args], { env, encoding: 'utf8', timeout: 10000 });
+  };
 
   it('registers every ported command and prints help without an API key', () => {
     run('stats');
@@ -95,5 +103,17 @@ describe('CLI command registration', function () {
     expect(result.status).to.equal(1); expect(result.stderr).to.include('Total');
     result = run('skip', '--monitor', 'DP-1');
     expect(result.status).to.equal(1); expect(result.stderr).to.include('daemon is not running');
+  });
+
+  it('finishes quietly with exit code 0 when the reader of its output goes away', async () => {
+    current.timeout(current.timeout() + RUN_BUDGET);
+    const child = spawn(process.execPath, [entry, 'stats'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Closed before the child starts writing, so every line it prints meets a closed pipe (EPIPE)
+    child.stdout.destroy();
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const code = await new Promise(resolve => child.on('close', resolve));
+    expect(stderr).to.not.include('EPIPE');
+    expect(code).to.equal(0);
   });
 });

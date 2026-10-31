@@ -310,18 +310,9 @@ export class ConfigManager {
     return this.config;
   }
 
-  // Writes only what the user set, so environment credentials and XDG defaults stay out of the file
-  async save() {
-    try {
-      await fs.writeFile(this.configPath, YAML.stringify(this.userConfig));
-    } catch (error) {
-      throw new Error(`Failed to save config: ${error.message}`);
-    }
-  }
-
   // Sets one value in the file itself (keys: ['visualizer', 'presets', 'calm']), leaving every other byte as
-  // it was, comments and their alignment included, unlike save(), which writes the whole file anew (see
-  // spliceYaml). Written to a temporary file and renamed, so a watching daemon never reads half of it.
+  // it was, comments and their alignment included (see spliceYaml); the only way backdrop writes an existing
+  // config, so a hand-kept file never loses its comments or layout. Written to a temporary file and renamed, so a watching daemon never reads half of it.
   async setInFile(keys, value) {
     const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
     const temporary = `${this.configPath}.${process.pid}.tmp`;

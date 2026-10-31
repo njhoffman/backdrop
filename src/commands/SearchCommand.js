@@ -1,23 +1,27 @@
-import inquirer from 'inquirer';
 import { SourceRegistry } from '../sources/SourceRegistry.js';
 import { targetResolution, positiveInteger, selectVariant } from '../library/quality.js';
 import { out, fmt, icon, formatResolution } from '../utils/output.js';
+import { ask, input } from '../utils/prompts.js';
 
 export class SearchCommand {
-  constructor(config, database, logger, { sources, monitors, prompt = inquirer.prompt } = {}) {
+  constructor(config, database, logger, { sources, monitors, input: inputPrompt = input } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
     this.sources = sources ?? new SourceRegistry(config);
     this.monitors = monitors;
-    this.prompt = prompt;
+    this.input = inputPrompt;
   }
 
   async searchImages(query, options = {}) { return this.search('image', query, options); }
   async searchVideos(query, options = {}) { return this.search('video', query, options); }
 
   async search(kind, query, options = {}) {
-    if (!query && process.stdin.isTTY) query = (await this.prompt([{ type: 'input', name: 'query', message: 'Search keywords:' }])).query;
+    if (!query && process.stdin.isTTY) {
+      query = await ask(this.input, { message: 'Search keywords:' });
+      // Ctrl-C at the prompt
+      if (query === null) return null;
+    }
     query = query?.trim();
     if (!query) throw new Error('Search query cannot be empty');
     const source = this.sources.get(options.source ?? 'pexels');

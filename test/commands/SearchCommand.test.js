@@ -21,6 +21,19 @@ describe('SearchCommand', () => {
   afterEach(() => { sinon.restore(); db.close(); });
   const run = (options = {}) => command.searchImages('ocean', { source: 'fake', perPage: 2, ...options });
 
+  it('asks for keywords on a terminal and stops quietly on Ctrl-C', async () => {
+    sinon.define(process.stdin, 'isTTY', true);
+    command.input = sinon.stub().resolves('  ocean  ');
+    source.search.resolves({ items: [], nextPage: null });
+    await command.searchImages(undefined, { source: 'fake' });
+    expect(command.input.firstCall.args[0]).to.deep.equal({ message: 'Search keywords:' });
+    expect(source.search.firstCall.args[0].query).to.equal('ocean');
+
+    command.input = sinon.stub().rejects(Object.assign(new Error('User force closed the prompt'), { name: 'ExitPromptError' }));
+    expect(await command.searchImages(undefined, { source: 'fake' })).to.equal(null);
+    expect(source.search.calledOnce).to.be.true;
+  });
+
   it('paginates and associates upserts with ranks while preserving local state', async () => {
     const id = db.addMedia(item(1, { path: '/library/a.jpg', speed: 0.8 }));
     db.addRating(id, 3);

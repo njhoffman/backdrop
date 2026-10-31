@@ -63,13 +63,16 @@ Reviewed: 2026-10-31
       `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
       Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
       Fixed in 2.26.2: a null over a mapping default keeps its defaults, over a list default is an empty list.
-- [ ] **Subprocess and mpv tests fail under heavy load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
+- [x] **Subprocess and mpv tests fail under heavy load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
       during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
       replace them with polling on mpv properties. On 2026-10-31, at a load average of 17, `test/commands/cli.test.js`
       ("runs offline commands ...") hit its 15 s timeout twice: each `node src/index.js` took about 1.8 s instead of
       0.3 s, and the test runs many. Give subprocess-heavy tests a timeout scaled to the number of runs, or run the
       commands in one process where they need no isolation.
-- [ ] **inquirer is six majors behind.** (p3) [chore] Left from the dependency upgrade (2026-10-31: `npm outdated` shows
+      Done in 2.33.0: the mpv test already polled (no fixed waits were left); `waitFor` now allows 15 s (the
+      video-duration check 10 s) under a 30 s suite timeout. `cli.test.js` starts each test at 5 s and every `run()`
+      adds 5 s to it (Mocha reads the timeout when a synchronous test ends, so the budget scales with the runs).
+- [x] **inquirer is six majors behind.** (p3) [chore] Left from the dependency upgrade (2026-10-31: `npm outdated` shows
       only inquirer 8.2.7 vs 14, and fs-extra and winston minor releases in range). Originally: commander 11 (15 current),
       inquirer 8 (14, ESM-only with a new prompt API, used by the interactive lists), mocha 10 (12), chai 4 (6, ESM-only),
       sinon 17 (22). None is urgent; upgrade commander and the test stack together in one change, inquirer separately
@@ -78,6 +81,9 @@ Reviewed: 2026-10-31
       inquirer 14 (`ListCommand`, `SearchCommand`), and mocha 12's own moderate `minimatch` advisory (upstream).
       inquirer 14 is ESM-only with a new prompt API (`@inquirer/prompts`); both commands take `prompt` as an injected
       option, so the change is contained there.
+      Done in 2.33.0: `inquirer` replaced by `@inquirer/prompts` 8 (what inquirer 14 wraps); `src/utils/prompts.js`
+      `ask()` turns Ctrl-C (`ExitPromptError`) into null, which `list --interactive` treats as Exit and `search-*`
+      as a quiet stop. The commands take `select` / `input` instead of `prompt`.
 - [x] **Daemon.js has grown to about 1040 lines.** (p2) [refactor] It holds playback supervision, hotplug, health checks,
       CPU sampling, imports, purge, control requests, durations, the config watcher and live settings (2.31.0), the
       wallpaper sampling for visualizer colors (2.27.0), crash cleanup and the visualizer glue; it grew by about 180
@@ -93,10 +99,11 @@ Reviewed: 2026-10-31
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
       rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
-- [ ] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
+- [x] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
       dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
       (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed
       key, before something starts using it.
+      Done in 2.33.0: removed with its two tests; `setInFile` is the only writer of an existing config.
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
       `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
       and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
@@ -317,9 +324,12 @@ Reviewed: 2026-10-31
 - [x] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
       `fzf --header-lines=1`.
       Done: `--header` on `current`, `list-images` and `list-videos` (implies `--line`), aligned on a terminal and tab-separated when piped.
-- [ ] **A closed pipe crashes with a stack trace.** (p3) [bug] `backdrop stats | head -2` dies with an unhandled
+- [x] **A closed pipe crashes with a stack trace.** (p3) [bug] `backdrop stats | head -2` dies with an unhandled
       `EPIPE` from `console.log` in `write()` (`src/utils/output.js`) once `head` exits, printing a Node stack trace.
       Handle `error` on `process.stdout` (exit quietly on `EPIPE`) in `src/index.js`, with a CLI subprocess test.
+      Done in 2.33.0: `ignoreClosedPipes()` (`src/utils/output.js`, called from `src/index.js`) marks stdout or stderr
+      closed on `EPIPE` and `write()` drops later lines, so the command finishes its work (no stop between a file
+      move and its database write) and exits with its usual code; other stream errors still throw.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.

@@ -55,7 +55,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   commands. Commander's exits go through `exitOverride()` so the database always closes.
 - **ConfigManager** (`src/config/ConfigManager.js`) - YAML at `$XDG_CONFIG_HOME/backdrop/config.yaml`.
   Sections: `sources`, `library`, `display`, `screensaver`, plus `paths` that default to XDG locations and
-  are not written to the file. `save()` writes only user-set values (`userConfig`), never env credentials.
+  are not written to the file. `set()` changes values in memory only; `setInFile()` is the one way to write an
+  existing config, splicing a single key so comments and layout survive.
   `loadConfig()` collects `warnings` for keys the defaults do not have (`unknownKeys`), so every new config key
   needs a default in `getUserDefaults()` or it is reported as unknown.
 - **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
@@ -64,7 +65,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Logger** (`src/utils/Logger.js`) - Winston, file plus errors to console.
 - **Notifications** (`src/utils/notify.js`) - `notify-send` per monitor; tests swap the exec through
   `configureNotify` in `test/helpers/setup.js`, so nothing is sent.
-- **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`;
+- **Output** (`src/utils/output.js`) - all user-facing output goes through `out`, `fmt` and `ProgressBar`
+  (`ignoreClosedPipes()` drops lines to a closed pipe instead of crashing on EPIPE);
   `printMedia` (`src/utils/mediaView.js`) prints a media item with icons, size, duration, path and queries.
   Print paths through `displayPath()` (`~` on a terminal, full path when piped).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
@@ -110,7 +112,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips); failed database writes restore the file. The obsolete shell-hook command has been removed.
-  Lists support plain output, interactive rating and M3U export; stats work offline. `MenuCommand` drives the
+  Lists support plain output, interactive rating and M3U export; stats work offline. Terminal prompts go through
+  `ask()` (`src/utils/prompts.js`, `@inquirer/prompts`; Ctrl-C answers null), with `select`/`input` injected for tests. `MenuCommand` drives the
   rating and display commands from `rofi -dmenu`, and the visualizer (`menu visualizer` or `z`: live `visualizer_set`
   control requests, presets saved with `ConfigManager.setInFile`, which splices lines and keeps comments); it builds menus as data and draws them with `panelView`
   (theme `share/rofi/backdrop-panel.rasi`, thumbnails from `src/library/thumbnail.js` in `paths.thumbnails`,

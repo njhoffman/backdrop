@@ -1,18 +1,18 @@
 import fs from 'fs-extra';
 import path from 'path';
-import inquirer from 'inquirer';
 import { RatingCommand } from './RatingCommand.js';
 import { positiveInteger } from '../library/quality.js';
 import { matchFilters } from '../library/match.js';
 import { out, mark, displayPath } from '../utils/output.js';
+import { ask, select } from '../utils/prompts.js';
 import { printMedia, formatMediaLine, formatMediaHeader, wantsJson, mediaJson } from '../utils/mediaView.js';
 
 export class ListCommand {
-  constructor(config, database, logger, { rating, prompt = inquirer.prompt } = {}) {
+  constructor(config, database, logger, { rating, select: selectPrompt = select } = {}) {
     this.config = config;
     this.database = database;
     this.rating = rating ?? new RatingCommand(config, database, logger);
-    this.prompt = prompt;
+    this.select = selectPrompt;
   }
 
   async listImages(options = {}) { return this.list(['image'], options); }
@@ -50,10 +50,11 @@ export class ListCommand {
       if (line) out.print(formatMediaLine(item, { rating }));
       else printMedia(this.database, item, { rating });
       if (options.interactive) {
-        const { action } = await this.prompt([{ type: 'list', name: 'action', message: 'Action:',
+        const action = await ask(this.select, { message: 'Action:',
           choices: [{ name: 'Next', value: 'next' }, { name: 'Keep 1', value: 1 }, { name: 'Keep 2', value: 2 },
-            { name: 'Keep 3', value: 3 }, { name: 'Skip', value: 0 }, { name: 'Exit', value: 'exit' }] }]);
-        if (action === 'exit') break;
+            { name: 'Keep 3', value: 3 }, { name: 'Skip', value: 0 }, { name: 'Exit', value: 'exit' }] });
+        // Ctrl-C stops like Exit: the summary and any --playlist export still follow
+        if (action === 'exit' || action === null) break;
         if (Number.isInteger(action)) Object.assign(item, await this.rating.rate(item, action));
       }
     }

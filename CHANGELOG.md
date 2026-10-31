@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-10-31
+
+### Changed
+- Interactive prompts (`list-* --interactive`, the `search-*` keywords prompt) use `@inquirer/prompts` in place of
+  inquirer 8. Ctrl-C at a prompt now ends cleanly: the list stops as if you chose Exit (its summary and any
+  `--playlist` export still follow), and the search ends without searching.
+
+### Fixed
+- Piping output into a command that stops reading early, such as `backdrop stats | head -2`, no longer crashes with
+  an `EPIPE` stack trace: the command finishes its work, discards the rest of its output and exits normally.
+- Development: CLI and mpv integration tests allow more time on a busy machine (a per-run timeout budget and longer
+  polling), where they failed under heavy load.
+
+### Removed
+- Development: `ConfigManager.save()`, which had no callers and would have rewritten the config file without its
+  comments. `setInFile()` remains the one way backdrop writes an existing config.
+
 ## [2.32.4] - 2026-10-31
 
 ### Changed

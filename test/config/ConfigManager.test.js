@@ -368,7 +368,7 @@ describe('ConfigManager', () => {
     });
   });
 
-  describe('set and save', () => {
+  describe('set', () => {
     beforeEach(async () => {
       await configManager.initialize();
     });
@@ -381,27 +381,6 @@ describe('ConfigManager', () => {
     it('creates missing intermediate objects', () => {
       configManager.set('sources.unsplash.access_key', 'k');
       expect(configManager.getSource('unsplash').access_key).to.equal('k');
-    });
-
-    it('persists set values', async () => {
-      configManager.set('library.trash_days', 7);
-      await configManager.save();
-
-      const reloaded = new ConfigManager(configPath);
-      await reloaded.initialize();
-      expect(reloaded.get().library.trash_days).to.equal(7);
-    });
-
-    it('does not save environment credentials or derived paths', async () => {
-      process.env.PEXELS_API = 'secret-env-key';
-      const manager = new ConfigManager(configPath);
-      await manager.initialize();
-      manager.set('library.trash_days', 7);
-      await manager.save();
-
-      const written = await fs.readFile(configPath, 'utf8');
-      expect(written).to.not.include('secret-env-key');
-      expect(YAML.parse(written)).to.not.have.property('paths');
     });
   });
 

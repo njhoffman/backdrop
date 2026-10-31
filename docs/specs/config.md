@@ -117,5 +117,8 @@ Paths and `library.import_dirs` expand a leading `~`, `$VAR` and `${VAR}`; unkno
 
 ## Saving
 
-`ConfigManager.save()` writes only what came from the file plus values changed with `set()`, so
-environment credentials and derived paths never end up on disk.
+backdrop writes the config file in two places only: the first run creates it from the user defaults, and
+`ConfigManager.setInFile()` (the menu's saved visualizer presets) changes one key in place through `spliceYaml`,
+keeping every comment and the file's layout. `set()` changes the loaded config in memory only. Environment
+credentials and derived paths never end up on disk. (A `save()` that rewrote the whole file with
+`YAML.stringify` was removed in 2.33.0: nothing called it, and it would have dropped every comment.)

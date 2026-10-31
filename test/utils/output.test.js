@@ -1,9 +1,11 @@
 import { expect } from 'chai';
 import sinon from 'sinon';
+import { EventEmitter } from 'events';
 import {
   configureOutput, colorDepth, symbolSet, SYMBOL_SETS, out, fmt, stripAnsi, printVersion, ProgressBar,
   renderBar, gradientAt, parseHex, formatDuration, formatBytes, formatClock, icon, displayPath, formatResolution,
-  orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible, formatTable, stackedBar
+  orientationName, describeMedia, formatRating, formatQueries, mark, formatStars, padVisible, formatTable, stackedBar,
+  ignoreClosedPipes
 } from '../../src/utils/output.js';
 import { formatMediaLine, formatMediaHeader, formatAdjustments } from '../../src/utils/mediaView.js';
 import { makeConfig } from '../helpers/fakes.js';
@@ -326,5 +328,16 @@ describe('output', () => {
     expect(formatBytes(512)).to.equal('512 B');
     expect(formatBytes(1536)).to.equal('1.5 KB');
     expect(formatBytes(5 * 1024 * 1024)).to.equal('5.0 MB');
+  });
+});
+
+describe('ignoreClosedPipes', () => {
+  const failure = code => Object.assign(new Error(code), { code });
+
+  it('swallows EPIPE and still throws other stream errors', () => {
+    const stream = new EventEmitter();
+    ignoreClosedPipes([stream]);
+    expect(() => stream.emit('error', failure('EPIPE'))).to.not.throw();
+    expect(() => stream.emit('error', failure('EIO'))).to.throw('EIO');
   });
 });

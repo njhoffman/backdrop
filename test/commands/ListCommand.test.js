@@ -62,11 +62,22 @@ describe('ListCommand and StatsCommand', () => {
 
   it('routes interactive rating through the same lifecycle as the playback commands', async () => {
     const id = await add('image', 'local', 1);
-    command.prompt = async () => ({ action: 0 });
+    command.select = sinon.stub().resolves(0);
     await command.listImages({ interactive: true });
     expect(rating.rate.calledOnce).to.be.true;
     expect(rating.rate.firstCall.args[0].id).to.equal(id);
     expect(rating.rate.firstCall.args[1]).to.equal(0);
+    expect(command.select.firstCall.args[0].choices.map(choice => choice.value)).to.deep.equal(['next', 1, 2, 3, 0, 'exit']);
+  });
+
+  it('stops interactive rating on Ctrl-C like Exit and still prints the summary', async () => {
+    await add('image', 'local', 1); await add('image', 'local', 2);
+    command.select = sinon.stub().rejects(Object.assign(new Error('User force closed the prompt'), { name: 'ExitPromptError' }));
+    const items = await command.listImages({ interactive: true });
+    expect(items).to.have.length(2);
+    expect(command.select.calledOnce).to.be.true;
+    expect(rating.rate.called).to.be.false;
+    expect(console.log.getCalls().map(call => call.args[0])).to.include('2 item(s)');
   });
 
   it('prints one tab-separated line per item without a summary row for fzf', async () => {

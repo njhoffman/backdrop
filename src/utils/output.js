@@ -133,16 +133,32 @@ export function setJsonOutput(enabled) {
   jsonOutput = Boolean(enabled);
 }
 
+// Streams whose reader went away (EPIPE, e.g. `backdrop stats | head -2`); later lines to them are dropped
+const closedStreams = new WeakSet();
+
+// Keeps a closed pipe from crashing the CLI: the command finishes its work and its remaining output is discarded,
+// so nothing stops between a file move and its database write. Other stream errors still throw.
+export function ignoreClosedPipes(streams = [process.stdout, process.stderr]) {
+  for (const stream of streams) {
+    stream.on('error', error => {
+      if (error.code !== 'EPIPE') throw error;
+      closedStreams.add(stream);
+    });
+  }
+}
+
 function write(method, line) {
+  const target = jsonOutput && method === 'log' ? 'error' : method;
+  if (closedStreams.has(target === 'log' ? process.stdout : process.stderr)) return;
   activeBar?.clear();
-  console[jsonOutput && method === 'log' ? 'error' : method](line);
+  console[target](line);
   activeBar?.render(true);
 }
 
 export const out = {
   print: (line = '') => write('log', line),
   // The --json document, always on stdout
-  json: value => console.log(JSON.stringify(value, null, 2)),
+  json: value => { if (!closedStreams.has(process.stdout)) console.log(JSON.stringify(value, null, 2)); },
   success: message => write('log', status('success', settings.stdout, message)),
   info: message => write('log', status('info', settings.stdout, message)),
   // Informational messages that should not mix with a command's stdout, e.g. first-run notices

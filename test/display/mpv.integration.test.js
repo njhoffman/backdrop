@@ -28,7 +28,8 @@ function makeVideo(file, size) {
   ]);
 }
 
-async function waitFor(check, timeout = 5000) {
+// Generous: a busy machine can take seconds to start mpv or load a file; a passing run returns as soon as the check holds
+async function waitFor(check, timeout = 15000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const value = await check().catch(() => null);
@@ -42,7 +43,7 @@ async function waitFor(check, timeout = 5000) {
 
 // Runs a headless mpv (no window, no audio) to check the IPC commands backdrop sends
 describe('mpv integration', function () {
-  this.timeout(20000);
+  this.timeout(30000);
 
   let tempDir;
   let mpv;
@@ -276,8 +277,8 @@ describe('mpv integration', function () {
     await client.command('loadfile', files[0], 'replace');
     await client.command('loadfile', files[1], 'append');
 
-    // Without the 1 second limit the 3 second video would loop forever
-    await waitFor(async () => (await client.getProperty('path')) === files[1], 4000);
+    // Without the 1 second limit the 3 second video would loop forever, so any finite wait tells the two apart
+    await waitFor(async () => (await client.getProperty('path')) === files[1], 10000);
     expect(db.getMedia(ids[0]).fps).to.equal(10);
   });
 });

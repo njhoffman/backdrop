@@ -21,7 +21,7 @@ import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { SystemdCommand } from './commands/SystemdCommand.js';
 import { DoctorCommand } from './commands/DoctorCommand.js';
 import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerCommand.js';
-import { configureOutput, out, printVersion, setJsonOutput } from './utils/output.js';
+import { configureOutput, ignoreClosedPipes, out, printVersion, setJsonOutput } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
 
@@ -335,6 +335,7 @@ class BackdropApp {
   }
 }
 
+ignoreClosedPipes();
 const app = new BackdropApp();
 app.run()
   .catch(error => {
