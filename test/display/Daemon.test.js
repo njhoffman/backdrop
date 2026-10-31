@@ -918,11 +918,17 @@ describe('Daemon', () => {
       watched = { dir, listener, watcher };
       return watcher;
     };
-    // The config file as the next reload reads it: a visualizer section, or an Error for a bad file
+    // The config file as the next reload reads it: a visualizer section, or an Error for a bad file;
+    // { section, warnings } also sets the file's unknown-key warnings
     const reloadConfig = async () => {
       const next = sections.shift();
       if (next instanceof Error) throw next;
-      config.get().visualizer = next;
+      if (next?.warnings) {
+        config.warnings = next.warnings;
+        config.get().visualizer = next.section;
+      } else {
+        config.get().visualizer = next;
+      }
     };
     const save = async (name = 'config.yaml') => {
       watched.listener('rename', name);
@@ -985,6 +991,30 @@ describe('Daemon', () => {
       await save();
       expect(calls).to.deep.equal(['reload']);
       expect(notifications.at(-1).at(-1)).to.equal(`Visualizer off: ${visualizers.error}`);
+    });
+
+    it('logs unknown keys at start and announces each one a save adds once', async () => {
+      await daemon.stop();
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => message === 'Unknown config keys' && warnings.push(meta.warnings) };
+      config.warnings = ['Unknown config key "displya"; closest: "display"'];
+      daemon = makeDaemon({ visualizers, reloadConfig, watch: fakeWatch, configSettle: 5, logger });
+      await daemon.start();
+      expect(warnings).to.deep.equal([config.warnings]);
+
+      const section = config.get().visualizer;
+      const typo = 'Unknown config key "visualizer.colour"; closest: "visualizer.colors"';
+      sections.push({ section, warnings: [config.warnings[0], typo] });
+      await save();
+      // Saving again without fixing it, or fixing it, announces nothing more
+      sections.push({ section, warnings: [config.warnings[0], typo] });
+      await save();
+      sections.push({ section, warnings: [] });
+      await save();
+      expect(notifications.map(args => args.at(-1))).to.deep.equal([typo]);
+      expect(warnings.at(-1)).to.deep.equal([typo]);
+      expect(calls).to.deep.equal([]);
+      config.warnings = [];
     });
 
     it('stops watching when the daemon stops', async () => {

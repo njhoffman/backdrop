@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { matchFilters, hasMatchFilters, closestQueries, editDistance } from '../../src/library/match.js';
+import { matchFilters, hasMatchFilters } from '../../src/library/match.js';
 
 describe('match filters', () => {
   let db;
@@ -22,13 +22,5 @@ describe('match filters', () => {
     expect(() => matchFilters(db, { query: ['Ocean Waves', 'zzzzzzzzzz'] })).to.throw(/"zzzzzzzzzz"$/);
     db.close(); db = new DatabaseManager(); db.initialize(':memory:');
     expect(() => matchFilters(db, { query: ['ocean'] })).to.throw('run a search first');
-  });
-
-  it('ranks containment first, then edit distance, and drops distant queries', () => {
-    const known = ['deep ocean', 'ocean', 'forest', 'oceans', 'mountain lake'];
-    expect(closestQueries('ocean', known)).to.deep.equal(['deep ocean', 'ocean', 'oceans']);
-    expect(closestQueries('forrest', known)).to.deep.equal(['forest']);
-    expect(editDistance('kitten', 'sitting')).to.equal(3);
-    expect(editDistance('', 'abc')).to.equal(3);
   });
 });

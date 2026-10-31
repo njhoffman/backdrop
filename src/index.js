@@ -36,6 +36,7 @@ class BackdropApp {
       await this.config.initialize();
       configureOutput({ config: this.config });
       if (this.config.created) out.notice(`Created default config file at: ${this.config.configPath}`);
+      for (const warning of this.config.warnings) out.warn(warning);
 
       const config = this.config.get();
       await this.ensureDirectories();

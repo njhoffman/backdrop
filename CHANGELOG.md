@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.1] - 2026-10-31
+
+### Changed
+- commander 15: a command given more arguments than it takes now fails with "too many arguments" instead of
+  ignoring the extra ones.
+- Development: mocha 12, chai 6 and sinon 22, which drop a high-severity advisory in the test runner.
+
+## [2.26.0] - 2026-10-31
+
+### Added
+- Unknown config keys are reported with the closest known key, e.g. `Unknown config key "visualization"; closest:
+  "visualizer"`: on stderr by every command, under `Config` in `status` and as `config_warnings` in `status --json`,
+  in the daemon log, and as a desktop notification when a saved change adds one while the daemon runs. A typo
+  used to be ignored without a word.
+
+## [2.25.1] - 2026-10-31
+
+### Fixed
+- Security updates: axios 1.21.0 (with form-data and follow-redirects), yaml 2.9.1 and inquirer 8.2.7 fix the
+  advisories `npm audit` reported for the CLI's own dependencies. The minimum versions in `package.json` now
+  exclude the vulnerable releases.
+
 ## [2.25.0] - 2026-10-30
 
 ### Added

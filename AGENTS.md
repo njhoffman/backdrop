@@ -43,6 +43,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **ConfigManager** (`src/config/ConfigManager.js`) - YAML at `$XDG_CONFIG_HOME/backdrop/config.yaml`.
   Sections: `sources`, `library`, `display`, `screensaver`, plus `paths` that default to XDG locations and
   are not written to the file. `save()` writes only user-set values (`userConfig`), never env credentials.
+  `loadConfig()` collects `warnings` for keys the defaults do not have (`unknownKeys`), so every new config key
+  needs a default in `getUserDefaults()` or it is reported as unknown.
 - **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
   `media_tags` (derived by `src/library/tags.js`), `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.

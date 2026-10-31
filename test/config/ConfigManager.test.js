@@ -188,6 +188,57 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('unknown keys', () => {
+    it('has no warnings for a config that only uses known keys', async () => {
+      await writeConfig({ ...configManager.getUserDefaults(), paths: { media: '~/walls' } });
+      await configManager.initialize();
+      expect(configManager.warnings).to.deep.equal([]);
+    });
+
+    it('warns on an unknown section, naming the closest one, and still loads', async () => {
+      await writeConfig({ visualization: { enabled: true }, display: { image_duration: 60 } });
+      await configManager.initialize();
+      expect(configManager.warnings).to.deep.equal(['Unknown config key "visualization"; closest: "visualizer"']);
+      expect(configManager.get().display.image_duration).to.equal(60);
+    });
+
+    it('warns on unknown keys inside sections and nested mappings, with their full key', async () => {
+      await writeConfig({
+        display: { image_durtion: 60 },
+        sources: { pexels: { apikey: 'abc' }, unsplash: { access_key: 'xyz' } },
+        paths: { medai: '/tmp/media' },
+        menu: { zzzzzzzz: 1 }
+      });
+      await configManager.initialize();
+      expect(configManager.warnings).to.deep.equal([
+        'Unknown config key "display.image_durtion"; closest: "display.image_duration"',
+        'Unknown config key "sources.pexels.apikey"; closest: "sources.pexels.api_key"',
+        'Unknown config key "sources.unsplash"',
+        'Unknown config key "paths.medai"; closest: "paths.media"',
+        'Unknown config key "menu.zzzzzzzz"'
+      ]);
+    });
+
+    it('leaves the visualizer section, lists and values to their own checks', async () => {
+      await writeConfig({
+        visualizer: { colour: 'red', glava: { shaders: 'x' } },
+        display: { monitors: ['DP-1'], mpv_args: [{ odd: true }] },
+        screensaver: { streams: [{ url: 'x' }] },
+        menu: 'minimal'
+      });
+      await configManager.initialize();
+      expect(configManager.warnings).to.deep.equal([]);
+    });
+
+    it('updates the warnings from the whole file when one section is reloaded', async () => {
+      await writeConfig({ display: { image_duration: 60 } });
+      await configManager.initialize();
+      await writeConfig({ displya: { image_duration: 60 }, visualizer: { module: 'radial' } });
+      await configManager.reloadSection('visualizer');
+      expect(configManager.warnings).to.deep.equal(['Unknown config key "displya"; closest: "display"']);
+    });
+  });
+
   describe('environment credentials', () => {
     it('uses PEXELS_API when the config has no key', async () => {
       process.env.PEXELS_API = 'env-key';

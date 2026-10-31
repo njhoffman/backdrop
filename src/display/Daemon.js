@@ -206,6 +206,7 @@ export class Daemon {
     }
     await this.writeState();
     this.logger.info('Daemon started', { version, pid: process.pid, monitors: monitors.map(m => m.name) });
+    if (this.config.warnings?.length) this.logger.warn('Unknown config keys', { warnings: this.config.warnings });
 
     // Playback starts from the existing library; new imports are appended as they finish
     this.importing = this.importDirs(monitors[0] ?? null);
@@ -802,7 +803,7 @@ export class Daemon {
   async applyConfigChange() {
     if (this.stopping) return;
     const settings = this.config.get();
-    const previous = { section: settings.visualizer, user: this.config.userConfig?.visualizer };
+    const previous = { section: settings.visualizer, user: this.config.userConfig?.visualizer, warnings: this.config.warnings ?? [] };
     try {
       await this.reloadConfig();
       visualizerSettings(settings.visualizer);
@@ -813,6 +814,7 @@ export class Daemon {
       await notifyError(`Config not applied: ${error.message}`, { logger: this.logger });
       return;
     }
+    await this.reportConfigWarnings(previous.warnings);
     if (JSON.stringify(settings.visualizer) === JSON.stringify(previous.section)) return;
     await this.visualizers.reload();
     await this.writeState();
@@ -821,6 +823,14 @@ export class Daemon {
     if (this.visualizers.error) {
       await notifyError(`Visualizer off: ${this.visualizers.error}`, { logger: this.logger });
     }
+  }
+
+  // Unknown keys a save added, announced once each: nobody is at a prompt to see the CLI's warnings
+  async reportConfigWarnings(previous) {
+    const added = (this.config.warnings ?? []).filter(warning => !previous.includes(warning));
+    if (!added.length) return;
+    this.logger.warn('Unknown config keys', { warnings: added });
+    await notifyError(added.join('\n'), { logger: this.logger });
   }
 
   // SIGHUP (`backdrop visualizer reload`): re-reads the visualizer section and restarts only the

@@ -34,16 +34,41 @@ Reviewed: 2026-10-30
       a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
 - [ ] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
       `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
-- [ ] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
-      accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. Warn on
-      unknown top-level and section keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries`
-      does for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
-- [ ] **axios has known vulnerabilities.** (p2) [chore] `npm audit` (2026-10-30) reports high-severity advisories for
-      axios 1.0.0-1.19.0 (DoS, SSRF through NO_PROXY, prototype pollution), used by the Pexels adapter. Run `npm audit fix`,
-      or bump axios in `package.json`, and run the source tests.
+- [x] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
+      accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. The
+      visualizer section rejects unknown keys since 2.24.0/2.25.0; top-level sections and the other sections still do
+      not. Warn on unknown keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries` does
+      for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
+      Done in 2.26.0: `unknownKeys()` checks the file against the defaults (visualizer excepted); warnings on stderr,
+      in `status` and `status --json`, the daemon log, and a notification for each one a save adds.
+- [x] **axios has known vulnerabilities.** (p1) [chore] `npm audit` (2026-10-30) reports high-severity advisories for
+      axios 1.0.0-1.19.0 (DoS, SSRF through NO_PROXY, prototype pollution) and, through it, critical `form-data`
+      4.0.0-4.0.5 and moderate `follow-redirects` <=1.15.11; the Pexels adapter uses it for every API call and download.
+      1.21.0 is in range (`npm update axios`), then run the source tests and one live `search-images`.
+      A recheck on 2026-10-31 found 15 advisories in all: runtime `yaml` 2.8.0 (deep nesting stack overflow, 2.9.1
+      fixes it) and `tmp` through `inquirer` 8.2.6 (8.2.7 fixes it) are also in range; dev-only `serialize-javascript`
+      needs mocha 12 (see the dependencies item). The `package.json` floors (`axios ^1.6.2`, `yaml ^2.3.4`) still
+      admit vulnerable versions; raise them with the fix.
+      Fixed in 2.25.1: `npm audit fix` and raised floors; only the mocha chain (dev) remains. A live `search-images`
+      ran clean on axios 1.21.0.
+- [ ] **An empty config section crashes every command.** (p2) [bug] A section with all its keys commented out,
+      e.g. `library:` alone, parses as null; `deepMerge` replaces the defaults with it and `normalize()` fails on
+      `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
+      Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
 - [ ] **mpv integration test flaked once under load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
       during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
       replace them with polling on mpv properties.
+- [ ] **Dependencies are several majors behind.** (p3) [chore] `npm outdated` (2026-10-30): commander 11 (15 current),
+      inquirer 8 (14, ESM-only with a new prompt API, used by the interactive lists), mocha 10 (12), chai 4 (6, ESM-only),
+      sinon 17 (22). None is urgent; upgrade commander and the test stack together in one change, inquirer separately
+      since its API changed.
+      2.26.1 moved commander to 15 and the test stack to mocha 12, chai 6 and sinon 22 with no test changes; left:
+      inquirer 14 (`ListCommand`, `SearchCommand`), and mocha 12's own moderate `minimatch` advisory (upstream).
+- [ ] **Daemon.js has grown to about 860 lines.** (p3) [refactor] It holds playback supervision, hotplug, health checks,
+      CPU sampling, imports, purge, control requests, durations, the config watcher and the visualizer glue. Move the
+      control-request handling and durations (`applyControl`, `applyDurations`, `setWallpaper`) and the config watcher
+      (`watchConfig`, `applyConfigChange`) into their own modules with the daemon passed in, as `VisualizerManager`
+      already is, so each can be tested without starting a daemon.
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped.
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
@@ -132,8 +157,22 @@ Reviewed: 2026-10-30
       `loop-file`/`end` when a video loads (`playbackLimits` in `src/display/Playlist.js`); `backdrop speed` on a playing
       video changes how long those loops take until the next load. Reapply the limits in `DisplayControl.speed()`.
 
-## 4. Media sources
+- [ ] **Processes outlive a crashed daemon.** (p2) [bug] xwinwrap/mpv and GLava run in their own process groups (killed
+      as groups by `stop`), and `pactl subscribe` is a plain child. When the daemon dies without running `stop()` (kill -9,
+      out of memory, an uncaught error) they keep running, and the next `backdrop start` adds a second wallpaper and
+      visualizer per monitor on top. Under systemd the service's cgroup is killed on failure, so this hits `backdrop
+      start` and i3 `exec`. Record every child's pid in `state.json` (visualizer pids are there already, xwinwrap's are
+      not); when `start()` finds a state file whose daemon is dead, kill those process groups first, and remove stale
+      sockets.
+- [ ] **Control requests can be lost when two run at once.** (p3) [bug] `control.json` is a single slot: two commands
+      at the same moment (e.g. `next --video-duration` and `stop --wallpaper` from keybindings) overwrite each other's
+      request, and both see the daemon's `control` counter move and report success. Write one file per request
+      (`control-<pid>-<n>.json`) that the daemon handles in name order, or take an exclusive lock (`open` with `wx`)
+      around write-signal-wait.
 
+## 4. Media sources
+      Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
+      observing mpv's `speed` property in `startScreen` and calling it on a change would close this.
 - [x] **Source plugin interface.** (p1) [refactor] `Source`/`SourceRegistry` provide search, metadata, normalized download
       variants and quota information; Pexels is the first adapter. Source-specific credentials are checked only on API requests.
       See `docs/specs/sources.md` for the contract and current Pexels endpoints.
@@ -147,6 +186,10 @@ Reviewed: 2026-10-30
       `Duplicate content of #N` and leaves the pending row as `new`, so every `backdrop download` fetches it again, and its search queries never reach the kept copy.
       Record the duplicate (e.g. `media.duplicate_of`), move its `search_results` to the original, and exclude it from pending lists.
       Done: schema v6 `media.duplicate_of` (no foreign key); searches that return a known duplicate credit the original.
+- [ ] **A search has no page cap.** (p3) [feature] `SearchCommand` follows `nextPage` until results run out or the
+      rate limit hits, so a broad query with a small `--per-page` spends one request per page (161 for "ocean" at
+      3 per page on 2026-10-31, of Pexels' 200 an hour). Add `--max-pages` (and a `sources.<name>.max_pages`
+      default), or warn when `--per-page` is small and the query broad.
 - [ ] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
       a body that stalls mid-transfer, and nothing caps the size. Abort when no data arrives for 30s and when bytes exceed Content-Length (or a configured maximum).
 
@@ -263,6 +306,13 @@ Reviewed: 2026-10-30
 - [x] **systemd user unit.** (p3) [feature] Ship a `backdrop.service` user unit (`backdrop daemon`, restart on failure, `graphical-session.target`) as an alternative
       to i3 `exec`, and document enabling it.
       Done: `backdrop systemd` prints a unit with the generating shell's PATH (node through `/usr/bin/env`), restart on failure and a start limit; i3 activation documented in GETTING_STARTED.md.
+- [ ] **The menu cannot open while the wallpaper is off.** (p3) [bug] `MenuCommand.describe` asks mpv for the playing item,
+      which fails with "The wallpaper is off" since 2.21.0, and the menu closes. It should open with the item area showing
+      "wallpaper off", a button for `start --wallpaper`, and the visualizer controls still usable.
+- [ ] **Docs claim and omit a few things.** (p3) [docs] README's feature list includes the screensaver, which is not
+      built (its intro and GETTING_STARTED say so). The prerequisites in README and GETTING_STARTED do not list what the
+      visualizer needs: `glava`, a compositor (picom), and `pactl` for `only_while_playing`. `docs/specs/main.md` has no
+      pointer to `docs/specs/visualizer.md`.
 - [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
@@ -344,8 +394,22 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [ ] **Visualizer as the screensaver.** (p3) [feature] Let a screensaver playlist be a visualizer preset: a full-screen
       instance (e.g. radial or wave, `placement: {anchor: fill}`) over a dimmed or black wallpaper when idle, ties in
       with project 7.
-- [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP) and `start/stop --wallpaper/--visualizer`
-      (`control.json` + SIGUSR1, 2.21.0) exist. Left: changing the module from the CLI, and menu buttons for both parts.
-      More requests would outgrow the signal-per-action scheme; a control socket in the runtime dir is the next step.
+- [ ] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP), `start/stop --wallpaper/--visualizer`
+      and `backdrop visualizer preset` (control requests) exist, and presets cover switching modules. Left: menu buttons
+      for both parts and for presets (see "Visualizer rofi menu"). More requests would outgrow the signal-per-action
+      scheme and its single `control.json` (see "Control requests can be lost"); a control socket in the runtime dir
+      is the next step.
+- [ ] **`backdrop visualizer check`.** (p3) [feature] A mistake in raw `defines`, or a GLava version whose shaders differ,
+      only shows as GLava exiting with code 1 and no message, then being given up on after five restarts. Start each
+      instance of the section and of every preset at 1x1 for two seconds, as was done by hand on 2026-10-30, and report
+      which ones exit, before they reach the screen. Run it from `visualizer reload` with `--check`.
+- [ ] **Warn when no compositor runs.** (p3) [feature] The visualizer needs one for its transparency; without it the area
+      around the bars is solid black over the wallpaper. Check for an owner of the `_NET_WM_CM_S<screen>` selection
+      (GetSelectionOwner over the existing X connection) when the visualizer starts, log a warning, and show it in
+      `status`.
+- [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
+      change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
+      `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for
+      transparency, reusing the daemon's mpv machinery. Few styles, but nothing to lose if GLava goes.
 - [x] **Retire the old GLava setup.** (p3) [chore] The i3 `exec glava` is gone, the `glava.*` aliases were removed in
       `~/.shell` 0.23.1 and `~/.config/glava` was deleted (2026-10-30; still in the dotbare history).

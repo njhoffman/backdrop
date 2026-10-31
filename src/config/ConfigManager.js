@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
+import { closestMatches } from '../utils/closest.js';
 
 const APP_NAME = 'backdrop';
 
@@ -31,6 +32,25 @@ function deepMerge(base, override) {
   return result;
 }
 
+// Sections that check their own keys, more strictly than the defaults could (src/visualizer/settings.js)
+const SELF_CHECKED = ['visualizer'];
+
+// Keys in user that the defaults do not have, as warnings naming the closest known key. Mappings are
+// followed where both sides have one; lists and values are left to the code that reads them.
+export function unknownKeys(user, defaults, prefix = '') {
+  const warnings = [];
+  for (const [name, value] of Object.entries(user || {})) {
+    const key = `${prefix}${name}`;
+    if (!Object.hasOwn(defaults, name)) {
+      const [closest] = closestMatches(name, Object.keys(defaults), 1);
+      warnings.push(`Unknown config key "${key}"${closest ? `; closest: "${prefix}${closest}"` : ''}`);
+    } else if (!SELF_CHECKED.includes(key) && isPlainObject(value) && isPlainObject(defaults[name])) {
+      warnings.push(...unknownKeys(value, defaults[name], `${key}.`));
+    }
+  }
+  return warnings;
+}
+
 export class ConfigManager {
   constructor(configPath = null) {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
@@ -38,6 +58,8 @@ export class ConfigManager {
     this.userConfig = null;
     // True after initialize() wrote a new default file; the CLI reports it
     this.created = false;
+    // Keys in the file that no setting uses, most likely typos; the CLI and the daemon report them
+    this.warnings = [];
   }
 
   getDefaultPaths() {
@@ -135,6 +157,7 @@ export class ConfigManager {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf8');
       this.userConfig = YAML.parse(configContent) || {};
+      this.warnings = unknownKeys(this.userConfig, this.getDefaultConfig());
       this.config = this.normalize(deepMerge(this.getDefaultConfig(), this.userConfig));
     } catch (error) {
       throw new Error(`Failed to load config: ${error.message}`);
@@ -142,12 +165,13 @@ export class ConfigManager {
   }
 
   // Re-reads the file and takes only one section from it, so a running daemon can apply that section
-  // without its paths or other settings changing underneath it
+  // without its paths or other settings changing underneath it. Warnings follow the whole file.
   async reloadSection(key) {
     const fresh = new ConfigManager(this.configPath);
     await fresh.loadConfig();
     this.config[key] = fresh.config[key];
     this.userConfig[key] = fresh.userConfig[key];
+    this.warnings = fresh.warnings;
   }
 
   async createDefaultConfig() {

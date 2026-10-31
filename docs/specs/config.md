@@ -2,7 +2,11 @@
 
 File: `$XDG_CONFIG_HOME/backdrop/config.yaml` (default `~/.config/backdrop/config.yaml`). Created with the
 settings below on first run. Values in the file are deep merged over the defaults: objects merge key by
-key, arrays and scalars replace the default.
+key, arrays and scalars replace the default. A key that no setting uses is reported with the closest known
+key, e.g. `Unknown config key "visualization"; closest: "visualizer"`: on stderr by every command, under
+`Config` in `status` (`config_warnings` in `status --json`), in the daemon log at start, and as a desktop
+notification when a save adds one while the daemon runs. The file still loads. The `visualizer` section checks
+its own keys and rejects unknown ones.
 
 ```yaml
 sources:

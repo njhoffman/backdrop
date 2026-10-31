@@ -129,7 +129,14 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null }, monitors: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null }, monitors: [], config_warnings: [] });
+
+      config.warnings = ['Unknown config key "displya"; closest: "display"'];
+      await command.status({ json: true });
+      expect(JSON.parse(lines.at(-1)).config_warnings).to.deep.equal(config.warnings);
+      await command.status();
+      expect(lines.join('\n')).to.include('Config: Unknown config key "displya"; closest: "display"');
+      config.warnings = [];
     });
 
     it('says the daemon waits when none of its configured monitors is active', async () => {

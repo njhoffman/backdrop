@@ -140,6 +140,7 @@ export class DisplayCommand {
     }
     const state = await readState(this.runtimeDir);
     out.row('Mode', fmt.cyan(getMode(this.database)));
+    for (const warning of this.config.warnings ?? []) out.row('Config', fmt.yellow(warning));
     if (!state) {
       out.row('Daemon', fmt.yellow('not running'));
       return;
@@ -204,7 +205,7 @@ export class DisplayCommand {
       wallpaper: state ? state.wallpaper !== false : null,
       visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null
     };
-    return { mode, daemon, monitors };
+    return { mode, daemon, monitors, config_warnings: this.config.warnings ?? [] };
   }
 
   describeVisualizer({ instance, module, geometry, running }) {
