@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.4] - 2026-10-31
+
+### Fixed
+- Wallpapers and visualizers no longer outlive a daemon that died without stopping (kill -9, out of memory):
+  the next `backdrop start` ends them before starting, so they no longer stack, and `backdrop stop` ends them
+  too. An uncaught error in the daemon now stops them before it exits.
+
+## [2.26.3] - 2026-10-31
+
+### Changed
+- Development: the test suite points every XDG location at a temporary directory for the run, so no test can
+  write into your config, library, cache or a running daemon's runtime directory.
+
+## [2.26.2] - 2026-10-31
+
+### Fixed
+- A config section or list with every entry commented out (e.g. `library:` alone) no longer stops every command
+  with "Cannot read properties of null": an empty section keeps its defaults and an empty list is empty.
+
 ## [2.26.1] - 2026-10-31
 
 ### Changed

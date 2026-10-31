@@ -62,7 +62,8 @@ export class FakeChild extends EventEmitter {
 export function makeConfig(overrides = {}) {
   const manager = new ConfigManager('/nonexistent/config.yaml');
   manager.config = manager.getDefaultConfig();
-  // Never the real runtime dir: a running daemon's state there would make commands act on it
+  // A runtime dir that does not exist, so no daemon state is ever found there (test/helpers/setup.js
+  // already keeps every default path out of the user's directories)
   manager.config.paths.runtime = path.join(os.tmpdir(), `backdrop-test-${process.pid}-missing`);
   manager.userConfig = {};
   for (const [key, value] of Object.entries(overrides)) {

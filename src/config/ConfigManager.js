@@ -21,10 +21,19 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// A null over a mapping or list default is that type left empty, as YAML reads a section or list whose
+// entries are all commented out: the mapping keeps its defaults, the list is empty
+function emptied(value, base) {
+  if (value !== null) return value;
+  if (isPlainObject(base)) return {};
+  return Array.isArray(base) ? [] : value;
+}
+
 // Objects merge recursively; arrays and scalars from the override replace the default
-function deepMerge(base, override) {
+export function deepMerge(base, override) {
   const result = { ...base };
-  for (const [key, value] of Object.entries(override || {})) {
+  for (const [key, raw] of Object.entries(override || {})) {
+    const value = emptied(raw, base[key]);
     result[key] = isPlainObject(value) && isPlainObject(base[key])
       ? deepMerge(base[key], value)
       : value;

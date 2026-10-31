@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
+import { reapOrphans } from '../display/children.js';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
@@ -21,7 +22,10 @@ const PARTS = ['wallpaper', 'visualizer'];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export class DisplayCommand {
-  constructor(config, database, logger, { kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS } = {}) {
+  constructor(config, database, logger, {
+    kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS,
+    reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger })
+  } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
@@ -29,6 +33,7 @@ export class DisplayCommand {
     this.kill = kill;
     this.spawnProcess = spawnProcess;
     this.timeout = timeout;
+    this.reap = reap;
   }
 
   get runtimeDir() {
@@ -88,7 +93,14 @@ export class DisplayCommand {
   async stop(options = {}) {
     const state = await readState(this.runtimeDir);
     if (!state) {
-      out.info('Not running');
+      // Wallpapers and visualizers a crashed daemon left running are what a stop is wanted for
+      const orphans = await this.reap(this.runtimeDir);
+      if (orphans.length) {
+        const names = orphans.map(({ command, pid }) => `${command} (pid ${pid})`).join(', ');
+        out.success(`Stopped ${names}, left running by a daemon that exited without stopping`);
+      } else {
+        out.info('Not running');
+      }
       return;
     }
     const parts = this.parts(options);

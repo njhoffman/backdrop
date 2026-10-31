@@ -15,6 +15,7 @@ import { thumbnailFor } from '../library/thumbnail.js';
 import { notifyError, notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager } from '../visualizer/VisualizerManager.js';
 import { visualizerSettings } from '../visualizer/settings.js';
+import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, cpuPercent, RECENT_SAMPLES } from './cpu.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -110,12 +111,16 @@ export class Daemon {
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
-    watch = watchFiles, configSettle = CONFIG_SETTLE_MS
+    watch = watchFiles, configSettle = CONFIG_SETTLE_MS,
+    readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger })
   }) {
     this.config = config;
     this.database = database;
     this.logger = logger;
-    this.spawn = spawn;
+    // Every child is recorded in children.json, so a start after a crash can end the ones left running
+    this.children = new ChildRegistry({ runtimeDir: () => this.runtimeDir, readStart });
+    this.spawn = this.children.track(spawn);
+    this.reap = reap;
     this.exec = exec;
     this.connect = connect;
     this.kill = kill;
@@ -145,7 +150,7 @@ export class Daemon {
     this.durations = {};
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
-      config, logger, monitors: this.monitors, screens: this.screens, spawn, kill, exec, restartDelay, stopGrace, now
+      config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now
     });
     this.reloadConfig = reloadConfig;
     this.watch = watch;
@@ -167,6 +172,8 @@ export class Daemon {
     if (existing) {
       throw new Error(`backdrop daemon already running (pid ${existing.pid})`);
     }
+    // A daemon that died without stopping leaves its wallpapers and visualizers running; end them first
+    await this.reap(this.runtimeDir);
 
     const { display } = this.config.get();
     const active = await listMonitors(this.exec);
@@ -743,6 +750,7 @@ export class Daemon {
     await fs.remove(statePath(this.runtimeDir));
     await fs.remove(nextFiltersPath(this.runtimeDir));
     await fs.remove(controlPath(this.runtimeDir));
+    this.children.remove();
 
     this.logger.info('Daemon stopped');
     this.resolveStopped?.();
@@ -848,16 +856,27 @@ export class Daemon {
     this.logger.info('Visualizer reloaded', this.visualizers.summary());
   }
 
+  // An uncaught error or rejection: stops the children, giving up after a bounded wait, then exits 1
+  async crash(error, exit = process.exit) {
+    this.logger.error('Daemon crashed, stopping', { error: error?.message ?? String(error), stack: error?.stack });
+    await Promise.race([this.stop().catch(() => {}), sleep(this.stopGrace * 2 + 1000)]);
+    exit(1);
+  }
+
   // Signal handlers run one at a time
   enqueue(task) {
     this.queue = this.queue.then(task).catch(error => this.logger.error('Daemon request failed', { error: error.message }));
     return this.queue;
   }
 
-  // Runs until SIGINT/SIGTERM, or until a control request leaves nothing on
+  // Runs until SIGINT/SIGTERM, or until a control request leaves nothing on. An uncaught error stops
+  // the wallpapers and visualizers before the process exits, rather than leaving them running.
   async run(options) {
     await this.start(options);
     const shutdown = () => this.stop();
+    const crash = error => this.crash(error);
+    process.once('uncaughtException', crash);
+    process.once('unhandledRejection', crash);
     const reload = () => this.enqueue(() => this.reloadVisualizer());
     const control = () => this.enqueue(() => this.applyControl());
     process.once('SIGINT', shutdown);
@@ -867,5 +886,7 @@ export class Daemon {
     await this.stopped;
     process.off('SIGHUP', reload);
     process.off('SIGUSR1', control);
+    process.off('uncaughtException', crash);
+    process.off('unhandledRejection', crash);
   }
 }

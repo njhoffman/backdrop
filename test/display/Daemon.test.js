@@ -4,6 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
+import { childrenPath } from '../../src/display/children.js';
 import { Daemon, buildCommand, readState, statePath, nextFiltersPath, controlPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
@@ -19,6 +20,7 @@ describe('Daemon', () => {
   let db;
   let config;
   let spawned;
+  let reaped;
   let clients;
   let kills;
   let connectError;
@@ -56,6 +58,9 @@ describe('Daemon', () => {
       // Tests that watch the config file pass their own
       watch: null,
       purgeInterval: 0,
+      // Fake pids may belong to real processes, so their start times come from here, never /proc
+      readStart: pid => `t${pid}`,
+      reap: async dir => { reaped.push(dir); return []; },
       ...overrides
     });
   }
@@ -66,6 +71,7 @@ describe('Daemon', () => {
     db.initialize(':memory:');
     config = makeConfig({ 'paths.runtime': tempDir, 'display.mpv_args': ['--vo=gpu'] });
     spawned = [];
+    reaped = [];
     clients = [];
     kills = [];
     connectError = null;
@@ -1076,6 +1082,42 @@ describe('Daemon', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(spawned).to.have.length(2);
+    });
+  });
+
+  describe('child processes', () => {
+    it('ends what a crashed daemon left before starting, and records every child until it stops', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      expect(reaped).to.deep.equal([tempDir]);
+      const record = await fs.readJson(childrenPath(tempDir));
+      expect(record.daemon).to.equal(process.pid);
+      expect(record.children).to.deep.equal([
+        { pid: 1000, group: true, command: 'xwinwrap', start: 't1000' },
+        { pid: 1001, group: true, command: 'xwinwrap', start: 't1001' }
+      ]);
+
+      // A child that exits is dropped; its replacement is recorded
+      spawned[0].child.exit(1);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const pids = (await fs.readJson(childrenPath(tempDir))).children.map(child => child.pid);
+      expect(pids).to.not.include(1000);
+      expect(pids).to.include(1001);
+
+      await daemon.stop();
+      expect(await fs.pathExists(childrenPath(tempDir))).to.equal(false);
+    });
+
+    it('stops everything and exits 1 on an uncaught error', async () => {
+      const errors = [];
+      const daemon = makeDaemon({ logger: { ...silentLogger, error: (message, meta) => errors.push([message, meta.error]) } });
+      await daemon.start();
+      let code;
+      await daemon.crash(new Error('boom'), exitCode => { code = exitCode; });
+      expect(code).to.equal(1);
+      expect(errors).to.deep.equal([['Daemon crashed, stopping', 'boom']]);
+      expect(await fs.pathExists(statePath(tempDir))).to.equal(false);
+      expect(kills.filter(([, signal]) => signal === 'SIGTERM').map(([pid]) => pid)).to.include.members([-1000, -1001]);
     });
   });
 });

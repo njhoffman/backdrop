@@ -236,6 +236,21 @@ describe('DisplayCommand', () => {
     });
   });
 
+  describe('stop after a crash', () => {
+    it('ends what a dead daemon left running, or says nothing runs', async () => {
+      await fs.remove(statePath(dir));
+      let orphans = [{ pid: 10, command: 'xwinwrap' }, { pid: 11, command: 'glava' }];
+      const reaped = [];
+      command = new DisplayCommand(config, db, silentLogger, { reap: async runtime => { reaped.push(runtime); return orphans; } });
+      await command.stop();
+      expect(reaped).to.deep.equal([dir]);
+      expect(lines.at(-1)).to.equal('Stopped xwinwrap (pid 10), glava (pid 11), left running by a daemon that exited without stopping');
+      orphans = [];
+      await command.stop();
+      expect(lines.at(-1)).to.equal('Not running');
+    });
+  });
+
   describe('navigation', () => {
     it('shows the item next switched to, randomly when display.order is random', async () => {
       const id = addVideo(1, 1920, 1080);

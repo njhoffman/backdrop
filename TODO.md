@@ -51,10 +51,11 @@ Reviewed: 2026-10-30
       admit vulnerable versions; raise them with the fix.
       Fixed in 2.25.1: `npm audit fix` and raised floors; only the mocha chain (dev) remains. A live `search-images`
       ran clean on axios 1.21.0.
-- [ ] **An empty config section crashes every command.** (p2) [bug] A section with all its keys commented out,
+- [x] **An empty config section crashes every command.** (p2) [bug] A section with all its keys commented out,
       e.g. `library:` alone, parses as null; `deepMerge` replaces the defaults with it and `normalize()` fails on
       `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
       Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
+      Fixed in 2.26.2: a null over a mapping default keeps its defaults, over a list default is an empty list.
 - [ ] **mpv integration test flaked once under load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
       during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
       replace them with polling on mpv properties.
@@ -74,9 +75,11 @@ Reviewed: 2026-10-30
 - [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
       `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
       and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
-- [ ] **Tests default to the real data and cache paths.** (p2) [test] `makeConfig()` still leaves `paths.data`,
+- [x] **Tests default to the real data and cache paths.** (p2) [test] `makeConfig()` still leaves `paths.data`,
       `paths.thumbnails`, `paths.logfile` and the media folders at their XDG defaults; a test that forgets to override
       one writes into the user's library. Point every `paths.*` at a per-run temp directory in `makeConfig()`.
+      Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
+      removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
 - [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
 
 ## 2. Rename to backdrop
@@ -157,13 +160,18 @@ Reviewed: 2026-10-30
       `loop-file`/`end` when a video loads (`playbackLimits` in `src/display/Playlist.js`); `backdrop speed` on a playing
       video changes how long those loops take until the next load. Reapply the limits in `DisplayControl.speed()`.
 
-- [ ] **Processes outlive a crashed daemon.** (p2) [bug] xwinwrap/mpv and GLava run in their own process groups (killed
+- [x] **Processes outlive a crashed daemon.** (p2) [bug] xwinwrap/mpv and GLava run in their own process groups (killed
       as groups by `stop`), and `pactl subscribe` is a plain child. When the daemon dies without running `stop()` (kill -9,
       out of memory, an uncaught error) they keep running, and the next `backdrop start` adds a second wallpaper and
       visualizer per monitor on top. Under systemd the service's cgroup is killed on failure, so this hits `backdrop
       start` and i3 `exec`. Record every child's pid in `state.json` (visualizer pids are there already, xwinwrap's are
       not); when `start()` finds a state file whose daemon is dead, kill those process groups first, and remove stale
       sockets.
+      Fixed in 2.26.4: the daemon's spawn records every child in `children.json` (`src/display/children.js`) as it
+      starts and exits, since the visualizer's own restarts never rewrite `state.json`; `start` and `stop` end the
+      recorded process groups of a dead daemon when their `/proc` start times still match, and an uncaught error
+      in the daemon runs `stop()` before exiting. Checked under Xvfb with kill -9: `start` and `stop` both end the
+      old xwinwrap+mpv group, waiting on the whole group since mpv outlives xwinwrap.
 - [ ] **Control requests can be lost when two run at once.** (p3) [bug] `control.json` is a single slot: two commands
       at the same moment (e.g. `next --video-duration` and `stop --wallpaper` from keybindings) overwrite each other's
       request, and both see the daemon's `control` counter move and report success. Write one file per request
@@ -274,6 +282,9 @@ Reviewed: 2026-10-30
 - [x] **No header row for `--line`.** (p3) [feature] Tables want column names; add `--header` (or print one on a terminal only) and document
       `fzf --header-lines=1`.
       Done: `--header` on `current`, `list-images` and `list-videos` (implies `--line`), aligned on a terminal and tab-separated when piped.
+- [ ] **A closed pipe crashes with a stack trace.** (p3) [bug] `backdrop stats | head -2` dies with an unhandled
+      `EPIPE` from `console.log` in `write()` (`src/utils/output.js`) once `head` exits, printing a Node stack trace.
+      Handle `error` on `process.stdout` (exit quietly on `EPIPE`) in `src/index.js`, with a CLI subprocess test.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.

@@ -179,6 +179,32 @@ describe('ConfigManager', () => {
       expect(configManager.get().screensaver.sources).to.deep.equal(['playlist:night']);
     });
 
+    it('keeps the defaults of a section left empty, for every section', async () => {
+      const defaults = new ConfigManager(configPath).getDefaultConfig();
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeFile(configPath, `${Object.keys(defaults).filter(key => key !== 'sources').map(key => `${key}:`).join('\n')}\nsources:\n  pexels:\n`);
+      await configManager.initialize();
+      expect(configManager.get()).to.deep.equal(defaults);
+      expect(configManager.warnings).to.deep.equal([]);
+    });
+
+    it('reads a list left empty as an empty list, and a nested mapping left empty as its defaults', async () => {
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeFile(configPath, [
+        'library:', '  import_dirs:', '  #  - ~/Pictures',
+        'display:', '  mpv_args:',
+        'visualizer:', '  placement:', '  preset:'
+      ].join('\n'));
+      await configManager.initialize();
+      const config = configManager.get();
+      expect(config.library.import_dirs).to.deep.equal([]);
+      expect(config.library.trash_days).to.equal(30);
+      expect(config.display.mpv_args).to.deep.equal([]);
+      expect(config.visualizer.placement).to.deep.equal(configManager.getUserDefaults().visualizer.placement);
+      // A null over a value stays null: an unset preset is meaningful
+      expect(config.visualizer.preset).to.equal(null);
+    });
+
     it('keeps sources the defaults do not know about', async () => {
       await writeConfig({ sources: { unsplash: { access_key: 'xyz' } } });
       await configManager.initialize();

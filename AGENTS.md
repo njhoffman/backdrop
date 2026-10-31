@@ -20,7 +20,8 @@ npm link                 # install the `backdrop` binary globally
 
 To run the CLI without touching your real config or data, point the XDG variables at a scratch
 directory: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`. Keep `XDG_RUNTIME_DIR`
-short: mpv socket paths must fit in 107 bytes. `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
+short: mpv socket paths must fit in 107 bytes. `test/helpers/setup.js` does this for the whole test run (removed
+afterwards), and `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
 at a missing directory, so a test never reaches a running daemon; tests that need state set their own. `test/display/mpv.integration.test.js` runs a headless mpv
 and is skipped when mpv or ffmpeg is missing.
 
@@ -56,7 +57,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Print paths through `displayPath()` (`~` on a terminal, full path when piped).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
   Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
-- **Display** (`src/display/`) - `Daemon` runs one xwinwrap+mpv per monitor and writes `state.json` to the
+- **Display** (`src/display/`) - `Daemon` records every child it spawns in `children.json` (`src/display/children.js`,
+  pid, process group and `/proc` start time) so `start` and `stop` can end what a crashed daemon left running;
+  it runs one xwinwrap+mpv per monitor and writes `state.json` to the
   runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
   xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
   trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
