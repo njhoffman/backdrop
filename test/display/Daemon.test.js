@@ -983,6 +983,51 @@ describe('Daemon', () => {
       expect(client.properties['image-display-duration']).to.equal(config.get().display.image_duration);
       await daemon.stop();
     });
+
+    it('counts the video duration again from where a video plays when its speed changes', async () => {
+      let time = 1_000_000;
+      config.set('display.video_duration', 120);
+      const daemon = makeDaemon({ now: () => time });
+      await daemon.start();
+      const short = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/1.mp4', width: 1920, height: 1080, duration: 18 });
+      const long = db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/2.mp4', width: 1920, height: 1080, duration: 1800 });
+      const [screen] = daemon.screens.values();
+      const { client } = clients.find(item => item.socketPath === screen.socketPath);
+      const speedTo = async speed => {
+        client.emit('property-change', { name: 'speed', data: speed });
+        await new Promise(resolve => setTimeout(resolve, 5));
+      };
+      expect(client.commands).to.deep.include(['observe_property', 4, 'speed']);
+
+      screen.media = db.getMedia(short);
+      screen.loadedAt = time;
+      // The speed every load sets is the stored one: nothing to count again
+      client.properties['loop-file'] = 'untouched';
+      await speedTo(1);
+      expect(client.properties['loop-file']).to.equal('untouched');
+
+      // 50s in at 9s into a pass, slowed to half: 18s of this pass left, 52s after it fits one more 36s pass
+      time += 50_000;
+      client.properties['time-pos'] = 9;
+      await speedTo(0.5);
+      expect(client.properties).to.include({ 'loop-file': 1, end: 'none' });
+      expect(screen.media.speed).to.equal(0.5);
+
+      // A long video 30s in at 30s, doubled: 90s of wall time left are 180s of media
+      screen.media = db.getMedia(long);
+      screen.loadedAt = time;
+      time += 30_000;
+      client.properties['time-pos'] = 30;
+      await speedTo(2);
+      expect(client.properties).to.include({ 'loop-file': 'no', end: '210' });
+
+      // Images have no speed to follow
+      screen.media = { ...db.getMedia(long), kind: 'image' };
+      client.properties.end = 'kept';
+      await speedTo(3);
+      expect(client.properties.end).to.equal('kept');
+      await daemon.stop();
+    });
   });
 
   describe('config watch', () => {

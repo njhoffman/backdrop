@@ -138,6 +138,19 @@ describe('Playlist', () => {
       expect(playbackLimits(video(1800), 60, 300)).to.deep.equal({ 'loop-file': 'no', end: '60' });
     });
 
+    it('counts from mpv\'s position after a speed change mid-play', () => {
+      // 18s clip at half speed (36s a pass), 9s into it after 50s of a 120s limit: 18s left of this pass, 1 more fits
+      expect(playbackLimits(video(18, 0.5), 120, 50, 9)).to.deep.equal({ 'loop-file': 1, end: 'none' });
+      // Doubled, 9s a pass: 4.5s left of this one, then 7 more in the 70s left
+      expect(playbackLimits(video(18, 2), 120, 50, 9)).to.deep.equal({ 'loop-file': 7, end: 'none' });
+      // A long video ends the wall time left from where it is, in media time
+      expect(playbackLimits(video(1800, 2), 120, 30, 30)).to.deep.equal({ 'loop-file': 'no', end: '210' });
+      // Past the limit already: it ends where it is
+      expect(playbackLimits(video(1800, 0.5), 60, 90, 40)).to.deep.equal({ 'loop-file': 'no', end: '40' });
+      // A clip that no longer fits twice plays out this pass
+      expect(playbackLimits(video(400, 0.5), 600, 100, 100)).to.deep.equal({ 'loop-file': 'no', end: '350' });
+    });
+
     it('counts playback speed, so a slowed video loops fewer times', () => {
       expect(playbackLimits(video(20, 0.5), 600)).to.deep.equal({ 'loop-file': 14, end: 'none' });
     });

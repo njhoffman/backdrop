@@ -23,3 +23,8 @@ export function controlRequestPath(runtimeDir, id) {
 export function nextFiltersPath(runtimeDir) {
   return path.join(runtimeDir, 'next-filters.json');
 }
+
+// Held while a command reads, merges and writes next-filters.json, so commands at once keep each other's values
+export function nextFiltersLockPath(runtimeDir) {
+  return path.join(runtimeDir, 'next-filters.lock');
+}

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.40.3] - 2026-11-01
+
+### Added
+- An integration test changes the resolution of a nested X server under a running daemon and checks that the
+  wallpaper restarts at the new size, using the real `xrandr` (skipped without Xvfb, Xephyr, xwinwrap, mpv or ffmpeg).
+
+## [2.40.2] - 2026-11-01
+
+### Fixed
+- `backdrop speed` on a playing video, or a speed change from mpv's own keys, now counts `display.video_duration`
+  again from where the video is, so a slowed video no longer plays far longer than the limit (or a sped-up one
+  far shorter) until the next item.
+
+## [2.40.1] - 2026-11-01
+
+### Fixed
+- Two `next` or `menu` commands given at the same moment (for example `next --video-duration 3m` and
+  `next --image-duration 90` from keybindings) no longer lose one of the stored durations or filters. A command
+  waits up to 5 seconds for another one saving its filters, then reports it.
+
 ## [2.40.0] - 2026-10-31
 
 ### Changed

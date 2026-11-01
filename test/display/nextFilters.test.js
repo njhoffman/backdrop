@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { nextFiltersPath, statePath } from '../../src/display/Daemon.js';
+import { processStart } from '../../src/display/children.js';
 import { clearNextFilters, hasNextFilters, parseDuration, readNextFilters, resolveNextFilters } from '../../src/display/nextFilters.js';
 
 describe('nextFilters', () => {
@@ -80,6 +81,24 @@ describe('nextFilters', () => {
     let caught;
     try { await persist({ imageDuration: 'later' }); } catch (error) { caught = error; }
     expect(caught.message).to.include('--image-duration must be a time');
+  });
+
+  it('keeps both values when two commands store at the same moment', async () => {
+    const kill = () => {};
+    // No daemon answers here, so the durations requests time out; what matters is the stored file
+    const store = options => resolveNextFilters(dir, options, { persist: true, kill, timeout: 50 }).catch(() => {});
+    await Promise.all([
+      store({ videoDuration: '3m' }), store({ imageDuration: '90' }), store({ tag: ['sky'] }), store({ random: false })
+    ]);
+    expect(await readNextFilters(dir)).to.deep.equal({ video_duration: 180, image_duration: 90, tag: ['sky'], random: false });
+    expect(await fs.pathExists(path.join(dir, 'next-filters.lock'))).to.be.false;
+  });
+
+  it('refuses to store while another command holds the lock past the timeout', async () => {
+    await fs.writeFile(path.join(dir, 'next-filters.lock'), JSON.stringify({ pid: process.pid, start: processStart(process.pid) }));
+    const error = await resolveNextFilters(dir, { tag: ['sky'] }, { persist: true, lockTimeout: 60 }).catch(caught => caught);
+    expect(error.message).to.equal('Another next or menu is still saving its filters; try again');
+    expect(await readNextFilters(dir)).to.deep.equal({});
   });
 
   it('ignores filters another daemon stored, and stores nothing without a running daemon', async () => {

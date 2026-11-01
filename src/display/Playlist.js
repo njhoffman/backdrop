@@ -145,13 +145,21 @@ export function validVideoDuration(value) {
 // end is a global option in mpv, so every load sets it, including images, to clear the last value.
 // elapsed is how long the item has played when the timeout changes mid-play: mpv counts loops from
 // when loop-file is set, so only the loops still due after the current one are asked for.
-export function playbackLimits(media, timeout, elapsed = 0) {
+// position (mpv's time-pos in this play, in media time) is given when the speed changed mid-play: what
+// already played went at another speed, so the rest is counted from where playback is now.
+export function playbackLimits(media, timeout, elapsed = 0, position) {
   if (!media || !MODE_KINDS.video.includes(media.kind)) return { end: 'none' };
-  const length = media.duration / (media.speed || 1);
+  const speed = media.speed || 1;
+  const length = media.duration / speed;
   if (!timeout || !(length > 0)) return { 'loop-file': 'inf', end: 'none' };
-  if (length > timeout) return { 'loop-file': 'no', end: String(Math.round(timeout * media.speed * 1000) / 1000) };
-  const current = length - (elapsed % length);
-  const more = Math.floor((timeout - elapsed - current) / length + 1e-9);
+  const known = Number.isFinite(position);
+  const left = timeout - elapsed;
+  if (length > timeout) {
+    const end = known ? position + Math.max(left, 0) * speed : timeout * speed;
+    return { 'loop-file': 'no', end: String(Math.round(end * 1000) / 1000) };
+  }
+  const current = known ? Math.max(media.duration - position, 0) / speed : length - (elapsed % length);
+  const more = Math.floor((left - current) / length + 1e-9);
   return { 'loop-file': more > 0 ? more : 'no', end: 'none' };
 }
 

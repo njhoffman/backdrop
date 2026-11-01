@@ -169,8 +169,14 @@ Reviewed: 2026-10-31
 - [x] **state.json is written in place.** (p3) [bug] `Daemon.writeState()` uses `fs.writeJson` directly and `readState()` treats a parse error as "not running",
       so a CLI command racing a rewrite (now on every hotplug change) can report the daemon as stopped. Write to a temp file in the runtime dir and rename it.
       Done: written to a temporary file and renamed; skipped during shutdown so a late sample cannot recreate it.
-- [ ] **Hotplug only tested with fakes.** (p3) [test] Reconciliation is covered against a fake `xrandr`; confirm on real hardware (attach, remove, change resolution,
+- [x] **Hotplug only tested with fakes.** (p3) [test] Reconciliation is covered against a fake `xrandr`; confirm on real hardware (attach, remove, change resolution,
       lid close) and note any xrandr output the parser misses, e.g. monitors without a physical size.
+      Done in 2.40.3: on real hardware (2026-11-01, i3, DP-3 plus the laptop's eDP-1 with its lid closed, turned on and off
+      with xrandr) the daemon added eDP-1, restarted it at 1600x900 after a mode change and dropped it when it went off,
+      with nothing in the log. `test/display/hotplug.integration.test.js` changes the resolution of an Xephyr nested in
+      Xvfb under a real daemon and the real xrandr; Xvfb 21.1 and Xephyr cannot add monitors (`--setmonitor` is ignored,
+      `--delmonitor` crashes Xephyr), so attach and remove stay covered by the fake. Not checked: opening and closing the
+      lid itself, and a monitor reporting 0mm in `--listactivemonitors` (the parser skips the mm fields, so it should hold).
 - [x] **No record of player CPU use.** (p2) [perf] Nothing measures what the mpv instances cost over time. Have the daemon sample each
       screen's mpv CPU (from `/proc/<pid>/stat`, every minute or so) and keep a rolling average per monitor and per item, alongside
       `hwdec-current`, resolution and fps; show it in `status` and `stats`. That shows which items are expensive and whether 4K media
@@ -188,9 +194,12 @@ Reviewed: 2026-10-31
       Done: `status` shows eligible counts per monitor and a reason and fix for blank ones.
 - [x] **Quiet config creation in tests.** (p3) [test] `ConfigManager.createDefaultConfig()` prints to stdout during `npm test`; inject an output stream or silence it in tests.
       Done: ConfigManager sets `created`; the CLI prints the notice on stderr.
-- [ ] **Speed changes do not recompute the video limit.** (p3) [bug] `display.video_duration` is turned into
+- [x] **Speed changes do not recompute the video limit.** (p3) [bug] `display.video_duration` is turned into
       `loop-file`/`end` when a video loads (`playbackLimits` in `src/display/Playlist.js`); `backdrop speed` on a playing
       video changes how long those loops take until the next load. Reapply the limits in `DisplayControl.speed()`.
+      Done in 2.40.2: the daemon observes mpv's `speed` and calls `applyLimits` with the elapsed time and mpv's `time-pos`,
+      since what played so far went at the old speed; this also covers mpv's own speed keys. Checked live: 56 loops left
+      at 1x became 24 at 0.5x.
 
 - [x] **Processes outlive a crashed daemon.** (p2) [bug] xwinwrap/mpv and GLava run in their own process groups (killed
       as groups by `stop`), and `pactl subscribe` is a plain child. When the daemon dies without running `stop()` (kill -9,
@@ -224,12 +233,14 @@ Reviewed: 2026-10-31
       every pending file in name order on each SIGUSR1 and lists the latest 32 ids in `state.json` `handled`, and the CLI
       waits for its own id, withdrawing the file on timeout. Older CLIs and daemons fall back to `control.json` and the
       counter. A control socket is still the way to go once requests need answers with data.
-- [ ] **Concurrent `next` calls can drop a stored duration or filter.** (p3) [bug] `resolveNextFilters`
+- [x] **Concurrent `next` calls can drop a stored duration or filter.** (p3) [bug] `resolveNextFilters`
       (`src/display/nextFilters.js`) reads `next-filters.json`, merges and writes it back, so `next --video-duration 3m`
       and `next --image-duration 90` fired at once can each write over the other's key (the request files of 2.38.2
       make sure both durations requests arrive, but the daemon then reads whichever file won). Take a short lock around
       read-merge-write (`open` with `wx`, as `importLock.js` does), or send the given values in the control request and
       let the daemon own the file.
+      Done in 2.40.1: the lock code moved to `src/utils/fileLock.js` (`ImportLock` builds on it), and `resolveNextFilters`
+      reads, merges and writes under `next-filters.lock` (50 ms polls, 5 s timeout), telling the daemon after release.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;

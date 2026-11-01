@@ -26,7 +26,8 @@ short: mpv socket paths must fit in 107 bytes. `test/helpers/setup.js` does this
 afterwards), and `makeConfig()` in `test/helpers/fakes.js` points `paths.runtime`
 at a missing directory, so a test never reaches a running daemon; tests that need state set their own. `test/display/mpv.integration.test.js` runs a headless mpv
 and is skipped when mpv or ffmpeg is missing. `test/commands/menu.integration.test.js` draws the menus with real rofi on its own Xvfb
-(skipped without Xvfb, rofi, xdotool or ImageMagick's `import`), and `test/display/stacking.integration.test.js` runs
+(skipped without Xvfb, rofi, xdotool or ImageMagick's `import`); `test/display/hotplug.integration.test.js` changes the resolution of an Xephyr nested in Xvfb under a real daemon
+(add and remove cannot be simulated there), and `test/display/stacking.integration.test.js` runs
 a real daemon there with a stand-in visualizer window (Daemon's `createVisualizer` option), since GLava opens no
 window under Xvfb. `test/sources/pexels.live.test.js` calls the real Pexels API only with `BACKDROP_LIVE_TESTS=1` and
 `PEXELS_API` set (three requests); routine runs skip it.
@@ -77,7 +78,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   pid, process group and `/proc` start time) so `start` and `stop` can end what a crashed daemon left running;
   it runs one xwinwrap+mpv per monitor and writes `state.json` to the
   runtime dir; it restarts mpv on exit or on failed IPC health checks, follows monitor hotplug by polling
-  xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load, and purges expired
+  xrandr, drops entries that fail to load, reapplies per-item speed and dim on each load (and counts the video limit again from mpv's `time-pos` when the speed changes mid-play), and purges expired
   trash daily (`src/library/purge.js`), reshuffles the playlist on wrap, limits video play time with per-file
   `loop-file`/`end`, records frame rates from mpv, samples mpv CPU and decoder on each health check (`src/display/cpu.js`,
   `playback_stats`), writes `state.json` atomically and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
@@ -86,7 +87,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   and `state.json` monitors have a null `socket` while the wallpaper is off.
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
   the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's
-  pid (the daemon removes it on start and stop); `next`, `keep --next`, `skip` and `go-next` fill in from it.
+  pid (the daemon removes it on start and stop), updated under `next-filters.lock` (`src/utils/fileLock.js`, which `importLock.js` also builds on); `next`, `keep --next`, `skip` and `go-next` fill in from it.
   It also holds `--image-duration`/`--video-duration`, which the daemon applies itself: the CLI sends a
   `{ durations: true }` control request (`src/display/control.js`) when they change. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).

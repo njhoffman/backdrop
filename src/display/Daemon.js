@@ -464,6 +464,8 @@ export class Daemon {
         this.onFrameRate(screen, event.data);
       } else if (event.name === 'brightness' && typeof event.data === 'number') {
         this.onBrightness(screen, event.data);
+      } else if (event.name === 'speed' && typeof event.data === 'number') {
+        this.onSpeed(screen, event.data);
       }
     });
     screen.client.on('end-file', event => {
@@ -475,6 +477,7 @@ export class Daemon {
     await screen.client.observeProperty(1, 'path');
     await screen.client.observeProperty(2, 'container-fps');
     await screen.client.observeProperty(3, 'brightness');
+    await screen.client.observeProperty(4, 'speed');
 
     await this.loadScreenPlaylist(screen);
   }
@@ -616,12 +619,29 @@ export class Daemon {
     await notifyPlaying(this.database, { monitor: screen.monitor, media, rating }, { logger: this.logger });
   }
 
+  // The playing video's speed changed (`backdrop speed`, or mpv's own keys): the limit is counted again from
+  // where it plays now, so a slowed video still ends after about the video duration. The speed set on each
+  // load matches the item's stored one and changes nothing.
+  async onSpeed(screen, speed) {
+    const { media } = screen;
+    if (!media || modeOfKind(media.kind) !== 'video' || media.speed === speed) return;
+    screen.media = { ...media, speed };
+    try {
+      const position = await screen.client.getProperty('time-pos');
+      // A load may have replaced the item while time-pos was read
+      if (screen.media?.id !== media.id) return;
+      await this.applyLimits(screen, screen.media, { elapsed: (this.now() - (screen.loadedAt ?? this.now())) / 1000, position });
+    } catch (error) {
+      this.logger.warn('Failed to recount the video duration', { monitor: screen.monitor.name, error: error.message });
+    }
+  }
+
   // Ends videos after the video duration (display.video_duration, or one next or the menu set). A file outside the library loops in video mode as before.
-  // elapsed: seconds the item has played, when the duration changes while it plays
-  async applyLimits(screen, media, { elapsed = 0 } = {}) {
+  // elapsed: seconds the item has played, when the duration changes while it plays; position: mpv's time-pos, when the speed did
+  async applyLimits(screen, media, { elapsed = 0, position } = {}) {
     try {
       const timeout = this.videoDuration();
-      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout, elapsed) : { 'loop-file': 'inf', end: 'none' };
+      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout, elapsed, position) : { 'loop-file': 'inf', end: 'none' };
       for (const [name, value] of Object.entries(limits)) {
         await screen.client.setProperty(name, value);
       }

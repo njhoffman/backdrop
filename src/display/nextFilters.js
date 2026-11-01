@@ -1,6 +1,11 @@
 import fs from 'fs-extra';
 import { nextFiltersPath, readState } from './Daemon.js';
+import { nextFiltersLockPath } from './runtimeFiles.js';
 import { sendControl } from './control.js';
+import { FileLock } from '../utils/fileLock.js';
+
+// How long a command waits for another one updating the stored filters
+const LOCK_TIMEOUT_MS = 5_000;
 
 // --query/--tag/--keywords, --random/--no-random and --image-duration/--video-duration given to next or
 // menu stay in effect until next --clear or the daemon restarts: the filters and order for every later
@@ -47,30 +52,39 @@ export function parseDuration(option, text, { allowZero = false } = {}) {
 // menu), --clear drops the stored values first, filters given replace the stored filters as a set,
 // --random/--no-random replace the stored order and each duration given replaces its stored one; the
 // result is written for the running daemon, which applies changed durations at once (kill and timeout
-// are passed to sendControl).
-export async function resolveNextFilters(runtimeDir, options = {}, { persist = false, ...control } = {}) {
+// are passed to sendControl). The read, merge and write run under a lock, so commands given at the same
+// moment each keep the other's values; the daemon is told after the lock is released.
+export async function resolveNextFilters(runtimeDir, options = {}, { persist = false, lockTimeout = LOCK_TIMEOUT_MS, ...control } = {}) {
   const durations = {};
   if (options.imageDuration !== undefined) durations.image_duration = parseDuration('--image-duration', options.imageDuration);
   if (options.videoDuration !== undefined) durations.video_duration = parseDuration('--video-duration', options.videoDuration, { allowZero: true });
 
-  const before = await readNextFilters(runtimeDir);
-  if (persist && options.clear) await clearNextFilters(runtimeDir);
-  const stored = persist && options.clear ? {} : before;
-  const given = FILTER_KEYS.some(key => options[key]?.length);
-  const resolved = {
-    ...(given ? pick(options, FILTER_KEYS) : pick(stored, FILTER_KEYS)),
-    random: options.random ?? stored.random,
-    ...pick(stored, Object.keys(DURATIONS)),
-    ...durations
-  };
-  if (persist) {
+  const update = async () => {
+    const before = await readNextFilters(runtimeDir);
+    if (persist && options.clear) await clearNextFilters(runtimeDir);
+    const stored = persist && options.clear ? {} : before;
+    const given = FILTER_KEYS.some(key => options[key]?.length);
+    const resolved = {
+      ...(given ? pick(options, FILTER_KEYS) : pick(stored, FILTER_KEYS)),
+      random: options.random ?? stored.random,
+      ...pick(stored, Object.keys(DURATIONS)),
+      ...durations
+    };
+    if (!persist) return { resolved };
     const state = await readState(runtimeDir);
     if (state && (given || options.random !== undefined || Object.keys(durations).length)) {
       await writeNextFilters(runtimeDir, state.pid, resolved);
     }
-    const changed = Object.keys(DURATIONS).some(key => before[key] !== resolved[key]);
-    if (state && changed) await sendControl(runtimeDir, state, { durations: true }, control);
-  }
+    return { resolved, state, changed: Object.keys(DURATIONS).some(key => before[key] !== resolved[key]) };
+  };
+
+  // Without a runtime dir no daemon runs, so nothing is stored and no lock is needed
+  if (!persist || !await fs.pathExists(runtimeDir)) return { ...options, ...(await update()).resolved };
+  const { resolved, state, changed } = await new FileLock(nextFiltersLockPath(runtimeDir)).around(update, {
+    timeout: lockTimeout,
+    busy: () => new Error('Another next or menu is still saving its filters; try again')
+  });
+  if (state && changed) await sendControl(runtimeDir, state, { durations: true }, control);
   return { ...options, ...resolved };
 }
 
