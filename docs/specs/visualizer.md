@@ -173,8 +173,10 @@ reload; its last 20 lines of output go to the log, since GLava exits with code 1
 error. A bad visualizer section leaves the visualizer off and the wallpaper running.
 
 `backdrop start/stop --wallpaper/--visualizer` switch either part on a running daemon: the CLI writes
-`control.json` (`{ pid, wallpaper, visualizer }`) and sends SIGUSR1, and waits for `state.json`'s `control`
-counter to move. Turning the wallpaper on restarts every visualizer instance, by the stacking rule above. With
+a request file `control-<id>.json` (`{ pid, wallpaper, visualizer }`, ids sorting by time) and sends SIGUSR1, and
+waits for its id in `state.json`'s `handled` list; the daemon applies every pending request in name order on each
+signal, so requests sent at once are all applied. CLIs and daemons before 2.38.2 use a single `control.json` and
+the `control` counter instead, which both sides still understand. Turning the wallpaper on restarts every visualizer instance, by the stacking rule above. With
 neither part on, the daemon stops. The switches last until the daemon exits.
 
 The daemon watches the config file's directory (editors often save by renaming a new file over the old

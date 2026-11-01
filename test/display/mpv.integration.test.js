@@ -9,7 +9,7 @@ import { MpvClient } from '../../src/display/MpvClient.js';
 import { DisplayControl } from '../../src/display/DisplayControl.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { Daemon, statePath } from '../../src/display/Daemon.js';
-import { loadPlaylist, lastMediaKey, removeFailedEntry, queueRandom, reshuffleOnWrap } from '../../src/display/Playlist.js';
+import { loadPlaylist, syncPlaylist, lastMediaKey, removeFailedEntry, queueMatching, reshuffleOnWrap } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 function hasCommand(name) {
@@ -109,6 +109,31 @@ describe('mpv integration', function () {
     })).to.equal(files[0]);
   });
 
+  it('keeps the playing item through an eligibility change, and moves on when it drops out', async () => {
+    const files = ['a.mp4', 'b.mp4', 'c.mp4'].map(name => path.join(tempDir, name));
+    files.forEach(file => makeVideo(file, '640x360'));
+    const ids = files.map((file, i) => db.addMedia({ kind: 'video', source: 'local', source_id: i, path: file, width: 640, height: 360 }));
+    const monitor = { name: 'TEST-1', width: 640, height: 360, x: 0, y: 0 };
+    const sync = () => syncPlaylist(client, { database: db, config: makeConfig().get(), mode: 'video', monitor });
+    db.updateMedia(ids[2], { width: 320, height: 180 });
+    await loadPlaylist(client, { database: db, config: makeConfig().get(), mode: 'video', monitor, runtimeDir: tempDir, lastMediaId: ids[0] });
+    await waitFor(async () => (await client.getProperty('path')) === files[0]);
+    const playing = await client.getProperty('playlist');
+
+    // c becomes eligible: appended, a keeps playing as the same entry
+    db.updateMedia(ids[2], { width: 640, height: 360 });
+    expect(await sync()).to.deep.equal({ removed: 0, added: 1, count: 3 });
+    const grown = await client.getProperty('playlist');
+    expect(grown.map(entry => entry.filename)).to.deep.equal([files[0], files[1], files[2]]);
+    expect(grown.find(entry => entry.current).id).to.equal(playing.find(entry => entry.current).id);
+
+    // a drops out while it plays: mpv moves on to the entry after it
+    db.updateMedia(ids[0], { width: 320, height: 180 });
+    expect(await sync()).to.deep.equal({ removed: 1, added: 0, count: 2 });
+    expect(await waitFor(async () => (await client.getProperty('path')) === files[1] && files[1])).to.equal(files[1]);
+    expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.deep.equal([files[1], files[2]]);
+  });
+
   it('removes playing and repeated entries, advances, and idles when the playlist is empty', async () => {
     const first = path.join(tempDir, 'a.mp4');
     const second = path.join(tempDir, 'b.mp4');
@@ -178,10 +203,10 @@ describe('mpv integration', function () {
     expect((await client.getProperty('playlist')).find(entry => entry.current).filename).to.equal(files[2]);
     await waitFor(async () => (await client.getProperty('path')) === files[2]);
 
-    // From the last entry the pick moves to the end of the playlist, right after the current one
+    // From the last entry a random pick (none is ahead) moves to the end of the playlist, right after the current one
     await client.command('playlist-next', 'force');
     await waitFor(async () => (await client.getProperty('path')) === files[3]);
-    const picked = await queueRandom(client, () => 0);
+    const picked = await queueMatching(client, new Set(files), { random: true, rng: () => 0 });
     expect(picked.filename).to.equal(files[0]);
     expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.deep.equal([files[2], files[3], files[0]]);
     expect((await control.next('TEST-1')).path).to.equal(files[0]);

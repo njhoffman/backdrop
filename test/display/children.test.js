@@ -66,7 +66,7 @@ describe('child processes', () => {
         // Recorded without /proc: never signalled
         { pid: 14, group: true, command: 'xwinwrap', start: null }
       ]);
-      for (const name of ['state.json', 'DP-1.sock', 'DP-1.m3u', 'control.json', 'next-filters.json', 'keep.txt']) {
+      for (const name of ['state.json', 'DP-1.sock', 'DP-1.m3u', 'control.json', 'control-1-a.json', '.control-2-b.json.tmp', 'next-filters.json', 'keep.txt']) {
         await fs.writeFile(path.join(dir, name), '');
       }
       const starts = { 10: 'a', 11: 'b', 12: 'other', 13: null, 14: 'e' };

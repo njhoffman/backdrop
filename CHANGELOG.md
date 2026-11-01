@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.40.0] - 2026-10-31
+
+### Changed
+- `next`, `skip`, `go-next` and `keep --next` without filters always play the next item of the shuffled playlist,
+  whatever `display.order` or `--random` say. The playlist is already in random order, so this is just as random,
+  never repeats an item within a pass, and the panel menu's preview of the new item is ready when it redraws
+  instead of waiting for ffmpeg. `display.order` and `--random`/`--no-random` now decide only how `next` with
+  filters picks a match.
+
+### Fixed
+- A random `next` with filters no longer picks a matching item already shown in this pass while others are left.
+
+## [2.39.0] - 2026-10-31
+
+### Changed
+- Changing `display.allow_upscale`, `library.min_width` or `library.min_height` in the config file no longer restarts
+  what plays: items no longer eligible leave the playlist, newly eligible ones join it, and the item on screen keeps
+  playing unless it is one that left.
+
+## [2.38.2] - 2026-10-31
+
+### Fixed
+- Two commands that change the running daemon at the same moment (for example `next --video-duration` and
+  `stop --wallpaper` from keybindings, or a keybinding during a visualizer menu change) no longer lose one of the
+  requests while both report success. Each command now waits for its own request. A CLI older than this keeps
+  working with a newer daemon, and the reverse.
+
 ## [2.38.1] - 2026-10-31
 
 ### Fixed

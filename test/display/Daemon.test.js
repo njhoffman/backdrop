@@ -5,7 +5,7 @@ import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { childrenPath } from '../../src/display/children.js';
-import { Daemon, buildCommand, readState, statePath, nextFiltersPath, controlPath, isProcessRunning } from '../../src/display/Daemon.js';
+import { Daemon, buildCommand, readState, statePath, nextFiltersPath, controlPath, controlRequestPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
@@ -858,6 +858,47 @@ describe('Daemon', () => {
       expect(daemon.stopping).to.be.true;
     });
 
+    it('applies every pending request on one signal, oldest first, and lists their ids', async () => {
+      const daemon = makeDaemon({ visualizers, ...exitOnKill });
+      await daemon.start({ visualizer: true });
+      daemon.controls.applyDurations = async () => { throw new Error('durations broke'); };
+      // A temporary file is still being written, and is left for its writer to rename
+      await fs.writeJson(controlRequestPath(tempDir, '2-b'), { pid: process.pid, visualizer: false });
+      await fs.writeJson(controlRequestPath(tempDir, '1-a'), { pid: process.pid, wallpaper: false });
+      await fs.writeJson(controlRequestPath(tempDir, '3-c'), { pid: process.pid, durations: true });
+      await fs.writeJson(controlPath(tempDir), { pid: process.pid, visualizer: true });
+      await fs.writeJson(path.join(tempDir, '.control-4-d.json.tmp'), { pid: process.pid, wallpaper: true });
+      await daemon.applyControl();
+
+      // control.json first, then by name: the visualizer turned on, the wallpaper off, then the visualizer off
+      // would leave nothing, so the stop check waits until all were applied; 3-c failed and is not listed
+      expect(calls.filter(call => Array.isArray(call) && call[0] === 'visualizer')).to.deep.equal([['visualizer', true], ['visualizer', false]]);
+      expect(await readState(tempDir)).to.be.null;
+      expect(daemon.handledRequests).to.deep.equal(['1-a', '2-b']);
+      expect(daemon.controlGeneration).to.equal(3);
+      expect((await fs.readdir(tempDir)).filter(name => name.includes('control'))).to.deep.equal(['.control-4-d.json.tmp']);
+    });
+
+    it('lists handled ids in the state, keeping the latest, and clears old requests on start', async () => {
+      await fs.writeJson(controlRequestPath(tempDir, 'stale'), { pid: process.pid, wallpaper: false });
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start({ visualizer: true });
+      expect(await fs.pathExists(controlRequestPath(tempDir, 'stale'))).to.be.false;
+      expect((await readState(tempDir)).handled).to.deep.equal([]);
+      for (let n = 0; n < 40; n++) {
+        await fs.writeJson(controlRequestPath(tempDir, String(n).padStart(2, '0')), { pid: process.pid });
+      }
+      await daemon.applyControl();
+      const { handled, control } = await readState(tempDir);
+      expect(handled).to.have.length(32);
+      expect([handled[0], handled.at(-1)]).to.deep.equal(['08', '39']);
+      expect(control).to.equal(40);
+      // A signal with no request still moves the counter older CLIs wait on
+      await daemon.applyControl();
+      expect((await readState(tempDir)).control).to.equal(41);
+      await daemon.stop();
+    });
+
 
     it('starts it after the wallpapers and records it, with the daemon version, in the state', async () => {
       const daemon = makeDaemon({ visualizers });
@@ -1080,11 +1121,12 @@ describe('Daemon', () => {
 
     it('applies other settings by their kind: taken in, durations, playlists, monitors and imports', async () => {
       const client = clients[0].client;
-      // A playlist load is a loadlist, or a playlist-clear when nothing is eligible (as in this empty library)
-      const loads = () => client.commands.filter(command => command[0] === 'loadlist' || command[0] === 'playlist-clear').length;
+      // An eligibility change brings the playlist in line (reading it) rather than loading a new one
+      const loads = () => client.commands.filter(command => command[0] === 'loadlist').length;
+      const reads = () => client.commands.filter(command => command[0] === 'get_property' && command[1] === 'playlist').length;
+      const [loadsBefore, readsBefore] = [loads(), reads()];
       const imported = [];
       daemon.importer = { importDirs: async dirs => { imported.push(dirs); return { imported: [] }; } };
-      const before = loads();
       sections.push({ settings: {
         'display.order': 'shuffle', 'library.trash_days': 7, 'display.image_duration': 42,
         'display.allow_upscale': true, 'display.monitors': ['DP-1'], 'library.import_dirs': ['/new']
@@ -1094,7 +1136,8 @@ describe('Daemon', () => {
       expect(settings.display).to.include({ order: 'shuffle', image_duration: 42, allow_upscale: true });
       expect(settings.library).to.include({ trash_days: 7 });
       expect(client.properties['image-display-duration']).to.equal(42);
-      expect(loads()).to.be.above(before);
+      expect(reads()).to.be.above(readsBefore);
+      expect(loads()).to.equal(loadsBefore);
       // The monitor list changed: the layout was read again and HDMI-1 dropped
       expect([...daemon.monitors.keys()]).to.deep.equal(['DP-1']);
       await daemon.importing;

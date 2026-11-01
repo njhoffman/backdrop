@@ -6,7 +6,7 @@ import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
-  getMode, lastMediaKey, loadPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
+  getMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
   playbackLimits
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
@@ -17,7 +17,7 @@ import { VisualizerManager } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { cpuPercent } from './cpu.js';
-import { statePath, controlPath, nextFiltersPath } from './runtimeFiles.js';
+import { statePath, nextFiltersPath } from './runtimeFiles.js';
 import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
@@ -48,7 +48,7 @@ const CONFIG_SETTLE_MS = 300;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 
-export { statePath, controlPath, nextFiltersPath } from './runtimeFiles.js';
+export { statePath, controlPath, controlRequestPath, nextFiltersPath } from './runtimeFiles.js';
 
 export function isProcessRunning(pid) {
   try {
@@ -153,8 +153,10 @@ export class Daemon {
     this.monitors = new Map();
     this.screens = new Map();
     this.wallpaper = true;
-    // Counts control requests applied, so the CLI can tell when its request has been
+    // Counts control requests applied, which CLIs before 2.38.2 wait on; handledRequests holds the ids of
+    // the latest ones, so a CLI waits for its own request rather than for any
     this.controlGeneration = 0;
+    this.handledRequests = [];
     // --image-duration/--video-duration from next or menu (next-filters.json), over display.* until cleared
     this.durations = {};
     // Concerns kept in their own modules (src/display/daemon/), each given this daemon
@@ -209,7 +211,7 @@ export class Daemon {
 
     await fs.ensureDir(this.runtimeDir, 0o700);
     await fs.remove(nextFiltersPath(this.runtimeDir));
-    await fs.remove(controlPath(this.runtimeDir));
+    await this.controls.clear();
     this.stopped = new Promise(resolve => { this.resolveStopped = resolve; });
     this.wallpaper = wallpaper;
     this.visualizers.override = visualizer;
@@ -330,8 +332,8 @@ export class Daemon {
     return this.controls.setWallpaper(on);
   }
 
-  // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer, durations, preset }, each optional), written by
-  // the CLI for this daemon's pid. With neither part left on, the daemon stops.
+  // SIGUSR1: applies the pending control requests (see ControlRequests.apply). With neither part left on,
+  // the daemon stops.
   applyControl() {
     return this.controls.apply();
   }
@@ -490,6 +492,17 @@ export class Daemon {
     if (!count) {
       this.logger.warn('No media to show', { monitor: screen.monitor.name, mode: getMode(this.database) });
     }
+  }
+
+  // After an eligibility change: the playlist follows what is eligible now, keeping the item on screen
+  // playing when it still is (syncPlaylist)
+  async syncScreenPlaylist(screen) {
+    const mode = getMode(this.database);
+    const { removed, added, count } = await syncPlaylist(screen.client, {
+      database: this.database, config: this.config.get(), mode, monitor: screen.monitor
+    });
+    this.logger.info('Playlist updated', { monitor: screen.monitor.name, removed, added });
+    if (!count) this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
   }
 
   // The dim an item shows with: its own, or visualizer.wallpaper_dim while music plays if that is more
@@ -695,9 +708,9 @@ export class Daemon {
     const file = statePath(this.runtimeDir);
     const temporary = `${file}.${process.pid}.tmp`;
     // version tells the CLI this daemon reloads the visualizer on SIGHUP, and control that it applies
-    // control.json on SIGUSR1, rather than dying from either signal
+    // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
-      pid: process.pid, version, wallpaper: this.wallpaper, control: this.controlGeneration, monitors,
+      pid: process.pid, version, wallpaper: this.wallpaper, control: this.controlGeneration, handled: this.handledRequests, monitors,
       visualizer: this.visualizers.summary()
     });
     await fs.rename(temporary, file);
@@ -722,7 +735,7 @@ export class Daemon {
     await this.importing;
     await fs.remove(statePath(this.runtimeDir));
     await fs.remove(nextFiltersPath(this.runtimeDir));
-    await fs.remove(controlPath(this.runtimeDir));
+    await this.controls.clear();
     this.children.remove();
 
     this.logger.info('Daemon stopped');

@@ -182,11 +182,9 @@ describe('RatingCommand', () => {
     expect(notifications.at(-1).at(-2)).to.equal(`#${next}  video  4000x4000`);
   });
 
-  it('skip --random moves a random entry up before the removal advances mpv', async () => {
+  it('skip --random lets the removal advance to the next shuffled entry without moving one up', async () => {
     await command.skip({ random: true });
-    const moves = client.commands.filter(cmd => cmd[0] === 'playlist-move');
-    expect(moves).to.have.length(1);
-    expect(moves[0][2]).to.equal(1);
+    expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
     expect(control.removeMedia.calledOnce).to.be.true;
   });
 

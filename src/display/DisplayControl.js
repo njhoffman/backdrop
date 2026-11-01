@@ -3,7 +3,7 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueRandom, queueMatching
+  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueMatching
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -129,15 +129,16 @@ export class DisplayControl {
     return playing;
   }
 
-  // random first moves a random entry up to play next, so prev still returns to the item before it.
-  // matches (media rows from --query/--tag/--keywords) limits that to their entries, in playlist order
-  // unless random; with no other matching entry the playlist is left alone and the error says why,
-  // or with fallback (the advance after a rating) it advances as without matches.
+  // Advances to the next entry of the shuffled playlist, which is already random, so the daemon's preview of
+  // that entry is ready and no item repeats within a pass. matches (media rows from --query/--tag/--keywords)
+  // first moves one of their entries up to play next, so prev still returns to the item before it: the next
+  // in playlist order, or with random any matching one still ahead. With no other matching entry the
+  // playlist is left alone and the error says why, or with fallback (the advance after a rating) it
+  // advances as without matches.
   async next(monitorName, { random = false, matches, fallback = false } = {}) {
     return this.switchTo(monitorName, async (client, monitor) => {
-      if (!matches || !await queueMatching(client, new Set(matches.map(media => media.path)), { random })) {
-        if (matches && !fallback) throw new Error(await this.noMatch(client, monitor, matches));
-        if (random) await queueRandom(client);
+      if (matches && !await queueMatching(client, new Set(matches.map(media => media.path)), { random }) && !fallback) {
+        throw new Error(await this.noMatch(client, monitor, matches));
       }
       await client.command('playlist-next', 'force');
     });

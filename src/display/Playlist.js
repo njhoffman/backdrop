@@ -91,16 +91,16 @@ async function queueEntry(client, pick) {
   return playlist[index];
 }
 
-export async function queueRandom(client, random = Math.random) {
-  return queueEntry(client, candidates => candidates[Math.floor(random() * candidates.length)]);
-}
-
 // Queues an entry whose file is in paths: the first after the current one in playlist order, wrapping,
-// or with random any of them
+// or with random any of those after it (earlier ones already played this pass), or any when none is left
 export async function queueMatching(client, paths, { random = false, rng = Math.random } = {}) {
   return queueEntry(client, (candidates, current, playlist) => {
     const matching = candidates.filter(index => paths.has(playlist[index].filename));
-    if (random) return matching[Math.floor(rng() * matching.length)];
+    if (random) {
+      const ahead = matching.filter(index => index > current);
+      const pool = ahead.length ? ahead : matching;
+      return pool[Math.floor(rng() * pool.length)];
+    }
     return matching.find(index => index > current) ?? matching[0];
   });
 }
@@ -204,4 +204,38 @@ export async function appendToPlaylist(client, { database, config, mode, monitor
     await client.command('loadfile', item.path, 'append-play');
   }
   return media.length;
+}
+
+// Brings a running playlist in line with what is eligible now (after display.allow_upscale or library.min_*
+// change) without restarting what plays: entries no longer eligible are removed, newly eligible ones are
+// appended in shuffled order (the next wrap reshuffles them in). The playing entry stays when still eligible;
+// otherwise it is removed last, once the appends are in, and mpv moves on to the entry after it.
+// Returns { removed, added, count }, count being the eligible items now in the playlist.
+export async function syncPlaylist(client, { database, config, mode, monitor }) {
+  const eligible = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale });
+  const playlist = await client.getProperty('playlist');
+  if (!eligible.length) {
+    if (playlist.length) {
+      await client.command('playlist-clear');
+      await client.command('stop');
+    }
+    return { removed: playlist.length, added: 0, count: 0 };
+  }
+
+  const wanted = new Set(eligible.map(item => item.path));
+  const current = playlist.findIndex(entry => entry.current);
+  const stale = playlist.flatMap((entry, index) => (wanted.has(entry.filename) || index === current ? [] : [index]));
+  // Highest first, so the indexes still to remove do not shift
+  for (const index of [...stale].reverse()) await client.command('playlist-remove', index);
+
+  const present = new Set(playlist.map(entry => entry.filename));
+  const added = shuffle(eligible.filter(item => !present.has(item.path)));
+  for (const item of added) await client.command('loadfile', item.path, 'append-play');
+
+  let removed = stale.length;
+  if (current !== -1 && !wanted.has(playlist[current].filename)) {
+    await client.command('playlist-remove', current - stale.filter(index => index < current).length);
+    removed++;
+  }
+  return { removed, added: added.length, count: eligible.length };
 }

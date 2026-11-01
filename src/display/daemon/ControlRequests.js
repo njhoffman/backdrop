@@ -1,26 +1,69 @@
 import fs from 'fs-extra';
 import { validVideoDuration } from '../Playlist.js';
-import { controlPath, nextFiltersPath } from '../runtimeFiles.js';
+import { controlPath, controlRequestPath, CONTROL_REQUEST, nextFiltersPath } from '../runtimeFiles.js';
 
-// Control requests from the CLI (control.json and SIGUSR1: parts on and off, a visualizer preset or menu change,
+// How many handled request ids state.json lists: more than can be waiting at once
+const HANDLED_KEPT = 32;
+
+// Control requests from the CLI (request files and SIGUSR1: parts on and off, a visualizer preset or menu change,
 // durations) and the durations they set, for a Daemon (passed in), whose state they read and change.
 export class ControlRequests {
   constructor(daemon) {
     this.daemon = daemon;
   }
 
-  // SIGUSR1: applies control.json ({ pid, wallpaper, visualizer, durations, preset }, each optional), written by
-  // the CLI for this daemon's pid. With neither part left on, the daemon stops.
+  // SIGUSR1: applies every pending request, oldest first: one file per request (control-<id>.json, written by
+  // sendControl) and the single control.json of CLIs before 2.38.2. Each is { pid, wallpaper, visualizer,
+  // durations, preset, ... }, each part optional, and is applied only when pid is this daemon's. The ids of
+  // handled requests go into state.json for the CLIs waiting on them; a request that fails is left out, so its
+  // CLI reports that the daemon did not answer. With neither part left on, the daemon stops.
   async apply() {
     if (this.daemon.stopping) return;
-    let request = {};
-    try {
-      const { pid, ...rest } = await fs.readJson(controlPath(this.daemon.runtimeDir));
-      if (pid === process.pid) request = rest;
-      await fs.remove(controlPath(this.daemon.runtimeDir));
-    } catch {
-      // No request: the generation still moves so the CLI does not wait for nothing
+    const pending = await this.pending();
+    for (const { id, file } of pending) {
+      let request = {};
+      try {
+        const { pid, ...rest } = await fs.readJson(file);
+        if (pid === process.pid) request = rest;
+      } catch {
+        // Unreadable: handled as empty, so its CLI does not wait for nothing
+      }
+      await fs.remove(file);
+      try {
+        await this.applyRequest(request);
+      } catch (error) {
+        this.daemon.logger.error('Control request failed', { error: error.message });
+        continue;
+      }
+      this.daemon.controlGeneration++;
+      if (id) this.daemon.handledRequests = [...this.daemon.handledRequests, id].slice(-HANDLED_KEPT);
+      if (this.daemon.stopping) return;
     }
+    // A signal without a request still moves the generation, which CLIs before 2.38.2 wait on
+    if (!pending.length) this.daemon.controlGeneration++;
+    if (!this.daemon.wallpaper && !this.daemon.visualizers.active) {
+      this.daemon.logger.info('Wallpaper and visualizer are off, stopping');
+      await this.daemon.stop();
+      return;
+    }
+    await this.daemon.writeState();
+  }
+
+  // The request files waiting, oldest first: control.json, then control-<id>.json in name order
+  async pending() {
+    const names = await fs.readdir(this.daemon.runtimeDir).catch(() => []);
+    const requests = names.map(name => CONTROL_REQUEST.exec(name)?.[1]).filter(Boolean).sort()
+      .map(id => ({ id, file: controlRequestPath(this.daemon.runtimeDir, id) }));
+    const legacy = controlPath(this.daemon.runtimeDir);
+    return names.includes('control.json') ? [{ id: null, file: legacy }, ...requests] : requests;
+  }
+
+  // Requests left by an earlier daemon, removed on start and stop
+  async clear() {
+    for (const { file } of await this.pending()) await fs.remove(file);
+  }
+
+  async applyRequest(request) {
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
     if (request.durations) await this.applyDurations();
     // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
@@ -45,13 +88,6 @@ export class ControlRequests {
       await this.daemon.visualizers.setEnabled(request.visualizer);
       this.daemon.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.daemon.visualizers.summary());
     }
-    this.daemon.controlGeneration++;
-    if (!this.daemon.wallpaper && !this.daemon.visualizers.active) {
-      this.daemon.logger.info('Wallpaper and visualizer are off, stopping');
-      await this.daemon.stop();
-      return;
-    }
-    await this.daemon.writeState();
   }
 
   // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. Running visualizers are

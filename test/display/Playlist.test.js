@@ -5,7 +5,7 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
-  modeProperties, loadPlaylist, appendToPlaylist, queueRandom, queueMatching, reshuffleOnWrap, randomOrder,
+  modeProperties, loadPlaylist, syncPlaylist, appendToPlaylist, queueMatching, reshuffleOnWrap, randomOrder,
   playbackLimits, validVideoDuration
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -196,6 +196,64 @@ describe('Playlist', () => {
     });
   });
 
+  describe('syncPlaylist', () => {
+    const config = makeConfig().get();
+    const sync = client => syncPlaylist(client, { database: db, config, mode: 'video', monitor: MONITOR });
+    const edits = client => client.commands.filter(command => command[0] !== 'get_property');
+
+    it('keeps the playing entry, removes ineligible ones from the end first and appends new ones', async () => {
+      add('video', 1);
+      add('video', 2);
+      add('video', 4);
+      add('video', 5);
+      // 3 and 6 became too small; 4 and 5 newly eligible
+      add('video', 3, { width: 640, height: 480 });
+      add('video', 6, { width: 640, height: 480 });
+      const client = new FakeMpvClient({ playlist: [
+        { filename: '/m/3' }, { filename: '/m/1', current: true }, { filename: '/m/6' }, { filename: '/m/2' }
+      ] });
+      expect(await sync(client)).to.deep.equal({ removed: 2, added: 2, count: 4 });
+      const commands = edits(client);
+      expect(commands.slice(0, 2)).to.deep.equal([['playlist-remove', 2], ['playlist-remove', 0]]);
+      expect(commands.slice(2).map(([name, , flag]) => [name, flag])).to.deep.equal([['loadfile', 'append-play'], ['loadfile', 'append-play']]);
+      expect(commands.slice(2).map(command => command[1])).to.have.members(['/m/4', '/m/5']);
+    });
+
+    it('removes the playing entry last, after the appends, when it is no longer eligible', async () => {
+      add('video', 1);
+      add('video', 2);
+      add('video', 3, { width: 640, height: 480 });
+      add('video', 4, { width: 640, height: 480 });
+      const client = new FakeMpvClient({ playlist: [
+        { filename: '/m/4' }, { filename: '/m/1' }, { filename: '/m/3', current: true }
+      ] });
+      expect(await sync(client)).to.deep.equal({ removed: 2, added: 1, count: 2 });
+      // 4 went first, shifting the playing entry from 2 to 1
+      expect(edits(client)).to.deep.equal([['playlist-remove', 0], ['loadfile', '/m/2', 'append-play'], ['playlist-remove', 1]]);
+    });
+
+    it('changes nothing when the playlist already matches, and fills an idle one', async () => {
+      add('video', 1);
+      const client = new FakeMpvClient({ playlist: [{ filename: '/m/1', current: true }] });
+      expect(await sync(client)).to.deep.equal({ removed: 0, added: 0, count: 1 });
+      expect(edits(client)).to.deep.equal([]);
+
+      const idle = new FakeMpvClient();
+      expect(await sync(idle)).to.deep.equal({ removed: 0, added: 1, count: 1 });
+      expect(edits(idle)).to.deep.equal([['loadfile', '/m/1', 'append-play']]);
+    });
+
+    it('clears and stops mpv when nothing is eligible any more', async () => {
+      add('video', 1, { width: 640, height: 480 });
+      const client = new FakeMpvClient({ playlist: [{ filename: '/m/1', current: true }] });
+      expect(await sync(client)).to.deep.equal({ removed: 1, added: 0, count: 0 });
+      expect(edits(client)).to.deep.equal([['playlist-clear'], ['stop']]);
+      const empty = new FakeMpvClient();
+      await sync(empty);
+      expect(edits(empty)).to.deep.equal([]);
+    });
+  });
+
   describe('loadPlaylist', () => {
     let tempDir;
     let client;
@@ -256,24 +314,6 @@ describe('Playlist', () => {
       expect(randomOrder({ order: 'random' }, false)).to.be.false;
       expect(() => randomOrder({ order: 'sorted' })).to.throw('display.order must be shuffle or random, not "sorted"');
     });
-
-    it('moves a picked entry right after the current one, skipping copies of the current file', async () => {
-      const client = new FakeMpvClient({ playlist: [
-        { filename: '/m/a' }, { filename: '/m/b', current: true }, { filename: '/m/b' }, { filename: '/m/c' }
-      ] });
-
-      expect(await queueRandom(client, () => 0)).to.deep.equal({ filename: '/m/a' });
-      expect(await queueRandom(client, () => 0.99)).to.deep.equal({ filename: '/m/c' });
-      expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([
-        ['playlist-move', 0, 2], ['playlist-move', 3, 2]
-      ]);
-    });
-
-    it('does nothing when every entry is the current file', async () => {
-      const client = new FakeMpvClient({ playlist: [{ filename: '/m/a', current: true }, { filename: '/m/a' }] });
-      expect(await queueRandom(client)).to.be.null;
-      expect(client.commands.some(cmd => cmd[0] === 'playlist-move')).to.be.false;
-    });
   });
 
   describe('queueMatching', () => {
@@ -290,11 +330,23 @@ describe('Playlist', () => {
       ]);
     });
 
-    it('picks any matching entry with random', async () => {
+    it('picks with random among matching entries still ahead, so played ones do not repeat', async () => {
       const client = new FakeMpvClient({ playlist: playlist() });
-      const paths = new Set(['/m/a', '/m/d']);
-      expect(await queueMatching(client, paths, { random: true, rng: () => 0 })).to.deep.equal({ filename: '/m/a' });
-      expect(await queueMatching(client, paths, { random: true, rng: () => 0.99 })).to.deep.equal({ filename: '/m/d' });
+      const paths = new Set(['/m/a', '/m/d', '/m/e']);
+      expect(await queueMatching(client, paths, { random: true, rng: () => 0 })).to.deep.equal({ filename: '/m/d' });
+      expect(await queueMatching(client, paths, { random: true, rng: () => 0.99 })).to.deep.equal({ filename: '/m/e' });
+      expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([
+        ['playlist-move', 3, 3], ['playlist-move', 4, 3]
+      ]);
+    });
+
+    it('picks with random among earlier ones when none is ahead, skipping copies of the playing file', async () => {
+      const client = new FakeMpvClient({ playlist: [
+        { filename: '/m/a' }, { filename: '/m/b' }, { filename: '/m/c', current: true }, { filename: '/m/c' }
+      ] });
+      const paths = new Set(['/m/a', '/m/b', '/m/c']);
+      expect(await queueMatching(client, paths, { random: true, rng: () => 0.99 })).to.deep.equal({ filename: '/m/b' });
+      expect(client.commands.filter(cmd => cmd[0] === 'playlist-move')).to.deep.equal([['playlist-move', 1, 3]]);
     });
 
     it('does nothing when only the playing file or no entry matches', async () => {

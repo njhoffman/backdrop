@@ -135,7 +135,8 @@ export async function reapOrphans(runtimeDir, {
   }
 
   for (const name of fs.readdirSync(runtimeDir)) {
-    if (/\.(sock|m3u)$/.test(name) || ['state.json', 'children.json', 'control.json', 'next-filters.json'].includes(name)) {
+    if (/\.(sock|m3u)$/.test(name) || /^\.?control-.+\.json(\.tmp)?$/.test(name)
+      || ['state.json', 'children.json', 'control.json', 'next-filters.json'].includes(name)) {
       fs.rmSync(path.join(runtimeDir, name), { force: true });
     }
   }

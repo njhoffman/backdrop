@@ -100,8 +100,8 @@ class BackdropApp {
     const doctor = new DoctorCommand(this.config, this.database, this.logger, { version });
     const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
-    const randomOption = ['-r, --random', 'Pick a random item instead of the next in the shuffled order (default: display.order)'];
-    const noRandomOption = ['--no-random', 'Play the next item in the shuffled order'];
+    const randomOption = ['-r, --random', 'With filters, pick any matching item still ahead instead of the next one (default: display.order)'];
+    const noRandomOption = ['--no-random', 'With filters, play the next matching item in the shuffled order'];
     const lineOption = ['-l, --line', 'Print the item as one aligned line (tab-separated when piped, for fzf)'];
     const headerOption = ['--header', 'Print column names above --line output (implies --line; fzf --header-lines=1)'];
     const jsonOption = ['--json', 'Print JSON on stdout (docs/specs/json.md); other messages go to stderr'];

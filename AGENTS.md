@@ -82,7 +82,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `loop-file`/`end`, records frame rates from mpv, samples mpv CPU and decoder on each health check (`src/display/cpu.js`,
   `playback_stats`), writes `state.json` atomically and, with `display.notify: all`, notifies on every load; `DisplayControl` is the CLI side, connecting to the mpv socket of the monitor under the pointer, and `switchTo` reports the entry a change made current;
   The daemon keeps active monitors (`monitors`) apart from their wallpaper processes (`screens`), so the wallpaper
-  can be off (`start/stop --wallpaper`) while the visualizer runs; the CLI writes `control.json` and sends SIGUSR1,
+  can be off (`start/stop --wallpaper`) while the visualizer runs; the CLI writes one `control-<id>.json` per request (`src/display/control.js`) and sends SIGUSR1, waiting for its id in `state.json` `handled`,
   and `state.json` monitors have a null `socket` while the wallpaper is off.
   `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
   the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's

@@ -51,9 +51,11 @@ IPC socket) would break a wallpaper.
   as `<output>.m3u` and loaded with `loadlist`. The item last shown in the mode on that monitor goes first, so
   startup and toggling back resume it. mpv loops the playlist, and the daemon reshuffles it each time playback
   wraps from the last entry to the first (keeping the playing entry first), so no two passes repeat an order.
-- **Order:** `display.order` is `shuffle` (default; play the shuffled playlist in order) or `random` (`next`,
-  `skip`, `go-next` and `keep --next` pick a random entry). `--random` picks randomly for one command. A random
-  pick is moved to just after the playing entry before advancing, so `prev` still returns to it.
+- **Order:** `next`, `skip`, `go-next` and `keep --next` advance through the shuffled playlist, which is
+  already random, so the daemon's preview of the next entry is ready and nothing repeats within a pass.
+  `display.order` (`random`, the default, or `shuffle`) and `--random`/`--no-random` decide only how a
+  filtered `next` picks among matching entries: any of those still ahead in this pass, or the next one in
+  playlist order. The pick is moved to just after the playing entry before advancing, so `prev` returns to it.
 - **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown, sets mpv's
   `brightness` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
   `speed` to the stored value.

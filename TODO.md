@@ -204,11 +204,14 @@ Reviewed: 2026-10-31
       recorded process groups of a dead daemon when their `/proc` start times still match, and an uncaught error
       in the daemon runs `stop()` before exiting. Checked under Xvfb with kill -9: `start` and `stop` both end the
       old xwinwrap+mpv group, waiting on the whole group since mpv outlives xwinwrap.
-- [ ] **An eligibility change restarts the item on screen.** (p3) [feature] Since 2.31.0 a saved change to
+- [x] **An eligibility change restarts the item on screen.** (p3) [feature] Since 2.31.0 a saved change to
       `display.allow_upscale` or `library.min_width/min_height` reloads each monitor's playlist, which restarts what plays.
       Keep the current item playing when it is still eligible: rebuild the rest of the playlist around it (as
       `queueRandom` already moves entries) instead of `loadlist ... replace`.
-- [ ] **Control requests can be lost when two run at once.** (p3) [bug] `control.json` is a single slot: two commands
+      Done in 2.39.0: `syncPlaylist` (`src/display/Playlist.js`) removes entries no longer eligible, appends newly
+      eligible ones shuffled (the next wrap reshuffles them in), and removes the playing entry last when it dropped out,
+      so mpv moves on to the one after it; checked against a real mpv in `mpv.integration.test.js`.
+- [x] **Control requests can be lost when two run at once.** (p3) [bug] `control.json` is a single slot: two commands
       at the same moment (e.g. `next --video-duration` and `stop --wallpaper` from keybindings) overwrite each other's
       request, and both see the daemon's `control` counter move and report success. Write one file per request
       (`control-<pid>-<n>.json`) that the daemon handles in name order, or take an exclusive lock (`open` with `wx`)
@@ -216,6 +219,17 @@ Reviewed: 2026-10-31
       the menu alone is safe), and a keybinding firing during a menu change would lose one of them.
       A control socket in the runtime dir (one connection per request, answered when applied) would fix this and
       replace the signal-per-action scheme as requests grow (the menu's wallpaper button in 2.36.0, and dim changes).
+      A second race: the daemon read `control.json` and then removed it, so a request written in between was deleted unread.
+      Done in 2.38.2: `sendControl` writes `control-<id>.json` (renamed into place, ids sort by time), the daemon applies
+      every pending file in name order on each SIGUSR1 and lists the latest 32 ids in `state.json` `handled`, and the CLI
+      waits for its own id, withdrawing the file on timeout. Older CLIs and daemons fall back to `control.json` and the
+      counter. A control socket is still the way to go once requests need answers with data.
+- [ ] **Concurrent `next` calls can drop a stored duration or filter.** (p3) [bug] `resolveNextFilters`
+      (`src/display/nextFilters.js`) reads `next-filters.json`, merges and writes it back, so `next --video-duration 3m`
+      and `next --image-duration 90` fired at once can each write over the other's key (the request files of 2.38.2
+      make sure both durations requests arrive, but the daemon then reads whichever file won). Take a short lock around
+      read-merge-write (`open` with `wx`, as `importLock.js` does), or send the given values in the control request and
+      let the daemon own the file.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -291,6 +305,15 @@ Reviewed: 2026-10-31
       and `Importer` (a small worker pool), or lower `-probesize`/`-analyzeduration` if the fields stay correct.
       Done (v2.33.1): most of the time is ffprobe starting up (about 0.15s of 0.19s on 2026-10-31), and lower probe sizes saved
       about 5%, so `rescan` and imports now hash and probe four files at once (two in the daemon) and still add them in path order.
+- [ ] **Pre-calculate average brightness.** (p3) [feature] Measure each item's average brightness once and store it, so later
+      features can react to how light the wallpaper is: automatic dim/opacity defaults for bright items, and terminal
+      (Alacritty) opacity that follows the wallpaper. Measure at import/download and in `backdrop rescan` (a schema v10
+      `media.brightness` column, 0-1 luma): images from one downscaled decode, videos averaged over a few frames (ffmpeg
+      `signalstats` YAVG, or the `sampleMedia` decode in `src/visualizer/palette.js` at several timestamps), since one frame
+      misrepresents videos that change a lot. Open questions: whole-frame average vs the region under a window (palette's
+      `stripPixels` already does regions); and how to drive the terminal: rewriting `picom.conf` opacity rules means a
+      picom reload per change, while `alacritty msg config window.opacity=N` or setting `_NET_WM_WINDOW_OPACITY` (which picom
+      honors) changes it live without touching the file.
 
 ## 6. Resolution-aware quality filter
 
@@ -359,10 +382,14 @@ Reviewed: 2026-10-31
 - [x] **No `--json` output.** (p3) [feature] Scripts parse `--line` today. `current`, `status` and the lists could print JSON
       (the media row, rating, tags, playback cost, monitor) for status bars and custom menus; split from the rofi menu item.
       Done: `--json` on `status`, `current`, the lists and the navigation commands; curated item format in `docs/specs/json.md`; other output moves to stderr.
-- [ ] **Menu previews miss after a random next.** (p3) [perf] The daemon makes the preview of each item as it loads and of
+- [x] **Menu previews miss after a random next.** (p3) [perf] The daemon makes the preview of each item as it loads and of
       the next playlist entry (`prefetchThumbnails` in `src/display/Daemon.js`), but next is random by default and picks an
       arbitrary entry, so the redrawn menu still waits about 0.4s for ffmpeg. Fix: backfill thumbnails for every eligible
       item in the background (nice'd, a few per minute), or queue the random pick first and make its thumbnail before advancing.
+      The random pick was also redundant (the playlist is already shuffled) and could replay an item shown earlier in the pass.
+      Done in 2.40.0: `next`, `skip` and the advance after a rating without filters just advance through the shuffled
+      playlist, so the prefetched next-entry preview hits; `queueRandom` is gone, and a random filtered pick takes only
+      matches still ahead. Previews for filtered picks and `prev` can still miss; background backfill would cover them.
 - [ ] **Menu workspace stays on the first monitor after Tab.** (p3) [feature] `menu.workspace` empties the monitor the menu
       opened on; picking another with Tab leaves that one covered. `MenuCommand.open` could leave and re-enter the workspace
       (`src/utils/workspace.js`) on the new output when the target changes.

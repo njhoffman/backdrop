@@ -3,7 +3,7 @@ import { notifyError } from '../../utils/notify.js';
 import { visualizerSettings } from '../../visualizer/settings.js';
 
 // Settings a saved config change applies to the running daemon, by how: taken in (read where used),
-// durations (also changed on what plays now), eligibility (playlists reloaded), monitors (layout
+// durations (also changed on what plays now), eligibility (playlists brought in line, keeping what plays), monitors (layout
 // reconciled) or imports (the folders imported). Any other display, library or paths setting needs a
 // restart: mpv's and xwinwrap's arguments are given when they start.
 const LIVE_SETTINGS = {
@@ -104,9 +104,9 @@ export class ConfigChanges {
     if (kinds.has('eligibility')) {
       for (const screen of [...this.daemon.screens.values()]) {
         try {
-          await this.daemon.loadScreenPlaylist(screen);
+          await this.daemon.syncScreenPlaylist(screen);
         } catch (error) {
-          this.daemon.logger.warn('Failed to reload the playlist', { monitor: screen.monitor.name, error: error.message });
+          this.daemon.logger.warn('Failed to update the playlist', { monitor: screen.monitor.name, error: error.message });
         }
       }
     }

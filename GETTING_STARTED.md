@@ -224,7 +224,7 @@ another name, or to `false` to stay on the current workspace. Picking another mo
 empty workspace on the first one.
 
 The default `panel` style shows a preview banner, the file name, and under it the resolution, duration and
-rating, with the menu's status right-aligned in the same box: whether next picks randomly and any filters. Those
+rating, with the menu's status right-aligned in the same box: whether next picks a match randomly and any filters. Those
 are the ones `next` keeps using: set them with `backdrop next` or when opening the menu, with
 `--random`/`--no-random` (default `display.order`) and `--query`, `--tag` and `--keywords`. They apply to next
 and to the item after keep and skip (when nothing else matches, those advance as usual) until `next --clear`

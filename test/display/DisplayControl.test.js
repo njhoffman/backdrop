@@ -167,19 +167,16 @@ describe('DisplayControl', () => {
       expect(playing).to.include({ path: null, media: null, result: 'HDMI-1' });
     });
 
-    it('moves a random entry for another file next before advancing', async () => {
+    it('advances through the shuffled playlist, random or not, without moving entries', async () => {
       clientFor('DP-1').properties.playlist = [
         { filename: '/m/a.png' }, { filename: '/m/b.png', current: true }, { filename: '/m/c.png' }, { filename: '/m/d.png' }
       ];
 
       await control.next(null, { random: true });
+      await control.next(null, { random: false });
 
       const commands = clientFor('DP-1').commands.filter(cmd => !cmd[0].startsWith('get_'));
-      expect(commands).to.have.length(2);
-      expect(commands[0][0]).to.equal('playlist-move');
-      expect([0, 2, 3]).to.include(commands[0][1]);
-      expect(commands[0][2]).to.equal(2);
-      expect(commands[1]).to.deep.equal(['playlist-next', 'force']);
+      expect(commands).to.deep.equal([['playlist-next', 'force'], ['playlist-next', 'force']]);
     });
 
     describe('next with matches', () => {

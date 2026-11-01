@@ -48,7 +48,6 @@ backdrop status             # mode, what each monitor is playing, and mpv's rece
 backdrop doctor             # checks tools, X, the config, the daemon and the library; names the fix for each problem
 backdrop mode               # toggle between video and image wallpapers
 backdrop next | prev        # on the monitor under the pointer (or --monitor DP-1); shows the new item
-backdrop next --no-random   # next in the shuffled order (random is the default; prev still returns)
 backdrop next --tag ocean   # jump to a matching item; the filter sticks for later nexts (also --query, --keywords)
 backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-duration), until --clear
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
@@ -120,9 +119,8 @@ error suggests `undo --discard`, which drops it from undo history and leaves the
 frame rate, orientation, rating, source, speed/dim and path. On a terminal the columns are styled and aligned;
 piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` (for `fzf --ansi`).
 
-`next`, `skip`, `go-next` and `keep --next` pick a random item by default (`display.order: random`);
-`--no-random`, or `display.order: shuffle`, plays the next item of the shuffled playlist instead. The playlist
-itself is reshuffled on every pass, and automatic advances follow it. Images change every
+`next`, `skip`, `go-next` and `keep --next` play the next item of the shuffled playlist, which is reshuffled on
+every pass, so the order is random without repeats; automatic advances follow it too. Images change every
 `display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
 
@@ -142,7 +140,8 @@ under each item and filter lists with `--tag`; `--keywords` matches them too.
 `next`. `--query` takes one or more saved search queries, each quoted, and matches them exactly apart from
 case; an item any of them found qualifies. `--tag` and `--keywords` require every word. A query no search
 used is an error that names the closest saved queries. `next` with filters moves one matching entry of the
-current playlist up to play next (in playlist order, or any with `--random`) and then plays the playlist as
+current playlist up to play next (any still ahead in this pass by default, or the next in playlist order with
+`--no-random` or `display.order: shuffle`) and then plays the playlist as
 usual; it says so when only the other mode has matches. The filters, and `--random`/`--no-random`, given to
 `next` or `menu` stay in effect for every later `next` and for the advance after `keep --next`, `skip` and
 `go-next`, until `next --clear` or the daemon restarts; new filters replace the old ones as a set.
