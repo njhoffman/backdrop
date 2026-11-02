@@ -19,6 +19,8 @@ them through mpv with one IPC socket per monitor.
 - Planned: a screensaver after a period of inactivity, from rated videos or stream links such as YouTube
 - A music visualizer (GLava) above the wallpaper on each monitor, placed and styled from the config, with
   several at once, presets, and an option to run only while music plays
+- Overlays from other programs (such as sleeve's lyrics) stacked above or below the visualizer, with the
+  wallpaper's colors behind them reported for readable text
 
 ## Requirements
 
@@ -54,6 +56,7 @@ backdrop next --clear       # drop the filters, order and durations earlier next
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
+backdrop restack            # stack marked overlay windows again (overlay programs run this; see docs/specs/visualizer.md)
 backdrop current --line     # one aligned line; tab-separated when piped
 backdrop current --json     # JSON for scripts (also status, the lists and navigation commands)
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)

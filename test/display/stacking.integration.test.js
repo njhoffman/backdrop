@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { Daemon, controlPath } from '../../src/display/Daemon.js';
+import { Daemon, controlPath, readState } from '../../src/display/Daemon.js';
 import { withX11 } from '../../src/display/x11.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
@@ -16,6 +16,7 @@ import { makeConfig, silentLogger } from '../helpers/fakes.js';
 // a start, after mpv dies and is restarted, and after the wallpaper is switched off and on.
 
 const STANDIN = fileURLToPath(new URL('../fixtures/standin-visualizer.mjs', import.meta.url));
+const OVERLAY = fileURLToPath(new URL('../fixtures/standin-overlay.mjs', import.meta.url));
 
 function hasCommand(name) {
   try {
@@ -181,5 +182,51 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
     await lowWindow();
     await control({ wallpaper: true });
     await expectStaysAbove('after start --wallpaper');
+  });
+  it('stacks marked overlays below and above the visualizer on a restack request, and follows a change of mark', async () => {
+    const control = async change => {
+      await fs.writeJson(controlPath(daemon.runtimeDir), { pid: process.pid, ...change });
+      await daemon.applyControl();
+    };
+    const overlay = (title, position) => {
+      const child = spawn(process.execPath, [OVERLAY, title, position, 100, 100, 600, 300], { stdio: ['pipe', 'pipe', 'ignore'] });
+      others.push(child);
+      return child;
+    };
+    const windowId = title => {
+      try {
+        return Number(execFileSync('xdotool', ['search', '--name', `^${title}$`], { encoding: 'utf8' }).trim().split('\n')[0]);
+      } catch {
+        return null;
+      }
+    };
+    // Each id directly above the one before it, from the wallpaper up
+    const inOrder = async titles => {
+      const { children, wallpaper, visualizer } = await layout();
+      const ids = [wallpaper, ...titles.map(title => (title === 'visualizer' ? visualizer : windowId(title)))];
+      if (ids.some(id => !id)) return { ids };
+      const at = ids.map(id => children.indexOf(id));
+      return at.every((index, step) => step === 0 || index === at[step - 1] + 1) ? true : { at };
+    };
+
+    overlay('overlay-low', 'below');
+    const high = overlay('overlay-high', 'above');
+    await waitFor(async () => Boolean(windowId('overlay-low') && windowId('overlay-high')), 5000, 'the overlay windows');
+    await control({ restack: true });
+    await waitFor(() => inOrder(['overlay-low', 'visualizer', 'overlay-high']), 10000, 'overlays below and above the visualizer');
+    await waitFor(async () => {
+      const [monitor] = (await readState(daemon.runtimeDir)).monitors;
+      return monitor.overlays.length === 2 && monitor.overlays.every(item => item.colors?.background) ? true : monitor.overlays;
+    }, 10000, 'the overlays in the state with their colors');
+    const [monitor] = (await readState(daemon.runtimeDir)).monitors;
+    expect(monitor.overlays.map(item => [item.name, item.position, item.geometry])).to.deep.equal([
+      ['overlay-low', 'below', '600x300+100+100'], ['overlay-high', 'above', '600x300+100+100']
+    ]);
+
+    const marked = new Promise(resolve => high.stdout.once('data', resolve));
+    high.stdin.write('below\n');
+    await marked;
+    await control({ restack: true });
+    await waitFor(() => inOrder(['overlay-low', 'overlay-high', 'visualizer']), 10000, 'both overlays below the visualizer');
   });
 });

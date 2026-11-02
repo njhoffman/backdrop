@@ -218,6 +218,24 @@ describe('DisplayCommand', () => {
       expect(lines.at(-1)).to.include('Stopped: the wallpaper and visualizer are both off');
     });
 
+    it('asks the daemon to restack and lists the overlays it found, also as JSON, or says it is not running', async () => {
+      const overlay = { window: 0x5000001, name: 'sleeve', position: 'below', geometry: '1920x1080+0+0', colors: { background: '#102030', main: [] } };
+      await running();
+      answer = () => setTimeout(() => running({ control: 1, monitors: [{ ...monitors[0], overlays: [overlay] }, monitors[1]] }), 10);
+      await command.restack();
+      expect(await fs.readJson(path.join(dir, 'control.json'))).to.deep.equal({ pid: process.pid, restack: true });
+      expect(lines.slice(-2).join('\n')).to.include('Restacked with 1 overlay')
+        .and.include('DP-1: overlay "sleeve" below the visualizer at 1920x1080+0+0, background #102030');
+
+      await running();
+      answer = () => setTimeout(() => running({ control: 1 }), 10);
+      await command.restack({ json: true });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ monitors: [{ name: 'DP-1', overlays: [] }, { name: 'DP-2', overlays: [] }] });
+
+      await fs.remove(statePath(dir));
+      expect(await command.restack().catch(error => error.message)).to.equal('The daemon is not running (backdrop start)');
+    });
+
     it('reports a visualizer that failed to turn on, and refuses daemons without control', async () => {
       await running({ visualizer: { enabled: false, error: null, generation: 1 } });
       answer = () => setTimeout(() => running({ control: 1, visualizer: { enabled: true, error: 'GLava shaders not found', generation: 2 } }), 10);

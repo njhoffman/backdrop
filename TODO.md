@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-10-31
+Reviewed: 2026-11-02
 
 ## 1. Existing bugs and tech debt
 
@@ -594,6 +594,22 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
       disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a
       window maps (watch the root's SubstructureNotify), as GLava might, so those cases need `place()` too.
+- [x] **Stack other programs' overlay windows.** (p2) [feature] sleeve's lyrics overlay needs a place above or
+      below the visualizer, and the wallpaper's colors behind it. Done in 2.41.0: `_BACKDROP_OVERLAY` marks
+      (`below`/`above`), `backdrop restack`, overlays and their colors in `state.json` and `status`.
+- [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
+      of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
+      PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms
+      settle recheck with GLava's own map and restack events, and drop `xdotool search`. It needs reconnecting when
+      X restarts and a filter for the event volume; worth it if more overlay programs appear or the settle
+      recheck proves flaky.
+- [ ] **The rofi panel test is flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` "panel view
+      parses the theme strings and returns a bound key" failed once in a full run on 2026-11-02 with "rofi did not
+      open a window", then passed in a full rerun and 3 of 3 runs alone. Likely a fixed wait for rofi's window;
+      wait on the window with a longer deadline instead.
+- [ ] **Overlay marks inside a window manager's frame are untested.** (p3) [test] `X11.overlays()` also looks at the
+      direct children of top-level windows, for a managed window in a frame; the integration test only covers
+      unmanaged windows. Add a case under a nested window manager, or a unit test with a fake tree.
 - [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
       change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
       `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for

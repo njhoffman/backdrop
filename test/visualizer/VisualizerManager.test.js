@@ -8,6 +8,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('VisualizerManager', () => {
   let config, monitors, screens, spawned, kills, prepared, logs, manager, time, windows, xcalls, above, watchers, compositor;
+  let overlayWindows, connections, overlayChanges;
   const monitor = (name, x = 0) => ({ name, x, y: 0, width: 2560, height: 1440 });
   const entry = (monitorName = 'DP-3', instance = 'main') => manager.entries.get(`${monitorName}\t${instance}`);
 
@@ -33,13 +34,21 @@ describe('VisualizerManager', () => {
         throw new Error('exit 1');
       },
       // xwinwrap's window 0x1200001 holds mpv's 0x3600002
-      x11: async fn => fn({
-        setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
-        topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
-        stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
-        isAbove: async () => above.shift() ?? true,
-        hasCompositor: async () => compositor
-      }),
+      x11: async fn => {
+        connections++;
+        return fn({
+          overlays: async () => {
+            if (overlayWindows instanceof Error) throw overlayWindows;
+            return overlayWindows;
+          },
+          setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
+          topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
+          stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
+          isAbove: async () => above.shift() ?? true,
+          hasCompositor: async () => compositor
+        });
+      },
+      onOverlays: name => overlayChanges.push(name),
       audioWatcher: options => new FakeWatcher(options),
       windowAttempts: 2, windowDelay: 0, settleDelay: 0,
       spawn: (file, args, options) => {
@@ -72,6 +81,7 @@ describe('VisualizerManager', () => {
     xcalls = [];
     above = [];
     compositor = true;
+    overlayWindows = []; connections = 0; overlayChanges = [];
     spawned = []; kills = []; prepared = []; logs = []; watchers = [];
     time = 0;
     manager = makeManager();
@@ -521,5 +531,70 @@ describe('VisualizerManager', () => {
     await manager.restack('DP-3');
     expect(manager.summary().compositor).to.equal(true);
     expect(logs.some(log => log[1] === 'A compositor runs again')).to.equal(true);
+  });
+  describe('overlays', () => {
+    const full = { x: 0, y: 0, width: 2560, height: 1440 };
+    const stacked = () => xcalls.filter(call => call[0] === 'stackAbove').map(call => call.slice(1));
+
+    it('stacks overlays marked below under the instances and those marked above over them, on their own monitor only', async () => {
+      monitors.set('HDMI-1', monitor('HDMI-1', 2560));
+      config.set('visualizer.monitors', ['DP-3']);
+      overlayWindows = [
+        { window: 0x5000001, name: 'lyrics', position: 'above', geometry: full },
+        { window: 0x5000002, name: 'clock', position: 'below', geometry: { x: 100, y: 100, width: 400, height: 200 } },
+        // Its center is on HDMI-1
+        { window: 0x5000003, name: 'other', position: 'above', geometry: { ...full, x: 2560 } }
+      ];
+      await manager.configure();
+      await manager.sync();
+      expect(await entry().placed).to.be.true;
+      expect(stacked()).to.deep.equal([[0x5000002, 0x1200001], [0x3400002, 0x5000002], [0x5000001, 0x3400002]]);
+      expect(manager.overlaysOn('DP-3').map(overlay => overlay.window)).to.deep.equal([0x5000001, 0x5000002]);
+      expect(overlayChanges).to.deep.equal(['DP-3']);
+      expect(manager.wantsWallpaperColors('DP-3')).to.be.true;
+      expect(logs.find(log => log[1] === 'Overlays found')[2].overlays).to.deep.equal([
+        { window: 0x5000001, name: 'lyrics', position: 'above' }, { window: 0x5000002, name: 'clock', position: 'below' }
+      ]);
+
+      // Moved from above to below: the next placement swaps it under the instance
+      overlayWindows = [{ ...overlayWindows[0], position: 'below' }];
+      xcalls = [];
+      expect(await manager.restack('DP-3')).to.be.true;
+      expect(stacked()).to.deep.equal([[0x5000001, 0x1200001], [0x3400002, 0x5000001]]);
+      expect(overlayChanges).to.deep.equal(['DP-3', 'DP-3']);
+    });
+
+    it('without instances, looks for overlays only when asked or when it found some at the last look', async () => {
+      config.set('visualizer.enabled', false);
+      await manager.configure();
+      await manager.sync();
+      overlayWindows = [{ window: 0x5000001, name: 'lyrics', position: 'above', geometry: full }];
+      expect(await manager.restack('DP-3')).to.be.false;
+      await manager.restackAll();
+      expect(connections).to.equal(0);
+
+      await manager.restackAll({ scan: true });
+      expect(connections).to.equal(1);
+      expect(stacked()).to.deep.equal([[0x5000001, 0x1200001]]);
+      expect(manager.wantsWallpaperColors('DP-3')).to.be.true;
+
+      // Known overlays keep the monitor looked at, until a look finds them gone
+      overlayWindows = [];
+      expect(await manager.restack('DP-3')).to.be.false;
+      expect(connections).to.equal(2);
+      expect(logs.some(log => log[1] === 'Overlays gone')).to.be.true;
+      expect(await manager.restack('DP-3')).to.be.false;
+      expect(connections).to.equal(2);
+      expect(manager.wantsWallpaperColors('DP-3')).to.be.false;
+    });
+
+    it('still places the instances when looking for overlays fails', async () => {
+      overlayWindows = new Error('BadWindow');
+      await manager.configure();
+      await manager.sync();
+      expect(await entry().placed).to.be.true;
+      expect(stacked()).to.deep.equal([[0x3400002, 0x1200001]]);
+      expect(logs.find(log => log[1] === 'Failed to look for overlay windows')[2]).to.deep.equal({ monitor: 'DP-3', error: 'BadWindow' });
+    });
   });
 });

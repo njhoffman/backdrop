@@ -147,6 +147,12 @@ class BackdropApp {
       .action(this.action(options => display.status(options)));
 
     program
+      .command('restack')
+      .description('Find overlay windows (marked _BACKDROP_OVERLAY) and stack them and the visualizer above the wallpaper again')
+      .option(...jsonOption)
+      .action(this.action(options => display.restack(options)));
+
+    program
       .command('current')
       .description('Show the item playing on a monitor')
       .option(...monitorOption)

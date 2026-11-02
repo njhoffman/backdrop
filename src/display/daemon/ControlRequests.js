@@ -6,7 +6,7 @@ import { controlPath, controlRequestPath, CONTROL_REQUEST, nextFiltersPath } fro
 const HANDLED_KEPT = 32;
 
 // Control requests from the CLI (request files and SIGUSR1: parts on and off, a visualizer preset or menu change,
-// durations) and the durations they set, for a Daemon (passed in), whose state they read and change.
+// durations, a restack) and the durations they set, for a Daemon (passed in), whose state they read and change.
 export class ControlRequests {
   constructor(daemon) {
     this.daemon = daemon;
@@ -88,6 +88,8 @@ export class ControlRequests {
       await this.daemon.visualizers.setEnabled(request.visualizer);
       this.daemon.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.daemon.visualizers.summary());
     }
+    // `backdrop restack`: look for overlay windows on every monitor and stack everything again
+    if (request.restack) await this.daemon.visualizers.restackAll({ scan: true });
   }
 
   // `backdrop start/stop --wallpaper`: wallpapers on every active monitor, or none. Running visualizers are

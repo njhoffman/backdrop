@@ -13,7 +13,7 @@ import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
-import { VisualizerManager } from '../visualizer/VisualizerManager.js';
+import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { cpuPercent } from './cpu.js';
@@ -170,6 +170,7 @@ export class Daemon {
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
       colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
       onMusicDim: () => this.applyDims(),
+      onOverlays: name => this.onOverlays(name),
       ...(createVisualizer ? { create: createVisualizer } : {})
     });
     this.reloadConfig = reloadConfig;
@@ -538,6 +539,10 @@ export class Daemon {
     Promise.resolve(this.visualizers.recolor?.(screen.monitor.name)).catch(error => {
       this.logger.warn('Visualizer recolor failed', { monitor: screen.monitor.name, error: error.message });
     });
+    // Overlay colors are read from the state, so it is written again with the new background
+    if (this.visualizers.overlaysOn?.(screen.monitor.name).length) {
+      this.writeState().catch(error => this.logger.warn('Failed to write state', { error: error.message }));
+    }
   }
 
   // Applies the stored speed and dim and remembers the item so a restart resumes it.
@@ -707,6 +712,18 @@ export class Daemon {
     return this.wallpaperColors.sampleScreen(name);
   }
 
+  // The overlays on a monitor changed: sample its wallpaper for their colors, and write the state
+  onOverlays(name) {
+    if (this.visualizers.overlaysOn(name).length) this.sampleScreen(name);
+    return this.writeState().catch(error => this.logger.warn('Failed to write state', { error: error.message }));
+  }
+
+  describeOverlays(monitor) {
+    return (this.visualizers.overlaysOn?.(monitor.name) ?? []).map(({ window, name, position, geometry }) => ({
+      window, name, position, geometry: formatGeometry(geometry), colors: this.wallpaperColors.overlayColors(monitor, geometry)
+    }));
+  }
+
   // Written to a temporary file and renamed, so a CLI command never reads a half-written state.
   // cpu is the monitor's recent average (percent of one core), null until two samples were taken.
   async writeState() {
@@ -722,7 +739,9 @@ export class Daemon {
         hwdec,
         // Every instance on the monitor, and the first as visualizer for readers of 2.20.0-2.24.0 state
         visualizers: this.visualizers.describe(monitor.name),
-        visualizer: this.visualizers.describe(monitor.name)[0] ?? null
+        visualizer: this.visualizers.describe(monitor.name)[0] ?? null,
+        // Windows marked _BACKDROP_OVERLAY on the monitor, bottom to top, with what the wallpaper shows behind them
+        overlays: this.describeOverlays(monitor)
       };
     });
     const file = statePath(this.runtimeDir);

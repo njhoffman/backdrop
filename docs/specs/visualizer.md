@@ -64,6 +64,31 @@ xdotool 3.20160805), raising GLava (it would cover every window), python-xlib (a
 Wallpaper changes (next, playlist advances, mode switches, speed and dim) reuse the running mpv, so they never
 touch the visualizer.
 
+### Overlays
+
+Other programs can have backdrop stack their windows too (since 2.41.0); sleeve's lyrics overlay is the first.
+The contract:
+
+- The program marks its window with a `_BACKDROP_OVERLAY` property of type STRING: `below` (directly above the
+  wallpaper, under the visualizer instances) or `above` (over the instances; also any other value). The mark may
+  sit on the top-level window or on its direct child, where a window manager's frame holds it; the top-level is
+  what gets stacked.
+- It runs `backdrop restack` when the window maps, when it changes the mark, and when backdrop's daemon pid
+  (in `state.json`) changes. The request looks at every monitor; a monitor that had overlays at its last look,
+  or that has instances, is looked at again on every later placement too, so a wallpaper restart keeps them
+  in order. A daemon with neither never opens an X connection for them.
+- An overlay belongs to the monitor holding its center. Bottom to top: the wallpaper, `below` overlays, the
+  instances in the section's order, `above` overlays; overlays keep their own order within each group.
+- backdrop sets no opacity on overlays; the program owns its window's look.
+- `state.json` and `status --json` list each monitor's overlays as `{ window, name, position, geometry,
+  colors }`. `colors` is `{ background, main }`: the average the wallpaper shows under the window after the
+  current dim, and the wallpaper's main colors there with their shares, as `#rrggbb`; null until the item is
+  sampled. The state is written again when an item loads, when the brightness changes and when the overlays
+  change, so the program can watch the file and pick readable colors.
+
+Without backdrop running, the program stacks its own window. A plain, focusable window is the window
+manager's and backdrop never touches it.
+
 ## Instances and presets
 
 The section describes a list of instances (`instances`), each a full visualizer (module, placement, opacity,

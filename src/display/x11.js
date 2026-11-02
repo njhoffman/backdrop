@@ -1,14 +1,23 @@
 import x11 from 'x11';
 
 // The few X requests backdrop makes itself, over its own connection to $DISPLAY: finding a window's
-// top-level ancestor, stacking one window directly above another, setting the window opacity that
-// compositors such as picom honor, and telling whether a compositor runs. Other X work goes through xrandr
-// and xdotool.
+// top-level ancestor, stacking one window directly above another, finding windows marked as overlays,
+// setting the window opacity that compositors such as picom honor, and telling whether a compositor runs.
+// Other X work goes through xrandr and xdotool.
 
 const STACK_ABOVE = 0;
 const PROP_MODE_REPLACE = 0;
 const ATOM_CARDINAL = 6;
 const MAX_OPACITY = 0xffffffff;
+const ANY_PROPERTY_TYPE = 0;
+const ATOM_WM_NAME = 39;
+
+export const OVERLAY_PROPERTY = '_BACKDROP_OVERLAY';
+
+// Where an overlay's mark puts it: 'below' the visualizers, else 'above' them
+export function overlayPosition(value) {
+  return String(value).replace(/\0/g, '').trim().toLowerCase() === 'below' ? 'below' : 'above';
+}
 
 function call(client, request, ...args) {
   return new Promise((resolve, reject) => {
@@ -60,6 +69,50 @@ export class X11 {
   async hasCompositor() {
     const atom = await call(this.client, 'InternAtom', false, `_NET_WM_CM_S${this.screen}`);
     return (await call(this.client, 'GetSelectionOwner', atom)) !== 0;
+  }
+
+  // Windows other programs mark as overlays for backdrop to stack (sleeve's lyrics, for one), bottom to top.
+  // The mark is a _BACKDROP_OVERLAY STRING property naming the window's place: 'below' (directly above the
+  // wallpaper, under the visualizers) or 'above' (over the visualizers; also any other value). It is looked
+  // for on each top-level window and on its direct children, where a window manager's frame holds the marked
+  // window; the top-level is what gets stacked. Each is { window, position, name, geometry } with geometry in
+  // root coordinates. None when no program ever created the atom.
+  async overlays() {
+    const atom = await call(this.client, 'InternAtom', true, OVERLAY_PROPERTY);
+    if (!atom) return [];
+    const { children } = await call(this.client, 'QueryTree', this.root);
+    const found = [];
+    for (const top of children) {
+      const marked = await this.overlayMark(top, atom);
+      if (!marked) continue;
+      const geometry = await call(this.client, 'GetGeometry', top).catch(() => null);
+      if (!geometry) continue;
+      found.push({
+        window: top, position: marked.position, name: await this.windowName(marked.window),
+        geometry: { x: geometry.xPos, y: geometry.yPos, width: geometry.width, height: geometry.height }
+      });
+    }
+    return found;
+  }
+
+  // The window under top (top itself or a direct child) that carries the mark, with its position, or null.
+  // Windows that vanish while being looked at are skipped.
+  async overlayMark(top, atom) {
+    const candidates = [top];
+    const tree = await call(this.client, 'QueryTree', top).catch(() => null);
+    if (tree) candidates.push(...tree.children);
+    for (const window of candidates) {
+      const property = await call(this.client, 'GetProperty', 0, window, atom, ANY_PROPERTY_TYPE, 0, 16).catch(() => null);
+      if (!property?.data?.length) continue;
+      return { window, position: overlayPosition(property.data.toString('latin1')) };
+    }
+    return null;
+  }
+
+  // WM_NAME of a window, or null
+  async windowName(id) {
+    const property = await call(this.client, 'GetProperty', 0, id, ATOM_WM_NAME, ANY_PROPERTY_TYPE, 0, 64).catch(() => null);
+    return property?.data?.length ? property.data.toString('utf8') : null;
   }
 
   // _NET_WM_WINDOW_OPACITY, 0 to 1

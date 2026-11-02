@@ -753,7 +753,7 @@ describe('Daemon', () => {
         on: false,
         get active() { return this.override ?? this.on; },
         setEnabled: async on => { calls.push(['visualizer', on]); visualizers.override = on; },
-        restackAll: async () => { calls.push('restackAll'); },
+        restackAll: async options => { calls.push(options?.scan ? 'restackAll scan' : 'restackAll'); },
         setPreset: async name => { calls.push(['preset', name]); },
         setLive: async (change, options) => {
           if (change?.changes?.opacity === 9) throw new Error('visualizer.opacity must be a number from 0 to 1, not 9');
@@ -778,6 +778,15 @@ describe('Daemon', () => {
       await fs.writeJson(controlPath(tempDir), { pid: process.pid, ...request });
       await daemon.applyControl();
     };
+
+    it('restacks every monitor, looking for overlays, on a restack request', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start({ visualizer: true });
+      calls.length = 0;
+      await control(daemon, { restack: true });
+      expect(calls).to.deep.equal(['restackAll scan']);
+      await daemon.stop();
+    });
 
     it('applies the visualizer menu\'s requests: a change, a refused one, and a saved preset with the changes dropped', async () => {
       const errors = [];
@@ -1350,7 +1359,7 @@ describe('Daemon', () => {
   });
 
   describe('visualizer colors from the wallpaper', () => {
-    let daemon, sampled, recolored, wants, release;
+    let daemon, sampled, recolored, wants, release, overlays;
     const instance = { name: 'main', pipe: { fg: '#000000ff' }, palette: { source: 'wallpaper', pick: 'vivid', minContrast: 1 } };
     // A sample whose top half is green and bottom half red
     const sample = () => {
@@ -1364,11 +1373,12 @@ describe('Daemon', () => {
     };
 
     beforeEach(async () => {
-      sampled = []; recolored = []; wants = true; release = null;
+      sampled = []; recolored = []; wants = true; release = null; overlays = [];
       const visualizers = {
         override: null, active: true, error: null,
         configure: async () => {}, sync: async () => {}, stop: async () => {}, restack: () => {}, reload: async () => {},
         describe: () => [], summary: () => ({ enabled: true }),
+        overlaysOn: name => (name === 'DP-1' ? overlays : []),
         wantsWallpaperColors: () => wants,
         recolor: async name => { recolored.push(name); }
       };
@@ -1439,6 +1449,30 @@ describe('Daemon', () => {
       expect(daemon.screens.get('DP-1').brightness).to.equal(-60);
       // Dimmed by 60 the wallpaper is dark enough for the plain green
       expect(daemon.colorsFor(monitor, strict, monitor)).to.deep.equal({ fg: '#00c800ff' });
+    });
+
+    it('writes the overlays to the state with what the wallpaper shows behind them, again when the dim changes', async () => {
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      const monitor = daemon.monitors.get('DP-1');
+      const bottom = { x: monitor.x, y: monitor.y + monitor.height / 2, width: monitor.width, height: monitor.height / 2 };
+      overlays = [{ window: 0x5000001, name: 'sleeve', position: 'below', geometry: bottom }];
+      const geometry = `${bottom.width}x${bottom.height}+${bottom.x}+${bottom.y}`;
+      // Not sampled yet: no colors, and asking starts the sampling
+      await daemon.writeState();
+      expect((await readState(tempDir)).monitors[0].overlays).to.deep.equal([{ window: 0x5000001, name: 'sleeve', position: 'below', geometry, colors: null }]);
+
+      await load('/m/a.png');
+      await daemon.sampling.get('DP-1')?.done;
+      expect((await readState(tempDir)).monitors[0].overlays[0].colors).to.deep.equal({
+        background: '#c80000', main: [{ color: '#c80000', share: 1 }]
+      });
+
+      daemon.screens.get('DP-1').client.emit('property-change', { event: 'property-change', name: 'brightness', data: -100 });
+      await new Promise(resolve => setTimeout(resolve, 20));
+      // Dimmed all the way the red shows as black; the main colors are the wallpaper's own
+      expect((await readState(tempDir)).monitors[0].overlays[0].colors).to.deep.equal({
+        background: '#000000', main: [{ color: '#c80000', share: 1 }]
+      });
     });
 
     it('logs a failed sample and keeps the configured colors', async () => {

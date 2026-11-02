@@ -23,6 +23,13 @@ export function formatGeometry({ x, y, width, height }) {
   return `${width}x${height}+${x}+${y}`;
 }
 
+// Whether a window's center lies on the monitor, so a window spanning two monitors belongs to one
+export function onMonitor(geometry, monitor) {
+  const cx = geometry.x + geometry.width / 2;
+  const cy = geometry.y + geometry.height / 2;
+  return cx >= monitor.x && cx < monitor.x + monitor.width && cy >= monitor.y && cy < monitor.y + monitor.height;
+}
+
 const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}`;
 
 // What GLava reads when it starts, so a change to it needs a restart. Left out: each instance's opacity (a
@@ -54,12 +61,14 @@ export class VisualizerManager {
     audioWatcher = options => new AudioWatcher(options),
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
-    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}
+    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {}
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays
     });
+    // Windows marked _BACKDROP_OVERLAY by other programs, by monitor, as found at its last placement
+    this.overlays = new Map();
     // The music dim last reported to onMusicDim
     this.reportedDim = 0;
     this.entries = new Map();
@@ -348,10 +357,11 @@ export class VisualizerManager {
     return Promise.all(changed);
   }
 
-  // Whether an instance on the monitor takes its colors from the wallpaper
+  // Whether an instance or an overlay on the monitor takes its colors from the wallpaper (overlays always do)
   wantsWallpaperColors(name) {
     const monitor = this.monitors.get(name);
-    return Boolean(monitor) && (this.settings?.instances ?? []).some(instance => instance.pipe && this.wanted(instance, monitor));
+    if (!monitor) return false;
+    return this.overlaysOn(name).length > 0 || (this.settings?.instances ?? []).some(instance => instance.pipe && this.wanted(instance, monitor));
   }
 
   // Running instances of a monitor, in the section's order
@@ -368,40 +378,47 @@ export class VisualizerManager {
     return next;
   }
 
-  // Sets each instance's opacity and stacks the monitor's instances above its wallpaper, first lowest, then
-  // checks again once GLava has had time to lower itself. Without a running wallpaper they stay at the bottom,
-  // over the bare root window. Resolves to whether they ended up in order (or no wallpaper runs).
+  // Sets each instance's opacity and stacks the monitor's instances and overlays above its wallpaper, then
+  // checks again once GLava has had time to lower itself. The order, bottom to top: the wallpaper, overlays
+  // marked 'below', the instances in the section's order, overlays marked 'above'. Without a running
+  // wallpaper they stay at the bottom, over the bare root window. Resolves to whether they ended up in order
+  // (or no wallpaper runs); false when there is nothing to place.
   async place(name) {
     const entries = this.monitorEntries(name);
-    if (!entries.length) return false;
     try {
       for (const entry of entries) entry.window ??= await this.findWindow(entry.adapter.title(entry.monitor), entry);
       const missing = entries.filter(entry => !entry.window && this.current(entry));
       for (const entry of missing) this.logger.warn('Visualizer window not found, cannot place it', { monitor: name, instance: entry.instance.name });
       const placed = entries.filter(entry => entry.window && this.current(entry));
-      if (!placed.length) return false;
       return await this.x11(async x => {
+        const overlays = await this.findOverlays(name, x);
+        if (!placed.length && !overlays.length) return false;
         this.noteCompositor(await x.hasCompositor());
         for (const entry of placed) await x.setOpacity(entry.window, entry.instance.opacity);
         const wallpaper = await this.wallpaperWindow(name, x);
         if (!wallpaper) return !missing.length;
+        const layers = [
+          ...overlays.filter(overlay => overlay.position === 'below').map(overlay => ({ window: overlay.window })),
+          ...placed.map(entry => ({ window: entry.window, entry })),
+          ...overlays.filter(overlay => overlay.position === 'above').map(overlay => ({ window: overlay.window }))
+        ];
         const stack = async () => {
           let sibling = wallpaper;
-          for (const entry of placed) {
-            await x.stackAbove(entry.window, sibling);
-            sibling = entry.window;
+          for (const layer of layers) {
+            await x.stackAbove(layer.window, sibling);
+            sibling = layer.window;
           }
         };
         await stack();
         await sleep(this.settleDelay);
         let sibling = wallpaper;
-        for (const entry of placed) {
-          if (!this.current(entry)) return false;
-          if (!await x.isAbove(entry.window, sibling)) {
+        for (const layer of layers) {
+          if (layer.entry && !this.current(layer.entry)) return false;
+          if (!await x.isAbove(layer.window, sibling)) {
             await stack();
             break;
           }
-          sibling = entry.window;
+          sibling = layer.window;
         }
         return !missing.length;
       });
@@ -422,14 +439,54 @@ export class VisualizerManager {
 
   // After the daemon starts a wallpaper. xwinwrap lowers itself, which already leaves the instances above it;
   // placing again keeps that true whatever order the windows mapped in.
-  restack(name) {
-    if (!this.monitorEntries(name).length) return Promise.resolve(false);
+  // A monitor without instances is only looked at for overlays when asked to (scan) or when it had some at
+  // the last look, so a daemon without visualizers or overlays never opens an X connection.
+  restack(name, { scan = false } = {}) {
+    if (!this.monitorEntries(name).length && !scan && !this.overlays.get(name)?.length) return Promise.resolve(false);
     return this.placeMonitor(name);
   }
 
-  restackAll() {
-    const names = new Set([...this.entries.values()].map(entry => entry.monitor.name));
-    return Promise.all([...names].map(name => this.restack(name)));
+  // scan: also every monitor without instances, for overlays (`backdrop restack`, which overlay programs
+  // run when their window maps or moves between above and below)
+  restackAll({ scan = false } = {}) {
+    const names = new Set([
+      ...[...this.entries.values()].map(entry => entry.monitor.name),
+      ...[...this.overlays.keys()].filter(name => this.overlays.get(name).length),
+      ...(scan ? this.monitors.keys() : [])
+    ]);
+    return Promise.all([...names].map(name => this.restack(name, { scan })));
+  }
+
+  // The overlays whose center lies on the monitor, remembered for overlaysOn(); onOverlays is told when
+  // the monitor's set changes (so the daemon samples the wallpaper for their colors and writes its state).
+  // A failed look leaves the monitor without overlays.
+  async findOverlays(name, x) {
+    const monitor = this.monitors.get(name);
+    let overlays = [];
+    try {
+      if (monitor) overlays = (await x.overlays()).filter(overlay => onMonitor(overlay.geometry, monitor));
+    } catch (error) {
+      this.logger.warn('Failed to look for overlay windows', { monitor: name, error: error.message });
+    }
+    const key = list => JSON.stringify(list.map(({ window, position, geometry }) => [window, position, geometry]));
+    const previous = this.overlays.get(name) ?? [];
+    this.overlays.set(name, overlays);
+    if (key(previous) !== key(overlays)) {
+      this.logger.info(overlays.length ? 'Overlays found' : 'Overlays gone', {
+        monitor: name, overlays: overlays.map(({ window, name: title, position }) => ({ window, name: title, position }))
+      });
+      try {
+        this.onOverlays(name);
+      } catch (error) {
+        this.logger.warn('Overlay change handling failed', { monitor: name, error: error.message });
+      }
+    }
+    return overlays;
+  }
+
+  // The overlays found on a monitor at its last placement, bottom to top: { window, name, position, geometry }
+  overlaysOn(name) {
+    return this.overlays.get(name) ?? [];
   }
 
   // Whether entry is still a running instance

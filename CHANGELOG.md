@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.41.0] - 2026-11-02
+
+### Added
+- Overlays: windows other programs mark with a `_BACKDROP_OVERLAY` property (`below` or `above`) are stacked on
+  their monitor directly above the wallpaper, under the visualizer, or over it. sleeve's lyrics overlay is the
+  first such program. See Overlays in `docs/specs/visualizer.md`.
+- `backdrop restack` (also `--json`) asks the daemon to look for overlays on every monitor and stack everything
+  again; overlay programs run it when their window maps or changes position.
+- `status` and `status --json` list each monitor's overlays, and `state.json` gives the wallpaper's colors
+  behind each one (the average shown after the dim, and the main colors), updated on loads and dim changes.
+
 ## [2.40.3] - 2026-11-01
 
 ### Added

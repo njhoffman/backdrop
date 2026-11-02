@@ -139,6 +139,35 @@ export class DisplayCommand {
     out.success(this.describeParts(current));
   }
 
+  // `backdrop restack`, for programs that draw overlays: run when their window maps or changes between
+  // above and below. Reports the overlays found on each monitor.
+  async restack(options = {}) {
+    const state = await readState(this.runtimeDir);
+    if (!state) throw new Error('The daemon is not running (backdrop start)');
+    const current = await sendControl(this.runtimeDir, state, { restack: true }, {
+      kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
+    });
+    const monitors = (current?.monitors ?? []).map(monitor => ({ name: monitor.name, overlays: monitor.overlays ?? [] }));
+    if (wantsJson(options)) {
+      out.json({ monitors });
+      return;
+    }
+    const found = monitors.flatMap(monitor => monitor.overlays.map(overlay => ({ monitor: monitor.name, ...overlay })));
+    if (!found.length) {
+      out.success('Restacked; no overlay windows found');
+      return;
+    }
+    out.success(`Restacked with ${found.length} overlay${found.length === 1 ? '' : 's'}`);
+    for (const overlay of found) out.field('info', `${overlay.monitor}: ${this.describeOverlay(overlay)}`);
+  }
+
+  // e.g. 'overlay "sleeve" above the visualizer at 2560x1440+0+0, background #1a2b3c'
+  describeOverlay({ name, position, geometry, colors }) {
+    const title = name ? ` "${name}"` : '';
+    const background = colors?.background ? `, background ${colors.background}` : '';
+    return `overlay${title} ${position} the visualizer at ${geometry}${background}`;
+  }
+
   // e.g. "wallpaper on, visualizer off"
   describeParts(state) {
     const visualizer = state.visualizer?.enabled && !state.visualizer.error;
@@ -187,6 +216,7 @@ export class DisplayCommand {
       if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
       out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
       for (const item of monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : [])) out.field('info', this.describeVisualizer(item));
+      for (const overlay of monitor.overlays ?? []) out.field('info', this.describeOverlay(overlay));
       if (!path) {
         out.field('info', fmt.yellow('nothing playing'));
         out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
@@ -212,6 +242,7 @@ export class DisplayCommand {
         decoder: formatDecoder(monitor.hwdec) || null,
         visualizer: monitor.visualizer ?? null,
         visualizers: monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : []),
+        overlays: monitor.overlays ?? [],
         playing: media ? mediaJson(this.database, media, rating) : null
       });
     }

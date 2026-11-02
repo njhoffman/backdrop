@@ -41,8 +41,9 @@ A library item, as printed by every command below.
 | `next`, `prev`, `skip`, `go-next`, `keep --next` | the same, for the item the monitor now plays |
 | `keep` (without `--next`) | `{ item }`: the rated item with its new rating |
 | `mode` | `{ mode, monitor, item }`; `monitor` and `item` are null when the daemon is not running |
+| `restack` | `{ monitors: [{ name, overlays }] }`, with `overlays` as in `status` |
 | `list-images`, `list-videos` | an array of items, `[]` when nothing matches |
-| `status` | `{ mode, daemon: { running, pid, wallpaper, visualizer, compositor }, config_warnings, monitors: [{ name, width, height, eligible, cpu_percent, decoder, visualizer, visualizers, playing }] }`, where `playing` is an item or null, `cpu_percent`/`decoder` are the daemon's recent samples, `visualizers` lists `{ instance, engine, module, pid, running, geometry }` per instance in stacking order (plus `colors`, `{ fg, fg2 }` as `#rrggbbaa`, with `palette.source: wallpaper`), and `visualizer` is the first of them or null; `config_warnings` lists the config file's unknown keys as messages |
+| `status` | `{ mode, daemon: { running, pid, wallpaper, visualizer, compositor }, config_warnings, monitors: [{ name, width, height, eligible, cpu_percent, decoder, visualizer, visualizers, overlays, playing }] }`, where `playing` is an item or null, `overlays` lists `{ window, name, position, geometry, colors }` bottom to top (see Overlays in `visualizer.md`), `cpu_percent`/`decoder` are the daemon's recent samples, `visualizers` lists `{ instance, engine, module, pid, running, geometry }` per instance in stacking order (plus `colors`, `{ fg, fg2 }` as `#rrggbbaa`, with `palette.source: wallpaper`), and `visualizer` is the first of them or null; `config_warnings` lists the config file's unknown keys as messages |
 
 Examples:
 
