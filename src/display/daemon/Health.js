@@ -61,6 +61,7 @@ export class Health {
       }
     }
     await this.recordDecoder(screen);
+    screen.gpuMemory = await Promise.resolve(this.daemon.gpuMemory?.(pid)).catch(() => null) ?? null;
     await this.daemon.writeState().catch(error => this.daemon.logger.warn('Failed to write state', { error: error.message }));
   }
 

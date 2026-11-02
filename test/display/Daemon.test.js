@@ -54,6 +54,7 @@ describe('Daemon', () => {
       healthInterval: 0,
       // Tests that sample CPU pass their own /proc reader
       readFile: async () => { throw new Error('no /proc in tests'); },
+      gpuMemory: async () => null,
       monitorInterval: 0,
       // Tests that watch the config file pass their own
       watch: null,
@@ -257,7 +258,7 @@ describe('Daemon', () => {
 
       // Skips while `backdrop import` runs, and probes fewer files at once than the CLI
       expect(calls).to.deep.equal([{ dirs: ['/walls'], resolution: '2560x1440', stopping: false, whenLocked: 'skip', concurrency: 2 }]);
-      const appended = clients.map(c => c.client.commands.filter(cmd => cmd[0] === 'loadfile'));
+      const appended = clients.map(c => c.client.commands.filter(cmd => cmd[0] === 'loadfile' && cmd[2] === 'append-play'));
       expect(appended).to.deep.equal([[['loadfile', '/m/1.mp4', 'append-play']], [['loadfile', '/m/1.mp4', 'append-play']]]);
       await daemon.stop();
     });
@@ -605,6 +606,34 @@ describe('Daemon', () => {
       clock += 20_000; ticks += 300;
       await daemon.checkHealth();
       expect(db.getPlaybackStats(id).seconds).to.equal(60);
+      await daemon.stop();
+    });
+
+    it('queues state writes, so concurrent ones never interleave in the file', async () => {
+      const daemon = makeDaemon();
+      await daemon.start();
+      await Promise.all(Array.from({ length: 8 }, () => daemon.writeState()));
+      const state = await fs.readJson(path.join(tempDir, 'state.json'));
+      expect(state.monitors.map(monitor => monitor.name)).to.deep.equal(['DP-1', 'HDMI-1']);
+      await daemon.stop();
+    });
+
+    it('records the GPU memory each mpv holds at a health check in the state', async () => {
+      const asked = [];
+      let bytes = 512 * 1024 ** 2;
+      const procStat = () => `4242 (mpv) S ${'0 '.repeat(10)}0 0 0 0`;
+      const daemon = makeDaemon({ readFile: async () => procStat(), gpuMemory: async pid => { asked.push(pid); return bytes; } });
+      await daemon.start();
+      await daemon.checkHealth();
+      expect(asked).to.deep.equal([4242, 4242]);
+      expect((await fs.readJson(path.join(tempDir, 'state.json'))).monitors.map(monitor => monitor.gpuMemory)).to.deep.equal([bytes, bytes]);
+
+      // An unreadable /proc leaves it unknown rather than failing the check
+      bytes = null;
+      daemon.gpuMemory = async () => { throw new Error('EACCES'); };
+      await daemon.checkHealth();
+      expect((await fs.readJson(path.join(tempDir, 'state.json'))).monitors.map(monitor => monitor.gpuMemory)).to.deep.equal([null, null]);
+      expect(kills).to.deep.equal([]);
       await daemon.stop();
     });
 
@@ -1176,7 +1205,7 @@ describe('Daemon', () => {
     it('applies other settings by their kind: taken in, durations, playlists, monitors and imports', async () => {
       const client = clients[0].client;
       // An eligibility change brings the playlist in line (reading it) rather than loading a new one
-      const loads = () => client.commands.filter(command => command[0] === 'loadlist').length;
+      const loads = () => client.commands.filter(command => command[0] === 'loadfile' && command[2] === 'replace').length;
       const reads = () => client.commands.filter(command => command[0] === 'get_property' && command[1] === 'playlist').length;
       const [loadsBefore, readsBefore] = [loads(), reads()];
       const imported = [];

@@ -9,6 +9,7 @@ import {
   playbackLimits, validVideoDuration
 } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
+import { prescaleFilter } from '../../src/display/prescale.js';
 
 const MONITOR = { name: 'DP-3', width: 2304, height: 1296, x: 0, y: 0 };
 
@@ -283,23 +284,33 @@ describe('Playlist', () => {
 
     const load = mode => loadPlaylist(client, { database: db, config, mode, monitor: MONITOR, runtimeDir: tempDir });
 
-    it('writes an m3u with the last item first and loads it', async () => {
+    it('loads the last item first, replacing the playlist, and appends the rest', async () => {
       add('image', 1);
       const last = add('image', 2);
+      add('image', 3);
       db.setSetting(lastMediaKey('image', 'DP-3'), last);
 
-      expect(await load('image')).to.equal(2);
+      expect(await load('image')).to.equal(3);
 
-      const playlistPath = path.join(tempDir, 'DP-3.m3u');
-      const lines = (await fs.readFile(playlistPath, 'utf8')).trim().split('\n');
-      expect(lines[0]).to.equal('/m/2');
-      expect(lines).to.have.members(['/m/1', '/m/2']);
-      expect(client.commands).to.deep.equal([
+      expect(client.commands.slice(0, 4)).to.deep.equal([
         ['set_property', 'loop-file', 'no'],
         ['set_property', 'end', 'none'],
         ['set_property', 'image-display-duration', 45],
-        ['loadlist', playlistPath, 'replace']
+        ['loadfile', '/m/2', 'replace']
       ]);
+      expect(client.commands.slice(4)).to.have.deep.members([['loadfile', '/m/1', 'append'], ['loadfile', '/m/3', 'append']]);
+      expect(await fs.pathExists(path.join(tempDir, 'DP-3.m3u'))).to.be.false;
+    });
+
+    it('gives an image far larger than the monitor its own prescale', async () => {
+      add('image', 1, { width: 7499, height: 14998 });
+      add('image', 2);
+      db.setSetting(lastMediaKey('image', 'DP-3'), 1);
+
+      await load('image');
+
+      expect(client.commands[3]).to.deep.equal(['loadfile', '/m/1', 'replace', -1, `vf=${prescaleFilter({ kind: 'image', width: 7499, height: 14998 }, MONITOR)}`]);
+      expect(client.commands[4]).to.deep.equal(['loadfile', '/m/2', 'append']);
     });
 
     it('ignores the other mode\'s last item', async () => {

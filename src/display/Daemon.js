@@ -17,6 +17,7 @@ import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManag
 import { sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { cpuPercent } from './cpu.js';
+import { readGpuMemory } from './gpu.js';
 import { statePath, nextFiltersPath } from './runtimeFiles.js';
 import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
@@ -116,6 +117,8 @@ export class Daemon {
     watch = watchFiles, configSettle = CONFIG_SETTLE_MS, importSettle = IMPORT_SETTLE_MS,
     readStart = processStart, reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger }),
     samplePalette = (media, monitor) => sampleMedia(media, monitor),
+    // Bytes of GPU memory an mpv holds (src/display/gpu.js), null when unknown
+    gpuMemory = pid => readGpuMemory(pid),
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
     createVisualizer
   }) {
@@ -143,6 +146,7 @@ export class Daemon {
     this.monitorInterval = monitorInterval;
     this.now = now;
     this.readFile = readFile;
+    this.gpuMemory = gpuMemory;
     // Items already warned about for software decoding during this run
     this.softwareWarned = new Set();
     this.reconciling = null;
@@ -490,7 +494,6 @@ export class Daemon {
       config: this.config.get(),
       mode: getMode(this.database),
       monitor: screen.monitor,
-      runtimeDir: this.runtimeDir,
       imageDuration: this.imageDuration()
     });
     if (!count) {
@@ -725,18 +728,28 @@ export class Daemon {
   }
 
   // Written to a temporary file and renamed, so a CLI command never reads a half-written state.
-  // cpu is the monitor's recent average (percent of one core), null until two samples were taken.
-  async writeState() {
+  // cpu is the monitor's recent average (percent of one core), null until two samples were taken;
+  // gpuMemory the bytes of GPU memory its mpv held at the last health check, null when unknown.
+  // Writes are queued: the monitors' health checks run at once, and two writes sharing the temporary file
+  // would interleave into a state.json that no longer parses. Each takes its snapshot when it runs.
+  writeState() {
+    const write = (this.stateWrite ?? Promise.resolve()).catch(() => {}).then(() => this.writeStateNow());
+    this.stateWrite = write;
+    return write;
+  }
+
+  async writeStateNow() {
     // A sample finishing during shutdown must not recreate the state file stop() removes
     if (this.stopping) return;
     const monitors = [...this.monitors.values()].map(monitor => {
-      const { socketPath = null, recent = [], hwdec = null } = this.screens.get(monitor.name) ?? {};
+      const { socketPath = null, recent = [], hwdec = null, gpuMemory = null } = this.screens.get(monitor.name) ?? {};
       return {
         ...monitor,
         // null while the wallpaper is off: CLI commands that need mpv say so
         socket: socketPath,
         cpu: cpuPercent(recent.reduce((sum, item) => sum + item.cpuSeconds, 0), recent.reduce((sum, item) => sum + item.seconds, 0)),
         hwdec,
+        gpuMemory,
         // Every instance on the monitor, and the first as visualizer for readers of 2.20.0-2.24.0 state
         visualizers: this.visualizers.describe(monitor.name),
         visualizer: this.visualizers.describe(monitor.name)[0] ?? null,
@@ -801,6 +814,7 @@ export class Daemon {
     }
 
     await fs.remove(socketPath);
+    // The playlist file daemons before 2.42.0 wrote for loadlist
     await fs.remove(path.join(this.runtimeDir, `${monitor.name}.m3u`));
   }
 

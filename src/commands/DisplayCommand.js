@@ -7,7 +7,7 @@ import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
-import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting } from '../utils/output.js';
+import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting, formatBytes } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
 } from '../utils/mediaView.js';
@@ -214,6 +214,7 @@ export class DisplayCommand {
       const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s eligible`];
       // Recent average from the daemon's samples, once it has two
       if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
+      if (Number.isFinite(monitor.gpuMemory)) details.push(`gpu ${formatBytes(monitor.gpuMemory)}`);
       out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
       for (const item of monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : [])) out.field('info', this.describeVisualizer(item));
       for (const overlay of monitor.overlays ?? []) out.field('info', this.describeOverlay(overlay));
@@ -227,7 +228,7 @@ export class DisplayCommand {
     }
   }
 
-  // status --json: cpu_percent and decoder are the daemon's recent samples, null until it has them
+  // status --json: cpu_percent, decoder and gpu_memory_bytes are the daemon's recent samples, null until it has them
   async statusJson() {
     const state = await readState(this.runtimeDir);
     const mode = getMode(this.database);
@@ -240,6 +241,7 @@ export class DisplayCommand {
         eligible: eligibleMedia(this.database, mode, monitor, { allowUpscale }).length,
         cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
         decoder: formatDecoder(monitor.hwdec) || null,
+        gpu_memory_bytes: Number.isFinite(monitor.gpuMemory) ? monitor.gpuMemory : null,
         visualizer: monitor.visualizer ?? null,
         visualizers: monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : []),
         overlays: monitor.overlays ?? [],

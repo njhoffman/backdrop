@@ -347,7 +347,7 @@ describe('DisplayControl', () => {
         expect(result).to.deep.equal({ mode: 'image', running: true, counts: { 'DP-1': 1, 'HDMI-1': 1 } });
         expect(getMode(db)).to.equal('image');
         for (const name of ['DP-1', 'HDMI-1']) {
-          expect(clientFor(name).commands.some(cmd => cmd[0] === 'loadlist')).to.be.true;
+          expect(clientFor(name).commands.some(cmd => cmd[0] === 'loadfile' && cmd[2] === 'replace')).to.be.true;
         }
       });
 

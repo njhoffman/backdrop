@@ -1,6 +1,5 @@
 import { checkSetting } from '../config/schema.js';
-import fs from 'fs-extra';
-import path from 'path';
+import { loadMedia } from './prescale.js';
 
 // GIFs are animated, so they play in video mode
 export const MODE_KINDS = {
@@ -165,7 +164,7 @@ export function playbackLimits(media, timeout, elapsed = 0, position) {
 
 // Replaces the monitor's mpv playlist with the media for the mode; returns how many items were loaded
 // imageDuration overrides display.image_duration (one next or the menu set)
-export async function loadPlaylist(client, { database, config, mode, monitor, runtimeDir, random, lastMediaId, imageDuration }) {
+export async function loadPlaylist(client, { database, config, mode, monitor, random, lastMediaId, imageDuration }) {
   const { display } = config;
   const media = orderPlaylist(
     eligibleMedia(database, mode, monitor, { allowUpscale: display.allow_upscale }),
@@ -183,9 +182,11 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ru
     return 0;
   }
 
-  const playlistPath = path.join(runtimeDir, `${monitor.name}.m3u`);
-  await fs.writeFile(playlistPath, `${media.map(item => item.path).join('\n')}\n`);
-  await client.command('loadlist', playlistPath, 'replace');
+  // One loadfile per item rather than a loadlist, so each oversized image carries its own prescale (prescale.js).
+  // The appends are sent together: mpv handles one connection's commands in order.
+  const [first, ...rest] = media;
+  await loadMedia(client, first, 'replace', monitor);
+  await Promise.all(rest.map(item => loadMedia(client, item, 'append', monitor)));
   return media.length;
 }
 
@@ -209,7 +210,7 @@ export async function appendToPlaylist(client, { database, config, mode, monitor
     .filter(item => wanted.has(item.id) && !existing.has(item.path));
 
   for (const item of shuffle(media)) {
-    await client.command('loadfile', item.path, 'append-play');
+    await loadMedia(client, item, 'append-play', monitor);
   }
   return media.length;
 }
@@ -238,7 +239,7 @@ export async function syncPlaylist(client, { database, config, mode, monitor }) 
 
   const present = new Set(playlist.map(entry => entry.filename));
   const added = shuffle(eligible.filter(item => !present.has(item.path)));
-  for (const item of added) await client.command('loadfile', item.path, 'append-play');
+  for (const item of added) await loadMedia(client, item, 'append-play', monitor);
 
   let removed = stale.length;
   if (current !== -1 && !wanted.has(playlist[current].filename)) {

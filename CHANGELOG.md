@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.42.0] - 2026-11-02
+
+### Added
+- `status` shows the GPU memory each monitor's mpv holds (`gpu 1.2 GB`), and `status --json` gives it as
+  `gpu_memory_bytes`, read from the DRM driver at each 30 s health check.
+
+### Fixed
+- Very large images no longer pin gigabytes of GPU memory. mpv sized its buffers to the source image and kept
+  the largest it had needed, so one 7499x14998 photo held about 5.7 GB until mpv restarted (on Intel graphics
+  that is system memory, which pushed the system into swap). Images that would lose more than half their pixels
+  on the monitor are now scaled down on the CPU before they are shown; videos and GIFs are unchanged.
+- `state.json` could be written half over itself when several monitors' health checks finished at once, so
+  `status` and other commands briefly saw no running daemon. Writes are now queued.
+
 ## [2.41.0] - 2026-11-02
 
 ### Added

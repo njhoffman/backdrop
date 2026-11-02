@@ -241,6 +241,41 @@ Reviewed: 2026-11-02
       let the daemon own the file.
       Done in 2.40.1: the lock code moved to `src/utils/fileLock.js` (`ImportLock` builds on it), and `resolveNextFilters`
       reads, merges and writes under `next-filters.lock` (50 ms polls, 5 s timeout), telling the daemon after release.
+- [x] **mpv's GPU memory grows across image slides.** (p1) [bug] Seen 2026-11-02 on Iris Xe (mpv 0.40.0, Mesa 25.2.8,
+      `--vo=gpu`, software decode, 300 s slides): after 34 slides in 2h52m the DP-3 mpv held 9.0 GB of GPU buffers
+      (`drm-total-system0` in `/proc/<pid>/fdinfo`) while showing a 1920x1200 JPEG; on Intel these live in system shmem,
+      so mpv's RSS showed 60 MB while 13 of 15 GiB were in use and 5.9 GiB swapped. Skipping three slides over IPC: a
+      4340x6597 image left it at 9.0 GB, a 3840x2160 one dropped it to 4.3 GB (system Shmem 9.4 to 4.9 GB), so buffers
+      pile up and only some transitions (likely an output size change) free them; about 265 MB per slide. Not yet
+      confirmed whether mpv's `gpu` vo or Mesa iris is at fault: sample fdinfo over several same-size slides.
+      First try another output for images: `--vo=gpu-next`, or `--gpu-api=vulkan` (anv), and compare growth over a
+      dozen slides; switch the spawn args if one holds flat.
+      Diagnosed 2026-11-02: not a per-slide leak. Standalone mpv held flat (about 700 MB) over 12 same-size 4K slides
+      and 40 mixed ones, and the daemon's mpv held flat for 90 s under GLava. Driving the daemon at 5 s slides, it
+      jumped from 475 MB to 8.6 GB within one slide, on huge Pexels portrait originals from the inbox (7024x12480,
+      7499x14998, 4536x8064), and stayed near 6.9 GB through the smaller slides that followed: mpv sizes its textures
+      and render targets to the source image and keeps the high-water mark. The 7499x14998 image alone: 5.7 GB with
+      the default vo (already Vulkan here), 2.7 GB with `--vo=gpu-next`, 1.2 GB with a CPU prescale to the monitor's
+      cover size (`--vf=scale=w=1920:h=1080:force_original_aspect_ratio=increase`). Fix: prescale oversized images
+      before they reach the GPU, only for those items (a global `vf` would force copy-back for hardware-decoded video).
+      Done in 2.42.0: mpv 0.40 dropped `hook-add` from JSON IPC, so playlists load with one `loadfile` per item instead
+      of an m3u `loadlist`, and images that would lose more than half their pixels get a per-file `vf` scale
+      (`src/display/prescale.js`) bringing their shorter side to the monitor's longer one. Rotation-agnostic, since the
+      decoded frame is not yet EXIF-rotated. `--vo=gpu-next` stays opt-in through `display.mpv_args`.
+- [x] **Restart mpv when its GPU memory passes a limit.** (p2) [perf] A safety net whatever the leak's cause: on the
+      30 s health check (next to the CPU sample in `playback_stats`), read the mpv pid's `drm-total-system0` from
+      `/proc/<pid>/fdinfo` (the DRM fd with a nonzero total), keep it per monitor and item, show it in `status` and
+      `stats`, and respawn the monitor's xwinwrap+mpv past a configurable cap (e.g. `display.max_gpu_memory: 2G`),
+      resuming at the same playlist position, between items so the restart is only a brief flicker. Log each restart
+      with the size reached.
+      Done in part in 2.42.0, the rest dropped: the growth came from source size, which the prescale bounds, so there is
+      no restart cap. The health check reads each mpv's GPU memory (`src/display/gpu.js`, summed per DRM client over
+      every `drm-total-*` region) into `state.json`, `status` and `status --json` (`gpu_memory_bytes`); not per item
+      in `stats`, which would need a schema change. Reopen the cap if `status` shows growth again.
+- [x] **Show still images without mpv.** (p3) [refactor] Won't fix (2026-11-02): the prescale fixed the memory use. If neither another vo nor the restart cap is enough, set
+      JPEG/PNG wallpapers with `xwallpaper` or `feh --bg-fill` per monitor geometry and keep mpv for video and GIFs.
+      Costs the single display path from "Static images and GIFs through mpv": slideshow timing, `next`/`prev`,
+      brightness, dim and the visualizer overlay would need a second backend, so only worth it if the leak stays.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -597,6 +632,10 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [x] **Stack other programs' overlay windows.** (p2) [feature] sleeve's lyrics overlay needs a place above or
       below the visualizer, and the wallpaper's colors behind it. Done in 2.41.0: `_BACKDROP_OVERLAY` marks
       (`below`/`above`), `backdrop restack`, overlays and their colors in `state.json` and `status`.
+- [ ] **The stacking overlay test is flaky under load.** (p3) [test] "stacks marked overlays below and above the
+      visualizer on a restack request, and follows a change of mark" in `test/display/stacking.integration.test.js`
+      failed once in a full `npm run test:brief` on 2026-11-02 (stacking order assertion) and passed on three runs alone;
+      likely the restack is read before the X server applied it. Wait for the expected order with a deadline instead.
 - [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
       of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
       PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms

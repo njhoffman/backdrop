@@ -95,7 +95,7 @@ describe('DisplayCommand', () => {
 
     it('shows each monitor\'s recent mpv CPU and decoder, and the item\'s average in current', async () => {
       const id = addVideo(1, 1920, 1080);
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 3.25, hwdec: 'vaapi' }] });
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 3.25, hwdec: 'vaapi', gpuMemory: 1.5 * 1024 ** 3 }] });
       db.addPlaybackSample(id, 750, 30);
       db.setDecoder(id, 'no');
       const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null };
@@ -105,7 +105,7 @@ describe('DisplayCommand', () => {
       await command.current({});
 
       const text = lines.join('\n');
-      expect(text).to.include('DP-1 1920x1080, 1 videos eligible, cpu 3.3% vaapi');
+      expect(text).to.include('DP-1 1920x1080, 1 videos eligible, cpu 3.3% vaapi, gpu 1.5 GB');
       expect(text).to.include('cpu 4.0% over 12m30s, software');
     });
 
@@ -113,14 +113,14 @@ describe('DisplayCommand', () => {
       const id = addVideo(1, 1920, 1080, { duration: 12, fps: 30 });
       db.addRating(id, 3, '1920x1080');
       db.addPlaybackSample(id, 100, 5); db.setDecoder(id, 'vaapi');
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 2.345, hwdec: 'vaapi' }] });
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 2.345, hwdec: 'vaapi', gpuMemory: 4096 }] });
       const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: db.getLatestRating(id) };
       command.control = { current: async () => playing };
 
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
       expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null } });
-      expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi' });
+      expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi', gpu_memory_bytes: 4096 });
       expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
       expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
 

@@ -238,7 +238,7 @@ export class DisplayControl {
         const current = currentPath === previous.path ? previous : this.database.getMediaByPath(currentPath);
         await loadPlaylist(client, {
           database: this.database, config: this.config.get(), mode: getMode(this.database),
-          monitor, runtimeDir: this.config.get().paths.runtime, lastMediaId: current?.id,
+          monitor, lastMediaId: current?.id,
           imageDuration: await this.imageDuration()
         });
       });
@@ -267,7 +267,6 @@ export class DisplayControl {
         config: this.config.get(),
         mode,
         monitor,
-        runtimeDir: this.config.get().paths.runtime,
         imageDuration
       }));
     }

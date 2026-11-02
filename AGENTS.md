@@ -85,7 +85,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   The daemon keeps active monitors (`monitors`) apart from their wallpaper processes (`screens`), so the wallpaper
   can be off (`start/stop --wallpaper`) while the visualizer runs; the CLI writes one `control-<id>.json` per request (`src/display/control.js`) and sends SIGUSR1, waiting for its id in `state.json` `handled`,
   and `state.json` monitors have a null `socket` while the wallpaper is off.
-  `Playlist` owns modes (video/image) and eligibility; `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
+  `Playlist` owns modes (video/image) and eligibility, loading items with one `loadfile` each (no m3u) through
+  `loadMedia` (`src/display/prescale.js`), which gives images far larger than the monitor a per-file `vf` scale so mpv's
+  GPU memory stays bounded (mpv 0.40 has no IPC hooks); the health check also reads mpv's GPU memory (`src/display/gpu.js`); `MpvClient` is the JSON IPC client. `nextFilters.js` keeps
   the filters and order `next`/`menu` were given in `next-filters.json` in the runtime dir, tagged with the daemon's
   pid (the daemon removes it on start and stop), updated under `next-filters.lock` (`src/utils/fileLock.js`, which `importLock.js` also builds on); `next`, `keep --next`, `skip` and `go-next` fill in from it.
   It also holds `--image-duration`/`--video-duration`, which the daemon applies itself: the CLI sends a
