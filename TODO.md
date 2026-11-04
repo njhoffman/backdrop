@@ -655,3 +655,31 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       transparency, reusing the daemon's mpv machinery. Few styles, but nothing to lose if GLava goes.
 - [x] **Retire the old GLava setup.** (p3) [chore] The i3 `exec glava` is gone, the `glava.*` aliases were removed in
       `~/.shell` 0.23.1 and `~/.config/glava` was deleted (2026-10-30; still in the dotbare history).
+
+### sleeve as an engine
+
+Contract: `docs/specs/sleeve.md`, agreed 2026-11-04 with sleeve 0.33.0, which already does its side (tried by hand on a real
+desktop). Nothing below is built here yet.
+
+- [ ] **Choose the engine per instance.** (p2) [feature] `engine` is section-wide (`SHARED_KEYS` and `settings.js`), so bars
+      and lyrics cannot run together. Make it an instance setting, inherited from the section as the others are; keep
+      `engine` at the top meaning every instance. Checks that assume GLava (`glava`, `audio`, modules, `defines`) must only
+      apply to GLava instances.
+- [ ] **`SleeveVisualizer` adapter.** (p2) [feature] `src/visualizer/`, offering `prepare()` (nothing to prepare) and
+      `command(monitor, geometry)` with the contract's options, its window title as for GLava and `--instance` from the
+      monitor and instance names. Typed settings under `visualizer.sleeve` (`now`, `now_position`, `lyrics_align`,
+      `no_sandbox`, `command`), checked in `settings.js`.
+- [ ] **Colors to a sleeve instance.** (p2) [feature] `VisualizerManager` writes `fg = #rrggbbaa` lines; sleeve takes
+      `{ background, main }` JSON lines instead (the shape overlays get in `state.json`). Send them whenever the strip under
+      it is sampled, without GLava's one-line-per-100-ms pacing.
+- [ ] **Live changes without a restart.** (p2) [feature] Add the sleeve settings to what `applyLive` can take: run `sleeve ctl
+      display` rather than restarting (a start takes about 2 s), and send them again when the daemon starts, since sleeved
+      forgets them when it restarts. `startSettings` should treat only what `sleeve ctl` cannot change as needing a restart.
+- [ ] **Hide rather than stop for silence.** (p2) [feature] `only_while_playing` stops instances; for sleeve it should run
+      `sleeve ctl display --hide` and `--show`.
+- [ ] **Menu, presets and doctor.** (p3) [feature] `backdrop menu visualizer` for preset, position and alignment; a built-in
+      preset with lyrics above the bars; `visualizer check` for the new engine; `doctor` noting a missing `sleeve`, an
+      uninstalled shell, the AppArmor block (status 2), and a `sleeve-shell.service` running at the same time, which would
+      draw the lyrics twice.
+- [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
+      colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`.

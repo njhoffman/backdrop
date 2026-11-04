@@ -64,6 +64,9 @@ xdotool 3.20160805), raising GLava (it would cover every window), python-xlib (a
 Wallpaper changes (next, playlist advances, mode switches, speed and dim) reuse the running mpv, so they never
 touch the visualizer.
 
+A second engine, sleeve's lyrics, is planned: what it promises is in [sleeve.md](sleeve.md), and what is left here in
+`TODO.md`, section 9.
+
 ### Overlays
 
 Other programs can have backdrop stack their windows too (since 2.41.0); sleeve's lyrics overlay is the first.
