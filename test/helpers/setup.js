@@ -25,4 +25,15 @@ configureOutput({ interactive: false });
 
 // notify-send never runs in tests; notifications sent are recorded here
 export const notifications = [];
-configureNotify({ exec: async (file, args) => { notifications.push(args); return `${notifications.length}\n`; } });
+// and notifications closed (gdbus) here
+export const closedNotifications = [];
+configureNotify({
+  exec: async (file, args) => {
+    if (file === 'gdbus') {
+      closedNotifications.push(args.at(-1));
+      return '()\n';
+    }
+    notifications.push(args);
+    return `${notifications.length}\n`;
+  }
+});

@@ -492,7 +492,7 @@ Reviewed: 2026-11-02
       `backdrop doctor` (2.32.0) lists every optional tool with the feature that needs it, so the docs could point there.
       Done in 2.35.1: the screensaver bullet marked planned, `pactl` listed, GETTING_STARTED and README point to
       `backdrop doctor`, and main.md links `visualizer.md` and `json.md`.
-- [ ] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
+- [x] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
 
@@ -710,9 +710,9 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
 - [ ] **The load section cannot see GPU cost.** (p3) [perf] Load averages count no GPU time, and sleeve's own figures (`docs/specs/sleeve.md`, Cost) put a cover background at up to 16% of the
       render engine: the `image` level leaves it animating and the `off` level is the only one that lightens it. `gpu.js` already reads memory per mpv; a threshold on render-engine busy time, or
       dropping sleeve's cover to a still or see-through background at the `image` level, would cover it. Worth doing if a moving cover becomes the usual setup.
-- [ ] **Bars wait for a slow lyrics window.** (p3) [perf] `place` finds a monitor's windows one at a time before stacking any, so GLava stays under the wallpaper until sleeve's window
+- [x] **Bars wait for a slow lyrics window.** (p3) [perf] `place` finds a monitor's windows one at a time before stacking any, so GLava stays under the wallpaper until sleeve's window
       exists: about 2 s idle, but 12 s measured at a load of 15 under Xvfb. Stack what is found, then again as the rest appear.
-- [ ] **sleeved restarting forgets live changes.** (p3) [bug] `sleeve ctl display` changes last until sleeved restarts: a page then goes back to its start options, and a hidden one shows again.
+- [x] **sleeved restarting forgets live changes.** (p3) [bug] `sleeve ctl display` changes last until sleeved restarts: a page then goes back to its start options, and a hidden one shows again.
       The contract asks backdrop to send them again when it starts, which it does, but it cannot tell when sleeved alone restarts. `sleeve line` survives restarts over the socket, so watching
       that socket is one way, and the contract now backs it ("Changing a running instance"): every connection starts with `hello`, so a new one means a sleeved that forgot. A daemon
       restart or `visualizer reload` puts it right meanwhile.

@@ -3,7 +3,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   configureNotify, describeNotification, notifyMode, notifyPlaying, notifyCommand
 } from '../../src/utils/notify.js';
-import { notifications } from '../helpers/setup.js';
+import { notifications, closedNotifications } from '../helpers/setup.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 describe('notify', () => {
@@ -74,5 +74,54 @@ describe('notify', () => {
     await notifyCommand(config, db, playing);
     expect(recorded).to.have.length(1);
     expect(() => notifyMode({ notify: 'always' })).to.throw('display.notify must be commands, all or off, not "always"');
+  });
+
+  describe('a server that does not replace', () => {
+    const playing = { monitor: { name: 'DP-1' }, media: { id: 1, kind: 'image', path: '/m/a.png', width: 1, height: 1 }, rating: null };
+    const database = { settings: new Map(), getSetting(key) { return this.settings.get(key); }, setSetting(key, value) { this.settings.set(key, value); }, getTags: () => [] };
+    let ids;
+    let closed;
+
+    beforeEach(() => {
+      database.settings.clear();
+      closed = [];
+      configureNotify({
+        exec: async (file, args) => {
+          if (file === 'gdbus') { closed.push(args.at(-1)); return '()\n'; }
+          return `${ids.shift()}\n`;
+        }
+      });
+    });
+    afterEach(() => {
+      configureNotify({ exec: async (file, args) => {
+        if (file === 'gdbus') { closedNotifications.push(args.at(-1)); return '()\n'; }
+        notifications.push(args);
+        return `${notifications.length}\n`;
+      } });
+    });
+
+    it('closes the previous notification when a new id comes back, as deadd answers', async () => {
+      ids = [837, 838];
+      await notifyPlaying(database, playing);
+      expect(closed).to.deep.equal([]);
+      await notifyPlaying(database, playing);
+      expect(closed).to.deep.equal(['837']);
+      expect(database.getSetting('notify_id:DP-1')).to.equal(838);
+    });
+
+    it('closes nothing when the id stays the same, as dunst answers', async () => {
+      ids = [837, 837];
+      await notifyPlaying(database, playing);
+      await notifyPlaying(database, playing);
+      expect(closed).to.deep.equal([]);
+    });
+
+    it('keeps going when the close fails', async () => {
+      configureNotify({ exec: async file => { if (file === 'gdbus') throw new Error('no such notification'); return `${ids.shift()}\n`; } });
+      ids = [837, 838];
+      await notifyPlaying(database, playing);
+      await notifyPlaying(database, playing);
+      expect(database.getSetting('notify_id:DP-1')).to.equal(838);
+    });
   });
 });

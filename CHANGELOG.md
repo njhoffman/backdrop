@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.46.3] - 2026-11-04
+
+### Fixed
+- Rapid `next` presses no longer pile up notifications under deadd-notification-center, which answers a replace with a new notification: the previous one is now closed.
+- GLava's visualizers appear as soon as their windows do, rather than staying under the wallpaper until a slower instance, such as sleeve's, has its window.
+- Live changes to a sleeve instance, and hiding for silence, survive `sleeved` restarting: backdrop stays connected to it and sends them again when it returns.
+
 ## [2.46.2] - 2026-11-04
 
 ### Fixed

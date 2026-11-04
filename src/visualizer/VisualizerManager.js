@@ -1,6 +1,7 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { createVisualizer } from './index.js';
+import { SleevedWatcher } from './sleeved.js';
 import { deepMerge, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -74,11 +75,12 @@ export class VisualizerManager {
     audioWatcher = options => new AudioWatcher(options),
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
-    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {}
+    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
+    sleevedWatcher = options => new SleevedWatcher(options)
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher
     });
     // Windows marked _BACKDROP_OVERLAY by other programs, by monitor, as found at its last placement
     this.overlays = new Map();
@@ -300,9 +302,30 @@ export class VisualizerManager {
     }
   }
 
+  // Watches sleeved while a sleeve instance can run: when it restarts it has forgotten what it was told
+  watchSleeved() {
+    const wanted = this.active && !this.stopping && (this.settings?.instances ?? []).some(instance => instance.engine === 'sleeve');
+    if (!wanted) {
+      this.sleeved?.stop();
+      return;
+    }
+    this.sleeved ??= this.sleevedWatcher({ onHello: () => this.remindSleeved(), logger: this.logger });
+    this.sleeved.start();
+  }
+
+  // Sends sleeved what it should know of each running page: the look, which it forgets on a restart, and hidden for
+  // silence. Harmless when it has forgotten nothing, as at the first hello.
+  remindSleeved() {
+    for (const entry of this.entries.values()) {
+      if (entry.instance.engine !== 'sleeve') continue;
+      this.display(entry, { look: entry.instance.sleeve, ...(this.silenced ? { visible: false } : {}) });
+    }
+  }
+
   // Stops instances whose monitor is gone or moved, or that the settings or silence no longer want, then
   // starts the missing ones in the section's order
   async sync() {
+    this.watchSleeved();
     const instances = this.settings?.instances ?? [];
     for (const [key, entry] of [...this.entries]) {
       const monitor = this.monitors.get(entry.monitor.name);
@@ -353,7 +376,7 @@ export class VisualizerManager {
     child.on('exit', (code, signal) => { entry.exited = this.handleExit(entry, code, signal); });
     this.logger.info('Visualizer started', { monitor: monitor.name, instance: instance.name, module: instance.module, geometry: formatGeometry(geometry) });
     // In the background: the window takes a moment to appear
-    entry.placed = this.placeMonitor(monitor.name);
+    entry.placed = this.findAndPlace(entry);
     return entry;
   }
 
@@ -409,6 +432,14 @@ export class VisualizerManager {
       .filter(entry => entry && this.current(entry));
   }
 
+  // Finds an instance's window, then places every window of the monitor found so far. Each instance searches by itself,
+  // so a slow one (sleeve's takes about twice GLava's, far longer on a busy machine) does not leave the others under the wallpaper.
+  async findAndPlace(entry) {
+    entry.window = await this.findWindow(entry.adapter.title(entry.monitor), entry);
+    entry.searched = true;
+    return this.placeMonitor(entry.monitor.name);
+  }
+
   placeMonitor(name) {
     const previous = this.placing.get(name) ?? Promise.resolve();
     const next = previous.then(() => this.place(name));
@@ -425,8 +456,10 @@ export class VisualizerManager {
   async place(name) {
     const entries = this.monitorEntries(name);
     try {
-      for (const entry of entries) entry.window ??= await this.findWindow(entry.adapter.title(entry.monitor), entry);
-      const missing = entries.filter(entry => !entry.window && this.current(entry));
+      // Those searched for and not found get another look; ones still being searched for join when they are found
+      const lost = entries.filter(entry => entry.searched && !entry.window);
+      for (const entry of lost) entry.window = await this.findWindow(entry.adapter.title(entry.monitor), entry);
+      const missing = lost.filter(entry => !entry.window && this.current(entry));
       for (const entry of missing) this.logger.warn('Visualizer window not found, cannot place it', { monitor: name, instance: entry.instance.name });
       const placed = entries.filter(entry => entry.window && this.current(entry));
       return await this.x11(async x => {
@@ -616,6 +649,8 @@ export class VisualizerManager {
   }
 
   async stopAll() {
+    // sync starts it again if an instance is still wanted
+    this.sleeved?.stop();
     const entries = [...this.entries.values()];
     this.entries.clear();
     await Promise.all(entries.map(entry => this.stopEntry(entry)));

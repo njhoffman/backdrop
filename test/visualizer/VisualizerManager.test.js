@@ -55,6 +55,7 @@ describe('VisualizerManager', () => {
       onOverlays: name => overlayChanges.push(name),
       audioWatcher: options => new FakeWatcher(options),
       windowAttempts: 2, windowDelay: 0, settleDelay: 0,
+      sleevedWatcher: () => ({ start() {}, stop() {} }),
       spawn: (file, args, options) => {
         const child = new FakeChild(2000 + spawned.length);
         child.stderr = new EventEmitter();
@@ -211,6 +212,25 @@ describe('VisualizerManager', () => {
     await manager.stop();
   });
 
+  it('places a window as soon as it is found, not waiting for a slower instance', async () => {
+    config.set('visualizer.instances', [{ name: 'fast', module: 'bars' }, { name: 'slow', module: 'wave' }]);
+    windows.set('^backdrop-visualizer-DP-3-fast$', 0x3400002);
+    const manager = makeManager({ windowAttempts: 200, windowDelay: 5 });
+    await manager.configure();
+    await manager.sync();
+    const [fast, slow] = [...manager.entries.values()];
+    await fast.placed;
+    expect(xcalls).to.deep.include(['stackAbove', 0x3400002, 0x1200001]);
+    expect(slow.window).to.equal(null);
+
+    // The slow one joins above it, in the section's order
+    xcalls.length = 0;
+    windows.set('^backdrop-visualizer-DP-3-slow$', 0x3400003);
+    await slow.placed;
+    expect(xcalls.filter(call => call[0] === 'stackAbove')).to.deep.equal([['stackAbove', 0x3400002, 0x1200001], ['stackAbove', 0x3400003, 0x3400002]]);
+    await manager.stop();
+  });
+
   it('stops the instances while suspended, staying enabled, and starts them again after', async () => {
     const manager = makeManager();
     await manager.configure();
@@ -331,6 +351,35 @@ describe('VisualizerManager', () => {
       await new Promise(setImmediate);
       expect(ctl[0]).to.deep.equal(['--instance', 'DP-3-main', '--reset', '--hide']);
       await silent.stop();
+    });
+
+    it('sends sleeved what it forgot when it comes back, and watches only while a sleeve instance can run', async () => {
+      config.set('visualizer.sleeve', { now: 'full' });
+      let told;
+      let stops = 0;
+      const manager = sleeveManager({ sleevedWatcher: ({ onHello }) => { told = onHello; return { start() {}, stop() { stops++; } }; } });
+      await manager.configure();
+      await manager.sync();
+      await new Promise(setImmediate);
+      await manager.setLive({ instance: 'main', changes: { sleeve: { lyrics_align: 'right' } } });
+      ctl.length = 0;
+      told();
+      await new Promise(setImmediate);
+      expect(ctl).to.deep.equal([['--instance', 'DP-3-main', '--preset', 'full', '--align', 'right']]);
+
+      manager.audio.playing = false;
+      config.set('visualizer.only_while_playing', true);
+      manager.settings.onlyWhilePlaying = true;
+      ctl.length = 0;
+      told();
+      await new Promise(setImmediate);
+      expect(ctl[0].at(-1)).to.equal('--hide');
+      manager.settings.onlyWhilePlaying = false;
+      manager.audio.playing = null;
+
+      await manager.setEnabled(false);
+      expect(stops).to.equal(1);
+      await manager.stop();
     });
 
     it('stops while the load has everything off', async () => {

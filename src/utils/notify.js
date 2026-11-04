@@ -47,6 +47,14 @@ export function describeNotification({ monitor, media, rating, tags = [] }, { bo
   };
 }
 
+// Failing only leaves the old one until it times out, and it may well have gone already
+async function closeNotification(id) {
+  await settings.exec('gdbus', [
+    'call', '--session', '--dest', 'org.freedesktop.Notifications', '--object-path', '/org/freedesktop/Notifications',
+    '--method', 'org.freedesktop.Notifications.CloseNotification', String(id)
+  ]).catch(() => {});
+}
+
 // Sends a desktop notification for what a monitor now plays. Each monitor replaces its previous
 // notification where the server supports it (replace id, dunst stack tag). Failures are only logged:
 // a missing notify-send or notification server must not fail the command or the daemon.
@@ -67,6 +75,8 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
   try {
     const id = Number.parseInt(await settings.exec('notify-send', args), 10);
     if (Number.isInteger(id)) database.setSetting(key, id);
+    // A server that answers a replace with a new id (deadd) has kept the old one on screen
+    if (previous && Number.isInteger(id) && id !== previous) await closeNotification(previous);
   } catch (error) {
     logger?.warn('Notification failed', { error: error.message });
   }
