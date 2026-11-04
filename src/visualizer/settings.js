@@ -480,6 +480,16 @@ function effectiveRaw(section, { preset, live } = {}) {
   return { raw: applyLive(raw, live), active };
 }
 
+// The section's active look as it stands in the file, without the menu's changes, to tell whether a saved
+// change touched it (a preset saved under a new name does not). null for a section that does not check out.
+export function fileLook(section = {}, { preset } = {}) {
+  try {
+    return JSON.stringify(effectiveRaw(section, { preset, live: {} }).raw);
+  } catch {
+    return null;
+  }
+}
+
 // GLava's own amplify for the modules backdrop does not default (bars: backdrop's 200)
 const AMPLIFY_DEFAULTS = { bars: 200, graph: 300, radial: 300, circle: 150, wave: 500 };
 

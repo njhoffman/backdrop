@@ -68,6 +68,7 @@ visualizer:
   #     placement: {anchor: center, width: 40%, height: 60%}
   #     radial: {colors: ['#cc3333', '#ffcc66']}
   # Named looks laid over this section (any setting, including instances); switch with `backdrop visualizer preset`
+  # Pick one in the menu or with `backdrop visualizer preset`, then edit it here: each save applies at once
   # presets:
   #   calm: {opacity: 0.4, module: wave, wave: {color: '#33aacc'}}
   glava: {shader_dir: /etc/xdg/glava, args: []}

@@ -99,7 +99,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -229,6 +229,44 @@ describe('VisualizerManager', () => {
     await slow.placed;
     expect(xcalls.filter(call => call[0] === 'stackAbove')).to.deep.equal([['stackAbove', 0x3400002, 0x1200001], ['stackAbove', 0x3400003, 0x3400002]]);
     await manager.stop();
+  });
+
+  describe('a saved change with the menu\'s changes on top', () => {
+    const save = async (manager, change) => {
+      config.set('visualizer', { ...config.get().visualizer, ...change });
+      await manager.refresh();
+    };
+
+    it('lets a change to the look in use win', async () => {
+      const manager = makeManager();
+      await manager.configure();
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.3 } });
+      await save(manager, { opacity: 0.9 });
+      expect(manager.live).to.deep.equal({});
+      expect(manager.settings.instances[0].opacity).to.equal(0.9);
+      await manager.stop();
+    });
+
+    it('sees a change to the active preset itself', async () => {
+      config.set('visualizer.presets', { scratch: { opacity: 0.4 } });
+      const manager = makeManager();
+      await manager.setPreset('scratch');
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.3 } });
+      await save(manager, { presets: { scratch: { opacity: 0.6 } } });
+      expect(manager.live).to.deep.equal({});
+      expect(manager.settings.instances[0].opacity).to.equal(0.6);
+      await manager.stop();
+    });
+
+    it('keeps them through a save that leaves the look alone, such as saving a preset from the menu', async () => {
+      const manager = makeManager();
+      await manager.configure();
+      await manager.setLive({ instance: 'main', changes: { opacity: 0.3 } });
+      await save(manager, { presets: { saved: { opacity: 0.3 } } });
+      expect(manager.live).to.deep.equal({ main: { opacity: 0.3 } });
+      expect(manager.settings.instances[0].opacity).to.equal(0.3);
+      await manager.stop();
+    });
   });
 
   it('stops the instances while suspended, staying enabled, and starts them again after', async () => {

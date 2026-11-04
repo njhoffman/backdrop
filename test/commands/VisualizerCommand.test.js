@@ -88,7 +88,9 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 6)).to.deep.equal(['  subtle', '* ring', '  wave', '  party', '  lyrics', '  calm']);
+      expect(lines.slice(0, 12)).to.deep.equal([
+        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  lyrics-stage', '  lyrics-now', '  calm'
+      ]);
     });
 
     it('switches the running daemon to a named, next or configured preset', async () => {
@@ -108,7 +110,7 @@ describe('VisualizerCommand', () => {
     });
 
     it('wraps --next around from the last preset to the first', async () => {
-      await running({ preset: 'lyrics' });
+      await running({ preset: 'lyrics-now' });
       answer = answering();
       await command().run('preset', undefined, { next: true });
       expect((await fs.readJson(controlPath(dir))).preset).to.equal('subtle');

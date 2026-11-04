@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.47.0] - 2026-11-04
+
+### Added
+- Six more built-in presets with sleeve's lyrics: `lyrics-only`, `lyrics-side` (left third, bars beside them), `lyrics-veil` (the wallpaper under a see-through layer, a ring beside the lyrics),
+  `lyrics-blend` (the track's cover blended over the wallpaper), and `lyrics-stage` and `lyrics-now` (an opaque cover as the whole background). They need sleeve 0.36 or later.
+
+### Changed
+- Saving a change to the visualizer look in use now drops the menu's changes, which would otherwise hide the edit, so a preset can be built by editing it while it plays. Other saves leave them.
+
 ## [2.46.3] - 2026-11-04
 
 ### Fixed

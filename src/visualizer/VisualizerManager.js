@@ -2,7 +2,7 @@ import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { createVisualizer } from './index.js';
 import { SleevedWatcher } from './sleeved.js';
-import { deepMerge, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
+import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -112,6 +112,7 @@ export class VisualizerManager {
 
   async configure() {
     this.generation++;
+    this.look = fileLook(this.config.get().visualizer, this.settingsOptions());
     try {
       const settings = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
       const runtimeDir = this.config.get().paths.runtime;
@@ -243,6 +244,14 @@ export class VisualizerManager {
   // After a saved change to the config file: takes it like a menu change when the running instances can,
   // else reloads
   async refresh() {
+    // A saved change to the look in use is the latest word on it, so the menu's changes on top of it go, which
+    // would otherwise hide the edit. Other saves leave them, such as a preset saved from the menu under a new name.
+    const look = fileLook(this.config.get().visualizer, this.settingsOptions());
+    if (look !== this.look && Object.keys(this.live).length) {
+      this.logger.info('The active look changed in the file, dropping the menu\'s changes');
+      this.live = {};
+    }
+    this.look = look;
     let next = null;
     try {
       next = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
