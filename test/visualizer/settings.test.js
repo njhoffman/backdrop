@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings, enginesOf } from '../../src/visualizer/settings.js';
+import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings, enginesOf, resolveArea } from '../../src/visualizer/settings.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 describe('visualizer settings', () => {
@@ -256,7 +256,9 @@ describe('visualizer settings', () => {
 
     it('takes the sleeve settings, leaving unset ones out', () => {
       const [item] = visualizerSettings({ engine: 'sleeve', sleeve: { now: 'full', lyrics_align: 'center', no_sandbox: true, command: '/opt/sleeve' } }).instances;
-      expect(item.sleeve).to.deep.equal({ now: 'full', nowPosition: null, lyricsAlign: 'center', noSandbox: true, command: '/opt/sleeve' });
+      expect(item.sleeve).to.deep.equal({
+        now: 'full', nowPosition: null, lyricsAlign: 'center', lyricsArea: null, nowArea: null, background: null, mapBelow: null, noSandbox: true, command: '/opt/sleeve'
+      });
     });
 
     it('rejects sleeve settings that make no sense, naming the key', () => {
@@ -287,6 +289,42 @@ describe('visualizer settings', () => {
     it('ships a preset with lyrics above the bars', () => {
       const { instances } = visualizerSettings({ preset: 'lyrics' });
       expect(instances.map(item => item.engine)).to.deep.equal(['glava', 'sleeve']);
+    });
+  });
+
+  describe('sleeve as the wallpaper layer', () => {
+    const sleeve = values => visualizerSettings({ engine: 'sleeve', sleeve: values }).instances[0].sleeve;
+
+    it('takes areas in pixels or percent, and every background', () => {
+      expect(sleeve({ lyrics_area: '33%x100%+0+0', now_area: '800x600+10+20' })).to.include({ lyricsArea: '33%x100%+0+0', nowArea: '800x600+10+20', mapBelow: null, background: null });
+      for (const background of ['transparent', '#102030', '#10203099', 'cover', 'cover@0.6', 'cover@1']) expect(sleeve({ background }).background).to.equal(background);
+      expect(sleeve({ map_below: false }).mapBelow).to.equal(false);
+    });
+
+    it('rejects an area sleeve would refuse, naming the key', () => {
+      for (const value of ['33%', '0x100+0+0', '100x0%+0+0', '101%x100%+0+0', 'axb+0+0', 33]) {
+        expect(() => sleeve({ lyrics_area: value }), String(value)).to.throw('visualizer.sleeve.lyrics_area must be an area');
+      }
+      expect(() => sleeve({ now_area: 'left' })).to.throw('visualizer.sleeve.now_area must be an area');
+    });
+
+    it('rejects a background sleeve would refuse', () => {
+      for (const value of ['red', '#123', '#1020304', 'cover@2', 'cover@', 7]) {
+        expect(() => sleeve({ background: value }), String(value)).to.throw('visualizer.sleeve.background must be');
+      }
+    });
+
+    it('resolves an area inside a window, in root coordinates', () => {
+      const window = { x: 2560, y: 100, width: 1000, height: 500 };
+      expect(resolveArea('33%x100%+0+0', window)).to.deep.equal({ x: 2560, y: 100, width: 330, height: 500 });
+      expect(resolveArea('67%x100%+33%+0', window)).to.deep.equal({ x: 2890, y: 100, width: 670, height: 500 });
+      expect(resolveArea('200x100+10+20', window)).to.deep.equal({ x: 2570, y: 120, width: 200, height: 100 });
+    });
+
+    it('clips an area partly outside the window, as sleeve does', () => {
+      const window = { x: 0, y: 0, width: 1000, height: 500 };
+      expect(resolveArea('800x100+500+0', window)).to.deep.equal({ x: 500, y: 0, width: 500, height: 100 });
+      expect(resolveArea('100x100+5000+5000', window)).to.deep.equal({ x: 999, y: 499, width: 1, height: 1 });
     });
   });
 });

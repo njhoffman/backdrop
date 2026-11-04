@@ -680,10 +680,13 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 Contract: `docs/specs/sleeve.md`, agreed 2026-11-04 with sleeve 0.33.0, which already does its side (tried by hand on a real
 desktop). Built in 2026-11-04 apart from the desktop check; tried against real sleeve under Xvfb.
 
-- [ ] **Sleeve as the wallpaper layer.** (p2) [feature] The user wants both a sleeve window over the wallpaper and sleeve as the backdrop itself: a whole-monitor window with the
-      lyrics only in part of it (the left third) and the rest left for GLava and others, and sleeve as a see-through layer between the wallpaper and GLava (solid text, so its background needs its own alpha). Asked of sleeve in `~/git/sleeve/docs/backdrop.md`, not built there yet. Here, once it ships:
-      `visualizer.sleeve` `lyrics_area`, `now_area`, `background` passed at start and over `sleeve ctl display`, `--map-below`, a version check, and wallpaper colors sampled under
-      the lyrics area rather than the whole window. Stacking sleeve with no mpv wallpaper already works here (`place`), since it does not lower itself.
+- [x] **Sleeve as the wallpaper layer.** (p2) [feature] sleeve's side shipped in 0.36.0; the contract is "The wallpaper layer" in
+      `docs/specs/sleeve.md`. Here: typed `visualizer.sleeve` `lyrics_area`, `now_area`, `background` and `map_below`, passed at start, the first
+      three also over `sleeve ctl display` (`look` in `SleeveVisualizer.js`); `--map-below` for a whole-monitor instance; a check of `sleeve --version`,
+      reporting an older sleeve rather than exiting 2 on an unknown option; and colors sampled under the lyrics area rather than the whole
+      window. Stacking sleeve with no mpv wallpaper already works here (`place`), since it does not lower itself.
+- [ ] **Hiding keeps a background.** (p3) [bug] Since sleeve 0.35.0 `--hide` hides the lyrics and the panel only. `only_while_playing` with a `cover`
+      instance therefore leaves it moving, and costing up to 8%: decide whether silence should also take away the background for those, or stop them.
 - [x] **Choose the engine per instance.** (p2) [feature] `engine` is section-wide (`SHARED_KEYS` and `settings.js`), so bars
       and lyrics cannot run together. Make it an instance setting, inherited from the section as the others are; keep
       `engine` at the top meaning every instance. Checks that assume GLava (`glava`, `audio`, modules, `defines`) must only
@@ -704,10 +707,15 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       preset with lyrics above the bars; `visualizer check` for the new engine; `doctor` noting a missing `sleeve`, an
       uninstalled shell, the AppArmor block (status 2), and a `sleeve-shell.service` running at the same time, which would
       draw the lyrics twice.
+- [ ] **The load section cannot see GPU cost.** (p3) [perf] Load averages count no GPU time, and sleeve's own figures (`docs/specs/sleeve.md`, Cost) put a cover background at up to 16% of the
+      render engine: the `image` level leaves it animating and the `off` level is the only one that lightens it. `gpu.js` already reads memory per mpv; a threshold on render-engine busy time, or
+      dropping sleeve's cover to a still or see-through background at the `image` level, would cover it. Worth doing if a moving cover becomes the usual setup.
 - [ ] **Bars wait for a slow lyrics window.** (p3) [perf] `place` finds a monitor's windows one at a time before stacking any, so GLava stays under the wallpaper until sleeve's window
       exists: about 2 s idle, but 12 s measured at a load of 15 under Xvfb. Stack what is found, then again as the rest appear.
 - [ ] **sleeved restarting forgets live changes.** (p3) [bug] `sleeve ctl display` changes last until sleeved restarts: a page then goes back to its start options, and a hidden one shows again.
       The contract asks backdrop to send them again when it starts, which it does, but it cannot tell when sleeved alone restarts. `sleeve line` survives restarts over the socket, so watching
-      that socket is one way. A daemon restart or `visualizer reload` puts it right meanwhile.
+      that socket is one way, and the contract now backs it ("Changing a running instance"): every connection starts with `hello`, so a new one means a sleeved that forgot. A daemon
+      restart or `visualizer reload` puts it right meanwhile.
 - [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
-      colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`.
+      colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`. All three layouts in `docs/specs/sleeve.md`, each tried only under Xvfb so far with no compositor and
+      no GLava; a see-through background has not been seen over a real wallpaper, and a full-monitor window came out 1 px short there (1279x719, noted in sleeve's TODO), which an opaque one would show as a seam.

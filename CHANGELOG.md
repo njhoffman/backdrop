@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.46.0] - 2026-11-04
+
+### Added
+- sleeve as the wallpaper layer (needs sleeve 0.36 or later): `visualizer.sleeve` takes `lyrics_area`, `now_area` and `background`, so a sleeve instance can cover a monitor with the lyrics only in
+  its left third and the rest left for GLava, either as the wallpaper itself or as a see-through layer between mpv and GLava with the lyrics staying solid. They change with no restart, a
+  window filling its monitor maps at the bottom of the stack (`map_below` overrides it) rather than covering everything until placed, an older sleeve is reported by name, and wallpaper colors
+  are sampled under the lyrics area instead of the whole window.
+
 ## [2.45.0] - 2026-11-04
 
 ### Changed

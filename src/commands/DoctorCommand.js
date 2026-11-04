@@ -5,7 +5,7 @@ import { findOrphans } from '../display/children.js';
 import { withX11 } from '../display/x11.js';
 import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
-import { enginesOf } from '../visualizer/settings.js';
+import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath } from '../utils/output.js';
@@ -34,6 +34,16 @@ const TOOLS = [
 
 // The first sleeve with the contract in docs/specs/sleeve.md
 const SLEEVE_MIN = [0, 33];
+// And with the wallpaper layer's areas, background and --map-below
+const SLEEVE_LAYER_MIN = [0, 36];
+
+function usesSleeveLayer(section) {
+  try {
+    return visualizerSettings(section).instances.some(({ sleeve }) => sleeve && (sleeve.lyricsArea || sleeve.nowArea || sleeve.background || sleeve.mapBelow));
+  } catch {
+    return false;
+  }
+}
 
 // Whether an executable is on $PATH
 async function onPath(name, env = process.env) {
@@ -183,8 +193,9 @@ export class DoctorCommand {
     if (!settings.visualizer?.enabled || !enginesOf(settings.visualizer).has('sleeve') || !await this.which('sleeve')) return;
     const version = await this.exec('sleeve', ['--version']).then(text => text.trim(), () => null);
     const [major, minor] = (version ?? '').split('.').map(Number);
-    if (version && (major > SLEEVE_MIN[0] || (major === SLEEVE_MIN[0] && minor >= SLEEVE_MIN[1]))) add('visualizer', 'sleeve', 'ok', `version ${version}`);
-    else add('visualizer', 'sleeve', 'warn', `version ${version ?? 'unknown'}; the engine needs ${SLEEVE_MIN.join('.')} or later`, 'update sleeve');
+    const needed = usesSleeveLayer(settings.visualizer) ? SLEEVE_LAYER_MIN : SLEEVE_MIN;
+    if (version && (major > needed[0] || (major === needed[0] && minor >= needed[1]))) add('visualizer', 'sleeve', 'ok', `version ${version}`);
+    else add('visualizer', 'sleeve', 'warn', `version ${version ?? 'unknown'}; this config needs ${needed.join('.')} or later`, 'update sleeve');
     const shell = await this.exec('systemctl', ['--user', 'is-active', 'sleeve-shell.service']).then(text => text.trim(), () => 'inactive');
     if (shell === 'active') {
       add('visualizer', 'sleeve overlay', 'warn', 'sleeve-shell.service runs as well as the sleeve engine, so the lyrics draw twice', 'systemctl --user disable --now sleeve-shell.service');

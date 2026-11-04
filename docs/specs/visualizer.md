@@ -66,11 +66,11 @@ touch the visualizer.
 
 sleeve's lyrics are a second engine, chosen per instance with `engine: sleeve` (the section's `engine` is the default): what it promises is in
 [sleeve.md](sleeve.md). Such an instance starts `sleeve shell --managed`, takes its options from `visualizer.sleeve` (`now`, `now_position`,
-`lyrics_align`, `no_sandbox`, `command`; only those set are passed), and ignores GLava's settings. A change to the first three goes over `sleeve ctl
+`lyrics_align`, `lyrics_area`, `now_area`, `background`, `map_below`, `no_sandbox`, `command`; only those set are passed, and `--map-below` is on by itself for a window filling its monitor), and ignores GLava's settings. A change to the look (all but the last three) goes over `sleeve ctl
 display` with no restart, unless an option set at its start was removed, which only a restart can clear. On each start it resets what sleeved remembers of the
 page, and for silence it hides and shows rather than stopping. Status 2 means no use retrying, so the instance is given up on at once. With `palette.source:
 wallpaper` it gets one `{ background, main }` JSON line per change, as an overlay's colors in `state.json`. With the wallpaper off, a monitor with a sleeve instance is
-stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in `lyrics` preset puts lyrics above bars.
+stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in `lyrics` preset puts lyrics above bars. The areas and background let it be the wallpaper layer, alone or between mpv and GLava; see [sleeve.md](sleeve.md), which has examples.
 
 ### Overlays
 

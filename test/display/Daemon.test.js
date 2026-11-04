@@ -1423,6 +1423,21 @@ describe('Daemon', () => {
     });
     afterEach(async () => { await daemon.stop(); });
 
+    it('gives a sleeve instance the colors behind its lyrics area, not its whole window', async () => {
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
+      const monitor = daemon.monitors.get('DP-1');
+      const whole = { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height };
+      const bottom = { ...whole, y: monitor.y + monitor.height * 3 / 4, height: monitor.height / 4 };
+      await load('/m/a.png');
+      await daemon.sampling.get('DP-1')?.done;
+      const sleeve = lyricsArea => ({ engine: 'sleeve', sleeve: { lyricsArea } });
+
+      expect(daemon.colorsFor(monitor, sleeve(null), whole)).to.deep.equal(daemon.wallpaperColors.overlayColors(monitor, whole));
+      const area = daemon.colorsFor(monitor, sleeve('100%x25%+0+75%'), whole);
+      expect(area).to.deep.equal(daemon.wallpaperColors.overlayColors(monitor, bottom));
+      expect(area).to.not.deep.equal(daemon.colorsFor(monitor, sleeve(null), whole));
+    });
+
     it('samples each load once and answers with the colors under the instance', async () => {
       db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
       const monitor = daemon.monitors.get('DP-1');

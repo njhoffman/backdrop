@@ -263,6 +263,28 @@ describe('VisualizerManager', () => {
       await manager.stop();
     });
 
+    it('moves the areas and background over sleeve ctl, and restarts to drop one set at the start', async () => {
+      config.set('visualizer.sleeve', { lyrics_area: '33%x100%+0+0' });
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.setLive({ instance: 'main', changes: { sleeve: { lyrics_area: '50%x100%+0+0', background: '#10203099' } } });
+      expect(spawned).to.have.length(1);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--lyrics-area', '50%x100%+0+0', '--background', '#10203099']);
+      expect(manager.runsWith({ ...manager.settings, instances: manager.settings.instances.map(item => ({ ...item, sleeve: { ...item.sleeve, lyricsArea: null } })) })).to.equal(false);
+      await manager.stop();
+    });
+
+    it('turns the visualizer off with the reason when sleeve is too old for the settings', async () => {
+      config.set('visualizer.sleeve', { background: 'cover' });
+      const manager = sleeveManager({ exec: async (file, args) => { if (args[0] === '--version') return '0.33.0\n'; throw new Error('exit 1'); } });
+      await manager.configure();
+      expect(manager.error).to.include('need sleeve 0.36.0 or later (found 0.33.0)');
+      await manager.sync();
+      expect(spawned).to.have.length(0);
+      await manager.stop();
+    });
+
     it('restarts for what sleeve ctl cannot change', async () => {
       const manager = sleeveManager();
       await manager.configure();

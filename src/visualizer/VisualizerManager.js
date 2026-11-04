@@ -35,7 +35,7 @@ export function onMonitor(geometry, monitor) {
 
 // What sleeve can change on a running page; an option set at its start and now unset cannot be, since a
 // reset goes back to the start options
-const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign'];
+const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign', 'lyricsArea', 'nowArea', 'background'];
 const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]);
 const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key]);
 
@@ -51,7 +51,7 @@ function startSettings(settings) {
     // sleeve takes its look over `sleeve ctl display` (changedLook)
     instances: instances.map(({ opacity, palette, sleeve, ...rest }) => ({
       ...rest, palette: { source: palette.source },
-      ...(sleeve ? { sleeve: { command: sleeve.command, noSandbox: sleeve.noSandbox } } : {})
+      ...(sleeve ? { sleeve: { command: sleeve.command, noSandbox: sleeve.noSandbox, mapBelow: sleeve.mapBelow } } : {})
     }))
   });
 }
@@ -113,7 +113,7 @@ export class VisualizerManager {
     try {
       const settings = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
       const runtimeDir = this.config.get().paths.runtime;
-      const adapters = new Map(settings.instances.map(instance => [instance.name, this.create(settings, instance, { runtimeDir })]));
+      const adapters = new Map(settings.instances.map(instance => [instance.name, this.create(settings, instance, { runtimeDir, exec: this.exec })]));
       const prepared = this.override ?? settings.enabled;
       if (prepared) for (const adapter of adapters.values()) await adapter.prepare();
       Object.assign(this, { settings, adapters, prepared, error: null });

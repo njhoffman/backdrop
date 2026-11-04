@@ -1,18 +1,44 @@
+import { run } from '../display/Monitors.js';
+
+// The first sleeve with --lyrics-area, --now-area, --background and --map-below
+const LAYER_VERSION = [0, 36];
+
+const atLeast = (version, [major, minor]) => {
+  const [a, b] = version.split('.').map(Number);
+  return a > major || (a === major && b >= minor);
+};
+
 // sleeve's synced lyrics behind the visualizer adapter, for one instance of the visualizer section; the
 // contract is docs/specs/sleeve.md. Only the options set are passed, since an option given wins over the
 // user's ~/.config/sleeve/style.css.
 export class SleeveVisualizer {
-  constructor(settings, instance) {
+  constructor(settings, instance, { exec = run } = {}) {
     this.settings = settings;
     this.instance = instance;
+    this.exec = exec;
+    this.layer = false;
   }
 
   title(monitor) {
     return `backdrop-visualizer-${monitor.name}-${this.instance.name}`;
   }
 
-  // Nothing to build: the shell is installed apart from backdrop
-  async prepare() {}
+  // Nothing to build, since the shell is installed apart from backdrop, but an older sleeve would exit 2 on
+  // the options it does not know, so that is reported here by name. Without an answer (not installed) the start
+  // reports it.
+  async prepare() {
+    const version = await Promise.resolve().then(() => this.exec(this.file, ['--version'])).then(text => text.trim(), () => null);
+    this.layer = Boolean(version) && atLeast(version, LAYER_VERSION);
+    const { lyricsArea, nowArea, background, mapBelow } = this.instance.sleeve;
+    if (version && !this.layer && (lyricsArea || nowArea || background || mapBelow)) {
+      throw new Error(`visualizer.sleeve areas, background and map_below need sleeve ${LAYER_VERSION.join('.')}.0 or later (found ${version})`);
+    }
+  }
+
+  mapsBelow(monitor, { width, height }) {
+    const { mapBelow } = this.instance.sleeve;
+    return mapBelow ?? (this.layer && width === monitor.width && height === monitor.height);
+  }
 
   // The name `sleeve ctl display --instance` knows this window by, unique across monitors
   pageName(monitor) {
@@ -25,7 +51,7 @@ export class SleeveVisualizer {
 
   // geometry is absolute in the root window: { x, y, width, height }
   command(monitor, { x, y, width, height }) {
-    const { now, nowPosition, lyricsAlign, noSandbox } = this.instance.sleeve;
+    const { now, nowPosition, lyricsAlign, lyricsArea, nowArea, background, noSandbox } = this.instance.sleeve;
     return {
       file: this.file,
       args: [
@@ -34,6 +60,10 @@ export class SleeveVisualizer {
         ...(now ? ['--now', now] : []),
         ...(nowPosition ? ['--now-position', nowPosition] : []),
         ...(lyricsAlign ? ['--lyrics-align', lyricsAlign] : []),
+        ...(lyricsArea ? ['--lyrics-area', lyricsArea] : []),
+        ...(nowArea ? ['--now-area', nowArea] : []),
+        ...(background ? ['--background', background] : []),
+        ...(this.mapsBelow(monitor, { width, height }) ? ['--map-below'] : []),
         ...(noSandbox ? ['--no-sandbox'] : [])
       ]
     };
@@ -55,6 +85,9 @@ export class SleeveVisualizer {
         ...(look?.now ? ['--preset', look.now] : []),
         ...(look?.nowPosition ? ['--position', look.nowPosition] : []),
         ...(look?.lyricsAlign ? ['--align', look.lyricsAlign] : []),
+        ...(look?.lyricsArea ? ['--lyrics-area', look.lyricsArea] : []),
+        ...(look?.nowArea ? ['--now-area', look.nowArea] : []),
+        ...(look?.background ? ['--background', look.background] : []),
         ...(visible === undefined ? [] : [visible ? '--show' : '--hide'])
       ]
     };

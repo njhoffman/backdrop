@@ -62,7 +62,7 @@ menu:
 visualizer:                # see docs/specs/visualizer.md; checked at daemon start and on `backdrop visualizer reload`
   enabled: false
   engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance
-  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, no_sandbox, command (docs/specs/visualizer.md)
+  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background, map_below, no_sandbox, command
   monitors: all            # all, [names], or {name: true | false | {placement, rect}}
   module: bars             # bars, graph, radial, circle, wave
   audio: pulseaudio        # pulseaudio or fifo

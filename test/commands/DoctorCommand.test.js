@@ -156,6 +156,14 @@ describe('DoctorCommand', () => {
       expect((await sleeveChecks({ version: new Error('exit 1') })).find(check => check.name === 'sleeve').detail).to.include('unknown');
     });
 
+    it('asks for a newer sleeve when the wallpaper layer is configured', async () => {
+      const section = { enabled: true, engine: 'sleeve', sleeve: { background: 'cover' } };
+      const found = (await sleeveChecks({ section, version: '0.35.0\n' })).find(check => check.name === 'sleeve');
+      expect(found).to.include({ status: 'warn' });
+      expect(found.detail).to.include('needs 0.36 or later');
+      expect((await sleeveChecks({ section, version: '0.36.0\n' })).find(check => check.name === 'sleeve').status).to.equal('ok');
+    });
+
     it('warns that its own overlay service would draw the lyrics twice', async () => {
       const overlay = (await sleeveChecks({ shell: 'active\n' })).find(check => check.name === 'sleeve overlay');
       expect(overlay.status).to.equal('warn');

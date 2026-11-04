@@ -1,4 +1,5 @@
 import { mainColors, paletteColors, shownAverage, stripPixels } from '../../visualizer/palette.js';
+import { resolveArea } from '../../visualizer/settings.js';
 
 const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
 
@@ -13,8 +14,11 @@ export class WallpaperColors {
   // nothing is known: no wallpaper runs, or the item is not sampled yet, in which case sampling starts and
   // the instance is recolored once it is done
   colorsFor(monitor, instance, geometry) {
-    // sleeve picks its own text colors from what is behind it, in the shape an overlay gets
-    if (instance.engine === 'sleeve') return this.overlayColors(monitor, geometry);
+    // sleeve picks its own text colors from what is behind the lyrics, in the shape an overlay gets
+    if (instance.engine === 'sleeve') {
+      const { lyricsArea } = instance.sleeve;
+      return this.overlayColors(monitor, lyricsArea ? resolveArea(lyricsArea, geometry) : geometry);
+    }
     const media = this.daemon.screens.get(monitor.name)?.media;
     if (!media) return null;
     const cached = this.daemon.samples.get(monitor.name);

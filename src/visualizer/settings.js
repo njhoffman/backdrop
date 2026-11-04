@@ -305,11 +305,51 @@ function typedDefines(module, section, prefix) {
 }
 
 // One visualizer from its merged settings
+// A part of an area: pixels or a percentage of the window
+const AREA_PART = '(\\d+(?:\\.\\d+)?%?)';
+const AREA = new RegExp(`^${AREA_PART}x${AREA_PART}\\+${AREA_PART}\\+${AREA_PART}$`);
+
+function area(key, value) {
+  const match = typeof value === 'string' ? AREA.exec(value.trim()) : null;
+  const parts = match?.slice(1) ?? [];
+  const sized = parts.length && parseFloat(parts[0]) > 0 && parseFloat(parts[1]) > 0;
+  if (!sized || parts.some(part => part.endsWith('%') && parseFloat(part) > 100)) {
+    fail(key, 'an area such as 33%x100%+0+0 (WxH+X+Y, pixels or percent of the window)', value);
+  }
+  return value.trim();
+}
+
+function sleeveBackground(key, value) {
+  const cover = typeof value === 'string' ? /^cover@(\d*\.?\d+)$/.exec(value) : null;
+  const known = value === 'transparent' || value === 'cover' || (typeof value === 'string' && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value));
+  if (!known && !(cover && Number(cover[1]) <= 1)) fail(key, 'transparent, #rrggbb, #rrggbbaa, cover or cover@0.6', value);
+  return value;
+}
+
+// Absolute root-window geometry of an area inside a window ({ x, y, width, height }), clipped to it as sleeve does
+export function resolveArea(value, window) {
+  const [width, height, x, y] = AREA.exec(value).slice(1);
+  const length = (part, total) => (part.endsWith('%') ? Math.round(total * parseFloat(part) / 100) : Number(part));
+  const left = Math.min(length(x, window.width), window.width - 1);
+  const top = Math.min(length(y, window.height), window.height - 1);
+  return {
+    x: window.x + left,
+    y: window.y + top,
+    width: Math.max(1, Math.min(length(width, window.width), window.width - left)),
+    height: Math.max(1, Math.min(length(height, window.height), window.height - top))
+  };
+}
+
 function sleeveSettings(raw, prefix) {
   const key = `${prefix}sleeve`;
   if (!isObject(raw)) fail(key, 'a mapping', raw);
-  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'no_sandbox', 'command'], 'sleeve settings');
+  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'lyrics_area', 'now_area', 'background', 'map_below', 'no_sandbox', 'command'], 'sleeve settings');
   return {
+    lyricsArea: raw.lyrics_area === undefined ? null : area(`${key}.lyrics_area`, raw.lyrics_area),
+    nowArea: raw.now_area === undefined ? null : area(`${key}.now_area`, raw.now_area),
+    background: raw.background === undefined ? null : sleeveBackground(`${key}.background`, raw.background),
+    // null: on for a window filling its monitor, which would otherwise cover every other window until placed
+    mapBelow: raw.map_below === undefined ? null : boolean(`${key}.map_below`, raw.map_below),
     now: raw.now === undefined ? null : oneOf(`${key}.now`, raw.now, SLEEVE_NOW),
     nowPosition: raw.now_position === undefined ? null : oneOf(`${key}.now_position`, raw.now_position, SLEEVE_POSITIONS),
     lyricsAlign: raw.lyrics_align === undefined ? null : oneOf(`${key}.lyrics_align`, raw.lyrics_align, SLEEVE_ALIGNS),
