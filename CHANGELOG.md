@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.0] - 2026-11-04
+
+### Changed
+- Rating an item 1, 2 or 3 in `backdrop menu` no longer moves on to the next item: it stays playing, with the rating highlighted. Only skip moves on. `backdrop keep N --next`
+  still does when asked to.
+
 ## [2.44.0] - 2026-11-04
 
 ### Added

@@ -168,7 +168,7 @@ export function panelView(extraArgs = [], spawnProcess = spawn, theme = PANEL_TH
 // A rofi menu over the playback and rating commands for the monitor under the pointer (or --monitor).
 // It stays open after each action until q, or Escape on the main menu; Escape in a submenu goes back.
 // --random/--no-random and --query/--tag/--keywords are stored like next's (see nextFilters.js), apply to
-// next and to the advance after keep and skip, and are shown beside the item's details. With i3 the menu
+// next and to the advance after skip, and are shown beside the item's details. With i3 the menu
 // shows an empty workspace (menu.workspace) while open, so the wallpaper is in full view.
 // Menus are built as { prompt, title, message, status, preview, entries: [{ icon, label, caption, key,
 // active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key } or null.
@@ -307,8 +307,8 @@ export class MenuCommand {
   }
 
   // Two fixed rows: next, keep 1-3, speed over prev, skip, undo, mode, dim, with keys n 1 2 3 v and
-  // p s u m d. Buttons that do not apply to the item stay in place, faded, and do nothing. Keep and skip
-  // always move on to the next item, with the stored filters and order like next.
+  // p s u m d. Buttons that do not apply to the item stay in place, faded, and do nothing. Keep rates the
+  // item and leaves it playing; skip moves on to the next item, with the stored filters and order like next.
   async mainMenu(monitor) {
     const item = await this.describe(monitor);
     const { media } = item;
@@ -320,7 +320,7 @@ export class MenuCommand {
     const other = otherMode(getMode(this.database));
     const keep = value => ({
       icon: ICONS.keep, label: `keep ${value}`, key: String(value), disabled: !media, active: item.rating?.rating === value,
-      run: () => this.rating.keep(value, { ...target, next: true })
+      run: () => this.rating.keep(value, target)
     });
     const entries = [
       { icon: ICONS.next, label: 'next', key: 'n', disabled: off, run: () => this.display.next(target) },

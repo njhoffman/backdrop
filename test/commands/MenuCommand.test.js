@@ -77,7 +77,7 @@ describe('MenuCommand', () => {
     expect(shown[0].entries[4].caption).to.equal('speed 0.8');
     expect(flagged(shown[0], 'disabled')).to.deep.equal([]);
     // The order and filters for the advance are the stored ones, which keep reads itself
-    expect(rating.keep.calledOnceWithExactly(3, { monitor: 'DP-1', next: true })).to.be.true;
+    expect(rating.keep.calledOnceWithExactly(3, { monitor: 'DP-1' })).to.be.true;
   });
 
   it('keeps every slot, fading what does not apply, and ignores picks of faded buttons', async () => {
