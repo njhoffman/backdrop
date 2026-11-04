@@ -67,6 +67,7 @@ export const BUILTIN_PRESETS = {
   },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
+    wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover' } },
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
@@ -75,6 +76,7 @@ export const BUILTIN_PRESETS = {
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {
+    wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
         now: 'full', now_area: '33%x75%+0+0', now_position: 'center-left', lyrics_area: '67%x75%+33%+0', background: 'cover'

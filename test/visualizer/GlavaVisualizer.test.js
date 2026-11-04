@@ -71,9 +71,10 @@ describe('GlavaVisualizer', () => {
     expect(visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, { PULSE_COOKIE: '/c' }).env.PULSE_COOKIE).to.equal('/c');
   });
 
-  it('reads the piped colors from stdin only with palette.source: wallpaper', () => {
+  it('reads the piped colors from stdin when there are any', () => {
     const args = section => glava(section, { root: '/r' }).command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, {}).args;
-    expect(args({}).filter(arg => arg.startsWith('--pipe'))).to.deep.equal([]);
+    expect(args({ module: 'radial' }).filter(arg => arg.startsWith('--pipe'))).to.deep.equal([]);
+    expect(args({}).filter(arg => arg.startsWith('--pipe'))).to.deep.equal(['--pipe=fg:vec4']);
     expect(args({ palette: { source: 'wallpaper' }, bars: { colors: ['#000000', '#ffffff'] } }).filter(arg => arg.startsWith('--pipe')))
       .to.deep.equal(['--pipe=fg:vec4', '--pipe=fg2:vec4']);
   });

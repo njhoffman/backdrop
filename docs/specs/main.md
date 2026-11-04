@@ -37,6 +37,8 @@ starting under load applies the level at once. Linux load averages count tasks w
 - `off`: wallpapers and visualizers stop and the daemon keeps running. `daemon.wallpaper` and the visualizer's enabled state are
   untouched, so a part turned off by hand stays off afterwards, and `start --wallpaper` during it takes effect when it ends.
 
+A sleeve instance's `cover` background becomes a dark color at `image` too: load averages do not count GPU time, and a moving cover can take a sixth of the render engine.
+
 The screensaver is to follow the same levels: images only at `image`, skipping streams, and a blank screen at `off`.
 
 ## Layout

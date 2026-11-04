@@ -183,6 +183,7 @@ export class Daemon {
       colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
       onMusicDim: () => this.applyDims(),
       onOverlays: name => this.onOverlays(name),
+      onWallpaper: () => this.enqueue(() => this.syncWallpaper()),
       ...(createVisualizer ? { create: createVisualizer } : {})
     });
     this.reloadConfig = reloadConfig;
@@ -231,6 +232,8 @@ export class Daemon {
     await this.load.begin();
 
     try {
+      // Before the wallpapers, since the look in use can do without them
+      await this.visualizers.configure();
       for (const monitor of monitors) {
         this.monitors.set(monitor.name, monitor);
         if (this.showsWallpaper) await this.startScreen(monitor);
@@ -240,7 +243,6 @@ export class Daemon {
       throw error;
     }
 
-    await this.visualizers.configure();
     await this.visualizers.sync();
     if (!this.wallpaper && !this.visualizers.active) {
       await this.stop();
@@ -266,7 +268,19 @@ export class Daemon {
 
   // Wanted by the user and allowed by the system load
   get showsWallpaper() {
-    return this.wallpaper && !this.load.off;
+    return this.wallpaper && !this.load.off && !this.visualizers.hidesWallpaper;
+  }
+
+  // Follows a preset that hides the wallpaper or stops doing so
+  async syncWallpaper() {
+    if (this.stopping) return;
+    if (this.showsWallpaper) {
+      await this.controls.startWallpapers();
+      await this.visualizers.restackAll();
+    } else {
+      await this.controls.stopWallpapers();
+    }
+    await this.writeState();
   }
 
   // The mode a monitor shows, which the load may be holding (see displayMode)

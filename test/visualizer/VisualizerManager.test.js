@@ -99,7 +99,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -269,6 +269,77 @@ describe('VisualizerManager', () => {
     });
   });
 
+  it('lists overlays bottom to top as they will be stacked, whichever mapped first', async () => {
+    const geometry = { x: 0, y: 0, width: 100, height: 100 };
+    overlayWindows = [
+      { window: 0x500002, position: 'above', name: 'high', geometry },
+      { window: 0x500001, position: 'below', name: 'low', geometry }
+    ];
+    const manager = makeManager();
+    await manager.configure();
+    await manager.restack('DP-3', { scan: true });
+    expect(manager.overlaysOn('DP-3').map(overlay => overlay.name)).to.deep.equal(['low', 'high']);
+    await manager.stop();
+  });
+
+  describe('a look that hides the wallpaper', () => {
+    let told;
+    const hiding = () => {
+      told = [];
+      return makeManager({ onWallpaper: hides => told.push(hides) });
+    };
+
+    it('says so only while the visualizer is on, telling the daemon of changes but not the first answer', async () => {
+      config.set('visualizer.presets', { bare: { wallpaper: false } });
+      const manager = hiding();
+      await manager.configure();
+      expect(manager.hidesWallpaper).to.equal(false);
+      await manager.setPreset('bare');
+      expect(manager.hidesWallpaper).to.equal(true);
+      expect(told).to.deep.equal([true]);
+      await manager.setEnabled(false);
+      expect(manager.hidesWallpaper).to.equal(false);
+      expect(told).to.deep.equal([true, false]);
+      await manager.stop();
+    });
+
+    it('starting on such a preset tells the daemon nothing, since it checks before starting wallpapers', async () => {
+      config.set('visualizer.wallpaper', false);
+      const manager = hiding();
+      await manager.configure();
+      expect(manager.hidesWallpaper).to.equal(true);
+      expect(told).to.deep.equal([]);
+      await manager.stop();
+    });
+
+    it('takes the change without restarting anything', async () => {
+      config.set('visualizer.presets', { bare: { wallpaper: false } });
+      const manager = hiding();
+      await manager.configure();
+      await manager.sync();
+      config.set('visualizer.wallpaper', false);
+      await manager.refresh();
+      expect(spawned).to.have.length(1);
+      expect(told).to.deep.equal([true]);
+      await manager.stop();
+    });
+
+    it('gives the wallpaper back when an instance cannot run, rather than a bare desktop', async () => {
+      config.set('visualizer.wallpaper', false);
+      config.set('visualizer.engine', 'sleeve');
+      told = [];
+      const manager = makeManager({ create: createVisualizer, onWallpaper: hides => told.push(hides) });
+      await manager.configure();
+      await manager.sync();
+      const entry = manager.entries.values().next().value;
+      spawned[0].child.exit(2, null);
+      await entry.exited;
+      expect(manager.hidesWallpaper).to.equal(false);
+      expect(told).to.deep.equal([false]);
+      await manager.stop();
+    });
+  });
+
   it('stops the instances while suspended, staying enabled, and starts them again after', async () => {
     const manager = makeManager();
     await manager.configure();
@@ -417,6 +488,62 @@ describe('VisualizerManager', () => {
 
       await manager.setEnabled(false);
       expect(stops).to.equal(1);
+      await manager.stop();
+    });
+
+    it('swaps a cover for a color while the system is busy, and back', async () => {
+      config.set('visualizer.sleeve', { background: 'cover' });
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await new Promise(setImmediate);
+      ctl.length = 0;
+      await manager.setLightened(true);
+      await new Promise(setImmediate);
+      expect(ctl).to.deep.equal([['--instance', 'DP-3-main', '--background', '#0a0f1a']]);
+      await manager.setLightened(true);
+      await new Promise(setImmediate);
+      expect(ctl).to.have.length(1);
+      await manager.setLightened(false);
+      await new Promise(setImmediate);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--background', 'cover']);
+      await manager.stop();
+    });
+
+    it('keeps a blended cover see-through, and leaves other backgrounds alone', async () => {
+      config.set('visualizer.sleeve', { background: 'cover@0.6' });
+      const blended = sleeveManager();
+      await blended.configure();
+      await blended.sync();
+      await blended.setLightened(true);
+      await new Promise(setImmediate);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--background', '#0a0f1a99']);
+      await blended.stop();
+
+      config.set('visualizer.sleeve', { background: '#10203099' });
+      const colored = sleeveManager();
+      await colored.configure();
+      await colored.sync();
+      await new Promise(setImmediate);
+      const sent = ctl.length;
+      await colored.setLightened(true);
+      await new Promise(setImmediate);
+      expect(ctl).to.have.length(sent);
+      await colored.stop();
+    });
+
+    it('starts on the color while busy, and sleeved is reminded of it', async () => {
+      config.set('visualizer.sleeve', { background: 'cover' });
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.setLightened(true);
+      await manager.sync();
+      await new Promise(setImmediate);
+      expect(ctl[0]).to.deep.equal(['--instance', 'DP-3-main', '--reset', '--background', '#0a0f1a']);
+      ctl.length = 0;
+      manager.remindSleeved();
+      await new Promise(setImmediate);
+      expect(ctl[0]).to.include('#0a0f1a');
       await manager.stop();
     });
 
@@ -709,7 +836,7 @@ describe('VisualizerManager', () => {
       colors = () => ({ fg: '#333333ff', fg2: '#444444ff' });
       await manager.recolor('DP-3');
       expect(writes.slice(2).map(([, line]) => line)).to.deep.equal(['fg = #333333ff\n', 'fg2 = #444444ff\n']);
-      expect(logs.some(log => log[1] === 'Visualizer colors from the wallpaper')).to.equal(true);
+      expect(logs.some(log => log[1] === 'Visualizer colors')).to.equal(true);
 
       // Unknown again (wallpaper off): back to the configured colors
       colors = null;
@@ -732,13 +859,37 @@ describe('VisualizerManager', () => {
       expect(writes.slice(3).map(([, line]) => line)).to.deep.equal(['fg = #555555ff\n', 'fg2 = #666666ff\n']);
     });
 
-    it('leaves stdin closed and colors out of the description with palette.source: config', async () => {
+    it('sends set colors at the start and takes a new one with no restart, sampling nothing with palette.source: config', async () => {
       config.set('visualizer.palette', { source: 'config' });
       await manager.configure();
       await manager.sync();
-      expect(spawned[0].options.stdio[0]).to.equal('ignore');
+      expect(spawned[0].options.stdio[0]).to.equal('pipe');
       expect(manager.describe('DP-3')[0]).to.not.have.property('colors');
       expect(manager.wantsWallpaperColors('DP-3')).to.equal(false);
+      await manager.entries.values().next().value.writing;
+      const started = writes.length;
+      expect(started).to.be.greaterThan(0);
+
+      await manager.setLive({ instance: 'main', changes: { bars: { colors: ['#112233', '#445566'] } } });
+      await manager.entries.values().next().value.writing;
+      expect(spawned).to.have.length(1);
+      expect(writes.slice(started).join('')).to.include('fg = #112233ff').and.include('fg2 = #445566ff');
+    });
+
+    it('restarts when the number of piped colors changes, since GLava reads them at its start', async () => {
+      config.set('visualizer.palette', { source: 'config' });
+      await manager.configure();
+      await manager.sync();
+      await manager.setLive({ instance: 'main', changes: { bars: { colors: '#112233' } } });
+      expect(spawned).to.have.length(2);
+    });
+
+    it('leaves stdin closed for a module with no colors set', async () => {
+      config.set('visualizer.palette', { source: 'config' });
+      config.set('visualizer.module', 'radial');
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].options.stdio[0]).to.equal('ignore');
       await manager.recolor('DP-3');
       expect(writes).to.deep.equal([]);
     });
@@ -863,11 +1014,11 @@ describe('VisualizerManager', () => {
       await manager.sync();
       expect(await entry().placed).to.be.true;
       expect(stacked()).to.deep.equal([[0x5000002, 0x1200001], [0x3400002, 0x5000002], [0x5000001, 0x3400002]]);
-      expect(manager.overlaysOn('DP-3').map(overlay => overlay.window)).to.deep.equal([0x5000001, 0x5000002]);
+      expect(manager.overlaysOn('DP-3').map(overlay => overlay.window)).to.deep.equal([0x5000002, 0x5000001]);
       expect(overlayChanges).to.deep.equal(['DP-3']);
       expect(manager.wantsWallpaperColors('DP-3')).to.be.true;
       expect(logs.find(log => log[1] === 'Overlays found')[2].overlays).to.deep.equal([
-        { window: 0x5000001, name: 'lyrics', position: 'above' }, { window: 0x5000002, name: 'clock', position: 'below' }
+        { window: 0x5000002, name: 'clock', position: 'below' }, { window: 0x5000001, name: 'lyrics', position: 'above' }
       ]);
 
       // Moved from above to below: the next placement swaps it under the instance

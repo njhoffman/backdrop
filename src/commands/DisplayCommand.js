@@ -179,8 +179,9 @@ export class DisplayCommand {
   describeParts(state) {
     const visualizer = state.visualizer?.enabled && !state.visualizer.error;
     const held = state.load?.level === 'off' ? ' (held by load)' : '';
+    const hidden = state.visualizer?.hidesWallpaper ? ' (the preset hides it)' : '';
     return [
-      `wallpaper ${state.wallpaper === false ? 'off' : `${held ? 'off' : 'on'}${held}`}`,
+      `wallpaper ${state.wallpaper === false ? 'off' : `${held || hidden ? 'off' : 'on'}${held || hidden}`}`,
       `visualizer ${visualizer ? `${held ? 'off' : 'on'}${held}` : 'off'}`
     ].join(', ');
   }
@@ -228,9 +229,9 @@ export class DisplayCommand {
     const { allow_upscale: allowUpscale } = this.config.get().display;
     for (const monitor of state.monitors) {
       if (!monitor.socket) {
-        out.field('info', fmt.yellow(state.load?.level === 'off' && state.wallpaper !== false
-          ? 'wallpaper off until the system load falls'
-          : 'wallpaper off (backdrop start --wallpaper)'));
+        const why = state.wallpaper === false ? '(backdrop start --wallpaper)'
+          : state.load?.level === 'off' ? 'until the system load falls' : 'while the preset hides it';
+        out.field('info', fmt.yellow(`wallpaper off ${why}`));
         continue;
       }
       const mode = displayMode(this.database, monitor, { allowUpscale });
@@ -280,7 +281,9 @@ export class DisplayCommand {
       // Whether a compositor ran at the visualizer's last placement; null when not checked
       compositor: state?.visualizer?.compositor ?? null,
       // { level, value, window, limit, resume_below }, or null with the load section off
-      load: state?.load ?? null
+      load: state?.load ?? null,
+      // The active preset has visualizer.wallpaper: false, so mpv is stopped whatever wallpaper says
+      wallpaper_hidden: Boolean(state?.visualizer?.hidesWallpaper)
     };
     return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, config_warnings: this.config.warnings ?? [] };
   }
@@ -383,7 +386,7 @@ export class DisplayCommand {
   async mode(requested, options = {}) {
     // With the wallpaper off only the mode changes; the wallpaper starts in it when turned on
     const running = await this.control.state({ required: false });
-    const playing = running && running.wallpaper !== false && running.load?.level !== 'off' ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
+    const playing = running && running.wallpaper !== false && running.load?.level !== 'off' && !running.visualizer?.hidesWallpaper ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
     const { mode, held, counts } = playing?.result ?? await this.control.mode(requested);
     // --json: the new mode and what the target monitor now plays, or a null monitor when stopped
     if (wantsJson(options)) {

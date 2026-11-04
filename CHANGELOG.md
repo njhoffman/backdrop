@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.48.0] - 2026-11-04
+
+### Added
+- A preset (or the visualizer section) can set `wallpaper: false` to stop mpv while it is active, so it decodes nothing behind a look that hides it. `lyrics-stage` and `lyrics-now` do. mpv comes back when the look ends, or if an instance cannot run.
+
+### Changed
+- Changing a visualizer's set colors, such as a swatch in the menu, no longer restarts GLava: they are piped like the wallpaper's. A module with no colors set keeps its own until the first pick.
+- At the `load` section's `image` level, a sleeve `cover` background gives way to a dark color until the load falls, since load averages do not count the GPU time a moving cover takes.
+
+### Fixed
+- `status` and `state.json` now always list overlay windows bottom to top as documented. They followed the order the windows happened to map in, so they could read reversed although the windows themselves were stacked correctly.
+
 ## [2.47.0] - 2026-11-04
 
 ### Added

@@ -72,6 +72,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   silence_grace: 10        # seconds of silence before they stop
   wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
+  wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
                            #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-now
                            #   (src/visualizer/presets.js); cannot set enabled, preset or presets

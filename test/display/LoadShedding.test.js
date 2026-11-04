@@ -9,7 +9,7 @@ import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } 
 import { notifications } from '../helpers/setup.js';
 
 describe('Load shedding', () => {
-  let tempDir, db, config, spawned, clients, replaced, calls, visualizers, load, time, daemon;
+  let tempDir, db, config, spawned, clients, replaced, calls, lightened, visualizers, load, time, daemon;
 
   function makeDaemon() {
     return new Daemon({
@@ -68,6 +68,7 @@ describe('Load shedding', () => {
     clients = [];
     replaced = [];
     calls = [];
+    lightened = [];
     load = 0;
     time = 1_000_000;
     visualizers = {
@@ -75,6 +76,7 @@ describe('Load shedding', () => {
       get active() { return this.override ?? this.on; },
       setEnabled: async on => { visualizers.override = on; },
       setSuspended: async on => { calls.push(['suspended', on]); },
+      setLightened: async on => { lightened.push(on); },
       restackAll: async () => { calls.push('restackAll'); },
       configure: async () => {}, sync: async () => {}, restack: () => {}, stop: async () => {},
       describe: () => [],
@@ -91,6 +93,66 @@ describe('Load shedding', () => {
     await daemon.stop();
     db.close();
     await fs.remove(tempDir);
+  });
+
+  it('lightens the visualizer at each level but normal', async () => {
+    load = 15;
+    await daemon.start();
+    expect(lightened).to.deep.equal([true]);
+    await settle(1);
+    expect(lightened).to.deep.equal([true, false]);
+    await settle(15);
+    expect(lightened.at(-1)).to.equal(true);
+  });
+
+  describe('a look that hides the wallpaper', () => {
+    beforeEach(() => { config.get().load.enabled = false; });
+
+    it('starts no mpv, says why in the state, and starts it when the look ends', async () => {
+      visualizers.hidesWallpaper = true;
+      await daemon.start();
+      expect(spawned).to.have.length(0);
+      expect(daemon.wallpaper).to.equal(true);
+      expect((await readState(tempDir)).monitors.map(monitor => monitor.socket)).to.deep.equal([null, null]);
+
+      visualizers.hidesWallpaper = false;
+      await daemon.syncWallpaper();
+      expect(daemon.screens.size).to.equal(2);
+      expect(calls).to.include('restackAll');
+    });
+
+    it('stops mpv when such a look starts, and a monitor added meanwhile stays without it', async () => {
+      await daemon.start();
+      expect(daemon.screens.size).to.equal(2);
+      visualizers.hidesWallpaper = true;
+      await daemon.syncWallpaper();
+      expect(daemon.screens.size).to.equal(0);
+      expect(daemon.stopping).to.equal(false);
+      daemon.monitors.clear();
+      await daemon.checkMonitors();
+      expect(daemon.monitors.size).to.equal(2);
+      expect(daemon.screens.size).to.equal(0);
+    });
+
+    it('holds back a wallpaper turned on by hand until the look ends', async () => {
+      visualizers.hidesWallpaper = true;
+      visualizers.on = true;
+      await daemon.start({ wallpaper: false, visualizer: true });
+      await daemon.setWallpaper(true);
+      expect(daemon.wallpaper).to.equal(true);
+      expect(daemon.screens.size).to.equal(0);
+    });
+
+    it('leaves a wallpaper turned off by hand off when the look ends', async () => {
+      visualizers.on = true;
+      await daemon.start();
+      await daemon.setWallpaper(false);
+      visualizers.hidesWallpaper = true;
+      await daemon.syncWallpaper();
+      visualizers.hidesWallpaper = false;
+      await daemon.syncWallpaper();
+      expect(daemon.screens.size).to.equal(0);
+    });
   });
 
   it('changes nothing with the section off, whatever the load', async () => {

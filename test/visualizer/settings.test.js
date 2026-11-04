@@ -15,7 +15,7 @@ describe('visualizer settings', () => {
     expect(settings.instances[0]).to.include({ module: 'bars', opacity: 0.8 });
     expect(settings.instances[0].defines).to.deep.equal({
       BAR_WIDTH: 20, BAR_GAP: 1, BAR_OUTLINE_WIDTH: 0, AMPLIFY: 200, GRADIENT: 80,
-      COLOR: '@fg:mix(#000000, #33aacc, clamp(d / GRADIENT, 0, 1))', DIRECTION: 0, FLIP: 0, USE_ALPHA: 1
+      COLOR: 'mix(@fg:#000000 , @fg2:#33aacc , clamp(d / GRADIENT, 0, 1))', DIRECTION: 0, FLIP: 0, USE_ALPHA: 1
     });
     expect(settings.glava).to.deep.equal({ shaderDir: '/etc/xdg/glava', args: [] });
     expect(layoutFor(settings.instances[0], 'DP-3')).to.equal(settings.instances[0].layout);
@@ -29,7 +29,7 @@ describe('visualizer settings', () => {
 
   it('writes only the typed options given for the other modules, as their GLava defines', () => {
     expect(main({ module: 'graph', graph: { amplify: 250, colors: ['#802A2A', '#4f4f92'], direction: 'outward', outline: true, outline_color: '#262626' } }).defines)
-      .to.deep.equal({ VSCALE: 250, COLOR: '@fg:mix(#802a2a, #4f4f92, clamp(pos / GRADIENT, 0, 1))', DIRECTION: -1, DRAW_OUTLINE: 1, OUTLINE: '@bg:#262626' });
+      .to.deep.equal({ VSCALE: 250, COLOR: 'mix(@fg:#802a2a , @fg2:#4f4f92 , clamp(pos / GRADIENT, 0, 1))', DIRECTION: -1, DRAW_OUTLINE: 1, OUTLINE: '@bg:#262626' });
     expect(main({ module: 'radial', radial: { radius: 100, line: 2.5, bars: 120, width: 4, rotate: 90, offset_y: -10 } }).defines)
       .to.deep.equal({ C_RADIUS: '100.0', C_LINE: '2.5', NBARS: 120, BAR_WIDTH: '4.0', ROTATE: '(90.0 * PI / 180.0)', CENTER_OFFSET_Y: '-10.0' });
     expect(main({ module: 'circle', circle: { color: '#33aacc', fill: true } }).defines).to.deep.equal({ OUTLINE: '@fg:#33aacc', C_FILL: 1 });
@@ -147,11 +147,24 @@ describe('visualizer settings', () => {
   });
 
   describe('palette', () => {
-    it('keeps the module colors in the shader by default, with nothing piped', () => {
+    it('pipes colors that are set, so they change with no restart', () => {
       const instance = main({});
       expect(instance.palette).to.deep.equal({ source: 'config', pick: 'vivid', minContrast: 3 });
-      expect(instance.pipe).to.equal(null);
+      expect(instance).to.deep.include({ pipe: { fg: '#33aaccff' }, pipeDefine: 'COLOR' });
       expect(instance.defines.COLOR).to.equal('@fg:#33aacc');
+      expect(main({ module: 'wave', wave: { color: '#123456' } })).to.deep.include({ pipe: { fg: '#123456ff' }, pipeDefine: 'BASE_COLOR' });
+    });
+
+    it('leaves a module with no colors set to its shader, and a raw define in it', () => {
+      expect(main({ module: 'radial' })).to.include({ pipe: null, pipeDefine: null });
+      expect(main({ module: 'radial' }).defines).to.not.have.property('COLOR');
+      const raw = main({ defines: { COLOR: '#ff0000' } });
+      expect(raw.pipe).to.equal(null);
+      expect(raw.defines.COLOR).to.equal('#ff0000');
+    });
+
+    it('still refuses a raw define for colors from the wallpaper', () => {
+      expect(() => main({ palette: { source: 'wallpaper' }, defines: { COLOR: '#ff0000' } })).to.throw('left out with palette.source: wallpaper');
     });
 
     it('pipes the foreground color with source: wallpaper, sending the configured colors first', () => {
@@ -181,9 +194,9 @@ describe('visualizer settings', () => {
         instances: [{ name: 'low' }, { name: 'top', palette: { source: 'config' } }],
         presets: { plain: { palette: { source: 'config' } } }
       });
-      expect(settings.instances.map(instance => Boolean(instance.pipe))).to.deep.equal([true, false]);
+      expect(settings.instances.map(instance => instance.palette.source)).to.deep.equal(['wallpaper', 'config']);
       const plain = visualizerSettings({ palette: { source: 'wallpaper' }, presets: { plain: { palette: { source: 'config' } } } }, { preset: 'plain' });
-      expect(plain.instances[0].pipe).to.equal(null);
+      expect(plain.instances[0].palette.source).to.equal('config');
     });
 
     it('rejects bad values, and a raw define of the color it pipes', () => {
@@ -210,7 +223,7 @@ describe('visualizer settings', () => {
       expect(settings.instances[0]).to.include({ opacity: 0.5 });
       expect(settings.instances[0].defines.AMPLIFY).to.equal(120);
       // Colors the change left alone stay
-      expect(settings.instances[0].defines.COLOR).to.equal('@fg:mix(#000000, #33aacc, clamp(d / GRADIENT, 0, 1))');
+      expect(settings.instances[0].defines.COLOR).to.equal('mix(@fg:#000000 , @fg2:#33aacc , clamp(d / GRADIENT, 0, 1))');
       expect(visualizerSettings(section, { preset: 'faint', live: { main: { module: 'wave' } } }).instances[0]).to.include({ opacity: 0.4, module: 'wave' });
     });
 
@@ -359,6 +372,17 @@ describe('visualizer settings', () => {
       const window = { x: 0, y: 0, width: 1000, height: 500 };
       expect(resolveArea('800x100+500+0', window)).to.deep.equal({ x: 500, y: 0, width: 500, height: 100 });
       expect(resolveArea('100x100+5000+5000', window)).to.deep.equal({ x: 999, y: 499, width: 1, height: 1 });
+    });
+  });
+
+  describe('wallpaper', () => {
+    it('is on unless the section or the preset says otherwise', () => {
+      expect(visualizerSettings({}).wallpaper).to.equal(true);
+      expect(visualizerSettings({ wallpaper: false }).wallpaper).to.equal(false);
+      expect(visualizerSettings({ preset: 'lyrics-stage' }).wallpaper).to.equal(false);
+      expect(visualizerSettings({ preset: 'lyrics-now' }).wallpaper).to.equal(false);
+      expect(visualizerSettings({ preset: 'lyrics-veil' }).wallpaper).to.equal(true);
+      expect(() => visualizerSettings({ wallpaper: 'no' })).to.throw('visualizer.wallpaper must be true or false');
     });
   });
 });

@@ -98,8 +98,8 @@ export class ControlRequests {
     if (on === this.daemon.wallpaper || this.daemon.stopping) return;
     this.daemon.wallpaper = on;
     if (!on) await this.stopWallpapers();
-    // Held off for the system load: the wallpaper starts when that ends
-    else if (!this.daemon.load.off) {
+    // Held off for the system load or by the preset: the wallpaper starts when that ends
+    else if (this.daemon.showsWallpaper) {
       await this.startWallpapers();
       await this.daemon.visualizers.restackAll();
     }

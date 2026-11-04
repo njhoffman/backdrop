@@ -39,6 +39,13 @@ export function onMonitor(geometry, monitor) {
 const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign', 'lyricsArea', 'nowArea', 'background'];
 const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]);
 const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key]);
+// What a cover becomes while the system is loaded: a moving cover can cost a sixth of the GPU, a color a fraction of that
+const STILL_BACKGROUND = '#0a0f1a';
+function stillBackground(background) {
+  const blend = /^cover@(.+)$/.exec(background ?? '');
+  if (blend) return `${STILL_BACKGROUND}${Math.round(Number(blend[1]) * 255).toString(16).padStart(2, '0')}`;
+  return background === 'cover' ? STILL_BACKGROUND : background;
+}
 
 const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}`;
 
@@ -46,12 +53,14 @@ const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}
 // window property), how colors are picked from the wallpaper (palette.pick and min_contrast, sent over the
 // pipe) and wallpaper_dim, which running instances take as they are, and the preset names.
 function startSettings(settings) {
-  const { preset, presets, instances, wallpaperDim, ...shared } = settings;
+  const { preset, presets, instances, wallpaperDim, wallpaper, ...shared } = settings;
   return JSON.stringify({
     ...shared,
     // sleeve takes its look over `sleeve ctl display` (changedLook)
-    instances: instances.map(({ opacity, palette, sleeve, ...rest }) => ({
-      ...rest, palette: { source: palette.source },
+    // Piped colors go over stdin: only how many there are is fixed at the start
+    instances: instances.map(({ opacity, palette, sleeve, pipe, pipeDefine, defines, ...rest }) => ({
+      ...rest, palette: { source: palette.source }, pipe: pipe && Object.keys(pipe),
+      defines: Object.fromEntries(Object.entries(defines).filter(([name]) => name !== pipeDefine)),
       ...(sleeve ? { sleeve: { command: sleeve.command, noSandbox: sleeve.noSandbox, mapBelow: sleeve.mapBelow } } : {})
     }))
   });
@@ -76,11 +85,11 @@ export class VisualizerManager {
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
     colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
-    sleevedWatcher = options => new SleevedWatcher(options)
+    sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper
     });
     // Windows marked _BACKDROP_OVERLAY by other programs, by monitor, as found at its last placement
     this.overlays = new Map();
@@ -97,6 +106,8 @@ export class VisualizerManager {
     this.override = null;
     // Everything is off for the system load (daemon/LoadShedding.js); apart from whether it is enabled
     this.suspended = false;
+    // The system is busy but not enough to stop: sleeve's moving covers give way to a color
+    this.lightened = false;
     this.presetOverride = undefined;
     // Changes from the visualizer menu by instance name, over the preset until the daemon exits or a reset
     this.live = {};
@@ -125,6 +136,22 @@ export class VisualizerManager {
       this.logger.error('Visualizer disabled', { error: error.message });
     }
     await this.watchAudio();
+    this.noteWallpaper();
+  }
+
+  // Whether the look in use leaves no use for the wallpaper (visualizer.wallpaper: false). An instance that cannot run
+  // brings it back, or a missing sleeve would leave a bare desktop.
+  get hidesWallpaper() {
+    return this.active && this.settings?.wallpaper === false && ![...this.entries.values()].some(entry => entry.failed);
+  }
+
+  // Tells the daemon when hidesWallpaper changed
+  noteWallpaper() {
+    const hides = this.hidesWallpaper;
+    if (hides === this.reportedHides) return;
+    const first = this.reportedHides === undefined;
+    this.reportedHides = hides;
+    if (!first) this.onWallpaper(hides);
   }
 
   // Whether instances should run: switched on, or enabled in the config
@@ -182,11 +209,28 @@ export class VisualizerManager {
     if (!on) {
       await this.stopAll();
       await this.watchAudio();
+      this.noteWallpaper();
       return;
     }
     if (!this.prepared) await this.configure();
     else await this.watchAudio();
+    this.noteWallpaper();
     await this.sync();
+  }
+
+  // Sleeve's moving covers give way to a color while the system is busy, and come back after
+  async setLightened(on) {
+    if (on === this.lightened) return;
+    this.lightened = on;
+    for (const entry of this.entries.values()) {
+      const background = entry.instance.sleeve?.background;
+      if (background?.startsWith('cover')) this.display(entry, { look: { background: on ? stillBackground(background) : background } });
+    }
+  }
+
+  // An instance's sleeve settings as they should show now
+  shownLook(sleeve) {
+    return this.lightened ? { ...sleeve, background: stillBackground(sleeve.background) } : sleeve;
   }
 
   // Lays the visualizer menu's changes for one instance over the others it made ({ instance, changes }), or
@@ -222,7 +266,7 @@ export class VisualizerManager {
       const instance = next.instances.find(item => item.name === entry.instance.name);
       if (!instance) continue;
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
-      if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) this.display(entry, { look: instance.sleeve });
+      if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) this.display(entry, { look: this.shownLook(instance.sleeve) });
       entry.instance = instance;
       entry.adapter.instance = instance;
     }
@@ -239,6 +283,7 @@ export class VisualizerManager {
     await Promise.all([...this.monitors.keys()].map(name => this.recolor(name)));
     // wallpaper_dim may have turned the audio watch on or off, or changed the dim
     await this.watchAudio();
+    this.noteWallpaper();
   }
 
   // After a saved change to the config file: takes it like a menu change when the running instances can,
@@ -327,7 +372,7 @@ export class VisualizerManager {
   remindSleeved() {
     for (const entry of this.entries.values()) {
       if (entry.instance.engine !== 'sleeve') continue;
-      this.display(entry, { look: entry.instance.sleeve, ...(this.silenced ? { visible: false } : {}) });
+      this.display(entry, { look: this.shownLook(entry.instance.sleeve), ...(this.silenced ? { visible: false } : {}) });
     }
   }
 
@@ -368,7 +413,10 @@ export class VisualizerManager {
     };
     this.entries.set(entry.key, entry);
     // sleeved outlives its pages and remembers changes by their name, which would win over these start options
-    if (instance.engine === 'sleeve') this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}) });
+    if (instance.engine === 'sleeve') {
+      const covered = this.lightened && instance.sleeve.background?.startsWith('cover');
+      this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}), ...(covered ? { look: this.shownLook(instance.sleeve) } : {}) });
+    }
     if (instance.pipe) {
       // GLava draws nothing until every piped value has arrived: the wallpaper's colors when known, else the
       // configured ones
@@ -421,7 +469,7 @@ export class VisualizerManager {
       if (!entry.instance.pipe) return [];
       const colors = this.colorsFor(entry.monitor, entry.instance, entry.geometry) ?? entry.instance.pipe;
       if (JSON.stringify(colors) === JSON.stringify(entry.colors)) return [];
-      this.logger.info('Visualizer colors from the wallpaper', { monitor: name, instance: entry.instance.name, colors });
+      this.logger.info('Visualizer colors', { monitor: name, instance: entry.instance.name, colors });
       return [this.sendColors(entry, colors)];
     });
     return Promise.all(changed);
@@ -431,7 +479,7 @@ export class VisualizerManager {
   wantsWallpaperColors(name) {
     const monitor = this.monitors.get(name);
     if (!monitor) return false;
-    return this.overlaysOn(name).length > 0 || (this.settings?.instances ?? []).some(instance => instance.pipe && this.wanted(instance, monitor));
+    return this.overlaysOn(name).length > 0 || (this.settings?.instances ?? []).some(instance => instance.palette?.source === 'wallpaper' && this.wanted(instance, monitor));
   }
 
   // Running instances of a monitor, in the section's order
@@ -553,6 +601,8 @@ export class VisualizerManager {
     let overlays = [];
     try {
       if (monitor) overlays = (await x.overlays()).filter(overlay => onMonitor(overlay.geometry, monitor));
+      // In the order they are stacked (below the instances, then above), not as they happened to map
+      overlays = [...overlays.filter(overlay => overlay.position === 'below'), ...overlays.filter(overlay => overlay.position !== 'below')];
     } catch (error) {
       this.logger.warn('Failed to look for overlay windows', { monitor: name, error: error.message });
     }
@@ -621,11 +671,13 @@ export class VisualizerManager {
     if (entry.instance.engine === 'sleeve' && code === SLEEVE_NO_RETRY) {
       entry.failed = true;
       this.logger.error('sleeve cannot start, giving up on it until reload', { monitor: name, instance, output });
+      this.noteWallpaper();
       return;
     }
     if (entry.restarts.length >= MAX_RESTARTS) {
       entry.failed = true;
       this.logger.error('Visualizer keeps exiting, giving up on it until reload', { monitor: name, instance, code, signal, output });
+      this.noteWallpaper();
       return;
     }
     entry.restarts.push(now);
@@ -689,7 +741,7 @@ export class VisualizerManager {
         instance: instance.name, engine: instance.engine ?? this.settings.engine, module: instance.module, pid: entry.child.pid,
         running: !entry.failed, geometry: formatGeometry(entry.geometry),
         // The colors last sent from the wallpaper or the config, with palette.source: wallpaper
-        ...(instance.pipe ? { colors: entry.colors } : {})
+        ...(instance.palette?.source === 'wallpaper' ? { colors: entry.colors } : {})
       }];
     });
   }
@@ -703,6 +755,7 @@ export class VisualizerManager {
       instances: (this.settings?.instances ?? []).map(instance => instance.name),
       silenced: this.silenced,
       suspended: this.suspended,
+      hidesWallpaper: this.hidesWallpaper,
       compositor: this.compositor,
       // How far the wallpaper is dimmed for music now (visualizer.wallpaper_dim), for `backdrop dim`
       musicDim: this.musicDim,

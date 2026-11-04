@@ -19,6 +19,8 @@ export class WallpaperColors {
       const { lyricsArea } = instance.sleeve;
       return this.overlayColors(monitor, lyricsArea ? resolveArea(lyricsArea, geometry) : geometry);
     }
+    // A fixed palette pipes its own colors
+    if (instance.palette && instance.palette.source !== 'wallpaper') return null;
     const media = this.daemon.screens.get(monitor.name)?.media;
     if (!media) return null;
     const cached = this.daemon.samples.get(monitor.name);

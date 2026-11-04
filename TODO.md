@@ -397,6 +397,7 @@ Reviewed: 2026-11-02
       even when video is already the choice, and pressing it only reports the hold. Label it from `getChosenMode` and show the hold.
 - [ ] **Screensaver playlists.** (p2) [feature] Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
+      Decide with the idle screensaver above: on 2026-11-04 there is no locker or idle tool running here and DPMS is off, so there is nothing to coexist with yet.
 
 ## 8. CLI experience and packaging
 
@@ -633,7 +634,7 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       restart for settings GLava reads at start.
       Done in 2.37.0: opacity and the wallpaper pick (`palette.pick`, `min_contrast`) apply to running instances, from
       the menu and from a saved config file (`VisualizerManager.refresh`); everything else still restarts.
-- [ ] **Fixed visualizer colors restart GLava.** (p3) [perf] A swatch or a `colors` change compiles into a `#define`,
+- [x] **Fixed visualizer colors restart GLava.** (p3) [perf] A swatch or a `colors` change compiles into a `#define`,
       so it restarts the instance. Piping colors for fixed palettes too (`--pipe` always on, values from the config)
       would make them live, at the cost of GLava drawing nothing until the first piped values arrive at every start.
 - [x] **Wallpaper colors do not follow `backdrop dim`.** (p3) [bug] The contrast check uses the item's dim from when it
@@ -650,17 +651,19 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [x] **Stack other programs' overlay windows.** (p2) [feature] sleeve's lyrics overlay needs a place above or
       below the visualizer, and the wallpaper's colors behind it. Done in 2.41.0: `_BACKDROP_OVERLAY` marks
       (`below`/`above`), `backdrop restack`, overlays and their colors in `state.json` and `status`.
-- [ ] **The stacking overlay test is flaky under load.** (p3) [test] "stacks marked overlays below and above the
+- [x] **The stacking overlay test is flaky under load.** (p3) [test] "stacks marked overlays below and above the
       visualizer on a restack request, and follows a change of mark" in `test/display/stacking.integration.test.js`
       failed once in a full `npm run test:brief` on 2026-11-02 (stacking order assertion) and passed on three runs alone;
       likely the restack is read before the X server applied it. Wait for the expected order with a deadline instead.
-      Measured 2026-11-04 at a load around 10: it fails 3 runs of 12 alone on v2.43.0, the same as with later changes, so it is the test and not `place`.
+      Measured 2026-11-04 at a load around 10: it fails 3 runs of 12 alone on v2.43.0. Not a read too soon after all: `state.json` listed overlays as they happened to map, not bottom to top as
+      documented, so the test was right. Fixed in `findOverlays`.
 - [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
       of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
       PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms
       settle recheck with GLava's own map and restack events, and drop `xdotool search`. It needs reconnecting when
       X restarts and a filter for the event volume; worth it if more overlay programs appear or the settle
       recheck proves flaky.
+      Deferred 2026-11-04: neither has happened (the overlay test's flake turned out to be the order in `state.json`, not the recheck).
 - [ ] **The rofi panel test is flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` "panel view
       parses the theme strings and returns a bound key" failed once in a full run on 2026-11-02 with "rofi did not
       open a window", then passed in a full rerun and 3 of 3 runs alone. Likely a fixed wait for rofi's window;
@@ -685,8 +688,9 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       three also over `sleeve ctl display` (`look` in `SleeveVisualizer.js`); `--map-below` for a whole-monitor instance; a check of `sleeve --version`,
       reporting an older sleeve rather than exiting 2 on an unknown option; and colors sampled under the lyrics area rather than the whole
       window. Stacking sleeve with no mpv wallpaper already works here (`place`), since it does not lower itself.
-- [ ] **Hiding keeps a background.** (p3) [bug] Since sleeve 0.35.0 `--hide` hides the lyrics and the panel only. `only_while_playing` with a `cover`
+- [x] **Hiding keeps a background.** (p3) [bug] Since sleeve 0.35.0 `--hide` hides the lyrics and the panel only. `only_while_playing` with a `cover`
       instance therefore leaves it moving, and costing up to 8%: decide whether silence should also take away the background for those, or stop them.
+      Decided 2026-11-04: it stays, since on an opaque window that background is the wallpaper. The user can still choose `transparent`.
 - [x] **Choose the engine per instance.** (p2) [feature] `engine` is section-wide (`SHARED_KEYS` and `settings.js`), so bars
       and lyrics cannot run together. Make it an instance setting, inherited from the section as the others are; keep
       `engine` at the top meaning every instance. Checks that assume GLava (`glava`, `audio`, modules, `defines`) must only
@@ -707,9 +711,10 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       preset with lyrics above the bars; `visualizer check` for the new engine; `doctor` noting a missing `sleeve`, an
       uninstalled shell, the AppArmor block (status 2), and a `sleeve-shell.service` running at the same time, which would
       draw the lyrics twice.
-- [ ] **The load section cannot see GPU cost.** (p3) [perf] Load averages count no GPU time, and sleeve's own figures (`docs/specs/sleeve.md`, Cost) put a cover background at up to 16% of the
+- [x] **The load section cannot see GPU cost.** (p3) [perf] Load averages count no GPU time, and sleeve's own figures (`docs/specs/sleeve.md`, Cost) put a cover background at up to 16% of the
       render engine: the `image` level leaves it animating and the `off` level is the only one that lightens it. `gpu.js` already reads memory per mpv; a threshold on render-engine busy time, or
       dropping sleeve's cover to a still or see-through background at the `image` level, would cover it. Worth doing if a moving cover becomes the usual setup.
+      Done 2026-11-04 by dropping to a dark color at `image`. A real threshold on render-engine time, from each client's `drm-engine-render` in fdinfo, waits until this proves too blunt.
 - [x] **Bars wait for a slow lyrics window.** (p3) [perf] `place` finds a monitor's windows one at a time before stacking any, so GLava stays under the wallpaper until sleeve's window
       exists: about 2 s idle, but 12 s measured at a load of 15 under Xvfb. Stack what is found, then again as the rest appear.
 - [x] **sleeved restarting forgets live changes.** (p3) [bug] `sleeve ctl display` changes last until sleeved restarts: a page then goes back to its start options, and a hidden one shows again.

@@ -70,7 +70,7 @@ sleeve's lyrics are a second engine, chosen per instance with `engine: sleeve` (
 display` with no restart, unless an option set at its start was removed, which only a restart can clear. On each start it resets what sleeved remembers of the
 page, and for silence it hides and shows rather than stopping. Status 2 means no use retrying, so the instance is given up on at once. With `palette.source:
 wallpaper` it gets one `{ background, main }` JSON line per change, as an overlay's colors in `state.json`. With the wallpaper off, a monitor with a sleeve instance is
-stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in presets with lyrics are `lyrics` (above bars), `lyrics-only`, `lyrics-side` (left third, bars beside them), `lyrics-veil` (the wallpaper under a see-through layer, a ring beside the lyrics), `lyrics-blend` (the cover blended over the wallpaper), and `lyrics-stage` and `lyrics-now` (an opaque cover as the whole background; mpv goes on playing behind it, so `backdrop stop --wallpaper` saves that cost). The areas and background let it be the wallpaper layer, alone or between mpv and GLava; see [sleeve.md](sleeve.md), which has examples.
+stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in presets with lyrics are `lyrics` (above bars), `lyrics-only`, `lyrics-side` (left third, bars beside them), `lyrics-veil` (the wallpaper under a see-through layer, a ring beside the lyrics), `lyrics-blend` (the cover blended over the wallpaper), and `lyrics-stage` and `lyrics-now` (an opaque cover as the whole background). The last two set `wallpaper: false`, which any preset or the section can: mpv stops while that look is active and starts again when it ends or when an instance cannot run, and turning the wallpaper on or off by hand still counts for when it does. At the load section's `image` level a sleeve `cover` background gives way to a dark color, back when the load falls; in silence (`only_while_playing`) it stays, since on an opaque window it is the wallpaper. The areas and background let it be the wallpaper layer, alone or between mpv and GLava; see [sleeve.md](sleeve.md), which has examples.
 
 ### Overlays
 
@@ -112,6 +112,8 @@ except `enabled`, `preset` and `presets`, including the instance list. Built-in 
 used at start; `backdrop visualizer preset <name>` switches the running daemon through a `{ preset }` control
 request until it restarts, and the switch survives config reloads. Every preset is checked when the section is,
 so a mistake in one shows before it is used.
+
+Colors set in the config are piped to GLava like the wallpaper's, so changing a swatch needs no restart; a module with no colors set keeps its shader's own, and a raw `#define` for them stays in the shader.
 
 To build a preset live, add one to `visualizer.presets`, pick it (`backdrop visualizer preset scratch`, or `p` in the menu), and edit it: each save applies at once, a mistake
 keeps the running look and raises a notification naming the key. Opacity and sleeve's look change in place, and anything else restarts the instances that use it. A save that changes the look in use drops the menu's

@@ -34,6 +34,7 @@ export class LoadShedding {
   async begin() {
     const level = this.governor.begin();
     this.hold(level);
+    if (level !== 'normal') await this.daemon.visualizers.setLightened(true);
     if (level === 'off') await this.daemon.visualizers.setSuspended(true);
     if (level !== 'normal') await this.announce(level);
   }
@@ -70,6 +71,7 @@ export class LoadShedding {
     const modes = new Map([...daemon.screens.values()].map(screen => [screen, daemon.screenMode(screen.monitor)]));
     this.hold(level);
     daemon.logger.info('Load level changed', { from: previous, to: level, ...this.summary() });
+    await daemon.visualizers.setLightened(level !== 'normal');
 
     if (level === 'off') {
       // A monitor being added could otherwise start its wallpaper after this has stopped the others
@@ -77,7 +79,7 @@ export class LoadShedding {
       await daemon.controls.stopWallpapers();
       await daemon.visualizers.setSuspended(true);
     } else if (previous === 'off') {
-      if (daemon.wallpaper) await daemon.controls.startWallpapers();
+      if (daemon.showsWallpaper) await daemon.controls.startWallpapers();
       await daemon.visualizers.setSuspended(false);
       await daemon.visualizers.restackAll();
     } else {

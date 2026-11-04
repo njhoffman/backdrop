@@ -17,7 +17,7 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
+const SHARED_KEYS = ['enabled', 'wallpaper', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
 const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
@@ -246,6 +246,13 @@ function paletteSettings(value, prefix) {
 // (--pipe): `@fg:` for one color, `mix(@fg:, @fg2:, ...)` for a gradient, so each end can change. Returns
 // that #define and the configured colors as #rrggbbaa, which the visualizer sends as soon as it starts:
 // GLava draws nothing until every piped value has arrived.
+// Fixed colors are piped as well, so a change needs no restart, when they are set: the rest keep the shader's own
+// default, which may be more than one color can say. A raw #define for it stays in the shader.
+function pipesFixedColors(module, raw) {
+  const { define, option } = PIPED_COLORS[module];
+  return raw.defines?.[define] === undefined && (module === 'bars' || raw[module]?.[option] !== undefined);
+}
+
 function pipedColors(module, raw, prefix) {
   const { define, option, fallback, position } = PIPED_COLORS[module];
   if (raw.defines?.[define] !== undefined) {
@@ -382,10 +389,12 @@ function instance(raw, prefix) {
   // Typed options first, so raw defines can override them
   const allDefines = { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) };
   let pipe = null;
-  if (palette.source === 'wallpaper') {
+  let pipeDefine = null;
+  if (palette.source === 'wallpaper' || pipesFixedColors(module, raw)) {
     const piped = pipedColors(module, raw, prefix);
     allDefines[piped.define[0]] = piped.define[1];
     pipe = piped.pipe;
+    pipeDefine = piped.define[0];
   }
   return {
     name: raw.name,
@@ -396,8 +405,10 @@ function instance(raw, prefix) {
     layout,
     monitors: monitors(raw.monitors ?? 'all', layout, prefix),
     palette,
-    // The values GLava reads from stdin and the configured colors for them ({ fg } or { fg, fg2 }), or null
+    // The values GLava reads from stdin and the configured colors for them ({ fg } or { fg, fg2 }), or null; a fixed palette sends these and never others
     pipe,
+    // The #define the piped colors replace; its text holds only their defaults, so changing them needs no restart
+    pipeDefine,
     defines: allDefines,
     requests: stringList(`${prefix}requests`, raw.requests ?? [])
   };
@@ -410,6 +421,8 @@ function normalize(raw, prefix) {
   if (!isObject(glava)) fail(`${prefix}glava`, 'a mapping', glava);
   const settings = {
     enabled: boolean(`${prefix}enabled`, raw.enabled ?? false),
+    // false for a look that hides the wallpaper anyway, so mpv need not decode what nobody can see
+    wallpaper: boolean(`${prefix}wallpaper`, raw.wallpaper ?? true),
     engine: oneOf(`${prefix}engine`, raw.engine ?? 'glava', ENGINES),
     audio: oneOf(`${prefix}audio`, raw.audio ?? 'pulseaudio', AUDIO_BACKENDS),
     source: text(`${prefix}source`, raw.source ?? 'auto', 'a device, sink or path, or auto'),

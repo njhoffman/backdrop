@@ -93,9 +93,8 @@ export class DisplayControl {
   async withClient(monitor, fn) {
     if (!monitor.socket) {
       const state = await this.state({ required: false });
-      throw new Error(state?.load?.level === 'off' && state.wallpaper !== false
-        ? 'The wallpaper is off until the system load falls'
-        : 'The wallpaper is off; turn it on with `backdrop start --wallpaper`');
+      if (state?.wallpaper === false) throw new Error('The wallpaper is off; turn it on with `backdrop start --wallpaper`');
+      throw new Error(state?.load?.level === 'off' ? 'The wallpaper is off until the system load falls' : 'The wallpaper is off while the preset hides it');
     }
     const client = await this.connect(monitor.socket);
     try {

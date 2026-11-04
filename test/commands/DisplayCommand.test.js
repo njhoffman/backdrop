@@ -92,6 +92,19 @@ describe('DisplayCommand', () => {
       expect(lines.join('\n')).to.include('wallpaper off (backdrop start --wallpaper)');
     });
 
+    it('explains a wallpaper the preset hides, and does not ask mpv for a mode then', async () => {
+      const off = monitors.map(monitor => ({ ...monitor, socket: null }));
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors: off, visualizer: { enabled: true, error: null, hidesWallpaper: true } });
+      await command.status();
+      expect(lines.join('\n')).to.include('wallpaper off (the preset hides it), visualizer on').and.include('wallpaper off while the preset hides it');
+      lines.length = 0;
+      await command.status({ json: true });
+      expect(JSON.parse(lines.at(-1)).daemon.wallpaper_hidden).to.equal(true);
+      lines.length = 0;
+      await command.mode('image');
+      expect(lines.join('\n')).to.include('Mode: image');
+    });
+
     it('records a mode during off without asking mpv', async () => {
       await fs.writeJson(statePath(dir), {
         pid: process.pid, wallpaper: true, monitors: monitors.map(monitor => ({ ...monitor, socket: null })),
@@ -168,7 +181,7 @@ describe('DisplayCommand', () => {
 
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
-      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null, load: null } });
+      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null, load: null, wallpaper_hidden: false } });
       expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi', gpu_memory_bytes: 4096 });
       expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
       expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
@@ -187,7 +200,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null }, monitors: [], config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });
