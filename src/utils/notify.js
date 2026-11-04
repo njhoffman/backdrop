@@ -81,6 +81,15 @@ export async function notifyError(message, { logger } = {}) {
   }
 }
 
+// The daemon changing what it shows for the system load
+export async function notifyLoad(message, { logger } = {}) {
+  try {
+    await settings.exec('notify-send', ['--app-name=backdrop', 'backdrop', escapeMarkup(message)]);
+  } catch (error) {
+    logger?.warn('Notification failed', { error: error.message });
+  }
+}
+
 // Called by navigation commands after they switched a monitor; with display.notify: all the daemon
 // sends it instead. A bad setting only warns, since the switch has already happened.
 export async function notifyCommand(config, database, playing, { logger } = {}) {

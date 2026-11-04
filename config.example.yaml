@@ -69,6 +69,17 @@ visualizer:
   #   calm: {opacity: 0.4, module: wave, wave: {color: '#33aacc'}}
   glava: {shader_dir: /etc/xdg/glava, args: []}
 
+# Lighten up while the system is busy: videos become images, then the wallpaper and visualizer stop.
+# Thresholds are load averages as `uptime` shows them; set one to null to skip that step.
+load:
+  enabled: false
+  window: 1                          # the load average to read: 1, 5 or 15 minutes
+  image_above: 12                    # videos become images over this
+  off_above: 24                      # the wallpaper and visualizer stop over this; the daemon keeps running
+  resume_ratio: 0.75                 # recover under threshold x this
+  sustain: 60                        # seconds over a threshold before acting
+  resume_after: 300                  # seconds under it before each step back
+
 screensaver:
   idle_minutes: 10
   sources: [rated_videos]

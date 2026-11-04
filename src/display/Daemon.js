@@ -6,7 +6,7 @@ import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
-  getMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
+  getMode, displayMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
   playbackLimits
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
@@ -24,6 +24,7 @@ import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
 import { Health } from './daemon/Health.js';
 import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
+import { LoadShedding } from './daemon/LoadShedding.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -34,6 +35,8 @@ const HEALTH_INTERVAL_MS = 30_000;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Monitor layout changes (hotplug, xrandr) are picked up this often
 const MONITOR_POLL_MS = 5000;
+// The load average is read this often when the load section is on
+const LOAD_INTERVAL_MS = 15_000;
 // Files the daemon's imports hash and probe at once, fewer than the CLI so playback keeps its CPU
 const DAEMON_IMPORT_CONCURRENCY = 2;
 // The startup import logs how far it is at most this often
@@ -119,6 +122,9 @@ export class Daemon {
     samplePalette = (media, monitor) => sampleMedia(media, monitor),
     // Bytes of GPU memory an mpv holds (src/display/gpu.js), null when unknown
     gpuMemory = pid => readGpuMemory(pid),
+    // os.loadavg by default, for the load section
+    loadavg,
+    loadInterval = LOAD_INTERVAL_MS,
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
     createVisualizer
   }) {
@@ -169,6 +175,8 @@ export class Daemon {
     this.wallpaperColors = new WallpaperColors(this);
     this.health = new Health(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
+    this.load = new LoadShedding(this, { loadavg });
+    this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
@@ -220,11 +228,12 @@ export class Daemon {
     this.stopped = new Promise(resolve => { this.resolveStopped = resolve; });
     this.wallpaper = wallpaper;
     this.visualizers.override = visualizer;
+    await this.load.begin();
 
     try {
       for (const monitor of monitors) {
         this.monitors.set(monitor.name, monitor);
-        if (this.wallpaper) await this.startScreen(monitor);
+        if (this.showsWallpaper) await this.startScreen(monitor);
       }
     } catch (error) {
       await this.stop();
@@ -252,6 +261,17 @@ export class Daemon {
     this.every(this.purgeInterval, () => this.runPurge());
     this.every(this.healthInterval, () => this.checkHealth());
     this.every(this.monitorInterval, () => this.checkMonitors());
+    this.every(this.loadInterval, () => this.enqueue(() => this.load.check()));
+  }
+
+  // Wanted by the user and allowed by the system load
+  get showsWallpaper() {
+    return this.wallpaper && !this.load.off;
+  }
+
+  // The mode a monitor shows, which the load may be holding (see displayMode)
+  screenMode(monitor) {
+    return displayMode(this.database, monitor, { allowUpscale: this.config.get().display.allow_upscale });
   }
 
   // Active monitors to manage now; a configured monitor that is missing is picked up when it returns
@@ -303,7 +323,7 @@ export class Daemon {
       if (this.monitors.has(monitor.name) || this.stopping) continue;
       this.logger.info('Monitor added', { monitor: monitor.name, geometry: geometry(monitor) });
       this.monitors.set(monitor.name, monitor);
-      if (this.wallpaper && !await this.startWallpaper(monitor)) {
+      if (this.showsWallpaper && !await this.startWallpaper(monitor)) {
         // Left out so the next poll tries again
         this.monitors.delete(monitor.name);
       }
@@ -429,10 +449,9 @@ export class Daemon {
         return summary;
       }
 
-      const mode = getMode(this.database);
       for (const screen of this.screens.values()) {
         const added = await appendToPlaylist(screen.client, {
-          database: this.database, config: this.config.get(), mode, monitor: screen.monitor, mediaIds: imported
+          database: this.database, config: this.config.get(), mode: this.screenMode(screen.monitor), monitor: screen.monitor, mediaIds: imported
         });
         this.logger.info('Added imported media to playlist', { monitor: screen.monitor.name, added });
       }
@@ -489,22 +508,23 @@ export class Daemon {
 
   // The monitor's eligible items as mpv's playlist, resuming the last one shown when it is still eligible
   async loadScreenPlaylist(screen) {
+    const mode = this.screenMode(screen.monitor);
     const count = await loadPlaylist(screen.client, {
       database: this.database,
       config: this.config.get(),
-      mode: getMode(this.database),
+      mode,
       monitor: screen.monitor,
       imageDuration: this.imageDuration()
     });
     if (!count) {
-      this.logger.warn('No media to show', { monitor: screen.monitor.name, mode: getMode(this.database) });
+      this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
     }
   }
 
   // After an eligibility change: the playlist follows what is eligible now, keeping the item on screen
   // playing when it still is (syncPlaylist)
   async syncScreenPlaylist(screen) {
-    const mode = getMode(this.database);
+    const mode = this.screenMode(screen.monitor);
     const { removed, added, count } = await syncPlaylist(screen.client, {
       database: this.database, config: this.config.get(), mode, monitor: screen.monitor
     });
@@ -649,7 +669,7 @@ export class Daemon {
   async applyLimits(screen, media, { elapsed = 0, position } = {}) {
     try {
       const timeout = this.videoDuration();
-      const limits = media || getMode(this.database) !== 'video' ? playbackLimits(media, timeout, elapsed, position) : { 'loop-file': 'inf', end: 'none' };
+      const limits = media || this.screenMode(screen.monitor) !== 'video' ? playbackLimits(media, timeout, elapsed, position) : { 'loop-file': 'inf', end: 'none' };
       for (const [name, value] of Object.entries(limits)) {
         await screen.client.setProperty(name, value);
       }
@@ -762,7 +782,7 @@ export class Daemon {
     // version tells the CLI this daemon reloads the visualizer on SIGHUP, and control that it applies
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
-      pid: process.pid, version, wallpaper: this.wallpaper, control: this.controlGeneration, handled: this.handledRequests, monitors,
+      pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
       visualizer: this.visualizers.summary()
     });
     await fs.rename(temporary, file);
@@ -785,6 +805,11 @@ export class Daemon {
     this.screens.clear();
     this.monitors.clear();
     await this.importing;
+    try {
+      this.load.clear();
+    } catch (error) {
+      this.logger.warn('Failed to clear the load hold', { error: error.message });
+    }
     await fs.remove(statePath(this.runtimeDir));
     await fs.remove(nextFiltersPath(this.runtimeDir));
     await this.controls.clear();

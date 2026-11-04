@@ -220,6 +220,15 @@ export class ConfigManager {
         requests: [],
         glava: { shader_dir: '/etc/xdg/glava', args: [] }
       },
+      load: {
+        enabled: false,
+        window: 1,
+        image_above: 12,
+        off_above: 24,
+        resume_ratio: 0.75,
+        sustain: 60,
+        resume_after: 300
+      },
       screensaver: {
         idle_minutes: 10,
         sources: ['rated_videos'],

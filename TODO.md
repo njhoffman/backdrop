@@ -276,6 +276,12 @@ Reviewed: 2026-11-02
       JPEG/PNG wallpapers with `xwallpaper` or `feh --bg-fill` per monitor geometry and keep mpv for video and GIFs.
       Costs the single display path from "Static images and GIFs through mpv": slideshow timing, `next`/`prev`,
       brightness, dim and the visualizer overlay would need a second backend, so only worth it if the leak stays.
+- [x] **Lighter display under system load.** (p2) [feature] A `load` section: over `image_above` videos become images, over `off_above` the wallpaper and visualizer stop,
+      with `sustain`, `resume_ratio` and `resume_after` against flapping (`src/display/LoadGovernor.js`, `src/display/daemon/LoadShedding.js`, `docs/specs/main.md`).
+
+- [ ] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
+      (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
+      the next spawn instead of sleeping.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -377,6 +383,14 @@ Reviewed: 2026-11-02
 ## 7. Screensaver
 
 - [ ] **Idle-triggered screensaver.** (p2) [feature] After N minutes of inactivity (xprintidle or an xss-lock / xidlehook integration), play a configured set of media fullscreen through mpv; stop on activity.
+- [ ] **Follow the load levels.** (p2) [feature] The screensaver has to use the same `LoadGovernor` levels as the wallpaper
+      (`src/display/LoadGovernor.js`, `docs/specs/main.md`): images only at `image`, skipping `screensaver.streams`, and a blank screen at `off`.
+      It shares the `load` thresholds; a `screensaver.load` override can wait until there is a need.
+- [ ] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports
+      images with no daemon running until the next start clears it (`LoadShedding.begin`). Harmless, since nothing plays; tagging the hold with the daemon's pid
+      like `next-filters.json` would make it exact.
+- [ ] **The menu's mode button ignores a hold.** (p3) [bug] `MenuCommand` labels the button from the mode in force, so during a load hold it offers "switch to videos"
+      even when video is already the choice, and pressing it only reports the hold. Label it from `getChosenMode` and show the hold.
 - [ ] **Screensaver playlists.** (p2) [feature] Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
 

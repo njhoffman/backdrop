@@ -97,17 +97,26 @@ export class ControlRequests {
   async setWallpaper(on) {
     if (on === this.daemon.wallpaper || this.daemon.stopping) return;
     this.daemon.wallpaper = on;
-    if (on) {
-      for (const monitor of [...this.daemon.monitors.values()]) {
-        if (!this.daemon.screens.has(monitor.name)) await this.daemon.startWallpaper(monitor);
-      }
+    if (!on) await this.stopWallpapers();
+    // Held off for the system load: the wallpaper starts when that ends
+    else if (!this.daemon.load.off) {
+      await this.startWallpapers();
       await this.daemon.visualizers.restackAll();
-    } else {
-      const screens = [...this.daemon.screens.values()];
-      this.daemon.screens.clear();
-      await Promise.all(screens.map(screen => this.daemon.stopScreen(screen)));
     }
     this.daemon.logger.info(on ? 'Wallpaper on' : 'Wallpaper off');
+  }
+
+  async startWallpapers() {
+    for (const monitor of [...this.daemon.monitors.values()]) {
+      if (this.daemon.stopping) return;
+      if (!this.daemon.screens.has(monitor.name)) await this.daemon.startWallpaper(monitor);
+    }
+  }
+
+  async stopWallpapers() {
+    const screens = [...this.daemon.screens.values()];
+    this.daemon.screens.clear();
+    await Promise.all(screens.map(screen => this.daemon.stopScreen(screen)));
   }
 
   // Re-reads the durations next and the menu stored and applies them to what plays now: the image's

@@ -5,7 +5,7 @@ import { reapOrphans } from '../display/children.js';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
-import { getMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
+import { getMode, getChosenMode, displayMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting, formatBytes } from '../utils/output.js';
 import {
@@ -171,7 +171,20 @@ export class DisplayCommand {
   // e.g. "wallpaper on, visualizer off"
   describeParts(state) {
     const visualizer = state.visualizer?.enabled && !state.visualizer.error;
-    return `wallpaper ${state.wallpaper === false ? 'off' : 'on'}, visualizer ${visualizer ? 'on' : 'off'}`;
+    const held = state.load?.level === 'off' ? ' (held by load)' : '';
+    return [
+      `wallpaper ${state.wallpaper === false ? 'off' : `${held ? 'off' : 'on'}${held}`}`,
+      `visualizer ${visualizer ? `${held ? 'off' : 'on'}${held}` : 'off'}`
+    ].join(', ');
+  }
+
+  // e.g. "images only at 15.2, videos back under 9 (1 min average)"
+  describeLoad({ level, value, window, limit, resume_below: resume }) {
+    const load = Number(value).toFixed(1);
+    const average = `(${window} min average)`;
+    if (level === 'off') return `${fmt.yellow(`off at ${load}`)}, back under ${resume} ${average}`;
+    if (level === 'image') return `${fmt.yellow(`images only at ${load}`)}, videos back under ${resume} ${average}`;
+    return `${load}, limit ${limit} ${average}`;
   }
 
   async status(options = {}) {
@@ -180,7 +193,9 @@ export class DisplayCommand {
       return;
     }
     const state = await readState(this.runtimeDir);
-    out.row('Mode', fmt.cyan(getMode(this.database)));
+    const chosen = getChosenMode(this.database);
+    const shown = getMode(this.database);
+    out.row('Mode', `${fmt.cyan(shown)}${shown === chosen ? '' : fmt.dim(` (${chosen} held back by the system load)`)}`);
     for (const warning of this.config.warnings ?? []) out.row('Config', fmt.yellow(warning));
     if (!state) {
       out.row('Daemon', fmt.yellow('not running'));
@@ -188,6 +203,7 @@ export class DisplayCommand {
     }
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid}; ${this.describeParts(state)})`)}`);
+    if (state.load) out.row('Load', this.describeLoad(state.load));
     if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
     if (state.visualizer?.enabled && state.visualizer.compositor === false) {
       out.row('Visualizer', fmt.yellow('no compositor runs: the area around the bars shows black (start picom or another compositor)'));
@@ -202,13 +218,15 @@ export class DisplayCommand {
       out.field('info', fmt.yellow('waiting for the monitors in display.monitors to become active'));
       return;
     }
-    const mode = getMode(this.database);
     const { allow_upscale: allowUpscale } = this.config.get().display;
     for (const monitor of state.monitors) {
       if (!monitor.socket) {
-        out.field('info', fmt.yellow('wallpaper off (backdrop start --wallpaper)'));
+        out.field('info', fmt.yellow(state.load?.level === 'off' && state.wallpaper !== false
+          ? 'wallpaper off until the system load falls'
+          : 'wallpaper off (backdrop start --wallpaper)'));
         continue;
       }
+      const mode = displayMode(this.database, monitor, { allowUpscale });
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
       const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
       const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s eligible`];
@@ -238,7 +256,7 @@ export class DisplayCommand {
       const { media, rating } = await this.control.current(monitor.name).catch(() => ({}));
       monitors.push({
         name: monitor.name, width: monitor.width, height: monitor.height,
-        eligible: eligibleMedia(this.database, mode, monitor, { allowUpscale }).length,
+        eligible: eligibleMedia(this.database, displayMode(this.database, monitor, { allowUpscale }), monitor, { allowUpscale }).length,
         cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
         decoder: formatDecoder(monitor.hwdec) || null,
         gpu_memory_bytes: Number.isFinite(monitor.gpuMemory) ? monitor.gpuMemory : null,
@@ -253,9 +271,11 @@ export class DisplayCommand {
       wallpaper: state ? state.wallpaper !== false : null,
       visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null,
       // Whether a compositor ran at the visualizer's last placement; null when not checked
-      compositor: state?.visualizer?.compositor ?? null
+      compositor: state?.visualizer?.compositor ?? null,
+      // { level, value, window, limit, resume_below }, or null with the load section off
+      load: state?.load ?? null
     };
-    return { mode, daemon, monitors, config_warnings: this.config.warnings ?? [] };
+    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, config_warnings: this.config.warnings ?? [] };
   }
 
   // colors are the ones piped from the wallpaper (or the config, until it is sampled); opaque ones lose their alpha
@@ -356,14 +376,14 @@ export class DisplayCommand {
   async mode(requested, options = {}) {
     // With the wallpaper off only the mode changes; the wallpaper starts in it when turned on
     const running = await this.control.state({ required: false });
-    const playing = running && running.wallpaper !== false ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
-    const { mode, counts } = playing?.result ?? await this.control.mode(requested);
+    const playing = running && running.wallpaper !== false && running.load?.level !== 'off' ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
+    const { mode, held, counts } = playing?.result ?? await this.control.mode(requested);
     // --json: the new mode and what the target monitor now plays, or a null monitor when stopped
     if (wantsJson(options)) {
-      out.json({ mode, ...(playing ? playingJson(this.database, playing) : { monitor: null, item: null }) });
+      out.json({ mode, ...(held ? { held } : {}), ...(playing ? playingJson(this.database, playing) : { monitor: null, item: null }) });
       return;
     }
-    out.row('Mode', fmt.cyan(mode));
+    out.row('Mode', `${fmt.cyan(mode)}${held ? fmt.dim(` (showing ${held}s until the system load falls)`) : ''}`);
     for (const [name, count] of Object.entries(running ? counts : {})) {
       out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
     }

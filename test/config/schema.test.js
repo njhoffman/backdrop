@@ -12,6 +12,24 @@ function config(section, values) {
 const errorsFor = (section, values) => validateConfig(config(section, values));
 
 describe('config schema', () => {
+  describe('load', () => {
+    it('takes durations, and null for a threshold', () => {
+      const merged = config('load', { sustain: '2m', resume_after: 0, image_above: null, off_above: 24 });
+      expect(validateConfig(merged)).to.deep.equal([]);
+      expect(merged.load).to.include({ sustain: 120, resume_after: 0, image_above: null });
+    });
+
+    it('rejects a window, ratio or threshold that makes no sense', () => {
+      expect(errorsFor('load', { window: 2 })[0]).to.include('load.window must be');
+      expect(errorsFor('load', { resume_ratio: 1.5 })[0]).to.include('load.resume_ratio must be');
+      expect(errorsFor('load', { image_above: -1 })[0]).to.include('load.image_above must be');
+    });
+
+    it('requires off_above above image_above', () => {
+      expect(errorsFor('load', { image_above: 20, off_above: 10 })).to.deep.equal(['load.off_above must be above load.image_above, not 10 with 20']);
+    });
+  });
+
   it('accepts the defaults and converts nothing in them', () => {
     const defaults = new ConfigManager('/nonexistent').getDefaultConfig();
     const copy = structuredClone(defaults);

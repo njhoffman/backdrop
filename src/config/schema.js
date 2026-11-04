@@ -45,6 +45,9 @@ const strings = value => (Array.isArray(value) && value.every(item => typeof ite
 const list = value => (Array.isArray(value) ? value : fail('a list'));
 const color = value => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fail('a color such as "#33aacc"'));
 
+const threshold = value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a load above 0, or null for none'));
+const waitTime = value => (value === 0 || value === '0' ? 0 : seconds(value));
+
 // Key -> check, per section; a check returns the value to keep (converted) or throws Invalid
 const SECTIONS = {
   display: {
@@ -73,6 +76,15 @@ const SECTIONS = {
     workspace: value => (typeof value === 'boolean' || (typeof value === 'string' && value.trim())
       ? value
       : fail('true, false or a workspace name'))
+  },
+  load: {
+    enabled: boolean,
+    window: oneOf([1, 5, 15]),
+    image_above: threshold,
+    off_above: threshold,
+    resume_ratio: value => (typeof value === 'number' && value > 0 && value <= 1 ? value : fail('a number above 0, up to 1')),
+    sustain: waitTime,
+    resume_after: waitTime
   },
   screensaver: {
     idle_minutes: positive,
@@ -121,6 +133,10 @@ function checkSection(prefix, section, checks, errors) {
 export function validateConfig(config) {
   const errors = [];
   for (const [name, checks] of Object.entries(SECTIONS)) checkSection(name, config[name], checks, errors);
+  const { image_above: imageAbove, off_above: offAbove } = isObject(config.load) ? config.load : {};
+  if (typeof imageAbove === 'number' && typeof offAbove === 'number' && offAbove <= imageAbove) {
+    errors.push(`load.off_above must be above load.image_above, not ${offAbove} with ${imageAbove}`);
+  }
   if (!isObject(config.sources)) {
     errors.push(`sources must be a mapping of sources, not ${describe(config.sources)}`);
   } else {

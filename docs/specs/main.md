@@ -22,7 +22,22 @@ in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open w
 | Minimum quality | Nothing below `library.min_width` x `library.min_height` (1024x768, either orientation) enters the library; media below the current monitor is kept but never shown |
 | Resolution | Never upscale: only media at least as large as the target monitor is selected, unless `display.allow_upscale` |
 | Playback speed | One speed per video, independent of monitor orientation, applied on every play |
+| System load | The `load` section lightens the display under load; the chosen mode and parts stay the user's and return when it ends |
 | Screensaver streams | YouTube and other links live in `screensaver.streams` in config, not in the media library |
+
+## System load
+
+With `load.enabled`, the daemon reads the load average every 15 s (`src/display/LoadGovernor.js`) and moves between
+`normal`, `image` and `off` (`src/display/daemon/LoadShedding.js`). Load has to stay over a threshold for `sustain` before the
+level drops, and under threshold x `resume_ratio` for `resume_after` before it recovers, one step at a time. A daemon
+starting under load applies the level at once. Linux load averages count tasks waiting on disk as well as on the CPU.
+
+- `image`: the `mode_hold` setting holds the mode in force; `backdrop mode` still records a choice, which applies when the hold
+  ends. A monitor with no eligible images keeps its video. In image mode this level changes nothing visible.
+- `off`: wallpapers and visualizers stop and the daemon keeps running. `daemon.wallpaper` and the visualizer's enabled state are
+  untouched, so a part turned off by hand stays off afterwards, and `start --wallpaper` during it takes effect when it ends.
+
+The screensaver is to follow the same levels: images only at `image`, skipping streams, and a blank screen at `off`.
 
 ## Layout
 

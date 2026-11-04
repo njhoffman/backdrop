@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.43.0] - 2026-11-04
+
+### Added
+- A `load` config section lightens the display while the system is busy (off by default). Over `load.image_above`
+  videos become images; over `load.off_above` the wallpaper and visualizer stop, and the daemon keeps running. Load has to stay
+  over a threshold for `sustain` before anything changes, and under it (times `resume_ratio`) for `resume_after` before each
+  step back. Changes to the section apply without a restart. The screensaver will follow the same levels once it exists.
+- `status` shows the load and what it is holding back, and `status --json` gives `chosen_mode` and `daemon.load`.
+  `backdrop mode` during a hold records your choice, which applies when the load falls. A wallpaper or visualizer you turned off
+  stays off afterwards.
+
 ## [2.42.0] - 2026-11-02
 
 ### Added

@@ -89,6 +89,12 @@ export class ConfigChanges {
         if (JSON.stringify(settings[section]?.[key]) !== JSON.stringify(next[section]?.[key])) changed.push(`${section}.${key}`);
       }
     }
+    if (JSON.stringify(settings.load) !== JSON.stringify(next.load)) {
+      const wasEnabled = Boolean(settings.load?.enabled);
+      settings.load = next.load;
+      this.daemon.logger.info('Load settings changed', next.load);
+      await this.daemon.load.reconfigure(wasEnabled);
+    }
     // Read by the CLI only, which loads the file on every run; kept current for anything else that asks
     for (const section of ['sources', 'menu', 'output', 'screensaver']) settings[section] = next[section];
 

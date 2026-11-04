@@ -93,6 +93,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   It also holds `--image-duration`/`--video-duration`, which the daemon applies itself: the CLI sends a
   `{ durations: true }` control request (`src/display/control.js`) when they change. External tools
   (`xrandr`, `xdotool`, spawn, kill, mpv connect) are injected so tests use fakes (`test/helpers/fakes.js`).
+  With the `load` section, `src/display/LoadGovernor.js` (only levels, from `os.loadavg()`) and `daemon/LoadShedding.js` drop to images and then
+  stop the wallpaper and visualizer under load. The hold is apart from the user's choices: `getMode` returns the `mode_hold` setting over the
+  chosen mode (`getChosenMode`), `displayMode` gives a monitor's mode, and `daemon.wallpaper` stays the user's (`showsWallpaper` adds the load).
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
   adapters (`index.js`, `GlavaVisualizer`, one per instance) with `prepare()` and `command(monitor, geometry)`;

@@ -19,7 +19,7 @@ one), and applies the rest by kind: `display.order`, `notify`, `library.trash_da
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
 `allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
 reconciles the monitors; `library.import_dirs` and `watch_imports` import the folders and watch them again. `display.mpv_args`, `xwinwrap_args` and
-`paths` need a restart, which a notification names. `sources`, `menu` and `output` are read by the CLI on each
+`paths` need a restart, which a notification names. The `load` section applies at once. `sources`, `menu` and `output` are read by the CLI on each
 run. The visualizer section is the exception: a problem there is a
 warning, and the daemon runs the wallpaper without the visualizer. The `visualizer` section checks
 its own keys and rejects unknown ones.
@@ -86,6 +86,15 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   defines: {}              # raw #defines written into the module's .glsl, applied over the typed options
   requests: []             # raw GLava requests (-r), applied after backdrop's
   glava: {shader_dir: /etc/xdg/glava, args: []}
+
+load:                      # see "System load" in docs/specs/main.md
+  enabled: false
+  window: 1                # the load average to read: 1, 5 or 15 minutes
+  image_above: 12          # videos become images over this; null skips the step
+  off_above: 24            # wallpaper and visualizer stop over this; must be above image_above; null skips it
+  resume_ratio: 0.75       # recover under threshold x this
+  sustain: 60              # time over a threshold before acting
+  resume_after: 300        # time under it before each step back
 
 screensaver:
   idle_minutes: 10

@@ -8,6 +8,7 @@ export const MODE_KINDS = {
 };
 export const MODES = Object.keys(MODE_KINDS);
 export const DEFAULT_MODE = 'video';
+const MODE_HOLD = 'mode_hold';
 
 // New items are shown so they can be rated from the wallpaper; skipped ones never are
 export const DISPLAY_STATUSES = ['kept', 'new'];
@@ -21,9 +22,33 @@ export function modeOfKind(kind) {
   return MODES.find(mode => MODE_KINDS[mode].includes(kind));
 }
 
-export function getMode(database) {
+// The mode chosen with `backdrop mode`, whatever is held for the load
+export function getChosenMode(database) {
   const mode = database.getSetting('mode', DEFAULT_MODE);
   return MODES.includes(mode) ? mode : DEFAULT_MODE;
+}
+
+// The mode in force: the daemon's hold while the system load is high (see daemon/LoadShedding.js), else the chosen one
+export function getMode(database) {
+  return getModeHold(database) ?? getChosenMode(database);
+}
+
+export function getModeHold(database) {
+  const hold = database.getSetting(MODE_HOLD, null);
+  return MODES.includes(hold) ? hold : null;
+}
+
+// Set and cleared by the daemon only; setMode leaves it, so the chosen mode returns when it ends
+export function setModeHold(database, mode) {
+  database.setSetting(MODE_HOLD, mode);
+}
+
+// The mode a monitor shows. A monitor with nothing eligible in the held mode keeps the chosen one, since
+// a blank screen is worse than the video.
+export function displayMode(database, monitor, { allowUpscale = false } = {}) {
+  const hold = getModeHold(database);
+  if (!hold) return getChosenMode(database);
+  return eligibleMedia(database, hold, monitor, { allowUpscale }).length ? hold : getChosenMode(database);
 }
 
 export function setMode(database, mode) {

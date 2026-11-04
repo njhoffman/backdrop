@@ -3,7 +3,7 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueMatching
+  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueMatching
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -86,8 +86,17 @@ export class DisplayControl {
       ?? monitors[0];
   }
 
+  monitorMode(monitor) {
+    return displayMode(this.database, monitor, { allowUpscale: this.config.get().display.allow_upscale });
+  }
+
   async withClient(monitor, fn) {
-    if (!monitor.socket) throw new Error('The wallpaper is off; turn it on with `backdrop start --wallpaper`');
+    if (!monitor.socket) {
+      const state = await this.state({ required: false });
+      throw new Error(state?.load?.level === 'off' && state.wallpaper !== false
+        ? 'The wallpaper is off until the system load falls'
+        : 'The wallpaper is off; turn it on with `backdrop start --wallpaper`');
+    }
     const client = await this.connect(monitor.socket);
     try {
       return await fn(client);
@@ -146,7 +155,7 @@ export class DisplayControl {
 
   async noMatch(client, monitor, matches) {
     if (!matches.length) return 'No downloaded media matches the filters';
-    const mode = getMode(this.database);
+    const mode = this.monitorMode(monitor);
     const inMode = matches.filter(media => MODE_KINDS[mode].includes(media.kind));
     if (!inMode.length) {
       const other = otherMode(mode);
@@ -201,10 +210,9 @@ export class DisplayControl {
     if (!mediaIds.length) {
       return counts;
     }
-    const mode = getMode(this.database);
     for (const monitor of wallpaperMonitors(state)) {
       counts[monitor.name] = await this.withClient(monitor, client => appendToPlaylist(client, {
-        database: this.database, config: this.config.get(), mode, monitor, mediaIds
+        database: this.database, config: this.config.get(), mode: this.monitorMode(monitor), monitor, mediaIds
       }));
     }
     return counts;
@@ -237,7 +245,7 @@ export class DisplayControl {
         const currentPath = await client.getProperty('path').catch(() => null);
         const current = currentPath === previous.path ? previous : this.database.getMediaByPath(currentPath);
         await loadPlaylist(client, {
-          database: this.database, config: this.config.get(), mode: getMode(this.database),
+          database: this.database, config: this.config.get(), mode: this.monitorMode(monitor),
           monitor, lastMediaId: current?.id,
           imageDuration: await this.imageDuration()
         });
@@ -252,24 +260,30 @@ export class DisplayControl {
 
   // Sets the mode ('video', 'image' or 'toggle') and reloads every monitor if the daemon is running
   async mode(requested = 'toggle') {
-    const mode = requested === 'toggle' ? otherMode(getMode(this.database)) : requested;
+    const mode = requested === 'toggle' ? otherMode(getChosenMode(this.database)) : requested;
     if (!MODES.includes(mode)) {
       throw new Error(`Unknown mode: ${requested} (expected video, image or toggle)`);
     }
+    const state = await this.state({ required: false });
+    const monitors = wallpaperMonitors(state);
+    const hold = getModeHold(this.database);
+    // While the load holds a mode the choice waits for it to end, and only a monitor outside the hold changes
+    const before = new Map(monitors.map(monitor => [monitor.name, this.monitorMode(monitor)]));
     setMode(this.database, mode);
 
-    const state = await this.state({ required: false });
     const counts = {};
-    for (const monitor of wallpaperMonitors(state)) {
+    for (const monitor of monitors) {
+      const shown = this.monitorMode(monitor);
+      if (hold && shown === before.get(monitor.name)) continue;
       const imageDuration = await this.imageDuration();
       counts[monitor.name] = await this.withClient(monitor, client => loadPlaylist(client, {
         database: this.database,
         config: this.config.get(),
-        mode,
+        mode: shown,
         monitor,
         imageDuration
       }));
     }
-    return { mode, running: Boolean(state), counts };
+    return { mode, ...(hold && hold !== mode ? { held: hold } : {}), running: Boolean(state), counts };
   }
 }

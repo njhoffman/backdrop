@@ -94,7 +94,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -195,6 +195,24 @@ describe('VisualizerManager', () => {
     expect(watchers).to.have.length(1);
     await manager.setEnabled(false);
     expect(watchers[0].stopped).to.be.true;
+  });
+
+  it('stops the instances while suspended, staying enabled, and starts them again after', async () => {
+    const manager = makeManager();
+    await manager.configure();
+    await manager.sync();
+    expect(manager.entries.size).to.equal(1);
+
+    await manager.setSuspended(true);
+    expect(manager.entries.size).to.equal(0);
+    expect(manager.active).to.equal(true);
+    expect(manager.summary()).to.include({ enabled: true, suspended: true });
+    await manager.sync();
+    expect(manager.entries.size).to.equal(0);
+
+    await manager.setSuspended(false);
+    expect(manager.entries.size).to.equal(1);
+    await manager.stop();
   });
 
   describe('wallpaper dim while music plays', () => {

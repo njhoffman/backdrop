@@ -16,6 +16,7 @@ them through mpv with one IPC socket per monitor.
 - Per-video playback speed and per-item dimming, remembered for future plays
 - Monitors attached, removed or resized while running are picked up automatically
 - Automatic import of local wallpapers as approved items (`local-1.jpg`, `local-2.mp4`, ...)
+- Optional lighter display under system load: videos become images, then the wallpaper and visualizer stop until it falls (`load` in the config)
 - Planned: a screensaver after a period of inactivity, from rated videos or stream links such as YouTube
 - A music visualizer (GLava) above the wallpaper on each monitor, placed and styled from the config, with
   several at once, presets, and an option to run only while music plays

@@ -80,6 +80,8 @@ export class VisualizerManager {
     // From `backdrop start/stop --visualizer` and `backdrop visualizer preset`, over the config until the
     // daemon exits; undefined preset means visualizer.preset
     this.override = null;
+    // Everything is off for the system load (daemon/LoadShedding.js); apart from whether it is enabled
+    this.suspended = false;
     this.presetOverride = undefined;
     // Changes from the visualizer menu by instance name, over the preset until the daemon exits or a reset
     this.live = {};
@@ -146,9 +148,15 @@ export class VisualizerManager {
 
   // Root-window geometry for an instance on a monitor, or null when it does not run there now
   wanted(instance, monitor) {
-    if (!this.active || this.silenced) return null;
+    if (!this.active || this.silenced || this.suspended) return null;
     const layout = layoutFor(instance, monitor.name);
     return layout ? resolveGeometry(monitor, layout) : null;
+  }
+
+  // Stops the instances while the system load is high and starts them again after
+  async setSuspended(on) {
+    this.suspended = on;
+    await this.sync();
   }
 
   // Turns the visualizer on or off until the daemon exits, whatever visualizer.enabled says
@@ -605,6 +613,7 @@ export class VisualizerManager {
       preset: this.settings?.preset ?? null, presets: this.settings?.presets ?? [],
       instances: (this.settings?.instances ?? []).map(instance => instance.name),
       silenced: this.silenced,
+      suspended: this.suspended,
       compositor: this.compositor,
       // How far the wallpaper is dimmed for music now (visualizer.wallpaper_dim), for `backdrop dim`
       musicDim: this.musicDim,

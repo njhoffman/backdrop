@@ -6,7 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DisplayCommand } from '../../src/commands/DisplayCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
-import { getMode } from '../../src/display/Playlist.js';
+import { getMode, setMode, setModeHold } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('DisplayCommand', () => {
@@ -54,6 +54,55 @@ describe('DisplayCommand', () => {
       expect(text).to.include('    /m/1.mp4');
       expect(text).to.include('DP-2 3840x2160, 0 videos eligible\n    nothing playing');
       expect(text).to.include('No videos at least 3840x2160').and.include('display.allow_upscale');
+    });
+
+    it('shows the load and the mode it holds back', async () => {
+      setMode(db, 'video');
+      setModeHold(db, 'image');
+      await fs.writeJson(statePath(dir), {
+        pid: process.pid, wallpaper: true, monitors, load: { level: 'image', value: 15.24, window: 1, limit: 12, resume_below: 9 }
+      });
+      command.control = { current: async () => ({ path: null }) };
+
+      await command.status();
+
+      const text = lines.join('\n');
+      expect(text).to.include('Mode: image (video held back by the system load)');
+      expect(text).to.include('Load: images only at 15.2, videos back under 9 (1 min average)');
+
+      lines.length = 0;
+      await command.status({ json: true });
+      const status = JSON.parse(lines.at(-1));
+      expect(status).to.include({ mode: 'image', chosen_mode: 'video' });
+      expect(status.daemon.load).to.include({ level: 'image', resume_below: 9 });
+    });
+
+    it('explains a wallpaper the load has off, apart from one turned off by hand', async () => {
+      const off = monitors.map(monitor => ({ ...monitor, socket: null }));
+      const load = { level: 'off', value: 30, window: 1, limit: 24, resume_below: 18 };
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors: off, load });
+      await command.status();
+      expect(lines.join('\n')).to.include('wallpaper off until the system load falls')
+        .and.include('wallpaper off (held by load), visualizer off')
+        .and.include('Load: off at 30.0, back under 18');
+
+      lines.length = 0;
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: false, monitors: off, load });
+      await command.status();
+      expect(lines.join('\n')).to.include('wallpaper off (backdrop start --wallpaper)');
+    });
+
+    it('records a mode during off without asking mpv', async () => {
+      await fs.writeJson(statePath(dir), {
+        pid: process.pid, wallpaper: true, monitors: monitors.map(monitor => ({ ...monitor, socket: null })),
+        load: { level: 'off', value: 30, window: 1, limit: 24, resume_below: 18 }
+      });
+      setMode(db, 'image');
+      setModeHold(db, 'image');
+
+      await command.mode('video');
+
+      expect(lines.join('\n')).to.include('Mode: video (showing images until the system load falls)');
     });
 
     it('shows each monitor\'s visualizer, one given up on, and why the visualizer is off', async () => {
@@ -119,7 +168,7 @@ describe('DisplayCommand', () => {
 
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
-      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null } });
+      expect(status).to.deep.include({ mode: 'video', daemon: { running: true, pid: process.pid, wallpaper: true, visualizer: false, compositor: null, load: null } });
       expect(status.monitors[0]).to.include({ name: 'DP-1', eligible: 1, cpu_percent: 2.3, decoder: 'vaapi', gpu_memory_bytes: 4096 });
       expect(status.monitors[0].playing).to.include({ id, duration: 12, fps: 30 });
       expect(status.monitors[0].playing.playback).to.deep.equal({ cpu_percent: 5, seconds: 100, decoder: 'vaapi' });
@@ -138,7 +187,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null }, monitors: [], config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null }, monitors: [], config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });

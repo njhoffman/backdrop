@@ -5,7 +5,7 @@ import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DisplayControl, parseSpeed, parseDim } from '../../src/display/DisplayControl.js';
 import { statePath } from '../../src/display/Daemon.js';
-import { getMode, setMode } from '../../src/display/Playlist.js';
+import { getMode, getChosenMode, setMode, setModeHold } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
 
 const MONITORS = [
@@ -339,6 +339,27 @@ describe('DisplayControl', () => {
     });
 
     describe('mode', () => {
+      it('records the choice during a load hold without reloading a monitor it does not change', async () => {
+        db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png', width: 4000, height: 4000 });
+        setMode(db, 'image');
+        setModeHold(db, 'image');
+
+        const result = await control.mode('video');
+
+        expect(result).to.deep.equal({ mode: 'video', held: 'image', running: true, counts: {} });
+        expect(getChosenMode(db)).to.equal('video');
+        expect(getMode(db)).to.equal('image');
+      });
+
+      it('toggles the chosen mode, not the held one', async () => {
+        db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png', width: 4000, height: 4000 });
+        setMode(db, 'video');
+        setModeHold(db, 'image');
+
+        expect(await control.mode()).to.deep.include({ mode: 'image' });
+        expect(getChosenMode(db)).to.equal('image');
+      });
+
       it('toggles and reloads every monitor', async () => {
         db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png', width: 4000, height: 4000 });
 
