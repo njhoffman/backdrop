@@ -6,6 +6,7 @@ import x11 from 'x11';
 // Other X work goes through xrandr and xdotool.
 
 const STACK_ABOVE = 0;
+const STACK_BELOW = 1;
 const PROP_MODE_REPLACE = 0;
 const ATOM_CARDINAL = 6;
 const MAX_OPACITY = 0xffffffff;
@@ -63,6 +64,12 @@ export class X11 {
   async stackAbove(id, sibling) {
     this.client.ConfigureWindow(id, { sibling, stackMode: STACK_ABOVE });
     await this.check('restack');
+  }
+
+  // To the bottom of the stack, below every other window
+  async lower(id) {
+    this.client.ConfigureWindow(id, { stackMode: STACK_BELOW });
+    await this.check('lower');
   }
 
   // Whether a compositor runs on the screen: one owns the _NET_WM_CM_S<screen> selection (EWMH)

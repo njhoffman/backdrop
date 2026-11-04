@@ -10,6 +10,9 @@ const OUTPUT_LINES = 20;
 // Polls for an instance's window and the wallpaper's after a start
 const WINDOW_ATTEMPTS = 50;
 const WINDOW_DELAY_MS = 100;
+const SLEEVE_WINDOW_FACTOR = 3;
+// sleeve exits with this for a bad option, a shell not installed or a blocked sandbox: no use retrying
+const SLEEVE_NO_RETRY = 2;
 // GLava lowers itself once its window maps, which can come after the window is found, so placement is
 // checked again after this long
 const SETTLE_MS = 500;
@@ -30,6 +33,12 @@ export function onMonitor(geometry, monitor) {
   return cx >= monitor.x && cx < monitor.x + monitor.width && cy >= monitor.y && cy < monitor.y + monitor.height;
 }
 
+// What sleeve can change on a running page; an option set at its start and now unset cannot be, since a
+// reset goes back to the start options
+const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign'];
+const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]);
+const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key]);
+
 const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}`;
 
 // What GLava reads when it starts, so a change to it needs a restart. Left out: each instance's opacity (a
@@ -39,7 +48,11 @@ function startSettings(settings) {
   const { preset, presets, instances, wallpaperDim, ...shared } = settings;
   return JSON.stringify({
     ...shared,
-    instances: instances.map(({ opacity, palette, ...rest }) => ({ ...rest, palette: { source: palette.source } }))
+    // sleeve takes its look over `sleeve ctl display` (changedLook)
+    instances: instances.map(({ opacity, palette, sleeve, ...rest }) => ({
+      ...rest, palette: { source: palette.source },
+      ...(sleeve ? { sleeve: { command: sleeve.command, noSandbox: sleeve.noSandbox } } : {})
+    }))
   });
 }
 
@@ -148,7 +161,8 @@ export class VisualizerManager {
 
   // Root-window geometry for an instance on a monitor, or null when it does not run there now
   wanted(instance, monitor) {
-    if (!this.active || this.silenced || this.suspended) return null;
+    // sleeve hides for silence rather than stopping, since a start takes about 2 s
+    if (!this.active || this.suspended || (this.silenced && instance.engine !== 'sleeve')) return null;
     const layout = layoutFor(instance, monitor.name);
     return layout ? resolveGeometry(monitor, layout) : null;
   }
@@ -192,7 +206,8 @@ export class VisualizerManager {
 
   // Whether the running instances can take these settings without a restart
   runsWith(next) {
-    return this.prepared && this.enabled && Boolean(this.settings) && startSettings(this.settings) === startSettings(next);
+    if (!(this.prepared && this.enabled && this.settings) || startSettings(this.settings) !== startSettings(next)) return false;
+    return [...this.entries.values()].every(entry => !lostStartOption(entry.startedLook, next.instances.find(item => item.name === entry.instance.name)?.sleeve));
   }
 
   // Takes settings that differ only in what applies live: each running instance gets its new opacity and its
@@ -204,6 +219,7 @@ export class VisualizerManager {
       const instance = next.instances.find(item => item.name === entry.instance.name);
       if (!instance) continue;
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
+      if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) this.display(entry, { look: instance.sleeve });
       entry.instance = instance;
       entry.adapter.instance = instance;
     }
@@ -277,6 +293,7 @@ export class VisualizerManager {
     if (!this.settings?.onlyWhilePlaying) return;
     this.logger.info(playing ? 'Audio playing, visualizer starts' : 'Audio silent, visualizer stops');
     try {
+      for (const entry of this.entries.values()) if (entry.instance.engine === 'sleeve') this.display(entry, { visible: playing });
       await this.sync();
     } catch (error) {
       this.logger.error('Visualizer failed to follow the audio', { error: error.message });
@@ -315,9 +332,11 @@ export class VisualizerManager {
     const child = this.spawn(file, args, { detached: true, stdio: [instance.pipe ? 'pipe' : 'ignore', 'pipe', 'pipe'], env });
     const entry = {
       key: entryKey(monitor.name, instance.name), monitor, instance, adapter, geometry, child, restarts, output: [], failed: false, window: null,
-      colors: null, writing: Promise.resolve()
+      colors: null, writing: Promise.resolve(), startedLook: instance.sleeve ?? null
     };
     this.entries.set(entry.key, entry);
+    // sleeved outlives its pages and remembers changes by their name, which would win over these start options
+    if (instance.engine === 'sleeve') this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}) });
     if (instance.pipe) {
       // GLava draws nothing until every piped value has arrived: the wallpaper's colors when known, else the
       // configured ones
@@ -338,15 +357,26 @@ export class VisualizerManager {
     return entry;
   }
 
-  // Writes colors ({ fg, fg2 }) to an instance's stdin, one line at a time (see PIPE_GAP_MS), after any
-  // earlier writes; resolves once written
+  // Tells a running sleeve page about a change. In the background and best effort: without sleeved there is
+  // nothing on the page to change (status 2), and it starts with the start options when sleeved appears.
+  display(entry, change) {
+    const { file, args } = entry.adapter.display(entry.monitor, change);
+    return Promise.resolve().then(() => this.exec(file, args)).catch(error => {
+      if (error.code === 2) this.logger.debug('sleeved is not running', { instance: entry.instance.name });
+      else this.logger.warn('sleeve ctl display failed', { instance: entry.instance.name, error: error.message });
+    });
+  }
+
+  // Writes colors to an instance's stdin, after any earlier writes; resolves once written. An adapter's
+  // colorLines gives its own lines, which need no pacing; otherwise GLava's, one line per value (see PIPE_GAP_MS).
   sendColors(entry, colors) {
     entry.colors = colors;
+    const lines = entry.adapter.colorLines?.(colors);
     entry.writing = entry.writing.then(async () => {
-      for (const [name, value] of Object.entries(colors)) {
+      for (const line of lines ?? Object.entries(colors).map(([name, value]) => `${name} = ${value}\n`)) {
         if (!entry.child.stdin || entry.child.stdin.destroyed || entry.colors !== colors) return;
-        entry.child.stdin.write(`${name} = ${value}\n`);
-        await sleep(this.pipeGap);
+        entry.child.stdin.write(line);
+        if (!lines) await sleep(this.pipeGap);
       }
     });
     return entry.writing;
@@ -389,7 +419,8 @@ export class VisualizerManager {
   // Sets each instance's opacity and stacks the monitor's instances and overlays above its wallpaper, then
   // checks again once GLava has had time to lower itself. The order, bottom to top: the wallpaper, overlays
   // marked 'below', the instances in the section's order, overlays marked 'above'. Without a running
-  // wallpaper they stay at the bottom, over the bare root window. Resolves to whether they ended up in order
+  // wallpaper GLava stays at the bottom, over the bare root window, and a monitor with sleeve is stacked from
+  // the bottom in the same order. Resolves to whether they ended up in order
   // (or no wallpaper runs); false when there is nothing to place.
   async place(name) {
     const entries = this.monitorEntries(name);
@@ -404,7 +435,9 @@ export class VisualizerManager {
         this.noteCompositor(await x.hasCompositor());
         for (const entry of placed) await x.setOpacity(entry.window, entry.instance.opacity);
         const wallpaper = await this.wallpaperWindow(name, x);
-        if (!wallpaper) return !missing.length;
+        // GLava lowers itself, but sleeve stays where it maps, over every other window, unless it is placed. A
+        // wallpaper whose window is not found yet is not the same as none: lowering would put sleeve beneath it.
+        if (!wallpaper && (this.screens.has(name) || !placed.some(entry => entry.instance.engine === 'sleeve'))) return !missing.length;
         const layers = [
           ...overlays.filter(overlay => overlay.position === 'below').map(overlay => ({ window: overlay.window })),
           ...placed.map(entry => ({ window: entry.window, entry })),
@@ -413,7 +446,8 @@ export class VisualizerManager {
         const stack = async () => {
           let sibling = wallpaper;
           for (const layer of layers) {
-            await x.stackAbove(layer.window, sibling);
+            if (sibling) await x.stackAbove(layer.window, sibling);
+            else await x.lower(layer.window);
             sibling = layer.window;
           }
         };
@@ -422,7 +456,7 @@ export class VisualizerManager {
         let sibling = wallpaper;
         for (const layer of layers) {
           if (layer.entry && !this.current(layer.entry)) return false;
-          if (!await x.isAbove(layer.window, sibling)) {
+          if (sibling && !await x.isAbove(layer.window, sibling)) {
             await stack();
             break;
           }
@@ -505,7 +539,9 @@ export class VisualizerManager {
 
   async findWindow(title, entry) {
     const pattern = `^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-    for (let attempt = 0; attempt < this.windowAttempts && this.current(entry); attempt++) {
+    // A sleeve start takes about 2 s, twice GLava's, and longer on a busy machine
+    const attempts = this.windowAttempts * (entry.instance.engine === 'sleeve' ? SLEEVE_WINDOW_FACTOR : 1);
+    for (let attempt = 0; attempt < attempts && this.current(entry); attempt++) {
       try {
         const id = (await this.exec('xdotool', ['search', '--name', pattern])).trim().split('\n')[0];
         if (id) return Number(id);
@@ -536,6 +572,11 @@ export class VisualizerManager {
     const now = this.now();
     entry.restarts = entry.restarts.filter(time => now - time < RESTART_WINDOW_MS);
     const output = entry.output.join('\n') || undefined;
+    if (entry.instance.engine === 'sleeve' && code === SLEEVE_NO_RETRY) {
+      entry.failed = true;
+      this.logger.error('sleeve cannot start, giving up on it until reload', { monitor: name, instance, output });
+      return;
+    }
     if (entry.restarts.length >= MAX_RESTARTS) {
       entry.failed = true;
       this.logger.error('Visualizer keeps exiting, giving up on it until reload', { monitor: name, instance, code, signal, output });
@@ -597,7 +638,7 @@ export class VisualizerManager {
       const entry = this.entries.get(entryKey(name, instance.name));
       if (!entry) return [];
       return [{
-        instance: instance.name, engine: this.settings.engine, module: instance.module, pid: entry.child.pid,
+        instance: instance.name, engine: instance.engine ?? this.settings.engine, module: instance.module, pid: entry.child.pid,
         running: !entry.failed, geometry: formatGeometry(entry.geometry),
         // The colors last sent from the wallpaper or the config, with palette.source: wallpaper
         ...(instance.pipe ? { colors: entry.colors } : {})

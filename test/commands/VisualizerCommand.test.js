@@ -88,7 +88,7 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 5)).to.deep.equal(['  subtle', '* ring', '  wave', '  party', '  calm']);
+      expect(lines.slice(0, 6)).to.deep.equal(['  subtle', '* ring', '  wave', '  party', '  lyrics', '  calm']);
     });
 
     it('switches the running daemon to a named, next or configured preset', async () => {
@@ -99,12 +99,19 @@ describe('VisualizerCommand', () => {
       expect(lines[0]).to.include('Preset party');
       expect(lines.slice(1)).to.deep.equal(['  DP-3 base: bars at 2560x360+0+1080', '  DP-3 ring: radial at 1024x864+768+288']);
 
-      // party is active now; --next wraps around to the first
+      // party is active now; --next goes to the one after it
       await command().run('preset', undefined, { next: true });
-      expect(await fs.readJson(controlPath(dir))).to.deep.equal({ pid: process.pid, preset: 'subtle' });
+      expect(await fs.readJson(controlPath(dir))).to.deep.equal({ pid: process.pid, preset: 'lyrics' });
       await command().run('preset', undefined, { clear: true });
       expect(await fs.readJson(controlPath(dir))).to.deep.equal({ pid: process.pid, preset: null });
       expect(lines.at(-3)).to.include('Preset cleared');
+    });
+
+    it('wraps --next around from the last preset to the first', async () => {
+      await running({ preset: 'lyrics' });
+      answer = answering();
+      await command().run('preset', undefined, { next: true });
+      expect((await fs.readJson(controlPath(dir))).preset).to.equal('subtle');
     });
 
     it('rejects an unknown preset before signalling, and only advises when the daemon is stopped', async () => {

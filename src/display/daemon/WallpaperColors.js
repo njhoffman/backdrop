@@ -13,6 +13,8 @@ export class WallpaperColors {
   // nothing is known: no wallpaper runs, or the item is not sampled yet, in which case sampling starts and
   // the instance is recolored once it is done
   colorsFor(monitor, instance, geometry) {
+    // sleeve picks its own text colors from what is behind it, in the shape an overlay gets
+    if (instance.engine === 'sleeve') return this.overlayColors(monitor, geometry);
     const media = this.daemon.screens.get(monitor.name)?.media;
     if (!media) return null;
     const cached = this.daemon.samples.get(monitor.name);

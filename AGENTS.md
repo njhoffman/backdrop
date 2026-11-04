@@ -98,7 +98,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   chosen mode (`getChosenMode`), `displayMode` gives a monitor's mode, and `daemon.wallpaper` stays the user's (`showsWallpaper` adds the load).
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
-  adapters (`index.js`, `GlavaVisualizer`, one per instance) with `prepare()` and `command(monitor, geometry)`;
+  adapters (`index.js`, `GlavaVisualizer`, `SleeveVisualizer`, one per instance, `engine` per instance) with `prepare()` and `command(monitor, geometry)`, sleeve's also `display()` (`sleeve ctl display`) and `colorLines()`;
   the section holds `instances` (defaults from the section itself) and `presets` (`presets.js` ships built-in ones,
   laid over with `deepMerge`); `audio.js` follows `pactl subscribe` for `only_while_playing`; `VisualizerManager`
   owns the processes and places each window directly above its monitor's wallpaper with its opacity

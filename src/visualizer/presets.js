@@ -27,5 +27,12 @@ export const BUILTIN_PRESETS = {
         radial: { radius: 120, bars: 140, amplify: 250, colors: ['#cc3333', '#ffcc66'] }
       }
     ]
+  },
+  // sleeve's synced lyrics above bars along the bottom
+  lyrics: {
+    instances: [
+      { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'center', width: '100%', height: '60%' } }
+    ]
   }
 };

@@ -3,7 +3,9 @@ import path from 'path';
 import { readState, statePath } from '../display/Daemon.js';
 import { findOrphans } from '../display/children.js';
 import { withX11 } from '../display/x11.js';
+import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
+import { enginesOf } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath } from '../utils/output.js';
@@ -23,11 +25,15 @@ const TOOLS = [
   { name: 'xrandr', need: 'finds the monitors', required: true },
   { name: 'xdotool', need: 'finds the monitor under the pointer and the visualizer windows', required: true },
   { name: 'rofi', need: 'backdrop menu', wanted: () => true },
-  { name: 'glava', need: 'the visualizer', wanted: config => Boolean(config.visualizer?.enabled) },
+  { name: 'glava', need: 'the visualizer', wanted: config => Boolean(config.visualizer?.enabled) && enginesOf(config.visualizer).has('glava') },
+  { name: 'sleeve', need: 'the sleeve visualizer instances (docs/specs/sleeve.md)', wanted: config => Boolean(config.visualizer?.enabled) && enginesOf(config.visualizer).has('sleeve') },
   { name: 'notify-send', need: 'desktop notifications', wanted: config => config.display?.notify !== 'off' },
   { name: 'pactl', need: 'visualizer.only_while_playing or wallpaper_dim', wanted: config => Boolean(config.visualizer?.only_while_playing || config.visualizer?.wallpaper_dim) },
   { name: 'i3-msg', need: 'menu.workspace', wanted: config => config.menu?.workspace !== false }
 ];
+
+// The first sleeve with the contract in docs/specs/sleeve.md
+const SLEEVE_MIN = [0, 33];
 
 // Whether an executable is on $PATH
 async function onPath(name, env = process.env) {
@@ -49,9 +55,9 @@ async function onPath(name, env = process.env) {
 export class DoctorCommand {
   constructor(config, database, logger, {
     version = null, which = onPath, x11 = withX11, readStateFile = readState, orphans = findOrphans,
-    checkVisualizers = checkVisualizer, pathExists = fs.pathExists
+    checkVisualizers = checkVisualizer, pathExists = fs.pathExists, exec = run
   } = {}) {
-    Object.assign(this, { config, database, logger, version, which, x11, readStateFile, orphans, checkVisualizers, pathExists });
+    Object.assign(this, { config, database, logger, version, which, x11, readStateFile, orphans, checkVisualizers, pathExists, exec });
   }
 
   async run(options = {}) {
@@ -70,6 +76,7 @@ export class DoctorCommand {
     }
 
     await this.checkDisplay(settings, add);
+    await this.checkSleeve(settings, add);
     this.checkConfig(settings, add);
     await this.checkDaemon(settings, add);
     await this.checkLibrary(add);
@@ -168,6 +175,20 @@ export class DoctorCommand {
     const shown = files.slice(0, MISSING_SHOWN).map(file => path.basename(file)).join(', ');
     add('library', 'animated WebP', 'warn', `${files.length} not imported: FFmpeg cannot decode them (${shown}${files.length > MISSING_SHOWN ? ', ...' : ''})`,
       'convert each to GIF beside it (magick a.webp a.gif); the next import picks the GIF up');
+  }
+
+  // What the sleeve engine needs that shows without starting it; a shell not installed or a blocked sandbox only
+  // shows by starting one, which `--visualizer` does (status 2 with sleeve's advice)
+  async checkSleeve(settings, add) {
+    if (!settings.visualizer?.enabled || !enginesOf(settings.visualizer).has('sleeve') || !await this.which('sleeve')) return;
+    const version = await this.exec('sleeve', ['--version']).then(text => text.trim(), () => null);
+    const [major, minor] = (version ?? '').split('.').map(Number);
+    if (version && (major > SLEEVE_MIN[0] || (major === SLEEVE_MIN[0] && minor >= SLEEVE_MIN[1]))) add('visualizer', 'sleeve', 'ok', `version ${version}`);
+    else add('visualizer', 'sleeve', 'warn', `version ${version ?? 'unknown'}; the engine needs ${SLEEVE_MIN.join('.')} or later`, 'update sleeve');
+    const shell = await this.exec('systemctl', ['--user', 'is-active', 'sleeve-shell.service']).then(text => text.trim(), () => 'inactive');
+    if (shell === 'active') {
+      add('visualizer', 'sleeve overlay', 'warn', 'sleeve-shell.service runs as well as the sleeve engine, so the lyrics draw twice', 'systemctl --user disable --now sleeve-shell.service');
+    }
   }
 
   async checkVisualizer(settings, add) {

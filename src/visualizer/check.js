@@ -14,6 +14,12 @@ const OUTPUT_LINES = 8;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+async function onPath(name) {
+  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  const found = await Promise.all(dirs.map(dir => fs.access(path.join(dir, name), fs.constants.X_OK).then(() => true, () => false)));
+  return found.includes(true);
+}
+
 // Starts every instance of the visualizer section and of each preset (none first, then each by name) as a
 // 1x1 window for RUN_MS, all at once, and reports which exit early. GLava reports a bad raw define or shader
 // only by exiting with code 1, which in the daemon looks like five quick restarts and then nothing. Returns
@@ -22,7 +28,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // counts as running.
 export async function checkVisualizer(section, {
   spawn = spawnProcess, create = createVisualizer, kill = process.kill, runMs = RUN_MS, stopGrace = STOP_GRACE_MS,
-  tmpRoot = os.tmpdir()
+  tmpRoot = os.tmpdir(), hasSleeve = () => onPath('sleeve')
 } = {}) {
   const targets = [null, ...Object.keys(presetsOf(section))];
   const root = await fs.mkdtemp(path.join(tmpRoot, 'bd-vcheck-'));
@@ -31,15 +37,18 @@ export async function checkVisualizer(section, {
   try {
     for (const [index, preset] of targets.entries()) {
       let settings;
+      let own = {};
       try {
         // Only this target's preset in the section, so one bad preset fails only itself (the built-in ones
         // are always there and check out)
-        const own = preset !== null && section.presets?.[preset] !== undefined ? { [preset]: section.presets[preset] } : {};
+        own = preset !== null && section.presets?.[preset] !== undefined ? { [preset]: section.presets[preset] } : {};
         settings = visualizerSettings({ ...section, presets: own }, { preset });
       } catch (error) {
         results.push({ preset, instance: null, ok: false, error: error.message });
         continue;
       }
+      // A built-in preset the user may never choose says nothing about their setup without sleeve installed
+      if (preset !== null && own[preset] === undefined && settings.instances.some(item => item.engine === 'sleeve') && !await hasSleeve()) continue;
       for (const instance of settings.instances) {
         const result = { preset, instance: instance.name, ok: true, code: null, signal: null, output: [] };
         results.push(result);

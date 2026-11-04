@@ -64,8 +64,13 @@ xdotool 3.20160805), raising GLava (it would cover every window), python-xlib (a
 Wallpaper changes (next, playlist advances, mode switches, speed and dim) reuse the running mpv, so they never
 touch the visualizer.
 
-A second engine, sleeve's lyrics, is planned: what it promises is in [sleeve.md](sleeve.md), and what is left here in
-`TODO.md`, section 9.
+sleeve's lyrics are a second engine, chosen per instance with `engine: sleeve` (the section's `engine` is the default): what it promises is in
+[sleeve.md](sleeve.md). Such an instance starts `sleeve shell --managed`, takes its options from `visualizer.sleeve` (`now`, `now_position`,
+`lyrics_align`, `no_sandbox`, `command`; only those set are passed), and ignores GLava's settings. A change to the first three goes over `sleeve ctl
+display` with no restart, unless an option set at its start was removed, which only a restart can clear. On each start it resets what sleeved remembers of the
+page, and for silence it hides and shows rather than stopping. Status 2 means no use retrying, so the instance is given up on at once. With `palette.source:
+wallpaper` it gets one `{ background, main }` JSON line per change, as an overlay's colors in `state.json`. With the wallpaper off, a monitor with a sleeve instance is
+stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in `lyrics` preset puts lyrics above bars.
 
 ### Overlays
 

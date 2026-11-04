@@ -33,6 +33,8 @@ menu:
 
 visualizer:
   enabled: false                     # run a GLava music visualizer above the wallpaper (needs glava and a compositor)
+  # engine: glava                    # or sleeve for synced lyrics (also per instance; needs sleeve 0.33 or later)
+  # sleeve: {now: lyrics, now_position: top-left, lyrics_align: left}  # with engine: sleeve; left out, style.css decides
   monitors: all                      # all, a list [DP-3], or a mapping with per-monitor placement/rect: {DP-3: {placement: {anchor: top}}}
   module: bars                       # bars, graph, radial, circle or wave
   audio: pulseaudio                  # or fifo (source then defaults to /tmp/mpd.fifo)

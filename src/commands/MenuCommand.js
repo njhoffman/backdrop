@@ -13,7 +13,7 @@ import { formatAdjustments } from '../utils/mediaView.js';
 import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
-import { ANCHORS, MODULES, PALETTE_PICKS, instanceLook, lookAsPreset, presetsOf, visualizerSettings } from '../visualizer/settings.js';
+import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, lookAsPreset, presetsOf, visualizerSettings } from '../visualizer/settings.js';
 
 export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
@@ -411,14 +411,25 @@ export class MenuCommand {
           key: 'w', active: wallpaper, disabled: wallpaper && !on, run: () => this.sendVisualizer(state, { wallpaper: !wallpaper }) },
         { icon: VISUALIZER_ICONS.preset, label: 'preset ▸', caption: options.preset ?? 'preset', key: 'p', active: Boolean(options.preset),
           run: () => this.presetMenu(state, section, options.preset) },
-        { icon: VISUALIZER_ICONS.module, label: 'module ▸', caption: look.module, key: 'm',
-          run: () => this.pickMenu(state, instance, 'module', MODULES, look.module, module => ({ module })) },
+        ...(look.engine === 'sleeve' ? [
+          { icon: VISUALIZER_ICONS.module, label: 'now ▸', caption: look.sleeve.now, key: 'm',
+            run: () => this.pickMenu(state, instance, 'now', SLEEVE_NOW, look.sleeve.now, now => ({ sleeve: { now } })) },
+          { icon: VISUALIZER_ICONS.position, label: 'panel ▸', caption: look.sleeve.now_position, key: 'n',
+            run: () => this.pickMenu(state, instance, 'panel', SLEEVE_POSITIONS, look.sleeve.now_position, position => ({ sleeve: { now_position: position } })) },
+          { icon: VISUALIZER_ICONS.position, label: 'align ▸', caption: look.sleeve.lyrics_align, key: 'g',
+            run: () => this.pickMenu(state, instance, 'align', SLEEVE_ALIGNS, look.sleeve.lyrics_align, align => ({ sleeve: { lyrics_align: align } })) }
+        ] : [
+          { icon: VISUALIZER_ICONS.module, label: 'module ▸', caption: look.module, key: 'm',
+            run: () => this.pickMenu(state, instance, 'module', MODULES, look.module, module => ({ module })) }
+        ]),
         { icon: VISUALIZER_ICONS.opacity, label: 'opacity ▸', caption: `opacity ${look.opacity}`, key: 'o',
           run: () => this.visualizerStep(instance, 'opacity', OPACITIES, current => current.opacity,
             (value, current) => ({ opacity: stepValue(value, current, { min: 0.05, max: 1 }) })) },
-        { icon: VISUALIZER_ICONS.amplify, label: 'amplify ▸', caption: `amplify ${look.amplify}`, key: 'a',
-          run: () => this.visualizerStep(instance, 'amplify', AMPLIFIES, current => current.amplify,
-            (value, current, now) => ({ [now.module]: { amplify: stepValue(value, current, { min: 10, digits: 0 }) } })) },
+        ...(look.engine === 'sleeve' ? [] : [
+          { icon: VISUALIZER_ICONS.amplify, label: 'amplify ▸', caption: `amplify ${look.amplify}`, key: 'a',
+            run: () => this.visualizerStep(instance, 'amplify', AMPLIFIES, current => current.amplify,
+              (value, current, now) => ({ [now.module]: { amplify: stepValue(value, current, { min: 10, digits: 0 }) } })) }
+        ]),
         { icon: VISUALIZER_ICONS.position, label: 'position ▸', caption: look.anchor, key: 'l',
           run: () => this.pickMenu(state, instance, 'position', ANCHORS, look.anchor, anchor => ({ placement: { anchor } })) },
         { icon: VISUALIZER_ICONS.colors, label: 'colors ▸', caption: look.palette.source === 'wallpaper' ? `wall ${look.palette.pick}` : 'fixed colors',

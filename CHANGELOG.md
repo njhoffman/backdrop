@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.44.0] - 2026-11-04
+
+### Added
+- sleeve's synced lyrics as a visualizer engine, chosen per instance with `engine: sleeve`, so lyrics and bars can run together (needs sleeve 0.33 or later and its shell
+  installed). `visualizer.sleeve` sets `now`, `now_position`, `lyrics_align`, `no_sandbox` and `command`, and the visualizer menu changes the look with no restart. With
+  `only_while_playing` it hides during silence rather than stopping, and `palette.source: wallpaper` sends it the colors behind it. There is a built-in `lyrics` preset, and
+  `doctor` reports a missing or old sleeve and a `sleeve-shell.service` that would draw the lyrics twice.
+
 ## [2.43.0] - 2026-11-04
 
 ### Added

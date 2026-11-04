@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings } from '../../src/visualizer/settings.js';
+import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings, enginesOf } from '../../src/visualizer/settings.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 describe('visualizer settings', () => {
@@ -105,7 +105,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -113,7 +113,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -240,6 +240,53 @@ describe('visualizer settings', () => {
       expect(lookAsPreset(section, { preset: 'duo', live: { ring: { opacity: 0.3 } } })).to.deep.equal({
         instances: [{ name: 'low' }, { name: 'ring', module: 'radial', opacity: 0.3 }]
       });
+    });
+  });
+
+  describe('engines', () => {
+    it('chooses the engine per instance, inheriting the section\'s', () => {
+      const { instances } = visualizerSettings({ engine: 'sleeve', instances: [{ name: 'lyrics' }, { name: 'bars', engine: 'glava', module: 'wave' }] });
+      expect(instances.map(item => [item.name, item.engine, item.module])).to.deep.equal([['lyrics', 'sleeve', 'lyrics'], ['bars', 'glava', 'wave']]);
+    });
+
+    it('checks GLava\'s settings only on GLava instances', () => {
+      expect(() => visualizerSettings({ engine: 'sleeve', module: 'nope' })).to.not.throw();
+      expect(() => visualizerSettings({ module: 'nope' })).to.throw('visualizer.module');
+    });
+
+    it('takes the sleeve settings, leaving unset ones out', () => {
+      const [item] = visualizerSettings({ engine: 'sleeve', sleeve: { now: 'full', lyrics_align: 'center', no_sandbox: true, command: '/opt/sleeve' } }).instances;
+      expect(item.sleeve).to.deep.equal({ now: 'full', nowPosition: null, lyricsAlign: 'center', noSandbox: true, command: '/opt/sleeve' });
+    });
+
+    it('rejects sleeve settings that make no sense, naming the key', () => {
+      expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { now: 'huge' } })).to.throw('visualizer.sleeve.now must be');
+      expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { now_position: 'middle' } })).to.throw('visualizer.sleeve.now_position must be');
+      expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { color: 'red' } })).to.throw('visualizer.sleeve');
+    });
+
+    it('takes wallpaper colors with nothing piped to wait for', () => {
+      const [item] = visualizerSettings({ engine: 'sleeve', palette: { source: 'wallpaper' } }).instances;
+      expect(item.pipe).to.deep.equal({});
+      expect(item.defines).to.deep.equal({});
+    });
+
+    it('shows a sleeve instance\'s options in the menu\'s view, with what it starts from', () => {
+      const look = instanceLook({ engine: 'sleeve', sleeve: { now: 'full' } });
+      expect(look).to.include({ engine: 'sleeve' });
+      expect(look.sleeve).to.deep.equal({ now: 'full', now_position: 'top-left', lyrics_align: 'left' });
+    });
+
+    it('reports the engines in use, through the chosen preset', () => {
+      expect([...enginesOf({})]).to.deep.equal(['glava']);
+      expect([...enginesOf({ engine: 'sleeve' })]).to.deep.equal(['sleeve']);
+      expect([...enginesOf({ preset: 'lyrics' })]).to.have.members(['glava', 'sleeve']);
+      expect([...enginesOf('nonsense')]).to.deep.equal([]);
+    });
+
+    it('ships a preset with lyrics above the bars', () => {
+      const { instances } = visualizerSettings({ preset: 'lyrics' });
+      expect(instances.map(item => item.engine)).to.deep.equal(['glava', 'sleeve']);
     });
   });
 });

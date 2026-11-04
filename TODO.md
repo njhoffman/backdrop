@@ -382,7 +382,11 @@ Reviewed: 2026-11-02
 
 ## 7. Screensaver
 
-- [ ] **Idle-triggered screensaver.** (p2) [feature] After N minutes of inactivity (xprintidle or an xss-lock / xidlehook integration), play a configured set of media fullscreen through mpv; stop on activity.
+- [ ] **Idle-triggered screensaver.** (p2) [feature] After N minutes of inactivity (xprintidle or an xss-lock / xidlehook integration) open a blank i3 workspace and
+      place things on it as backdrop usually does, plus lyrics (a `sleeve` instance) and maybe other things, rather than playing fullscreen through mpv. The empty-workspace
+      part exists for the menu (`src/utils/workspace.js`, `menu.workspace`). Per the user, 2026-11-04: Escape leaves the mode and returns to the original workspace.
+- [ ] **Rate wallpapers from the screensaver.** (p2) [feature] The rating commands have to work in this mode, so its key handling (an i3 binding mode is the likely fit, since
+      Escape must be caught with no window focused) needs the rating keys as well as Escape, and leaving must not count a rating as activity that ends something else.
 - [ ] **Follow the load levels.** (p2) [feature] The screensaver has to use the same `LoadGovernor` levels as the wallpaper
       (`src/display/LoadGovernor.js`, `docs/specs/main.md`): images only at `image`, skipping `screensaver.streams`, and a blank screen at `off`.
       It shares the `load` thresholds; a `screensaver.load` override can wait until there is a need.
@@ -650,6 +654,7 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       visualizer on a restack request, and follows a change of mark" in `test/display/stacking.integration.test.js`
       failed once in a full `npm run test:brief` on 2026-11-02 (stacking order assertion) and passed on three runs alone;
       likely the restack is read before the X server applied it. Wait for the expected order with a deadline instead.
+      Measured 2026-11-04 at a load around 10: it fails 3 runs of 12 alone on v2.43.0, the same as with later changes, so it is the test and not `place`.
 - [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
       of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
       PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms
@@ -673,27 +678,36 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 ### sleeve as an engine
 
 Contract: `docs/specs/sleeve.md`, agreed 2026-11-04 with sleeve 0.33.0, which already does its side (tried by hand on a real
-desktop). Nothing below is built here yet.
+desktop). Built in 2026-11-04 apart from the desktop check; tried against real sleeve under Xvfb.
 
-- [ ] **Choose the engine per instance.** (p2) [feature] `engine` is section-wide (`SHARED_KEYS` and `settings.js`), so bars
+- [ ] **Sleeve as the wallpaper layer.** (p2) [feature] The user wants both a sleeve window over the wallpaper and sleeve as the backdrop itself: a whole-monitor window with the
+      lyrics only in part of it (the left third) and the rest left for GLava and others, and sleeve as a see-through layer between the wallpaper and GLava (solid text, so its background needs its own alpha). Asked of sleeve in `~/git/sleeve/docs/backdrop.md`, not built there yet. Here, once it ships:
+      `visualizer.sleeve` `lyrics_area`, `now_area`, `background` passed at start and over `sleeve ctl display`, `--map-below`, a version check, and wallpaper colors sampled under
+      the lyrics area rather than the whole window. Stacking sleeve with no mpv wallpaper already works here (`place`), since it does not lower itself.
+- [x] **Choose the engine per instance.** (p2) [feature] `engine` is section-wide (`SHARED_KEYS` and `settings.js`), so bars
       and lyrics cannot run together. Make it an instance setting, inherited from the section as the others are; keep
       `engine` at the top meaning every instance. Checks that assume GLava (`glava`, `audio`, modules, `defines`) must only
       apply to GLava instances.
-- [ ] **`SleeveVisualizer` adapter.** (p2) [feature] `src/visualizer/`, offering `prepare()` (nothing to prepare) and
+- [x] **`SleeveVisualizer` adapter.** (p2) [feature] `src/visualizer/`, offering `prepare()` (nothing to prepare) and
       `command(monitor, geometry)` with the contract's options, its window title as for GLava and `--instance` from the
       monitor and instance names. Typed settings under `visualizer.sleeve` (`now`, `now_position`, `lyrics_align`,
       `no_sandbox`, `command`), checked in `settings.js`.
-- [ ] **Colors to a sleeve instance.** (p2) [feature] `VisualizerManager` writes `fg = #rrggbbaa` lines; sleeve takes
+- [x] **Colors to a sleeve instance.** (p2) [feature] `VisualizerManager` writes `fg = #rrggbbaa` lines; sleeve takes
       `{ background, main }` JSON lines instead (the shape overlays get in `state.json`). Send them whenever the strip under
       it is sampled, without GLava's one-line-per-100-ms pacing.
-- [ ] **Live changes without a restart.** (p2) [feature] Add the sleeve settings to what `applyLive` can take: run `sleeve ctl
+- [x] **Live changes without a restart.** (p2) [feature] Add the sleeve settings to what `applyLive` can take: run `sleeve ctl
       display` rather than restarting (a start takes about 2 s), and send them again when the daemon starts, since sleeved
       forgets them when it restarts. `startSettings` should treat only what `sleeve ctl` cannot change as needing a restart.
-- [ ] **Hide rather than stop for silence.** (p2) [feature] `only_while_playing` stops instances; for sleeve it should run
+- [x] **Hide rather than stop for silence.** (p2) [feature] `only_while_playing` stops instances; for sleeve it should run
       `sleeve ctl display --hide` and `--show`.
-- [ ] **Menu, presets and doctor.** (p3) [feature] `backdrop menu visualizer` for preset, position and alignment; a built-in
+- [x] **Menu, presets and doctor.** (p3) [feature] `backdrop menu visualizer` for preset, position and alignment; a built-in
       preset with lyrics above the bars; `visualizer check` for the new engine; `doctor` noting a missing `sleeve`, an
       uninstalled shell, the AppArmor block (status 2), and a `sleeve-shell.service` running at the same time, which would
       draw the lyrics twice.
+- [ ] **Bars wait for a slow lyrics window.** (p3) [perf] `place` finds a monitor's windows one at a time before stacking any, so GLava stays under the wallpaper until sleeve's window
+      exists: about 2 s idle, but 12 s measured at a load of 15 under Xvfb. Stack what is found, then again as the rest appear.
+- [ ] **sleeved restarting forgets live changes.** (p3) [bug] `sleeve ctl display` changes last until sleeved restarts: a page then goes back to its start options, and a hidden one shows again.
+      The contract asks backdrop to send them again when it starts, which it does, but it cannot tell when sleeved alone restarts. `sleeve line` survives restarts over the socket, so watching
+      that socket is one way. A daemon restart or `visualizer reload` puts it right meanwhile.
 - [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
       colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`.

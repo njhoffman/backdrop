@@ -61,7 +61,8 @@ menu:
 
 visualizer:                # see docs/specs/visualizer.md; checked at daemon start and on `backdrop visualizer reload`
   enabled: false
-  engine: glava            # the only adapter so far
+  engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance
+  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, no_sandbox, command (docs/specs/visualizer.md)
   monitors: all            # all, [names], or {name: true | false | {placement, rect}}
   module: bars             # bars, graph, radial, circle, wave
   audio: pulseaudio        # pulseaudio or fifo

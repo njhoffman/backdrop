@@ -92,3 +92,9 @@ works without it and picks up when it appears, showing nothing until then on the
 
 A 1x1 window for two seconds is fine, with `--managed --geometry 1x1+0+0`. Since a start takes about 2 s, the check sees a
 running process rather than a page, which is what it asks of GLava too. A status of 2 is the useful failure.
+
+## Planned: sleeve as the wallpaper layer
+
+Not agreed or built yet. The user also wants sleeve as the backdrop itself: a whole-monitor window with the lyrics only in part of it, say the left
+third, and the rest left for GLava and whatever else, or as a see-through layer between the wallpaper and GLava. What that asks of sleeve (`--lyrics-area`, `--now-area`, `--background` with its own alpha, `--map-below`) is in
+`~/git/sleeve/docs/backdrop.md`; this side's half is in `TODO.md`, section 9.

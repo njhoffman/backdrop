@@ -127,4 +127,44 @@ describe('DoctorCommand', () => {
     expect(json).to.include({ ok: false, failed: 1, warned: 0 });
     expect(json.checks).to.have.length(checks.length);
   });
+
+  describe('sleeve', () => {
+    const sleeveChecks = async ({ version = '0.33.0\n', shell = 'inactive\n', which = async () => true, section = { enabled: true, engine: 'sleeve' } } = {}) => {
+      config.set('visualizer', section);
+      const checks = await doctor({
+        which,
+        exec: async file => {
+          if (file === 'sleeve') { if (version instanceof Error) throw version; return version; }
+          return shell;
+        }
+      }).run();
+      return checks.filter(check => check.name.startsWith('sleeve') && (check.group !== 'tools' || check.status !== 'ok'));
+    };
+
+    it('reports nothing unless an enabled section uses it', async () => {
+      expect(await sleeveChecks({ section: { enabled: false, engine: 'sleeve' } })).to.deep.equal([]);
+      expect(await sleeveChecks({ section: { enabled: true } })).to.deep.equal([]);
+    });
+
+    it('accepts a new enough sleeve', async () => {
+      expect(await sleeveChecks({ version: '1.2.0\n' })).to.deep.include({ group: 'visualizer', name: 'sleeve', status: 'ok', detail: 'version 1.2.0' });
+      expect((await sleeveChecks()).find(check => check.name === 'sleeve').status).to.equal('ok');
+    });
+
+    it('warns of an old sleeve or one that cannot say', async () => {
+      expect((await sleeveChecks({ version: '0.32.9\n' })).find(check => check.name === 'sleeve').status).to.equal('warn');
+      expect((await sleeveChecks({ version: new Error('exit 1') })).find(check => check.name === 'sleeve').detail).to.include('unknown');
+    });
+
+    it('warns that its own overlay service would draw the lyrics twice', async () => {
+      const overlay = (await sleeveChecks({ shell: 'active\n' })).find(check => check.name === 'sleeve overlay');
+      expect(overlay.status).to.equal('warn');
+      expect(overlay.detail).to.include('draw twice');
+    });
+
+    it('names a missing sleeve among the tools', async () => {
+      const checks = await sleeveChecks({ which: async name => name !== 'sleeve' });
+      expect(checks).to.deep.include({ group: 'tools', name: 'sleeve', status: 'warn', detail: 'not installed; the sleeve visualizer instances (docs/specs/sleeve.md)', hint: 'install sleeve' });
+    });
+  });
 });

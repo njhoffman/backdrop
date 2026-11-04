@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
+import { createVisualizer } from '../../src/visualizer/index.js';
 import { VisualizerManager } from '../../src/visualizer/VisualizerManager.js';
 import { FakeChild, FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
@@ -44,6 +45,7 @@ describe('VisualizerManager', () => {
           setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
           topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
           stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
+          lower: async id => { xcalls.push(['lower', id]); },
           isAbove: async () => above.shift() ?? true,
           hasCompositor: async () => compositor
         });
@@ -94,7 +96,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics'], instances: ['main'], silenced: false, suspended: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -213,6 +215,179 @@ describe('VisualizerManager', () => {
     await manager.setSuspended(false);
     expect(manager.entries.size).to.equal(1);
     await manager.stop();
+  });
+
+  describe('sleeve instances', () => {
+    let ctl;
+    const lyricsWindow = '^backdrop-visualizer-DP-3-main$';
+
+    function sleeveManager(overrides = {}) {
+      ctl = [];
+      return makeManager({
+        create: createVisualizer,
+        exec: async (file, args) => {
+          if (file === 'xdotool' && windows.has(args[2])) return `${windows.get(args[2])}\n`;
+          if (args[0] === 'ctl') { ctl.push(args.slice(2)); return ''; }
+          throw new Error('exit 1');
+        },
+        ...overrides
+      });
+    }
+
+    beforeEach(() => {
+      config = makeConfig({ 'visualizer.enabled': true, 'visualizer.engine': 'sleeve', 'paths.runtime': '/nonexistent' });
+    });
+
+    it('starts the shell managed, and forgets what sleeved remembers of the page', async () => {
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.entries.values().next().value.placed;
+      expect(spawned[0].file).to.equal('sleeve');
+      expect(spawned[0].args.slice(0, 4)).to.deep.equal(['shell', '--managed', '--geometry', '2560x360+0+1080']);
+      expect(ctl).to.deep.equal([['--instance', 'DP-3-main', '--reset']]);
+      await manager.stop();
+    });
+
+    it('sends a new look over sleeve ctl without restarting, and restarts for an option it cannot unset', async () => {
+      config.set('visualizer.sleeve', { now: 'full' });
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.setLive({ instance: 'main', changes: { sleeve: { now: 'minimal', lyrics_align: 'right' } } });
+      expect(spawned).to.have.length(1);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--preset', 'minimal', '--align', 'right']);
+
+      // Started with --now; a reset would go back to it, so only a restart can clear it
+      expect(manager.runsWith({ ...manager.settings, instances: manager.settings.instances.map(item => ({ ...item, sleeve: { ...item.sleeve, now: null } })) })).to.equal(false);
+      await manager.stop();
+    });
+
+    it('restarts for what sleeve ctl cannot change', async () => {
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.setLive({ instance: 'main', changes: { sleeve: { no_sandbox: true } } });
+      expect(spawned).to.have.length(2);
+      expect(spawned[1].args).to.include('--no-sandbox');
+      await manager.stop();
+    });
+
+    it('hides for silence rather than stopping, and starts hidden during it', async () => {
+      config.set('visualizer.only_while_playing', true);
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await watchers[0].onChange(false);
+      await new Promise(setImmediate);
+      expect(spawned).to.have.length(1);
+      expect(spawned[0].child.exitCode).to.equal(null);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--hide']);
+      await watchers[0].onChange(true);
+      await new Promise(setImmediate);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--show']);
+      await watchers[0].onChange(false);
+      await manager.stop();
+
+      const silent = sleeveManager();
+      watchers.length = 0;
+      await silent.configure();
+      silent.audio.playing = false;
+      await silent.sync();
+      await new Promise(setImmediate);
+      expect(ctl[0]).to.deep.equal(['--instance', 'DP-3-main', '--reset', '--hide']);
+      await silent.stop();
+    });
+
+    it('stops while the load has everything off', async () => {
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.setSuspended(true);
+      expect(manager.entries.size).to.equal(0);
+      await manager.stop();
+    });
+
+    it('sends colors as one JSON line, unpaced, and nothing before they are known', async () => {
+      config.set('visualizer.palette', { source: 'wallpaper' });
+      const colors = { background: '#102030', main: [{ color: '#aabbcc', share: 0.6 }] };
+      let known = null;
+      const written = [];
+      const manager = sleeveManager({ colorsFor: () => known, pipeGap: 60_000 });
+      await manager.configure();
+      const spawnStub = manager.spawn;
+      manager.spawn = (...args) => {
+        const child = spawnStub(...args);
+        child.stdin = { write: line => written.push(line), on() {}, destroyed: false };
+        return child;
+      };
+      await manager.sync();
+      await manager.entries.values().next().value.writing;
+      expect(spawned[0].options.stdio[0]).to.equal('pipe');
+      expect(written).to.deep.equal([]);
+
+      known = colors;
+      await manager.recolor('DP-3');
+      expect(written).to.deep.equal([`${JSON.stringify(colors)}\n`]);
+      await manager.stop();
+    });
+
+    it('stacks from the bottom with no wallpaper, since it does not lower itself', async () => {
+      windows.set(lyricsWindow, 0x3400002);
+      screens.clear();
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.entries.values().next().value.placed;
+      expect(xcalls).to.deep.include(['lower', 0x3400002]);
+      await manager.stop();
+    });
+
+    it('does not lower it under a wallpaper whose window is not found', async () => {
+      windows.set(lyricsWindow, 0x3400002);
+      screens.set('DP-3', { client: new FakeMpvClient() });
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.entries.values().next().value.placed;
+      expect(xcalls.filter(call => call[0] === 'lower')).to.deep.equal([]);
+      await manager.stop();
+    });
+
+    it('leaves GLava to lower itself with no wallpaper', async () => {
+      config = makeConfig({ 'visualizer.enabled': true });
+      screens.clear();
+      const manager = makeManager();
+      await manager.configure();
+      await manager.sync();
+      await manager.entries.values().next().value.placed;
+      expect(xcalls.filter(call => call[0] === 'lower')).to.deep.equal([]);
+      await manager.stop();
+    });
+
+    it('gives up at once on status 2, which sleeve means as no use retrying', async () => {
+      const manager = sleeveManager();
+      await manager.configure();
+      await manager.sync();
+      const entry = manager.entries.values().next().value;
+      entry.output.push('run just shell-install');
+      spawned[0].child.exit(2, null);
+      await entry.exited;
+      expect(spawned).to.have.length(1);
+      expect(entry.failed).to.equal(true);
+      expect(logs.some(([level, message]) => level === 'error' && message.includes('sleeve cannot start'))).to.equal(true);
+      await manager.stop();
+    });
+
+    it('carries on when sleeved is not running', async () => {
+      const failing = Object.assign(new Error('exit 2'), { code: 2 });
+      const manager = sleeveManager({ exec: async file => { if (file === 'sleeve') throw failing; throw new Error('exit 1'); } });
+      await manager.configure();
+      await manager.sync();
+      await new Promise(setImmediate);
+      expect(manager.entries.size).to.equal(1);
+      await manager.stop();
+    });
   });
 
   describe('wallpaper dim while music plays', () => {

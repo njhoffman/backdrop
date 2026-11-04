@@ -3,7 +3,10 @@ import { BUILTIN_PRESETS } from './presets.js';
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
 // them and `backdrop visualizer reload` prints them.
 
-export const ENGINES = ['glava'];
+export const ENGINES = ['glava', 'sleeve'];
+export const SLEEVE_NOW = ['lyrics', 'minimal', 'full'];
+export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
 export const MODULES = ['bars', 'graph', 'radial', 'circle', 'wave'];
 export const AUDIO_BACKENDS = ['pulseaudio', 'fifo'];
 export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
@@ -14,9 +17,9 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'engine', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
+const SHARED_KEYS = ['enabled', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
-const INSTANCE_KEYS = ['name', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
+const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
 const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
 
@@ -302,10 +305,40 @@ function typedDefines(module, section, prefix) {
 }
 
 // One visualizer from its merged settings
+function sleeveSettings(raw, prefix) {
+  const key = `${prefix}sleeve`;
+  if (!isObject(raw)) fail(key, 'a mapping', raw);
+  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'no_sandbox', 'command'], 'sleeve settings');
+  return {
+    now: raw.now === undefined ? null : oneOf(`${key}.now`, raw.now, SLEEVE_NOW),
+    nowPosition: raw.now_position === undefined ? null : oneOf(`${key}.now_position`, raw.now_position, SLEEVE_POSITIONS),
+    lyricsAlign: raw.lyrics_align === undefined ? null : oneOf(`${key}.lyrics_align`, raw.lyrics_align, SLEEVE_ALIGNS),
+    noSandbox: boolean(`${key}.no_sandbox`, raw.no_sandbox ?? false),
+    command: raw.command === undefined ? null : text(`${key}.command`, raw.command, 'a path')
+  };
+}
+
 function instance(raw, prefix) {
-  const module = oneOf(`${prefix}module`, raw.module ?? 'bars', MODULES);
+  const engine = oneOf(`${prefix}engine`, raw.engine ?? 'glava', ENGINES);
   const layout = { placement: placement(`${prefix}placement`, { ...raw.placement }), rect: rect(`${prefix}rect`, raw.rect) };
   const palette = paletteSettings(raw.palette ?? {}, prefix);
+  if (engine === 'sleeve') {
+    return {
+      name: raw.name,
+      engine,
+      module: 'lyrics',
+      opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
+      layout,
+      monitors: monitors(raw.monitors ?? 'all', layout, prefix),
+      palette,
+      // Nothing to wait for or fall back to, unlike GLava: sleeve keeps its own colors until some arrive
+      pipe: palette.source === 'wallpaper' ? {} : null,
+      defines: {},
+      requests: [],
+      sleeve: sleeveSettings(raw.sleeve ?? {}, prefix)
+    };
+  }
+  const module = oneOf(`${prefix}module`, raw.module ?? 'bars', MODULES);
   // Typed options first, so raw defines can override them
   const allDefines = { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) };
   let pipe = null;
@@ -316,6 +349,7 @@ function instance(raw, prefix) {
   }
   return {
     name: raw.name,
+    engine,
     module,
     // The window's opacity over the wallpaper, set as _NET_WM_WINDOW_OPACITY for the compositor
     opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
@@ -416,9 +450,11 @@ export function instanceLook(section = {}, options = {}, name = 'main') {
   const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
   const item = raw.instances === undefined ? defaults : deepMerge(defaults, (raw.instances ?? []).find(entry => entry?.name === name) ?? {});
   const module = item.module ?? 'bars';
+  const engine = item.engine ?? 'glava';
   const { option, fallback } = PIPED_COLORS[module];
   const colors = item[module]?.[option] ?? fallback;
   return {
+    ...(engine === 'sleeve' ? { engine, sleeve: { now: 'lyrics', now_position: 'top-left', lyrics_align: 'left', ...item.sleeve } } : {}),
     module,
     opacity: item.opacity ?? 0.8,
     anchor: item.placement?.anchor ?? 'bottom',
@@ -461,6 +497,16 @@ export function visualizerSettings(section = {}, { preset, live } = {}) {
   }
   if (!presets[active]) fail('preset', `one of the presets (${Object.keys(presets).join(', ')})`, active);
   return { ...normalize(applyLive(deepMerge(base, presets[active]), live), `presets.${active}.`), preset: active, presets: Object.keys(presets) };
+}
+
+// The engines the section runs as written, with its chosen preset laid over it. Tolerant, for `backdrop doctor`,
+// which reports a section that does not check out by itself.
+export function enginesOf(section = {}) {
+  if (!isObject(section)) return new Set();
+  const preset = section.preset ? presetsOf(section)[section.preset] : null;
+  const raw = isObject(preset) ? deepMerge(section, preset) : section;
+  const instances = Array.isArray(raw.instances) ? raw.instances : [raw];
+  return new Set(instances.map(item => item?.engine ?? raw.engine ?? 'glava'));
 }
 
 // An instance's layout on a monitor, or null when it does not run there

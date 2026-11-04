@@ -21,6 +21,13 @@ const PARTS = ['wallpaper', 'visualizer'];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// A visualizer's colors for status: GLava's { fg, fg2 }, or the background sleeve was sent ('' before any)
+function colorText(colors) {
+  if (!colors) return '';
+  if (colors.main) return `over ${colors.background}`;
+  return Object.values(colors).map(value => value.replace(/^(#[0-9a-f]{6})ff$/i, '$1')).join(' to ');
+}
+
 export class DisplayCommand {
   constructor(config, database, logger, {
     kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS,
@@ -281,7 +288,7 @@ export class DisplayCommand {
   // colors are the ones piped from the wallpaper (or the config, until it is sampled); opaque ones lose their alpha
   describeVisualizer({ instance, module, geometry, running, colors }) {
     const name = instance && instance !== 'main' ? ` ${instance}` : '';
-    const shown = colors ? `, colors ${Object.values(colors).map(value => value.replace(/^(#[0-9a-f]{6})ff$/i, '$1')).join(' to ')}` : '';
+    const shown = colorText(colors) ? `, colors ${colorText(colors)}` : '';
     return `visualizer${name} ${module} at ${geometry}${shown}${running ? '' : fmt.yellow(' (gave up after repeated exits; backdrop visualizer reload)')}`;
   }
 
