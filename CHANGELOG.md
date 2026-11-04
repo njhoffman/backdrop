@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.46.1] - 2026-11-04
+
+### Fixed
+- `backdrop start --wallpaper` with the daemon stopped failed with "Daemon did not start": the daemon it spawned did not accept `--wallpaper`.
+
 ## [2.46.0] - 2026-11-04
 
 ### Added

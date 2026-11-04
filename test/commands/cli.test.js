@@ -26,6 +26,17 @@ describe('CLI command registration', function () {
     return spawnSync(process.execPath, [entry, ...args], { env, encoding: 'utf8', timeout: 10000 });
   };
 
+  // `start` with only some parts spawns the daemon with these; a fake spawn would not notice it refusing them.
+  // No X server at this display, so each stops at finding the monitors without starting anything.
+  it('accepts every flag start passes to the daemon', () => {
+    const noDisplay = { ...env, DISPLAY: ':65000' };
+    for (const flags of [['--wallpaper', '--no-visualizer'], ['--no-wallpaper', '--visualizer'], ['--wallpaper', '--visualizer']]) {
+      current.timeout(current.timeout() + RUN_BUDGET);
+      const { stderr, stdout } = spawnSync(process.execPath, [entry, 'daemon', ...flags], { env: noDisplay, encoding: 'utf8', timeout: 10000 });
+      expect(`${stderr}${stdout}`, flags.join(' ')).to.not.include('unknown option');
+    }
+  });
+
   it('registers every ported command and prints help without an API key', () => {
     run('stats');
     const result = run('--help');

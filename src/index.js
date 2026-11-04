@@ -122,6 +122,7 @@ class BackdropApp {
     program
       .command('daemon')
       .description('Run the display daemon in the foreground')
+      .option('--wallpaper', 'Run the wallpaper (the default)')
       .option('--no-wallpaper', 'Start without wallpapers (backdrop start --wallpaper turns them on)')
       .option('--visualizer', 'Run the visualizer even if visualizer.enabled is false')
       .option('--no-visualizer', 'Do not run the visualizer even if visualizer.enabled is true')
