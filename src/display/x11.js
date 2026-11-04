@@ -128,6 +128,13 @@ export class X11 {
     this.client.ChangeProperty(PROP_MODE_REPLACE, id, atom, ATOM_CARDINAL, 32, [Math.round(opacity * MAX_OPACITY)]);
     await this.check('opacity change');
   }
+
+  // Asks a compositor to draw no shadow for the window (picom and compton read this)
+  async setNoShadow(id) {
+    const atom = await call(this.client, 'InternAtom', false, '_COMPTON_SHADOW');
+    this.client.ChangeProperty(PROP_MODE_REPLACE, id, atom, ATOM_CARDINAL, 32, [0]);
+    await this.check('shadow change');
+  }
 }
 
 // Runs fn with a connection that is closed afterwards

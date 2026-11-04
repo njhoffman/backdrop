@@ -9,6 +9,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('VisualizerManager', () => {
   let config, monitors, screens, spawned, kills, prepared, logs, manager, time, windows, xcalls, above, watchers, compositor;
+  let shadowless = [];
   let overlayWindows, connections, overlayChanges;
   const monitor = (name, x = 0) => ({ name, x, y: 0, width: 2560, height: 1440 });
   const entry = (monitorName = 'DP-3', instance = 'main') => manager.entries.get(`${monitorName}\t${instance}`);
@@ -43,6 +44,7 @@ describe('VisualizerManager', () => {
             return overlayWindows;
           },
           setOpacity: async (id, value) => { xcalls.push(['opacity', id, value]); },
+          setNoShadow: async id => { shadowless.push(id); },
           topLevel: async id => { xcalls.push(['topLevel', id]); return 0x1200001; },
           stackAbove: async (id, sibling) => { xcalls.push(['stackAbove', id, sibling]); },
           lower: async id => { xcalls.push(['lower', id]); },
@@ -197,6 +199,16 @@ describe('VisualizerManager', () => {
     expect(watchers).to.have.length(1);
     await manager.setEnabled(false);
     expect(watchers[0].stopped).to.be.true;
+  });
+
+  it('takes each placed window out of the compositor\'s shadows', async () => {
+    shadowless = [];
+    const manager = makeManager();
+    await manager.configure();
+    await manager.sync();
+    await manager.entries.values().next().value.placed;
+    expect(shadowless).to.deep.equal([0x3400002]);
+    await manager.stop();
   });
 
   it('stops the instances while suspended, staying enabled, and starts them again after', async () => {

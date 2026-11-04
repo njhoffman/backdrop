@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.46.2] - 2026-11-04
+
+### Fixed
+- A visualizer away from the screen edge, such as the `party` preset's ring, no longer shows a dark box around its window. The compositor was drawing a shadow around the whole window, because a
+  `shadow-exclude` on GLava's title stopped matching when backdrop set its own titles. Visualizer windows now opt out of compositor shadows themselves (`_COMPTON_SHADOW`).
+
 ## [2.46.1] - 2026-11-04
 
 ### Fixed

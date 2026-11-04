@@ -433,7 +433,11 @@ export class VisualizerManager {
         const overlays = await this.findOverlays(name, x);
         if (!placed.length && !overlays.length) return false;
         this.noteCompositor(await x.hasCompositor());
-        for (const entry of placed) await x.setOpacity(entry.window, entry.instance.opacity);
+        for (const entry of placed) {
+          await x.setOpacity(entry.window, entry.instance.opacity);
+          // A compositor's shadow would outline the window's whole rectangle, not what it draws
+          await x.setNoShadow(entry.window);
+        }
         const wallpaper = await this.wallpaperWindow(name, x);
         // GLava lowers itself, but sleeve stays where it maps, over every other window, unless it is placed. A
         // wallpaper whose window is not found yet is not the same as none: lowering would put sleeve beneath it.
