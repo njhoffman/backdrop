@@ -328,8 +328,12 @@ describe('visualizer settings', () => {
         const sides = ['lyrics-veil', 'lyrics-stage'];
         for (const name of sides) expect(lyrics(name).sleeve.sleeve.lyricsArea, name).to.equal('33%x100%+0+0');
         const beside = { name: 'DP-3', x: 0, y: 0, width: 3000, height: 1000 };
-        const ring = lyrics('lyrics-veil').instances.find(item => item.name === 'ring');
-        expect(resolveGeometry(beside, ring.layout)).to.deep.equal({ x: 990, y: 0, width: 2010, height: 1000 });
+        for (const name of sides) {
+          const { instances } = lyrics(name);
+          const placed = instance => resolveGeometry(beside, instances.find(item => item.name === instance).layout);
+          expect(placed('ring'), name).to.deep.equal({ x: 990, y: 0, width: 2010, height: 750 });
+          expect(placed('bars'), name).to.deep.equal({ x: 990, y: 750, width: 2010, height: 250 });
+        }
       });
     });
 

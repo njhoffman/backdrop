@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.48.1] - 2026-11-05
+
+### Changed
+
+- The `lyrics-veil` preset's ring is bigger, reacts more strongly to the music and sits toward the top, with bars below it.
+
+### Fixed
+
+- Gradients set in the config no longer fade to nothing: since 2.48.0 GLava could lose the far color at start, leaving bars and rings dim, brightest at the base and transparent at the tips.
+
 ## [2.48.0] - 2026-11-04
 
 ### Added

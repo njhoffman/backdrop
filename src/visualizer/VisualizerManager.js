@@ -494,6 +494,9 @@ export class VisualizerManager {
   async findAndPlace(entry) {
     entry.window = await this.findWindow(entry.adapter.title(entry.monitor), entry);
     entry.searched = true;
+    // GLava keeps one line of what piled up on stdin before it began reading, so the later values of the first
+    // write are lost and would stay unset (a gradient fades to nothing); with its window up it reads them all
+    if (entry.window && entry.colors && !entry.adapter.colorLines) this.sendColors(entry, entry.colors);
     return this.placeMonitor(entry.monitor.name);
   }
 

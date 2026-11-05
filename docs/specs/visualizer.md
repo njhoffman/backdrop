@@ -70,7 +70,7 @@ sleeve's lyrics are a second engine, chosen per instance with `engine: sleeve` (
 display` with no restart, unless an option set at its start was removed, which only a restart can clear. On each start it resets what sleeved remembers of the
 page, and for silence it hides and shows rather than stopping. Status 2 means no use retrying, so the instance is given up on at once. With `palette.source:
 wallpaper` it gets one `{ background, main }` JSON line per change, as an overlay's colors in `state.json`. With the wallpaper off, a monitor with a sleeve instance is
-stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in presets with lyrics are `lyrics` (above bars), `lyrics-only`, `lyrics-side` (left third, bars beside them), `lyrics-veil` (the wallpaper under a see-through layer, a ring beside the lyrics), `lyrics-blend` (the cover blended over the wallpaper), and `lyrics-stage` and `lyrics-now` (an opaque cover as the whole background). The last two set `wallpaper: false`, which any preset or the section can: mpv stops while that look is active and starts again when it ends or when an instance cannot run, and turning the wallpaper on or off by hand still counts for when it does. At the load section's `image` level a sleeve `cover` background gives way to a dark color, back when the load falls; in silence (`only_while_playing`) it stays, since on an opaque window it is the wallpaper. The areas and background let it be the wallpaper layer, alone or between mpv and GLava; see [sleeve.md](sleeve.md), which has examples.
+stacked from the bottom, since sleeve does not lower itself as GLava does. The built-in presets with lyrics are `lyrics` (above bars), `lyrics-only`, `lyrics-side` (left third, bars beside them), `lyrics-veil` (the wallpaper under a see-through layer, a ring beside the lyrics with bars below it), `lyrics-blend` (the cover blended over the wallpaper), and `lyrics-stage` and `lyrics-now` (an opaque cover as the whole background). The last two set `wallpaper: false`, which any preset or the section can: mpv stops while that look is active and starts again when it ends or when an instance cannot run, and turning the wallpaper on or off by hand still counts for when it does. At the load section's `image` level a sleeve `cover` background gives way to a dark color, back when the load falls; in silence (`only_while_playing`) it stays, since on an opaque window it is the wallpaper. The areas and background let it be the wallpaper layer, alone or between mpv and GLava; see [sleeve.md](sleeve.md), which has examples.
 
 ### Overlays
 
@@ -163,9 +163,10 @@ picks; one color takes the first. The configured colors' alpha is kept.
 The colors reach GLava over stdin: each instance runs with `--pipe=fg:vec4` (and `fg2` for a gradient), the
 module's color `#define` reads `@fg:` (`mix(@fg:A , @fg2:B , ...)`; GLava reads a default up to whitespace, hence
 the spaces), and `VisualizerManager` writes `fg = #rrggbbaa` lines. Two GLava behaviors shape this, checked with
-GLava 1.6.3: it draws nothing until every piped value has arrived, so the manager writes the colors as soon as
-an instance starts (the wallpaper's when sampled, else the configured ones), and it takes one line per read,
-dropping the rest of what arrived together, so lines go out 100 ms apart. A raw `defines` entry for the piped
+GLava 1.6.3: a piped value that never arrives stays unset, so the manager writes the colors as soon as an instance
+starts (the wallpaper's when sampled, else the configured ones), and it takes one line per read, dropping the rest
+of what arrived together, so lines go out 100 ms apart. Lines written before GLava begins reading pile up all the same, leaving a gradient's far color
+unset and the bars fading to nothing, so the manager writes the colors again once the window is up. A raw `defines` entry for the piped
 color is rejected. `status` shows each instance's current colors.
 
 ## Menu

@@ -809,12 +809,22 @@ describe('VisualizerManager', () => {
       manager = pipedManager();
     });
 
+    // Colors go out again once a window is found: waits for that, so no write lands in a later count or test
+    const settled = async () => {
+      for (const item of manager.entries.values()) {
+        await item.placed;
+        await item.writing;
+      }
+    };
+
+    afterEach(settled);
+
     it('opens stdin and sends the configured colors at once, one line at a time', async () => {
       await manager.configure();
       await manager.sync();
       expect(spawned[0].options.stdio[0]).to.equal('pipe');
       await entry().writing;
-      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+      expect(writes.slice(0, 2).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
       // Apart, so GLava reads each on its own
       expect(writes[1][0] - writes[0][0]).to.be.at.least(10);
       expect(manager.describe('DP-3')[0].colors).to.deep.equal({ fg: '#000000ff', fg2: '#33aaccff' });
@@ -822,26 +832,35 @@ describe('VisualizerManager', () => {
       expect(manager.wantsWallpaperColors('HDMI-1')).to.equal(false);
     });
 
+    it('sends the colors again once the window is up, since GLava loses what piled up before it began reading', async () => {
+      await manager.configure();
+      await manager.sync();
+      await settled();
+      expect(entry().window).to.exist;
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n', 'fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+    });
+
     it('starts with the wallpaper\'s colors when known, and recolors only what changed', async () => {
       const asked = [];
       colors = (target, instance, geometry) => { asked.push([target.name, instance.name, geometry.height]); return { fg: '#111111ff', fg2: '#222222ff' }; };
       await manager.configure();
       await manager.sync();
-      await entry().writing;
+      await settled();
       expect(asked).to.deep.equal([['DP-3', 'main', 360]]);
-      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #111111ff\n', 'fg2 = #222222ff\n']);
+      expect(writes.slice(0, 2).map(([, line]) => line)).to.deep.equal(['fg = #111111ff\n', 'fg2 = #222222ff\n']);
+      writes.length = 0;
 
       await manager.recolor('DP-3');
-      expect(writes).to.have.length(2);
+      expect(writes).to.have.length(0);
       colors = () => ({ fg: '#333333ff', fg2: '#444444ff' });
       await manager.recolor('DP-3');
-      expect(writes.slice(2).map(([, line]) => line)).to.deep.equal(['fg = #333333ff\n', 'fg2 = #444444ff\n']);
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #333333ff\n', 'fg2 = #444444ff\n']);
       expect(logs.some(log => log[1] === 'Visualizer colors')).to.equal(true);
 
       // Unknown again (wallpaper off): back to the configured colors
       colors = null;
       await manager.recolor('DP-3');
-      expect(writes.slice(4).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+      expect(writes.slice(2).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
     });
 
     it('drops colors superseded before they are written, and sends them again after a restart', async () => {
@@ -850,13 +869,15 @@ describe('VisualizerManager', () => {
       colors = () => ({ fg: '#555555ff', fg2: '#666666ff' });
       await manager.recolor('DP-3');
       // The configured fg went out, then the newer colors replaced the rest of that write
-      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg = #555555ff\n', 'fg2 = #666666ff\n']);
+      expect(writes.slice(0, 3).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg = #555555ff\n', 'fg2 = #666666ff\n']);
+      await settled();
+      writes.length = 0;
 
       spawned[0].child.exit(1);
       await pause(30);
       await entry().writing;
       expect(spawned).to.have.length(2);
-      expect(writes.slice(3).map(([, line]) => line)).to.deep.equal(['fg = #555555ff\n', 'fg2 = #666666ff\n']);
+      expect(writes.slice(0, 2).map(([, line]) => line)).to.deep.equal(['fg = #555555ff\n', 'fg2 = #666666ff\n']);
     });
 
     it('sends set colors at the start and takes a new one with no restart, sampling nothing with palette.source: config', async () => {

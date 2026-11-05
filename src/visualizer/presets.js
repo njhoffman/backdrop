@@ -1,7 +1,6 @@
 // Presets backdrop ships. A preset is laid over the visualizer section (objects merge, lists replace), so it
 // can change any setting, including the instance list. visualizer.presets can override these by name.
 const WALLPAPER_COLORS = { source: 'wallpaper' };
-const RIGHT_TWO_THIRDS = { x: '33%', y: 0, width: '67%', height: '100%' };
 const RING = { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] };
 
 export const BUILTIN_PRESETS = {
@@ -51,11 +50,12 @@ export const BUILTIN_PRESETS = {
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } }
     ]
   },
-  // The wallpaper dimmed under a see-through layer, solid lyrics on it, a ring beside them
+  // The wallpaper dimmed under a see-through layer, solid lyrics on it, a ring beside them with bars below it
   'lyrics-veil': {
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: '#0a0f1a99' } },
-      { name: 'ring', module: 'radial', rect: RIGHT_TWO_THIRDS, radial: RING }
+      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
+      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 600 } }
     ]
   },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
