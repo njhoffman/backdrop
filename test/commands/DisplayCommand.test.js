@@ -245,9 +245,13 @@ describe('DisplayCommand', () => {
         }
       });
     });
-    const running = (extra = {}) => fs.writeJson(statePath(dir), {
+    // Renamed into place as the daemon does: the command polling this reads half a file as no daemon
+    const running = async (extra = {}) => {
+      await fs.writeJson(`${statePath(dir)}.tmp`, {
       pid: process.pid, version: '2.21.0', wallpaper: true, control: 0, visualizer: { enabled: true, error: null, generation: 1 }, monitors, ...extra
-    });
+      });
+      await fs.rename(`${statePath(dir)}.tmp`, statePath(dir));
+    };
 
     it('starts the daemon with only the parts named', async () => {
       await fs.remove(statePath(dir));

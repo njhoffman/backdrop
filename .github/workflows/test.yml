@@ -2,6 +2,8 @@ name: Tests
 
 on:
   push:
+    # A tag is the same commit its branch push already tests
+    branches: ['**']
   pull_request:
 
 jobs:
