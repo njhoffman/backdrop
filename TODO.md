@@ -156,7 +156,7 @@ Reviewed: 2026-11-05
 
 - [x] **The rofi integration tests are flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` failed twice on 2026-11-05 at a load around 9, with no code changed: `rofi did not open a window` in a full run, and
       `draws the real main and step menus` alone with entries out of order (`[14, 1, 0, 1]`, expected `[14, 0, 1, 22, 1, 20]`). It passed 2 of 3 alone and passes on CI. Likely a fixed wait in `waitForRofi` and in reading what rofi drew.
-      Done: `driven` waits with a longer deadline, presses again until that run closes, and waits for its window to go before the next.
+      Done: `driven` waits with a longer deadline, presses again until that run closes, and waits for its window to go before the next. It still failed about 1 run in 10 at a load over 20 with `rofi did not open a window`; the error now carries rofi's own output for next time.
 - [x] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
@@ -318,7 +318,7 @@ Reviewed: 2026-11-05
       Done, along with the screensaver settings in `docs/specs/config.md`.
 - [ ] **Small cleanups.** (p3) [chore] `hex` is defined in both `palette.js` and `daemon/WallpaperColors.js`. `fs-extra` (11.3.0 to 11.4.1) and `winston` (3.17.0 to 3.19.0) have minor updates; `npm audit` is clean. `Daemon.js` (943 lines) and `VisualizerManager.js` (796) keep growing: sleeve's display and veil handling could move out of the manager as `daemon/` did.
 - [x] **CI jobs can hang on apt with no limit.** (p2) [chore] On 2026-11-05 the latest-Node job of the 2.50.7 run sat over 20 minutes in `Install integration test tools` while its 22.13 twin passed, and a GitHub job's default limit is 6 hours. Set `timeout-minutes` on the job and the install step, and pass apt `-o Acquire::Retries=3`.
-      Done: 15 minutes for the job, 5 for the install, and apt retries.
+      Done: 15 minutes for the job, 5 for the install, apt retries, no recommended packages, and a stalled install skips the integration tests rather than failing the run.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.

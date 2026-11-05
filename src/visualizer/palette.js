@@ -214,10 +214,13 @@ const VEIL_MIN_COLOR = 0.05;
 // A tint's saturation and lightness, those of the default's navy: dark enough to read as the picture darkened
 const VEIL_SATURATION = 0.44;
 const VEIL_LIGHTNESS = 0.07;
-// The mean luma (0-1) a veil aims to leave, and how far it may go to reach it
-const VEIL_TARGET_LUMA = 0.3;
-const VEIL_MIN_ALPHA = 0.45;
-const VEIL_MAX_ALPHA = 0.75;
+// The luma (0-1) a veil aims to leave at the bright end of what it matters over, how far it may go to reach it,
+// and what counts as the bright end: 10% of the pixels are brighter, so a small highlight does not darken everything.
+// Set by white text's contrast over 125 wallpapers: no worse than 4.5:1, with dark pictures keeping most of their light.
+const VEIL_TARGET_LUMA = 0.35;
+const VEIL_MIN_ALPHA = 0.35;
+const VEIL_MAX_ALPHA = 0.85;
+const VEIL_BRIGHT_SHARE = 0.9;
 
 // An RGB color (0-1) from a hue in radians and the veil's saturation and lightness
 function veilTint(hue) {
@@ -230,15 +233,14 @@ function veilTint(hue) {
 
 // A see-through background for pixels (as #rrggbbaa) that darkens them to about the same level whatever they are:
 // the color is the picture's own hue, very dark, each pixel's hue counting by how colorful it is so that gray
-// and white add nothing, and the strength follows the mean luma as shown after dim (0-100).
-export function veilBackground(pixels, dim = 0) {
+// and white add nothing. The strength follows the bright end of area, the part text sits on (default all of them), as
+// shown after dim (0-100), so a bright patch behind the lyrics counts however dark the rest is.
+export function veilBackground(pixels, dim = 0, area = pixels) {
   if (!pixels.length) return DEFAULT_VEIL;
   let hueX = 0;
   let hueY = 0;
-  let total = 0;
   for (const pixel of pixels) {
     const [red, green, blue] = pixel.map(value => value / 255);
-    total += luma([red, green, blue]);
     const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
     if (!chroma) continue;
     // The hexagon hue as an angle: red at 0, green a third of the way round and blue two thirds
@@ -248,7 +250,8 @@ export function veilBackground(pixels, dim = 0) {
   }
   const colored = Math.hypot(hueX, hueY) / pixels.length >= VEIL_MIN_COLOR;
   const tint = colored ? veilTint(Math.atan2(hueY, hueX)) : DEFAULT_VEIL.slice(1, 7).match(/../g).map(part => parseInt(part, 16) / 255);
-  const shown = total / pixels.length * (1 - dim / 100);
+  const lumas = (area.length ? area : pixels).map(pixel => luma(pixel) / 255).sort((a, b) => a - b);
+  const shown = lumas[Math.min(lumas.length - 1, Math.floor(lumas.length * VEIL_BRIGHT_SHARE))] * (1 - dim / 100);
   const alpha = shown > VEIL_TARGET_LUMA ? (shown - VEIL_TARGET_LUMA) / (shown - luma(tint)) : 0;
   const clamped = Math.min(VEIL_MAX_ALPHA, Math.max(VEIL_MIN_ALPHA, alpha));
   return `${hex(tint.map(value => Math.round(value * 255)))}${hex([Math.round(clamped * 255)]).slice(1)}`;

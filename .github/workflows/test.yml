@@ -22,12 +22,13 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      # For the integration tests, which skip themselves without these. xwinwrap and GLava are not packaged,
-      # so the stacking test stays local.
+      # For the integration tests, which skip themselves without these, so a stalled mirror costs only those.
+      # xwinwrap and GLava are not packaged, so the stacking test stays local.
       - name: Install integration test tools
         timeout-minutes: 5
+        continue-on-error: true
         run: |
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y mpv ffmpeg xvfb xserver-xephyr rofi xdotool imagemagick
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends mpv ffmpeg xvfb xserver-xephyr rofi xdotool imagemagick
       - run: npm ci
       - run: npm run test:brief

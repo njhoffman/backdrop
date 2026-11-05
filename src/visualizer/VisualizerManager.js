@@ -272,7 +272,7 @@ export class VisualizerManager {
       if (!instance) continue;
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
       if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) {
-        if (instance.sleeve.background === 'auto') entry.veil ??= this.veilFor(entry.monitor, entry.geometry);
+        if (instance.sleeve.background === 'auto') entry.veil ??= this.veilFor(entry.monitor, entry.geometry, instance.sleeve.lyricsArea);
         this.display(entry, { look: this.shownLook(instance.sleeve, entry) });
       }
       entry.instance = instance;
@@ -413,7 +413,7 @@ export class VisualizerManager {
 
   start(monitor, instance, geometry, restarts = []) {
     const adapter = this.adapters.get(instance.name);
-    const veil = instance.sleeve?.background === 'auto' ? this.veilFor(monitor, geometry) : null;
+    const veil = instance.sleeve?.background === 'auto' ? this.veilFor(monitor, geometry, instance.sleeve.lyricsArea) : null;
     // Only sleeve takes a veil; GLava's third argument is its environment
     const { file, args, env } = veil ? adapter.command(monitor, geometry, veil) : adapter.command(monitor, geometry);
     const child = this.spawn(file, args, { detached: true, stdio: [instance.pipe ? 'pipe' : 'ignore', 'pipe', 'pipe'], env });
@@ -489,7 +489,7 @@ export class VisualizerManager {
   // Works out a sleeve `auto` background again; a list of what to wait for, empty when it stays as it is
   reveil(entry) {
     if (entry.instance.sleeve?.background !== 'auto') return [];
-    const veil = this.veilFor(entry.monitor, entry.geometry);
+    const veil = this.veilFor(entry.monitor, entry.geometry, entry.instance.sleeve.lyricsArea);
     if (!veil || veil === entry.veil) return [];
     entry.veil = veil;
     this.logger.info('Visualizer veil', { monitor: entry.monitor.name, instance: entry.instance.name, veil });

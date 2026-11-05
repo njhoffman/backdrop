@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.51.0] - 2026-11-05
+
+### Changed
+
+- `background: auto` now sets its strength from the brightest part of what is under the lyrics rather than the whole picture's average, from 35% to 85%, so lyrics stay readable over a bright patch and dark wallpapers keep more of their light.
+
 ## [2.50.8] - 2026-11-05
 
 ### Changed

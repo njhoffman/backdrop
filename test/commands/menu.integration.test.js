@@ -78,9 +78,11 @@ function startXvfb() {
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
       if (rofiWindow()) return;
+      const run = runs.at(-1);
+      if (run?.code !== null && run?.code !== undefined) throw new Error(`rofi exited with ${run.code} before opening a window: ${run.stderr.trim()}`);
       await sleep(50);
     }
-    throw new Error('rofi did not open a window');
+    throw new Error(`rofi did not open a window: ${runs.at(-1)?.stderr.trim() ?? 'not started'}`);
   }
 
   // Presses a key that ends this rofi run, again if a busy rofi had not yet taken the keyboard and missed it.

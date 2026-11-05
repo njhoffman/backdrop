@@ -202,8 +202,8 @@ describe('visualizer palette', () => {
     it('stays navy on a picture with next to no color, heavier on a bright one than a dark one', () => {
       const snow = veilBackground(fill([230, 232, 235]));
       expect(snow.slice(0, 7)).to.equal(DEFAULT_VEIL.slice(0, 7));
-      expect(parts(snow).alpha).to.be.closeTo(0.71, 0.02);
-      expect(parts(veilBackground(fill([20, 20, 22]))).alpha).to.be.closeTo(0.45, 0.01);
+      expect(parts(snow).alpha).to.be.closeTo(0.65, 0.02);
+      expect(parts(veilBackground(fill([20, 20, 22]))).alpha).to.be.closeTo(0.35, 0.01);
     });
 
     it('takes the hue of a colorful picture, kept very dark', () => {
@@ -222,9 +222,17 @@ describe('visualizer palette', () => {
       expect(rgb[0]).to.be.above(rgb[2]);
     });
 
+    it('darkens for a bright patch under the text, however dark the rest, and lets one highlight pass', () => {
+      const dark = fill([20, 20, 22], 90);
+      const patch = fill([240, 240, 240], 30);
+      expect(parts(veilBackground([...dark, ...patch], 0, patch)).alpha).to.be.above(0.6);
+      expect(parts(veilBackground([...dark, ...patch], 0, dark)).alpha).to.be.closeTo(0.35, 0.01);
+      expect(parts(veilBackground([...dark, ...patch], 0, [...fill([20, 20, 22], 95), ...fill([240, 240, 240], 5)])).alpha).to.be.closeTo(0.35, 0.01);
+    });
+
     it('counts a dim toward what it has to darken, and stays within its limits', () => {
       expect(parts(veilBackground(fill([200, 200, 200]), 50)).alpha).to.be.below(parts(veilBackground(fill([200, 200, 200]))).alpha);
-      expect(parts(veilBackground(fill([255, 255, 255]))).alpha).to.be.at.most(0.75);
+      expect(parts(veilBackground(fill([255, 255, 255]))).alpha).to.be.at.most(0.85);
       expect(veilBackground([])).to.equal(DEFAULT_VEIL);
     });
   });

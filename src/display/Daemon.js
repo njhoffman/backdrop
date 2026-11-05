@@ -186,7 +186,7 @@ export class Daemon {
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
       colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
-      veilFor: (monitor, geometry) => this.wallpaperColors.veilFor(monitor, geometry),
+      veilFor: (monitor, geometry, lyricsArea) => this.wallpaperColors.veilFor(monitor, geometry, lyricsArea),
       onMusicDim: () => this.applyDims(),
       onOverlays: name => this.onOverlays(name),
       onWallpaper: () => this.enqueue(() => this.syncWallpaper()),

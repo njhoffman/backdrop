@@ -166,7 +166,7 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
       const current = daemon.screens.get(monitorName());
       const id = current?.client ? await current.client.getProperty('window-id').catch(() => null) : null;
       return Boolean(id) && id !== before;
-    }, 15000, 'a new wallpaper window');
+    }, 30000, 'a new wallpaper window');
     await expectStaysAbove('after mpv was restarted');
   });
 

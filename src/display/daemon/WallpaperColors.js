@@ -65,8 +65,9 @@ export class WallpaperColors {
     return typeof contrast === 'number' ? Math.max(0, -contrast) : cached.sample.dim;
   }
 
-  // A sleeve `auto` background for a window, from what it covers, or null while nothing is known, as for colorsFor
-  veilFor(monitor, geometry) {
+  // A sleeve `auto` background for a window, from what it covers and most of all what is under its lyrics, or null
+  // while nothing is known, as for colorsFor
+  veilFor(monitor, geometry, lyricsArea = null) {
     const media = this.daemon.screens.get(monitor.name)?.media;
     if (!media) return null;
     const cached = this.daemon.samples.get(monitor.name);
@@ -74,7 +75,9 @@ export class WallpaperColors {
       this.sampleScreen(monitor.name);
       return null;
     }
-    return veilBackground(stripPixels(cached.sample, monitor, geometry), this.shownDim(monitor, cached));
+    const pixels = stripPixels(cached.sample, monitor, geometry);
+    const area = lyricsArea ? stripPixels(cached.sample, monitor, resolveArea(lyricsArea, geometry)) : pixels;
+    return veilBackground(pixels, this.shownDim(monitor, cached), area);
   }
 
   // Samples what a monitor shows (in the background, once per item) and recolors its visualizers
