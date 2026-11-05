@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.1] - 2026-11-05
+
+### Fixed
+
+- A thin bright line along the right and bottom edges with a sleeve veil: sleeve's window came out a pixel short of the monitor, leaving that much wallpaper unveiled. backdrop now sizes it exactly.
+
 ## [2.50.0] - 2026-11-05
 
 ### Added

@@ -397,6 +397,8 @@ Reviewed: 2026-11-02
 - [x] **Rate wallpapers from the screensaver.** (p2) [feature] The i3 mode keeps `$mod+m`, `$mod+w` and `$mod+Shift+w`, and only asking ends the mode, so a rating cannot.
 - [ ] **Idle trigger: try it for real.** (p2) [feature] Built and off by default (`screensaver.idle`, `idle_minutes`, `max_load`), tested only with fakes. It should also not start over a fullscreen window
       or a video call, and it ends only with Escape like the key does; decide whether input should end an idle start.
+- [ ] **Polybar once came back in the screensaver.** (p2) [bug] A capture on 2026-11-05, about 27 s into a real entry at load 20, showed polybar on screen and no ring or bars, with the veil up.
+      A later entry logging the stacking and polybar's map state every 0.5 s for 22 s stayed correct throughout, as did a run without the workspace switch, so polybar's return is unexplained. The missing ring and bars are probably silence: the music was playing on a phone, so nothing reached the desktop's sink, and the ring's thin circle is easy to miss under the veil.
 - [ ] **Hide the pointer in the screensaver.** (p3) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
 - [ ] **Follow the load levels.** (p2) [feature] The screensaver has to use the same `LoadGovernor` levels as the wallpaper
       (`src/display/LoadGovernor.js`, `docs/specs/main.md`): images only at `image`, skipping `screensaver.streams`, and a blank screen at `off`.

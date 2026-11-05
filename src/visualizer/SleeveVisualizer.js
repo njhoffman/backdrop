@@ -14,6 +14,7 @@ const atLeast = (version, [major, minor]) => {
 // user's ~/.config/sleeve/style.css.
 export class SleeveVisualizer {
   constructor(settings, instance, { exec = run } = {}) {
+    this.resizes = true;
     this.settings = settings;
     this.instance = instance;
     this.exec = exec;
