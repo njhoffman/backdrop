@@ -148,8 +148,10 @@ export async function reshuffleOnWrap(client, previousEntryId) {
   return entryId;
 }
 
-// mpv brightness for a stored dim amount (0 rather than -0 when undimmed)
-export function brightnessFor(dim) {
+// mpv contrast for a stored dim amount (0 rather than -0 when undimmed). mpv's contrast scales every channel by
+// 1 + contrast / 100, the same as a black veil over the picture, so colors keep their hue; its brightness, an
+// offset on every channel, would shift them and crush the shadows.
+export function contrastFor(dim) {
   return dim ? -dim : 0;
 }
 

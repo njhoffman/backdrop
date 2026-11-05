@@ -197,14 +197,62 @@ export function pickColors(clusters, rule, count) {
   return picks;
 }
 
-// The average color of pixels as shown, after mpv's brightness offset for the item's dim (0-100)
+// The average color of pixels as shown, after mpv's contrast for the item's dim (0-100), which scales them
 export function shownAverage(pixels, dim = 0) {
   const sum = [0, 0, 0];
   for (const pixel of pixels) for (let channel = 0; channel < 3; channel++) sum[channel] += pixel[channel];
-  return sum.map(value => Math.max(0, Math.round(value / Math.max(1, pixels.length) - dim / 100 * 255)));
+  return sum.map(value => Math.round(value / Math.max(1, pixels.length) * (1 - dim / 100)));
 }
 
 const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+
+// A sleeve background of `auto`: its color and strength when nothing is known of the wallpaper yet
+export const DEFAULT_VEIL = '#0a0f1a99';
+// How far a picture's mean color must lean toward a hue (0-1) for a veil to take it; below this it is close enough
+// to gray that its hue means nothing, and the veil keeps the default's navy
+const VEIL_MIN_COLOR = 0.05;
+// A tint's saturation and lightness, those of the default's navy: dark enough to read as the picture darkened
+const VEIL_SATURATION = 0.44;
+const VEIL_LIGHTNESS = 0.07;
+// The mean luma (0-1) a veil aims to leave, and how far it may go to reach it
+const VEIL_TARGET_LUMA = 0.3;
+const VEIL_MIN_ALPHA = 0.45;
+const VEIL_MAX_ALPHA = 0.75;
+
+// An RGB color (0-1) from a hue in radians and the veil's saturation and lightness
+function veilTint(hue) {
+  const chroma = (1 - Math.abs(2 * VEIL_LIGHTNESS - 1)) * VEIL_SATURATION;
+  const sector = (((hue / (Math.PI / 3)) % 6) + 6) % 6;
+  const side = chroma * (1 - Math.abs((sector % 2) - 1));
+  const base = [[chroma, side, 0], [side, chroma, 0], [0, chroma, side], [0, side, chroma], [side, 0, chroma], [chroma, 0, side]][Math.floor(sector)];
+  return base.map(value => value + VEIL_LIGHTNESS - chroma / 2);
+}
+
+// A see-through background for pixels (as #rrggbbaa) that darkens them to about the same level whatever they are:
+// the color is the picture's own hue, very dark, each pixel's hue counting by how colorful it is so that gray
+// and white add nothing, and the strength follows the mean luma as shown after dim (0-100).
+export function veilBackground(pixels, dim = 0) {
+  if (!pixels.length) return DEFAULT_VEIL;
+  let hueX = 0;
+  let hueY = 0;
+  let total = 0;
+  for (const pixel of pixels) {
+    const [red, green, blue] = pixel.map(value => value / 255);
+    total += luma([red, green, blue]);
+    const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+    if (!chroma) continue;
+    // The hexagon hue as an angle: red at 0, green a third of the way round and blue two thirds
+    const hue = Math.atan2(Math.sqrt(3) * (green - blue), 2 * red - green - blue);
+    hueX += chroma * Math.cos(hue);
+    hueY += chroma * Math.sin(hue);
+  }
+  const colored = Math.hypot(hueX, hueY) / pixels.length >= VEIL_MIN_COLOR;
+  const tint = colored ? veilTint(Math.atan2(hueY, hueX)) : DEFAULT_VEIL.slice(1, 7).match(/../g).map(part => parseInt(part, 16) / 255);
+  const shown = total / pixels.length * (1 - dim / 100);
+  const alpha = shown > VEIL_TARGET_LUMA ? (shown - VEIL_TARGET_LUMA) / (shown - luma(tint)) : 0;
+  const clamped = Math.min(VEIL_MAX_ALPHA, Math.max(VEIL_MIN_ALPHA, alpha));
+  return `${hex(tint.map(value => Math.round(value * 255)))}${hex([Math.round(clamped * 255)]).slice(1)}`;
+}
 
 // The pipe values for an instance ({ fg } or { fg, fg2 }, as #rrggbbaa) from the strip under its window,
 // keeping the alpha of the configured colors; null when the strip is empty

@@ -1,6 +1,7 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { createVisualizer } from './index.js';
+import { DEFAULT_VEIL } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
 import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
@@ -84,12 +85,12 @@ export class VisualizerManager {
     audioWatcher = options => new AudioWatcher(options),
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
-    colorsFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
+    colorsFor = () => null, veilFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
     sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, veilFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper
     });
     // Windows marked _BACKDROP_OVERLAY by other programs, by monitor, as found at its last placement
     this.overlays = new Map();
@@ -229,7 +230,8 @@ export class VisualizerManager {
   }
 
   // An instance's sleeve settings as they should show now
-  shownLook(sleeve) {
+  shownLook(sleeve, entry) {
+    if (sleeve.background === 'auto') return { ...sleeve, background: entry.veil ?? DEFAULT_VEIL };
     return this.lightened ? { ...sleeve, background: stillBackground(sleeve.background) } : sleeve;
   }
 
@@ -266,7 +268,10 @@ export class VisualizerManager {
       const instance = next.instances.find(item => item.name === entry.instance.name);
       if (!instance) continue;
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
-      if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) this.display(entry, { look: this.shownLook(instance.sleeve) });
+      if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) {
+        if (instance.sleeve.background === 'auto') entry.veil ??= this.veilFor(entry.monitor, entry.geometry);
+        this.display(entry, { look: this.shownLook(instance.sleeve, entry) });
+      }
       entry.instance = instance;
       entry.adapter.instance = instance;
     }
@@ -372,7 +377,7 @@ export class VisualizerManager {
   remindSleeved() {
     for (const entry of this.entries.values()) {
       if (entry.instance.engine !== 'sleeve') continue;
-      this.display(entry, { look: this.shownLook(entry.instance.sleeve), ...(this.silenced ? { visible: false } : {}) });
+      this.display(entry, { look: this.shownLook(entry.instance.sleeve, entry), ...(this.silenced ? { visible: false } : {}) });
     }
   }
 
@@ -405,17 +410,19 @@ export class VisualizerManager {
 
   start(monitor, instance, geometry, restarts = []) {
     const adapter = this.adapters.get(instance.name);
-    const { file, args, env } = adapter.command(monitor, geometry);
+    const veil = instance.sleeve?.background === 'auto' ? this.veilFor(monitor, geometry) : null;
+    // Only sleeve takes a veil; GLava's third argument is its environment
+    const { file, args, env } = veil ? adapter.command(monitor, geometry, veil) : adapter.command(monitor, geometry);
     const child = this.spawn(file, args, { detached: true, stdio: [instance.pipe ? 'pipe' : 'ignore', 'pipe', 'pipe'], env });
     const entry = {
       key: entryKey(monitor.name, instance.name), monitor, instance, adapter, geometry, child, restarts, output: [], failed: false, window: null,
-      colors: null, writing: Promise.resolve(), startedLook: instance.sleeve ?? null
+      colors: null, writing: Promise.resolve(), startedLook: instance.sleeve ?? null, veil
     };
     this.entries.set(entry.key, entry);
     // sleeved outlives its pages and remembers changes by their name, which would win over these start options
     if (instance.engine === 'sleeve') {
       const covered = this.lightened && instance.sleeve.background?.startsWith('cover');
-      this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}), ...(covered ? { look: this.shownLook(instance.sleeve) } : {}) });
+      this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}), ...(covered ? { look: this.shownLook(instance.sleeve, entry) } : {}) });
     }
     if (instance.pipe) {
       // GLava draws nothing until every piped value has arrived: the wallpaper's colors when known, else the
@@ -462,24 +469,36 @@ export class VisualizerManager {
     return entry.writing;
   }
 
-  // Asks colorsFor again for the instances on a monitor that take their colors from the wallpaper, after the
+  // Asks colorsFor again for the instances on a monitor that take their colors from the wallpaper, and any
+  // `auto` backgrounds there, after the
   // daemon loads a new item there or samples it; resolves once the new colors are written
   recolor(name) {
     const changed = this.monitorEntries(name).flatMap(entry => {
-      if (!entry.instance.pipe) return [];
+      const veil = this.reveil(entry);
+      if (!entry.instance.pipe) return veil;
       const colors = this.colorsFor(entry.monitor, entry.instance, entry.geometry) ?? entry.instance.pipe;
-      if (JSON.stringify(colors) === JSON.stringify(entry.colors)) return [];
+      if (JSON.stringify(colors) === JSON.stringify(entry.colors)) return veil;
       this.logger.info('Visualizer colors', { monitor: name, instance: entry.instance.name, colors });
-      return [this.sendColors(entry, colors)];
+      return [...veil, this.sendColors(entry, colors)];
     });
     return Promise.all(changed);
+  }
+
+  // Works out a sleeve `auto` background again; a list of what to wait for, empty when it stays as it is
+  reveil(entry) {
+    if (entry.instance.sleeve?.background !== 'auto') return [];
+    const veil = this.veilFor(entry.monitor, entry.geometry);
+    if (!veil || veil === entry.veil) return [];
+    entry.veil = veil;
+    this.logger.info('Visualizer veil', { monitor: entry.monitor.name, instance: entry.instance.name, veil });
+    return [this.display(entry, { look: { background: veil } })];
   }
 
   // Whether an instance or an overlay on the monitor takes its colors from the wallpaper (overlays always do)
   wantsWallpaperColors(name) {
     const monitor = this.monitors.get(name);
     if (!monitor) return false;
-    return this.overlaysOn(name).length > 0 || (this.settings?.instances ?? []).some(instance => instance.palette?.source === 'wallpaper' && this.wanted(instance, monitor));
+    return this.overlaysOn(name).length > 0 || (this.settings?.instances ?? []).some(instance => (instance.palette?.source === 'wallpaper' || instance.sleeve?.background === 'auto') && this.wanted(instance, monitor));
   }
 
   // Running instances of a monitor, in the section's order

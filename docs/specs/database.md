@@ -21,7 +21,7 @@ One row per item, from any source.
 | `status` | `new`, `kept` or `skipped`; follows the latest rating |
 | `status_changed_at` | drives trash expiry |
 | `speed` | mpv playback speed (0.01-100), one per item, default 1.0 |
-| `dim` | 0 (none) to 100 (black), applied as mpv `brightness` = -dim; added in v5, default 0 |
+| `dim` | 0 (none) to 100 (black), applied as mpv `contrast` = -dim, a plain darkening; added in v5, default 0 |
 | `duplicate_of` | set when a download's content matched this media id; the item is never downloaded again. Added in v6; no foreign key, so it stays hidden if the original is removed |
 | `tags`, `variants` | JSON arrays; `tags` holds the source's own descriptions (e.g. Pexels alt text), `variants` download options `{url, width, height, ...}` |
 | `author`, `page_url` | attribution |

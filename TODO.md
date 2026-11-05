@@ -113,6 +113,9 @@ Reviewed: 2026-11-02
       Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
       removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
 - [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
+- [ ] **Daemon restart test depends on timing.** (p3) [test] `gives up after repeated exits within a minute` in
+      `test/display/Daemon.test.js` waits a fixed 10 ms per exit and failed once with one restart short while several
+      test files ran; it passed 3 of 3 alone. Wait for the restart itself rather than a fixed time.
 
 ## 2. Rename to backdrop
 

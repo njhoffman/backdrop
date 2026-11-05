@@ -416,7 +416,7 @@ export class DatabaseManager {
     this.updateMedia(id, { speed });
   }
 
-  // 0 (full brightness) to 100 (black); applied as mpv brightness -dim
+  // 0 (full brightness) to 100 (black); applied as mpv contrast -dim
   validateDim(dim) {
     if (!Number.isInteger(dim) || dim < 0 || dim > 100) {
       throw new Error('Dim must be a whole number from 0 to 100');

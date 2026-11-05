@@ -225,11 +225,11 @@ describe('mpv integration', function () {
     expect((await client.getProperty('playlist')).map(entry => entry.filename)).to.have.members([files[0], files[2], files[3]]);
   });
 
-  it('accepts the brightness values dim sets', async () => {
-    await client.setProperty('brightness', -40);
-    expect(await client.getProperty('brightness')).to.equal(-40);
-    await client.setProperty('brightness', 0);
-    expect(await client.getProperty('brightness')).to.equal(0);
+  it('accepts the contrast values dim sets', async () => {
+    await client.setProperty('contrast', -40);
+    expect(await client.getProperty('contrast')).to.equal(-40);
+    await client.setProperty('contrast', 0);
+    expect(await client.getProperty('contrast')).to.equal(0);
   });
 
   it('reports path changes through observed property events', async () => {

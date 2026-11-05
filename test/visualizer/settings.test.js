@@ -348,7 +348,7 @@ describe('visualizer settings', () => {
 
     it('takes areas in pixels or percent, and every background', () => {
       expect(sleeve({ lyrics_area: '33%x100%+0+0', now_area: '800x600+10+20' })).to.include({ lyricsArea: '33%x100%+0+0', nowArea: '800x600+10+20', mapBelow: null, background: null });
-      for (const background of ['transparent', '#102030', '#10203099', 'cover', 'cover@0.6', 'cover@1']) expect(sleeve({ background }).background).to.equal(background);
+      for (const background of ['transparent', 'auto', '#102030', '#10203099', 'cover', 'cover@0.6', 'cover@1']) expect(sleeve({ background }).background).to.equal(background);
       expect(sleeve({ map_below: false }).mapBelow).to.equal(false);
     });
 

@@ -3,7 +3,7 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, brightnessFor, queueMatching
+  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, contrastFor, queueMatching
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -198,7 +198,7 @@ export class DisplayControl {
     this.database.setDim(media.id, dim);
     const musicDim = (await this.state({ required: false }))?.visualizer?.musicDim ?? 0;
     const shown = Math.max(dim, musicDim);
-    await this.withClient(monitor, client => client.setProperty('brightness', brightnessFor(shown)));
+    await this.withClient(monitor, client => client.setProperty('contrast', contrastFor(shown)));
     return { monitor, media, dim, shown };
   }
 

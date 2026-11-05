@@ -6,7 +6,7 @@ import path from 'path';
 import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
-  getMode, displayMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, brightnessFor, reshuffleOnWrap,
+  getMode, displayMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, contrastFor, reshuffleOnWrap,
   playbackLimits
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
@@ -181,6 +181,7 @@ export class Daemon {
     this.visualizers = visualizers ?? new VisualizerManager({
       config, logger, monitors: this.monitors, screens: this.screens, spawn: this.spawn, kill, exec, restartDelay, stopGrace, now,
       colorsFor: (monitor, instance, geometry) => this.colorsFor(monitor, instance, geometry),
+      veilFor: (monitor, geometry) => this.wallpaperColors.veilFor(monitor, geometry),
       onMusicDim: () => this.applyDims(),
       onOverlays: name => this.onOverlays(name),
       onWallpaper: () => this.enqueue(() => this.syncWallpaper()),
@@ -500,8 +501,8 @@ export class Daemon {
         this.onFileLoaded(screen, event.data);
       } else if (event.name === 'container-fps' && event.data) {
         this.onFrameRate(screen, event.data);
-      } else if (event.name === 'brightness' && typeof event.data === 'number') {
-        this.onBrightness(screen, event.data);
+      } else if (event.name === 'contrast' && typeof event.data === 'number') {
+        this.onContrast(screen, event.data);
       } else if (event.name === 'speed' && typeof event.data === 'number') {
         this.onSpeed(screen, event.data);
       }
@@ -514,7 +515,7 @@ export class Daemon {
     });
     await screen.client.observeProperty(1, 'path');
     await screen.client.observeProperty(2, 'container-fps');
-    await screen.client.observeProperty(3, 'brightness');
+    await screen.client.observeProperty(3, 'contrast');
     await screen.client.observeProperty(4, 'speed');
 
     await this.loadScreenPlaylist(screen);
@@ -551,7 +552,7 @@ export class Daemon {
     return Math.max(media?.dim ?? 0, this.visualizers.musicDim ?? 0);
   }
 
-  // Sets every wallpaper's brightness again when the music dim changes, with each item's dim read again
+  // Sets every wallpaper's contrast again when the music dim changes, with each item's dim read again
   // (`backdrop dim` may have changed it since it loaded)
   async applyDims() {
     if (this.stopping) return;
@@ -559,19 +560,19 @@ export class Daemon {
       if (!screen.client || !screen.media) return;
       screen.media = this.database.getMedia(screen.media.id) ?? screen.media;
       try {
-        await screen.client.setProperty('brightness', brightnessFor(this.shownDim(screen.media)));
+        await screen.client.setProperty('contrast', contrastFor(this.shownDim(screen.media)));
       } catch (error) {
-        this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
+        this.logger.warn('Failed to set contrast', { monitor: screen.monitor.name, error: error.message });
       }
     }));
     await this.writeState();
   }
 
-  // mpv's brightness changed (a load, the music dim, or `backdrop dim`): visualizer colors from the wallpaper
+  // mpv's contrast changed (a load, the music dim, or `backdrop dim`): visualizer colors from the wallpaper
   // are checked for contrast against what shows now
-  onBrightness(screen, brightness) {
-    if (screen.brightness === brightness) return;
-    screen.brightness = brightness;
+  onContrast(screen, contrast) {
+    if (screen.contrast === contrast) return;
+    screen.contrast = contrast;
     if (!this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) return;
     Promise.resolve(this.visualizers.recolor?.(screen.monitor.name)).catch(error => {
       this.logger.warn('Visualizer recolor failed', { monitor: screen.monitor.name, error: error.message });
@@ -589,9 +590,9 @@ export class Daemon {
     screen.media = media;
     screen.loadedAt = this.now();
     try {
-      await screen.client.setProperty('brightness', brightnessFor(this.shownDim(media)));
+      await screen.client.setProperty('contrast', contrastFor(this.shownDim(media)));
     } catch (error) {
-      this.logger.warn('Failed to set brightness', { monitor: screen.monitor.name, error: error.message });
+      this.logger.warn('Failed to set contrast', { monitor: screen.monitor.name, error: error.message });
     }
     try {
       screen.entryId = await reshuffleOnWrap(screen.client, screen.entryId);

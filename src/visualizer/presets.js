@@ -50,10 +50,10 @@ export const BUILTIN_PRESETS = {
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } }
     ]
   },
-  // The wallpaper dimmed under a see-through layer, solid lyrics on it, a ring beside them with bars below it
+  // The wallpaper darkened under a see-through layer tinted from it, solid lyrics on it, a ring beside them with bars below it
   'lyrics-veil': {
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: '#0a0f1a99' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
       { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 600 } }
     ]

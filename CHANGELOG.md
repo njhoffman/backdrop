@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.0] - 2026-11-05
+
+### Changed
+
+- `backdrop dim`, an item's stored dim and `visualizer.wallpaper_dim` now darken like a black veil, through mpv's contrast: colors keep their hue and shadows keep their detail, where brightness shifted the one and crushed the other. The same number looks lighter than before, so a stored dim may want raising.
+- The `lyrics-veil` preset's veil now follows the wallpaper (see `auto` below) rather than always being 60% navy.
+
+### Added
+
+- sleeve `background: auto`: a see-through background worked out from the wallpaper on each load, in the wallpaper's own hue, kept very dark (navy when it has next to no color), stronger over a bright picture than a dark one.
+
 ## [2.48.1] - 2026-11-05
 
 ### Changed

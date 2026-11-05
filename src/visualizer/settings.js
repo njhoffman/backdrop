@@ -328,8 +328,8 @@ function area(key, value) {
 
 function sleeveBackground(key, value) {
   const cover = typeof value === 'string' ? /^cover@(\d*\.?\d+)$/.exec(value) : null;
-  const known = value === 'transparent' || value === 'cover' || (typeof value === 'string' && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value));
-  if (!known && !(cover && Number(cover[1]) <= 1)) fail(key, 'transparent, #rrggbb, #rrggbbaa, cover or cover@0.6', value);
+  const known = value === 'transparent' || value === 'auto' || value === 'cover' || (typeof value === 'string' && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value));
+  if (!known && !(cover && Number(cover[1]) <= 1)) fail(key, 'transparent, auto, #rrggbb, #rrggbbaa, cover or cover@0.6', value);
   return value;
 }
 

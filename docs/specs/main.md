@@ -74,7 +74,7 @@ IPC socket) would break a wallpaper.
   filtered `next` picks among matching entries: any of those still ahead in this pass, or the next one in
   playlist order. The pick is moved to just after the playing entry before advancing, so `prev` returns to it.
 - **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown, sets mpv's
-  `brightness` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
+  `contrast` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
   `speed` to the stored value.
 - **Commands:** `next`, `prev`, `current`, `speed <0.8|+0.1|-0.1|reset>`, `dim <0-100|+10|-10|reset>` connect to
   the socket of the monitor under the pointer (`xdotool getmouselocation`), or `--monitor <name>`. `speed` and

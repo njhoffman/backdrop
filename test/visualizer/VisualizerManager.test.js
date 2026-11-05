@@ -510,6 +510,69 @@ describe('VisualizerManager', () => {
       await manager.stop();
     });
 
+    it('works out an auto background from the wallpaper, starting with the default and following each change', async () => {
+      config.set('visualizer.sleeve', { background: 'auto' });
+      let veil = null;
+      const manager = sleeveManager({ veilFor: () => veil });
+      await manager.configure();
+      await manager.sync();
+      expect(manager.wantsWallpaperColors('DP-3')).to.equal(true);
+      expect(spawned[0].args.slice(spawned[0].args.indexOf('--background'), spawned[0].args.indexOf('--background') + 2)).to.deep.equal(['--background', '#0a0f1a99']);
+
+      veil = '#20100a80';
+      await manager.recolor('DP-3');
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--background', '#20100a80']);
+      const sent = ctl.length;
+      await manager.recolor('DP-3');
+      expect(ctl).to.have.length(sent);
+
+      // Nothing known any more, as with the wallpaper off: it stays as it is
+      veil = null;
+      await manager.recolor('DP-3');
+      expect(ctl).to.have.length(sent);
+
+      // Load does not touch it, and a page sleeved forgot gets it back rather than the word auto
+      veil = '#20100a80';
+      await manager.setLightened(true);
+      expect(ctl).to.have.length(sent);
+      expect(manager.shownLook(manager.entries.values().next().value.instance.sleeve, manager.entries.values().next().value).background).to.equal('#20100a80');
+      await manager.stop();
+    });
+
+    it('hands a veil only to sleeve, since GLava takes its environment there', async () => {
+      config.set('visualizer.instances', [
+        { name: 'lyrics', engine: 'sleeve', sleeve: { background: 'auto' } },
+        { name: 'bars', engine: 'glava', module: 'bars' }
+      ]);
+      const extra = {};
+      const manager = makeManager({
+        veilFor: () => '#30201080',
+        create: (settings, instance) => ({
+          instance,
+          prepare: async () => {},
+          title: target => `${target.name}-${instance.name}`,
+          display: () => ({ file: 'true', args: [] }),
+          command: (target, geometry, ...rest) => {
+            extra[instance.name] = rest;
+            return { file: instance.name, args: [] };
+          }
+        })
+      });
+      await manager.configure();
+      await manager.sync();
+      expect(extra).to.deep.equal({ lyrics: ['#30201080'], bars: [] });
+      await manager.stop();
+    });
+
+    it('starts an auto background with what is known', async () => {
+      config.set('visualizer.sleeve', { background: 'auto' });
+      const manager = sleeveManager({ veilFor: () => '#30201080' });
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].args[spawned[0].args.indexOf('--background') + 1]).to.equal('#30201080');
+      await manager.stop();
+    });
+
     it('keeps a blended cover see-through, and leaves other backgrounds alone', async () => {
       config.set('visualizer.sleeve', { background: 'cover@0.6' });
       const blended = sleeveManager();

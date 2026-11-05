@@ -398,12 +398,12 @@ describe('Daemon', () => {
       const { client } = clients[0];
 
       await load(0, '/m/dark.png');
-      expect(client.properties.brightness).to.equal(-40);
+      expect(client.properties.contrast).to.equal(-40);
       await load(0, '/m/plain.png');
-      expect(client.properties.brightness).to.equal(0);
-      client.properties.brightness = -40;
+      expect(client.properties.contrast).to.equal(0);
+      client.properties.contrast = -40;
       await load(0, '/elsewhere.png');
-      expect(client.properties.brightness).to.equal(0);
+      expect(client.properties.contrast).to.equal(0);
     });
 
     it('ends videos after display.video_duration and clears the limit for the next item', async () => {
@@ -1362,28 +1362,28 @@ describe('Daemon', () => {
       const id = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', dim: 10 });
       const { client } = clients[0];
       await load('/m/a.png');
-      expect(client.properties.brightness).to.equal(-10);
+      expect(client.properties.contrast).to.equal(-10);
 
       visualizers.musicDim = 30;
       await daemon.applyDims();
-      expect(client.properties.brightness).to.equal(-30);
+      expect(client.properties.contrast).to.equal(-30);
       // A load while music plays starts dimmed
       await load('/m/a.png');
-      expect(client.properties.brightness).to.equal(-30);
+      expect(client.properties.contrast).to.equal(-30);
       expect((await readState(tempDir)).visualizer.musicDim).to.equal(30);
 
       // `backdrop dim` stored a stronger dim meanwhile: it wins, and stays after the music
       db.setDim(id, 50);
       await daemon.applyDims();
-      expect(client.properties.brightness).to.equal(-50);
+      expect(client.properties.contrast).to.equal(-50);
       db.setDim(id, 5);
       visualizers.musicDim = 0;
       await daemon.applyDims();
-      expect(client.properties.brightness).to.equal(-5);
+      expect(client.properties.contrast).to.equal(-5);
     });
 
-    it('observes mpv\'s brightness', async () => {
-      expect(clients[0].client.commands).to.deep.include(['observe_property', 3, 'brightness']);
+    it('observes mpv\'s contrast', async () => {
+      expect(clients[0].client.commands).to.deep.include(['observe_property', 3, 'contrast']);
     });
   });
 
@@ -1476,7 +1476,7 @@ describe('Daemon', () => {
       expect(recolored).to.deep.equal([]);
     });
 
-    it('recolors when mpv\'s brightness changes, checking contrast against what shows now', async () => {
+    it('recolors when mpv\'s contrast changes, checking contrast against what shows now', async () => {
       db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png', width: 2560, height: 1440 });
       await load('/m/a.png');
       await daemon.sampling.get('DP-1')?.done;
@@ -1486,11 +1486,11 @@ describe('Daemon', () => {
       // Against the undimmed wallpaper the pick is lightened for contrast
       expect(daemon.colorsFor(monitor, strict, monitor)).to.deep.equal({ fg: '#95ff95ff' });
       const { client } = daemon.screens.get('DP-1');
-      client.emit('property-change', { event: 'property-change', name: 'brightness', data: -60 });
-      client.emit('property-change', { event: 'property-change', name: 'brightness', data: -60 });
+      client.emit('property-change', { event: 'property-change', name: 'contrast', data: -60 });
+      client.emit('property-change', { event: 'property-change', name: 'contrast', data: -60 });
       await tick();
       expect(recolored).to.deep.equal(['DP-1']);
-      expect(daemon.screens.get('DP-1').brightness).to.equal(-60);
+      expect(daemon.screens.get('DP-1').contrast).to.equal(-60);
       // Dimmed by 60 the wallpaper is dark enough for the plain green
       expect(daemon.colorsFor(monitor, strict, monitor)).to.deep.equal({ fg: '#00c800ff' });
     });
@@ -1511,7 +1511,7 @@ describe('Daemon', () => {
         background: '#c80000', main: [{ color: '#c80000', share: 1 }]
       });
 
-      daemon.screens.get('DP-1').client.emit('property-change', { event: 'property-change', name: 'brightness', data: -100 });
+      daemon.screens.get('DP-1').client.emit('property-change', { event: 'property-change', name: 'contrast', data: -100 });
       await new Promise(resolve => setTimeout(resolve, 20));
       // Dimmed all the way the red shows as black; the main colors are the wallpaper's own
       expect((await readState(tempDir)).monitors[0].overlays[0].colors).to.deep.equal({

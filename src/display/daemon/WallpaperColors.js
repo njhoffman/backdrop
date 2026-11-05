@@ -1,4 +1,4 @@
-import { mainColors, paletteColors, shownAverage, stripPixels } from '../../visualizer/palette.js';
+import { mainColors, paletteColors, shownAverage, stripPixels, veilBackground } from '../../visualizer/palette.js';
 import { resolveArea } from '../../visualizer/settings.js';
 
 const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
@@ -28,10 +28,7 @@ export class WallpaperColors {
       this.sampleScreen(monitor.name);
       return null;
     }
-    // Contrast against the brightness mpv shows now (the item's dim, `backdrop dim` since, or the music dim);
-    // the sample's own is the item's dim when it loaded
-    const brightness = this.daemon.screens.get(monitor.name)?.brightness;
-    const sample = typeof brightness === 'number' ? { ...cached.sample, dim: Math.max(0, -brightness) } : cached.sample;
+    const sample = { ...cached.sample, dim: this.shownDim(monitor, cached) };
     try {
       return paletteColors(sample, monitor, geometry, instance);
     } catch (error) {
@@ -52,14 +49,32 @@ export class WallpaperColors {
       this.sampleScreen(monitor.name);
       return null;
     }
-    const brightness = this.daemon.screens.get(monitor.name)?.brightness;
-    const dim = typeof brightness === 'number' ? Math.max(0, -brightness) : cached.sample.dim;
+    const dim = this.shownDim(monitor, cached);
     const pixels = stripPixels(cached.sample, monitor, geometry);
     if (!pixels.length) return null;
     return {
       background: hex(shownAverage(pixels, dim)),
       main: mainColors(pixels).map(({ color, share }) => ({ color: hex(color), share: Math.round(share * 1000) / 1000 }))
     };
+  }
+
+  // The dim mpv shows now (the item's, `backdrop dim` since, or the music dim); the sample's own is the item's
+  // dim when it loaded
+  shownDim(monitor, cached) {
+    const contrast = this.daemon.screens.get(monitor.name)?.contrast;
+    return typeof contrast === 'number' ? Math.max(0, -contrast) : cached.sample.dim;
+  }
+
+  // A sleeve `auto` background for a window, from what it covers, or null while nothing is known, as for colorsFor
+  veilFor(monitor, geometry) {
+    const media = this.daemon.screens.get(monitor.name)?.media;
+    if (!media) return null;
+    const cached = this.daemon.samples.get(monitor.name);
+    if (cached?.mediaId !== media.id) {
+      this.sampleScreen(monitor.name);
+      return null;
+    }
+    return veilBackground(stripPixels(cached.sample, monitor, geometry), this.shownDim(monitor, cached));
   }
 
   // Samples what a monitor shows (in the background, once per item) and recolors its visualizers

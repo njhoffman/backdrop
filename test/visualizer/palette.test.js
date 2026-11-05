@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  visibleRegion, sampleMedia, stripPixels, mainColors, pickColors, ensureContrast, contrastRatio, shownAverage,
+  visibleRegion, sampleMedia, stripPixels, mainColors, pickColors, ensureContrast, contrastRatio, shownAverage, veilBackground, DEFAULT_VEIL,
   paletteColors, toHsl, fromHsl
 } from '../../src/visualizer/palette.js';
 
@@ -159,8 +159,10 @@ describe('visualizer palette', () => {
 
     it('measures the background as shown, after the dim', () => {
       expect(shownAverage([[100, 100, 100], [200, 200, 200]])).to.deep.equal([150, 150, 150]);
-      expect(shownAverage([[100, 100, 100], [200, 200, 200]], 40)).to.deep.equal([48, 48, 48]);
-      expect(shownAverage([[10, 10, 10]], 40)).to.deep.equal([0, 0, 0]);
+      // A dim scales, as mpv's contrast does, so a color keeps its hue and dark ones stay above black
+      expect(shownAverage([[100, 100, 100], [200, 200, 200]], 40)).to.deep.equal([90, 90, 90]);
+      expect(shownAverage([[10, 20, 40]], 50)).to.deep.equal([5, 10, 20]);
+      expect(shownAverage([[10, 10, 10]], 100)).to.deep.equal([0, 0, 0]);
     });
 
     it('round-trips HSL', () => {
@@ -190,6 +192,40 @@ describe('visualizer palette', () => {
       const colors = paletteColors(sample, monitor, geometry, instance({ fg: '#ffffffff' }, { minContrast: 4.5 }));
       const rgb = [1, 3, 5].map(index => parseInt(colors.fg.slice(index, index + 2), 16));
       expect(contrastRatio(rgb, [40, 60, 120])).to.be.at.least(4.5);
+    });
+  });
+
+  describe('veilBackground', () => {
+    const fill = (pixel, count = 10) => Array.from({ length: count }, () => pixel);
+    const parts = veil => ({ rgb: [1, 3, 5].map(at => parseInt(veil.slice(at, at + 2), 16)), alpha: parseInt(veil.slice(7, 9), 16) / 255 });
+
+    it('stays navy on a picture with next to no color, heavier on a bright one than a dark one', () => {
+      const snow = veilBackground(fill([230, 232, 235]));
+      expect(snow.slice(0, 7)).to.equal(DEFAULT_VEIL.slice(0, 7));
+      expect(parts(snow).alpha).to.be.closeTo(0.71, 0.02);
+      expect(parts(veilBackground(fill([20, 20, 22]))).alpha).to.be.closeTo(0.45, 0.01);
+    });
+
+    it('takes the hue of a colorful picture, kept very dark', () => {
+      const dominant = (pixel, expected) => {
+        const { rgb } = parts(veilBackground(fill(pixel)));
+        expect(rgb.indexOf(Math.max(...rgb)), `${pixel}`).to.equal(expected);
+        expect(Math.max(...rgb), `${pixel}`).to.be.below(40);
+      };
+      dominant([220, 40, 30], 0);
+      dominant([30, 200, 40], 1);
+      dominant([30, 40, 220], 2);
+    });
+
+    it('lets a colorful part count for more than a large gray one', () => {
+      const { rgb } = parts(veilBackground([...fill([128, 128, 128], 8), ...fill([230, 30, 30], 2)]));
+      expect(rgb[0]).to.be.above(rgb[2]);
+    });
+
+    it('counts a dim toward what it has to darken, and stays within its limits', () => {
+      expect(parts(veilBackground(fill([200, 200, 200]), 50)).alpha).to.be.below(parts(veilBackground(fill([200, 200, 200]))).alpha);
+      expect(parts(veilBackground(fill([255, 255, 255]))).alpha).to.be.at.most(0.75);
+      expect(veilBackground([])).to.equal(DEFAULT_VEIL);
     });
   });
 });
