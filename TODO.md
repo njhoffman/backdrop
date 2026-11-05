@@ -99,7 +99,7 @@ Reviewed: 2026-11-02
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
       rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
-      `.github/workflows/test.yml` is written, keeping the stacking test local; it has never run, so it stays open until a first run passes.
+      `.github/workflows/test.yml` is written, keeping the stacking test local; its first run (2.50.2) found the sqlite warning on Node 22.13 and a timing failure in an Importer test; it stays open until a run passes.
 - [x] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
       dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
       (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed

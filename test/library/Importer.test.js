@@ -318,6 +318,8 @@ describe('Importer', () => {
     expect(early.imported).to.deep.equal([]);
     expect(db.getImportedFile(file)).to.not.be.ok;
 
+    // Time has to pass for the file to count as settled, which a fast machine can beat
+    await new Promise(resolve => setTimeout(resolve, 20));
     const later = await run({ settle: 1 });
     expect(later.imported).to.have.length(1);
   });

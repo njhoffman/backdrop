@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 
 import { program, Argument, CommanderError, Option } from 'commander';
 import { createRequire } from 'module';

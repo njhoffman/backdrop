@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.3] - 2026-11-05
+
+### Fixed
+
+- On Node versions where `node:sqlite` is still experimental, `backdrop` no longer prints an ExperimentalWarning on every command.
+
 ## [2.50.2] - 2026-11-05
 
 ### Fixed

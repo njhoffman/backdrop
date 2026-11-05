@@ -23,7 +23,8 @@ describe('CLI command registration', function () {
   afterEach(async () => { await fs.remove(dir); });
   const run = (...args) => {
     current.timeout(current.timeout() + RUN_BUDGET);
-    return spawnSync(process.execPath, [entry, ...args], { env, encoding: 'utf8', timeout: 10000 });
+    // Through its shebang, as it is installed, whose flags keep stderr clean on every supported Node
+    return spawnSync(entry, args, { env, encoding: 'utf8', timeout: 10000 });
   };
 
   // `start` with only some parts spawns the daemon with these; a fake spawn would not notice it refusing them.
