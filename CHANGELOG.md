@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.50.5] - 2026-11-06
+## [2.50.6] - 2026-11-05
+
+### Changed
+
+- The sleeve contract records that sleeve 0.39.2 sizes a monitor-sized window exactly, so backdrop's resize since 2.50.1 is only needed for older versions of sleeve.
+
+## [2.50.5] - 2026-11-05
 
 ### Changed
 

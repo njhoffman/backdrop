@@ -742,6 +742,8 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       The contract asks backdrop to send them again when it starts, which it does, but it cannot tell when sleeved alone restarts. `sleeve line` survives restarts over the socket, so watching
       that socket is one way, and the contract now backs it ("Changing a running instance"): every connection starts with `hello`, so a new one means a sleeved that forgot. A daemon
       restart or `visualizer reload` puts it right meanwhile.
+- [ ] **Drop the resize of sleeve's window.** (p3) [cleanup] sleeve 0.39.2 sizes a monitor-sized window exactly (1920x1080 on the real desktop), so `resizes` in `SleeveVisualizer.js` and its `xdotool windowsize` in
+      `VisualizerManager.js` are no longer needed there. `atLeast` compares only major and minor, so it cannot tell 0.39.1 from 0.39.2: drop the workaround outright, raising "Requires sleeve" in `docs/specs/sleeve.md`, or compare the patch too.
 - [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
       colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`. All three layouts in `docs/specs/sleeve.md`, each tried only under Xvfb so far with no compositor and
       no GLava; a see-through background has not been seen over a real wallpaper, and a full-monitor window came out 1 px short there (1279x719, noted in sleeve's TODO), which an opaque one would show as a seam.

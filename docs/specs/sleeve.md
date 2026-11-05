@@ -150,9 +150,9 @@ the window: `33%x100%+0+0` is the left third, `67%x100%+33%+0` the rest. The def
 
 ### Size
 
-A window the size of its monitor comes out 1 px short each way (1919x1079 from `--geometry 1920x1080+0+0`; see sleeve's `TODO.md`), which leaves a line of unveiled wallpaper at
-the right and bottom. Since backdrop 2.50.1 the window is resized with `xdotool windowsize` once it is found, on every start, so sleeve must take a resize of a `--managed` window and
-lay out its areas again. Tell backdrop when this is fixed in sleeve, so the workaround can go (`resizes` in `SleeveVisualizer.js`).
+Since sleeve 0.39.2 a window the size of its monitor is exactly that size. Before it, Chromium's clamp left it 1 px short each way (1919x1079 from `--geometry 1920x1080+0+0`), a line of unveiled
+wallpaper at the right and bottom, so since backdrop 2.50.1 the window is resized with `xdotool windowsize` once it is found, on every start (`resizes` in `SleeveVisualizer.js`). That workaround can go now;
+see `TODO.md`. Either way sleeve still takes a resize of a `--managed` window and lays out its areas again.
 
 ### Stacking
 
