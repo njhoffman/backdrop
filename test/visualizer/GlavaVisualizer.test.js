@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { GlavaVisualizer, applyDefines } from '../../src/visualizer/GlavaVisualizer.js';
+import { scaledDefines, GlavaVisualizer, applyDefines } from '../../src/visualizer/GlavaVisualizer.js';
 import { createVisualizer } from '../../src/visualizer/index.js';
 import { visualizerSettings } from '../../src/visualizer/settings.js';
 
@@ -32,7 +32,7 @@ describe('GlavaVisualizer', () => {
   it('builds a config root linking the installed shaders, with the module file rewritten', async () => {
     const root = path.join(dir, 'run', 'visualizer', 'main');
     await fs.outputFile(path.join(root, 'stale'), 'old');
-    const normalized = settings({ bars: { width: 9 } });
+    const normalized = settings({ bars: { width: 9 }, reference_height: null });
     const visualizer = createVisualizer(normalized, normalized.instances[0], { runtimeDir: path.join(dir, 'run') });
     expect(visualizer).to.be.instanceOf(GlavaVisualizer);
     await visualizer.prepare();
@@ -77,5 +77,24 @@ describe('GlavaVisualizer', () => {
     expect(args({}).filter(arg => arg.startsWith('--pipe'))).to.deep.equal(['--pipe=fg:vec4']);
     expect(args({ palette: { source: 'wallpaper' }, bars: { colors: ['#000000', '#ffffff'] } }).filter(arg => arg.startsWith('--pipe')))
       .to.deep.equal(['--pipe=fg:vec4', '--pipe=fg2:vec4']);
+  });
+
+  describe('sizes for the monitor', () => {
+    const { layout } = visualizerSettings({ placement: { anchor: 'bottom', width: '100%', height: '25%' } }).instances[0];
+
+    it('writes them against the window\'s height on a monitor of the reference height', () => {
+      const defines = scaledDefines({ AMPLIFY: 300, COLOR: '#fff' }, { scaled: ['AMPLIFY'], layout }, 1440);
+      expect(defines).to.deep.equal({ AMPLIFY: '(300.0 * float(screen.y) / 360.0)', COLOR: '#fff' });
+    });
+
+    it('takes sizes already written as floats', () => {
+      const defines = scaledDefines({ C_RADIUS: '150.0', BAR_WIDTH: '4.5' }, { scaled: ['C_RADIUS', 'BAR_WIDTH'], layout }, 1440);
+      expect(defines).to.deep.equal({ C_RADIUS: '(150.0 * float(screen.y) / 360.0)', BAR_WIDTH: '(4.5 * float(screen.y) / 360.0)' });
+    });
+
+    it('leaves them alone with no reference height', () => {
+      const defines = { AMPLIFY: 300 };
+      expect(scaledDefines(defines, { scaled: ['AMPLIFY'], layout }, null)).to.equal(defines);
+    });
   });
 });

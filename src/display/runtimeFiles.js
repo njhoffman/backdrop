@@ -8,6 +8,11 @@ export function statePath(runtimeDir) {
 
 // What `backdrop start/stop --wallpaper/--visualizer` asks a running daemon to change (see applyControl):
 // the single slot daemons before 2.38.2 read, which the daemon still takes
+// What screensaver mode changed on the desktop, while it is on
+export function screensaverPath(runtimeDir) {
+  return path.join(runtimeDir, 'screensaver.json');
+}
+
 export function controlPath(runtimeDir) {
   return path.join(runtimeDir, 'control.json');
 }

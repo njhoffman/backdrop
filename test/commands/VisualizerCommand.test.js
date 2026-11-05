@@ -88,8 +88,8 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 12)).to.deep.equal([
-        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  lyrics-stage', '  lyrics-now', '  calm'
+      expect(lines.slice(0, 14)).to.deep.equal([
+        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver', '  screensaver-projectm', '  lyrics-stage', '  lyrics-now', '  calm'
       ]);
     });
 

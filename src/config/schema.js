@@ -87,7 +87,13 @@ const SECTIONS = {
     resume_after: waitTime
   },
   screensaver: {
+    idle: boolean,
     idle_minutes: positive,
+    max_load: value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a number above 0, or null for no limit')),
+    preset: value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep the running one')),
+    workspace: value => (typeof value === 'string' && value.trim() ? value : fail('a workspace name')),
+    on_enter: strings,
+    on_leave: strings,
     sources: strings,
     streams: list
   },

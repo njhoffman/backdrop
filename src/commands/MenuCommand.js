@@ -14,6 +14,7 @@ import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
 import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, lookAsPreset, presetsOf, visualizerSettings } from '../visualizer/settings.js';
+import { readState } from '../display/Daemon.js';
 
 export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
@@ -217,7 +218,9 @@ export class MenuCommand {
       this.current = { style, show: this.viewFor(style) };
       monitor = (await this.control.targetMonitor(options.monitor)).name;
       await resolveNextFilters(this.config.get().paths.runtime, options, { persist: true });
-      leave = await this.workspace(workspace, monitor, { logger: this.logger });
+      // In screensaver mode the screen already shows nothing but the wallpaper
+      const saver = (await readState(this.config.get().paths.runtime).catch(() => null))?.screensaver?.active;
+      leave = await this.workspace(saver ? null : workspace, monitor, { logger: this.logger });
     } catch (error) {
       await notifyError(error.message, { logger: this.logger });
       throw error;

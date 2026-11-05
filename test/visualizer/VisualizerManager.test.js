@@ -99,7 +99,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -562,6 +562,52 @@ describe('VisualizerManager', () => {
       await manager.sync();
       expect(extra).to.deep.equal({ lyrics: ['#30201080'], bars: [] });
       await manager.stop();
+    });
+
+    describe('projectM', () => {
+      let commands;
+      const projectmManager = () => makeManager({
+        windowAttempts: 1, windowDelay: 0, settleDelay: 0,
+        exec: async (file, args) => {
+          commands.push([file, ...args]);
+          return args[0] === 'search' ? '77\n' : '';
+        },
+        create: (settings, instance) => ({
+          instance,
+          moves: true,
+          search: child => ['search', '--pid', String(child.pid)],
+          prepare: async () => {},
+          title: target => `pm-${target.name}`,
+          command: () => ({ file: 'projectMSDL', args: [] })
+        })
+      });
+
+      beforeEach(() => {
+        commands = [];
+        config.set('visualizer.instances', [{ name: 'pm', engine: 'projectm', placement: { anchor: 'fill' } }]);
+      });
+
+      it('finds its window by process and moves it where it belongs', async () => {
+        const manager = projectmManager();
+        await manager.configure();
+        await manager.sync();
+        await manager.entries.values().next().value.placed;
+        const { pid } = spawned[0].child;
+        expect(commands).to.deep.include(['xdotool', 'search', '--pid', String(pid)]);
+        expect(commands.find(command => command[1] === 'windowmove')).to.deep.equal(['xdotool', 'windowmove', '77', '0', '0']);
+        await manager.stop();
+      });
+
+      it('stops under load and comes back after', async () => {
+        const manager = projectmManager();
+        await manager.configure();
+        await manager.sync();
+        await manager.setLightened(true);
+        expect(manager.entries.size).to.equal(0);
+        await manager.setLightened(false);
+        expect(manager.entries.size).to.equal(1);
+        await manager.stop();
+      });
     });
 
     it('starts an auto background with what is known', async () => {

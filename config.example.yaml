@@ -86,7 +86,13 @@ load:
   resume_after: 300                  # seconds under it before each step back
 
 screensaver:
+  idle: false                        # start by itself after idle_minutes without input (needs xprintidle)
   idle_minutes: 10
+  max_load: null                     # with idle, only under this load average (load.window); null for no limit
+  preset: screensaver                # visualizer preset while on (screensaver-projectm adds projectM); null keeps the running one
+  workspace: backdrop                # the empty i3 workspace to show, one per output
+  on_enter: ['polybar-msg cmd hide'] # shell commands run on entering and leaving
+  on_leave: ['polybar-msg cmd show']
   sources: [rated_videos]
   streams:
     - https://www.youtube.com/watch?v=example

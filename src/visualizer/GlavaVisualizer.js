@@ -1,6 +1,7 @@
 import fsExtra from 'fs-extra';
 import os from 'os';
 import path from 'path';
+import { resolveGeometry } from './settings.js';
 
 // Requests every instance needs to sit transparently between the wallpaper and the windows: an unmanaged
 // window stacked low ("!-"), clicks passing through, and "native" (compositor) transparency. "xroot"
@@ -23,6 +24,18 @@ export function applyDefines(source, values) {
   });
   const added = [...remaining].map(([name, value]) => `#define ${name} ${value}`);
   return [...lines, ...(added.length ? ['', '/* Added by backdrop */', ...added] : [])].join('\n');
+}
+
+// Sizes in pixels as GLSL following the window's height, so they look the same on any monitor. One config serves
+// every monitor, and each window's shader knows its own height (screen.y), compared with that window's height
+// on a monitor of the reference height. A window of a fixed height stays in pixels by this too.
+export function scaledDefines(defines, { scaled = [], layout }, referenceHeight) {
+  if (!referenceHeight || !scaled.length) return defines;
+  const reference = { name: '', x: 0, y: 0, width: Math.round(referenceHeight * 16 / 9), height: referenceHeight };
+  const { height } = resolveGeometry(reference, layout);
+  // Some options are already written as float literals
+  const literal = value => (Number.isInteger(Number(value)) ? `${Number(value)}.0` : String(Number(value)));
+  return { ...defines, ...Object.fromEntries(scaled.map(name => [name, `(${literal(defines[name])} * float(screen.y) / ${height}.0)`])) };
 }
 
 // GLava behind the visualizer adapter, for one instance of the visualizer section: prepare() builds its
@@ -55,7 +68,7 @@ export class GlavaVisualizer {
       await this.fs.symlink(path.join(shaderDir, entry), path.join(dir, entry));
     }
     const source = await this.fs.readFile(path.join(shaderDir, `${module}.glsl`), 'utf8');
-    await this.fs.writeFile(path.join(dir, `${module}.glsl`), applyDefines(source, defines));
+    await this.fs.writeFile(path.join(dir, `${module}.glsl`), applyDefines(source, scaledDefines(defines, this.instance, this.settings.referenceHeight)));
   }
 
   // geometry is absolute in the root window: { x, y, width, height }

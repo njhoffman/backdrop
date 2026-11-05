@@ -230,7 +230,13 @@ export class ConfigManager {
         resume_after: 300
       },
       screensaver: {
+        idle: false,
         idle_minutes: 10,
+        max_load: null,
+        preset: 'screensaver',
+        workspace: 'backdrop',
+        on_enter: ['polybar-msg cmd hide'],
+        on_leave: ['polybar-msg cmd show'],
         sources: ['rated_videos'],
         streams: []
       },

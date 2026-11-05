@@ -56,6 +56,7 @@ backdrop next --tag ocean   # jump to a matching item; the filter sticks for lat
 backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-duration), until --clear
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
+backdrop screensaver        # toggle: only the wallpaper and visualizers on an empty workspace
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
 backdrop restack            # stack marked overlay windows again (overlay programs run this; see docs/specs/visualizer.md)

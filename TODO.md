@@ -113,6 +113,8 @@ Reviewed: 2026-11-02
       Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
       removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
 - [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
+- [ ] **A killed `visualizer check` leaves its visualizers running.** (p3) [bug] It starts them detached and stops them at the end, so killing it midway (a `timeout`, Ctrl-C) leaves GLava and
+      sleeve in 1x1 windows, with their `bd-vcheck-*` directory. Happened on 2026-11-05 with 19 of them. It should stop them on SIGINT and SIGTERM, and could use `children.json` for a crash.
 - [ ] **Daemon restart test depends on timing.** (p3) [test] `gives up after repeated exits within a minute` in
       `test/display/Daemon.test.js` waits a fixed 10 ms per exit and failed once with one restart short while several
       test files ran; it passed 3 of 3 alone. Wait for the restart itself rather than a fixed time.
@@ -286,6 +288,11 @@ Reviewed: 2026-11-02
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping.
 
+- [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
+      but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
+      on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
+      (`src/display/LoadGovernor.js`, `config.example.yaml`, `docs/specs/config.md`). `screensaver.max_load` reads the same value.
+
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
       observing mpv's `speed` property in `startScreen` and calling it on a change would close this.
@@ -385,11 +392,12 @@ Reviewed: 2026-11-02
 
 ## 7. Screensaver
 
-- [ ] **Idle-triggered screensaver.** (p2) [feature] After N minutes of inactivity (xprintidle or an xss-lock / xidlehook integration) open a blank i3 workspace and
-      place things on it as backdrop usually does, plus lyrics (a `sleeve` instance) and maybe other things, rather than playing fullscreen through mpv. The empty-workspace
-      part exists for the menu (`src/utils/workspace.js`, `menu.workspace`). Per the user, 2026-11-04: Escape leaves the mode and returns to the original workspace.
-- [ ] **Rate wallpapers from the screensaver.** (p2) [feature] The rating commands have to work in this mode, so its key handling (an i3 binding mode is the likely fit, since
-      Escape must be caught with no window focused) needs the rating keys as well as Escape, and leaving must not count a rating as activity that ends something else.
+- [x] **Screensaver mode.** (p2) [feature] An empty i3 workspace per output with the bars hidden and its own preset, ended by Escape or `$mod+Delete` through an i3 binding mode.
+      Done in 2.50.0: `src/display/daemon/Screensaver.js`, `backdrop screensaver`.
+- [x] **Rate wallpapers from the screensaver.** (p2) [feature] The i3 mode keeps `$mod+m`, `$mod+w` and `$mod+Shift+w`, and only asking ends the mode, so a rating cannot.
+- [ ] **Idle trigger: try it for real.** (p2) [feature] Built and off by default (`screensaver.idle`, `idle_minutes`, `max_load`), tested only with fakes. It should also not start over a fullscreen window
+      or a video call, and it ends only with Escape like the key does; decide whether input should end an idle start.
+- [ ] **Hide the pointer in the screensaver.** (p3) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
 - [ ] **Follow the load levels.** (p2) [feature] The screensaver has to use the same `LoadGovernor` levels as the wallpaper
       (`src/display/LoadGovernor.js`, `docs/specs/main.md`): images only at `image`, skipping `screensaver.streams`, and a blank screen at `off`.
       It shares the `load` thresholds; a `screensaver.load` override can wait until there is a need.

@@ -19,6 +19,7 @@ import { ChildRegistry, processStart, reapOrphans } from './children.js';
 import { cpuPercent } from './cpu.js';
 import { readGpuMemory } from './gpu.js';
 import { statePath, nextFiltersPath } from './runtimeFiles.js';
+import { Screensaver, IDLE_CHECK_MS } from './daemon/Screensaver.js';
 import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
@@ -176,6 +177,7 @@ export class Daemon {
     this.health = new Health(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
+    this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
@@ -230,6 +232,7 @@ export class Daemon {
     this.stopped = new Promise(resolve => { this.resolveStopped = resolve; });
     this.wallpaper = wallpaper;
     this.visualizers.override = visualizer;
+    await this.screensaver.begin();
     await this.load.begin();
 
     try {
@@ -265,6 +268,7 @@ export class Daemon {
     this.every(this.healthInterval, () => this.checkHealth());
     this.every(this.monitorInterval, () => this.checkMonitors());
     this.every(this.loadInterval, () => this.enqueue(() => this.load.check()));
+    this.every(IDLE_CHECK_MS, () => this.enqueue(() => this.screensaver.checkIdle()));
   }
 
   // Wanted by the user and allowed by the system load
@@ -798,7 +802,7 @@ export class Daemon {
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
-      visualizer: this.visualizers.summary()
+      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary()
     });
     await fs.rename(temporary, file);
   }
@@ -815,6 +819,7 @@ export class Daemon {
     this.importWatcher.stop();
     await this.reconciling;
 
+    await this.screensaver.leave();
     await this.visualizers.stop();
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();

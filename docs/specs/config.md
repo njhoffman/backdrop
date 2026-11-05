@@ -62,6 +62,7 @@ menu:
 visualizer:                # see docs/specs/visualizer.md; checked at daemon start and on `backdrop visualizer reload`
   enabled: false
   engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance
+  projectm: {}             # for engine: projectm: fps, preset_duration, preset_path, args, command
   sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background (a color, cover, or auto: a veil from the wallpaper), map_below, no_sandbox, command
   monitors: all            # all, [names], or {name: true | false | {placement, rect}}
   module: bars             # bars, graph, radial, circle, wave
@@ -70,6 +71,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   opacity: 0.8             # window opacity (_NET_WM_WINDOW_OPACITY), 0 to 1
   only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only)
   silence_grace: 10        # seconds of silence before they stop
+  reference_height: 1440   # monitor height GLava's pixel sizes are meant for; they follow the window's height. null: exact pixels
   wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it

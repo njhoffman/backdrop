@@ -3,7 +3,7 @@ import { BUILTIN_PRESETS } from './presets.js';
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
 // them and `backdrop visualizer reload` prints them.
 
-export const ENGINES = ['glava', 'sleeve'];
+export const ENGINES = ['glava', 'sleeve', 'projectm'];
 export const SLEEVE_NOW = ['lyrics', 'minimal', 'full'];
 export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
 export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
@@ -17,9 +17,9 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'wallpaper', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
+const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
-const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
+const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
 const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
 
@@ -365,6 +365,25 @@ function sleeveSettings(raw, prefix) {
   };
 }
 
+function projectmSettings(raw, prefix) {
+  const key = `${prefix}projectm`;
+  knownKeys(key, raw, ['fps', 'preset_duration', 'preset_path', 'args', 'command'], 'projectm settings');
+  return {
+    fps: integer(`${key}.fps`, raw.fps ?? 30, { min: 1 }),
+    presetDuration: integer(`${key}.preset_duration`, raw.preset_duration ?? 30, { min: 2 }),
+    presetPath: raw.preset_path === undefined ? null : text(`${key}.preset_path`, raw.preset_path, 'a path'),
+    args: stringList(`${key}.args`, raw.args ?? []),
+    command: raw.command === undefined ? null : text(`${key}.command`, raw.command, 'a path')
+  };
+}
+
+// The options in pixels of each module, as #defines, which scale with the window (GlavaVisualizer)
+const SCALED_DEFINES = {
+  bars: ['BAR_WIDTH', 'BAR_GAP', 'AMPLIFY', 'GRADIENT'],
+  radial: ['C_RADIUS', 'C_LINE', 'BAR_WIDTH', 'AMPLIFY', 'GRADIENT'],
+  circle: ['C_RADIUS', 'C_LINE']
+};
+
 function instance(raw, prefix) {
   const engine = oneOf(`${prefix}engine`, raw.engine ?? 'glava', ENGINES);
   const layout = { placement: placement(`${prefix}placement`, { ...raw.placement }), rect: rect(`${prefix}rect`, raw.rect) };
@@ -383,6 +402,21 @@ function instance(raw, prefix) {
       defines: {},
       requests: [],
       sleeve: sleeveSettings(raw.sleeve ?? {}, prefix)
+    };
+  }
+  if (engine === 'projectm') {
+    return {
+      name: raw.name,
+      engine,
+      module: 'projectm',
+      opacity: fraction(`${prefix}opacity`, raw.opacity ?? 1),
+      layout,
+      monitors: monitors(raw.monitors ?? 'all', layout, prefix),
+      palette,
+      pipe: null,
+      defines: {},
+      requests: [],
+      projectm: projectmSettings(raw.projectm ?? {}, prefix)
     };
   }
   const module = oneOf(`${prefix}module`, raw.module ?? 'bars', MODULES);
@@ -410,6 +444,8 @@ function instance(raw, prefix) {
     // The #define the piped colors replace; its text holds only their defaults, so changing them needs no restart
     pipeDefine,
     defines: allDefines,
+    // Raw defines are the user's exact word
+    scaled: (SCALED_DEFINES[module] ?? []).filter(name => allDefines[name] !== undefined && raw.defines?.[name] === undefined),
     requests: stringList(`${prefix}requests`, raw.requests ?? [])
   };
 }
@@ -431,6 +467,8 @@ function normalize(raw, prefix) {
     silenceGrace: number(`${prefix}silence_grace`, raw.silence_grace ?? 10, { min: 0 }),
     // Dims the wallpaper at least this far (0-100, like `backdrop dim`) while the audio source plays
     wallpaperDim: integer(`${prefix}wallpaper_dim`, raw.wallpaper_dim ?? 0, { max: 100 }),
+    // The monitor height sizes in pixels are meant for; null leaves them in pixels on every monitor
+    referenceHeight: raw.reference_height === null ? null : integer(`${prefix}reference_height`, raw.reference_height ?? 1440, { min: 1 }),
     glava: {
       shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
       args: stringList(`${prefix}glava.args`, glava.args ?? [])

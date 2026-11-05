@@ -84,6 +84,7 @@ export class ControlRequests {
       await this.daemon.visualizers.setPreset(request.preset);
       this.daemon.logger.info('Visualizer preset', this.daemon.visualizers.summary());
     }
+    if (request.screensaver) await this.daemon.screensaver.apply(request.screensaver);
     if (typeof request.visualizer === 'boolean') {
       await this.daemon.visualizers.setEnabled(request.visualizer);
       this.daemon.logger.info(request.visualizer ? 'Visualizer on' : 'Visualizer off', this.daemon.visualizers.summary());

@@ -65,6 +65,24 @@ export const BUILTIN_PRESETS = {
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
     ]
   },
+  // The screensaver's own (screensaver.preset): the wallpaper under a veil, lyrics, a ring and bars
+  screensaver: {
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
+      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
+      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 600 } }
+    ]
+  },
+  // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it
+  // gives way at the load section's image level
+  'screensaver-projectm': {
+    wallpaper: false,
+    instances: [
+      { name: 'projectm', engine: 'projectm', placement: { anchor: 'fill' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'transparent' } },
+      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } }
+    ]
+  },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
     wallpaper: false,

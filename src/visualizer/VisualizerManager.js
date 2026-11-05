@@ -194,6 +194,8 @@ export class VisualizerManager {
   wanted(instance, monitor) {
     // sleeve hides for silence rather than stopping, since a start takes about 2 s
     if (!this.active || this.suspended || (this.silenced && instance.engine !== 'sleeve')) return null;
+    // The costliest by far, and the first to go under load
+    if (instance.engine === 'projectm' && this.lightened) return null;
     const layout = layoutFor(instance, monitor.name);
     return layout ? resolveGeometry(monitor, layout) : null;
   }
@@ -227,6 +229,7 @@ export class VisualizerManager {
       const background = entry.instance.sleeve?.background;
       if (background?.startsWith('cover')) this.display(entry, { look: { background: on ? stillBackground(background) : background } });
     }
+    if (this.settings?.instances.some(instance => instance.engine === 'projectm')) await this.sync();
   }
 
   // An instance's sleeve settings as they should show now
@@ -513,6 +516,10 @@ export class VisualizerManager {
   async findAndPlace(entry) {
     entry.window = await this.findWindow(entry.adapter.title(entry.monitor), entry);
     entry.searched = true;
+    if (entry.window && entry.adapter.moves) {
+      await Promise.resolve(this.exec('xdotool', ['windowmove', String(entry.window), String(entry.geometry.x), String(entry.geometry.y)]))
+        .catch(error => this.logger.warn('Cannot move the visualizer window', { instance: entry.instance.name, error: error.message }));
+    }
     // GLava keeps one line of what piled up on stdin before it began reading, so the later values of the first
     // write are lost and would stay unset (a gradient fades to nothing); with its window up it reads them all
     if (entry.window && entry.colors && !entry.adapter.colorLines) this.sendColors(entry, entry.colors);
@@ -551,9 +558,9 @@ export class VisualizerManager {
           await x.setNoShadow(entry.window);
         }
         const wallpaper = await this.wallpaperWindow(name, x);
-        // GLava lowers itself, but sleeve stays where it maps, over every other window, unless it is placed. A
+        // GLava lowers itself, but sleeve and projectM stay where they map, over every other window, unless it is placed. A
         // wallpaper whose window is not found yet is not the same as none: lowering would put sleeve beneath it.
-        if (!wallpaper && (this.screens.has(name) || !placed.some(entry => entry.instance.engine === 'sleeve'))) return !missing.length;
+        if (!wallpaper && (this.screens.has(name) || !placed.some(entry => entry.instance.engine !== 'glava'))) return !missing.length;
         const layers = [
           ...overlays.filter(overlay => overlay.position === 'below').map(overlay => ({ window: overlay.window })),
           ...placed.map(entry => ({ window: entry.window, entry })),
@@ -661,7 +668,8 @@ export class VisualizerManager {
     const attempts = this.windowAttempts * (entry.instance.engine === 'sleeve' ? SLEEVE_WINDOW_FACTOR : 1);
     for (let attempt = 0; attempt < attempts && this.current(entry); attempt++) {
       try {
-        const id = (await this.exec('xdotool', ['search', '--name', pattern])).trim().split('\n')[0];
+        const search = entry.adapter.search?.(entry.child) ?? ['search', '--name', pattern];
+        const id = (await this.exec('xdotool', search)).trim().split('\n')[0];
         if (id) return Number(id);
       } catch {
         // xdotool exits 1 until the window exists

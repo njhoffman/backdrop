@@ -21,6 +21,7 @@ import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { SystemdCommand } from './commands/SystemdCommand.js';
 import { DoctorCommand } from './commands/DoctorCommand.js';
 import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerCommand.js';
+import { ScreensaverCommand, SCREENSAVER_ACTIONS } from './commands/ScreensaverCommand.js';
 import { configureOutput, ignoreClosedPipes, out, printVersion, setJsonOutput } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
@@ -99,6 +100,7 @@ class BackdropApp {
     const systemd = new SystemdCommand(this.config, this.database, this.logger);
     const doctor = new DoctorCommand(this.config, this.database, this.logger, { version });
     const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
+    const screensaver = new ScreensaverCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'With filters, pick any matching item still ahead instead of the next one (default: display.order)'];
     const noRandomOption = ['--no-random', 'With filters, play the next matching item in the shuffled order'];
@@ -316,6 +318,9 @@ class BackdropApp {
       .option('--clear', 'Go back to visualizer.preset')
       .option('--check', 'With reload: check every instance and preset first, and reload only if all run')
       .action(this.action((action, name, options) => visualizer.run(action, name, options)));
+    program.command('screensaver').description('Show nothing but the wallpaper and visualizers on an empty workspace, until asked to stop: on, off, toggle (the default) or status')
+      .addArgument(new Argument('[action]', 'What to do').choices(SCREENSAVER_ACTIONS).default('toggle'))
+      .action(this.action(action => screensaver.run(action)));
     program.command('doctor').description('Check tools, the X display, the config, the daemon and the library, naming the fix for each problem')
       .option('--visualizer', 'Also start every visualizer and preset briefly (visualizer check)')
       .option(...jsonOption)

@@ -28,7 +28,7 @@ async function onPath(name) {
 // counts as running.
 export async function checkVisualizer(section, {
   spawn = spawnProcess, create = createVisualizer, kill = process.kill, runMs = RUN_MS, stopGrace = STOP_GRACE_MS,
-  tmpRoot = os.tmpdir(), hasSleeve = () => onPath('sleeve')
+  tmpRoot = os.tmpdir(), hasSleeve = () => onPath('sleeve'), hasProjectm = () => onPath('projectMSDL')
 } = {}) {
   const targets = [null, ...Object.keys(presetsOf(section))];
   const root = await fs.mkdtemp(path.join(tmpRoot, 'bd-vcheck-'));
@@ -48,10 +48,16 @@ export async function checkVisualizer(section, {
         continue;
       }
       // A built-in preset the user may never choose says nothing about their setup without sleeve installed
+      if (preset !== null && own[preset] === undefined && settings.instances.some(item => item.engine === 'projectm') && !await hasProjectm()) continue;
       if (preset !== null && own[preset] === undefined && settings.instances.some(item => item.engine === 'sleeve') && !await hasSleeve()) continue;
       for (const instance of settings.instances) {
         const result = { preset, instance: instance.name, ok: true, code: null, signal: null, output: [] };
         results.push(result);
+        // Its only window is a real one on the desktop, and it is costly: enough to know it is installed
+        if (instance.engine === 'projectm') {
+          if (!await hasProjectm()) Object.assign(result, { ok: false, error: 'projectMSDL is not installed' });
+          continue;
+        }
         try {
           const adapter = create(settings, instance, { runtimeDir: path.join(root, String(index)) });
           await adapter.prepare();

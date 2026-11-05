@@ -15,6 +15,25 @@ function quote(text) {
   return `"${String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+// Shows an empty workspace on every active output, the focused one named name and the others after it, and
+// resolves to the i3 command that brings back what each showed and the focus, or null without i3.
+export async function enterWorkspaces(name, { run = defaultRun, logger } = {}) {
+  const switchTo = workspace => `workspace --no-auto-back-and-forth ${quote(workspace)}`;
+  try {
+    const workspaces = JSON.parse(await run('i3-msg', ['-t', 'get_workspaces']));
+    const outputs = JSON.parse(await run('i3-msg', ['-t', 'get_outputs'])).filter(output => output.active).map(output => output.name);
+    const focused = workspaces.find(workspace => workspace.focused);
+    const others = outputs.filter(output => output !== focused?.output);
+    const targets = [...others.map(output => [output, `${name}-${output}`]), ...(focused ? [[focused.output, name]] : [])];
+    await run('i3-msg', [targets.map(([output, target]) => `focus output ${quote(output)}; ${switchTo(target)}`).join('; ')]);
+    const shown = outputs.map(output => workspaces.find(workspace => workspace.visible && workspace.output === output)?.name).filter(Boolean);
+    return [...new Set([...shown.filter(item => item !== focused?.name), focused?.name].filter(Boolean))].map(switchTo).join('; ') || null;
+  } catch (error) {
+    logger?.warn('Failed to show empty workspaces', { error: error.message });
+    return null;
+  }
+}
+
 // Shows the i3 workspace name on output, so nothing covers the wallpaper while the menu is open, and
 // resolves to a function that brings back the workspace that output showed and the one that had focus.
 // --no-auto-back-and-forth keeps i3's workspace_auto_back_and_forth from toggling away instead. Without

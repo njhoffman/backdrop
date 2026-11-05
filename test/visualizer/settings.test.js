@@ -105,7 +105,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -113,7 +113,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-now, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-projectm, lyrics-stage, lyrics-now, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -325,7 +325,7 @@ describe('visualizer settings', () => {
       });
 
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
-        const sides = ['lyrics-veil', 'lyrics-stage'];
+        const sides = ['lyrics-veil', 'screensaver', 'lyrics-stage'];
         for (const name of sides) expect(lyrics(name).sleeve.sleeve.lyricsArea, name).to.equal('33%x100%+0+0');
         const beside = { name: 'DP-3', x: 0, y: 0, width: 3000, height: 1000 };
         for (const name of sides) {
@@ -335,6 +335,22 @@ describe('visualizer settings', () => {
           expect(placed('bars'), name).to.deep.equal({ x: 990, y: 750, width: 2010, height: 250 });
         }
       });
+    });
+
+    it('takes projectm settings, and refuses unknown ones', () => {
+      const projectm = visualizerSettings({ instances: [{ name: 'p', engine: 'projectm', projectm: { fps: 20, preset_duration: 60, args: ['--beatSensitivity=1'] } }] }).instances[0];
+      expect(projectm).to.include({ engine: 'projectm', module: 'projectm', opacity: 1, pipe: null });
+      expect(projectm.projectm).to.deep.equal({ fps: 20, presetDuration: 60, presetPath: null, args: ['--beatSensitivity=1'], command: null });
+      expect(visualizerSettings({ instances: [{ name: 'p', engine: 'projectm' }] }).instances[0].projectm.fps).to.equal(30);
+      expect(() => visualizerSettings({ instances: [{ name: 'p', engine: 'projectm', projectm: { loud: 1 } }] })).to.throw('loud');
+    });
+
+    it('marks the pixel sizes that follow the window, except raw defines', () => {
+      expect(visualizerSettings({}).referenceHeight).to.equal(1440);
+      expect(visualizerSettings({ reference_height: null }).referenceHeight).to.equal(null);
+      const [item] = visualizerSettings({ module: 'radial', radial: { radius: 100, amplify: 200 }, defines: { AMPLIFY: 90 } }).instances;
+      expect(item.scaled).to.deep.equal(['C_RADIUS']);
+      expect(visualizerSettings({}).instances[0].scaled).to.deep.equal(['BAR_WIDTH', 'BAR_GAP', 'AMPLIFY', 'GRADIENT']);
     });
 
     it('ships a preset with lyrics above the bars', () => {

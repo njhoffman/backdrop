@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.0] - 2026-11-05
+
+### Added
+
+- `backdrop screensaver` (`toggle`, `on`, `off`, `status`): an empty workspace on every output with the bars hidden, showing only the wallpaper and the visualizer preset `screensaver.preset`, until asked to stop. With i3's `screensaver` binding mode, Escape ends it and menus for rating still open.
+- The `screensaver` preset (veiled wallpaper, lyrics, a ring, bars) and `screensaver-projectm`.
+- An idle trigger for it, off by default: `screensaver.idle`, `idle_minutes` and `max_load`.
+- A `projectm` visualizer engine (`projectMSDL`), which stops at the load section's `image` level.
+- `visualizer.reference_height` (default 1440): GLava sizes in pixels now follow the window's height, so a look keeps its proportions on any monitor. `null` keeps exact pixels, as do raw `defines`.
+
 ## [2.49.0] - 2026-11-05
 
 ### Changed
