@@ -598,25 +598,6 @@ describe('VisualizerManager', () => {
         await manager.stop();
       });
 
-      it('sizes the window of an adapter that asks for it', async () => {
-        const manager = makeManager({
-          windowAttempts: 1, windowDelay: 0, settleDelay: 0,
-          exec: async (file, args) => {
-            commands.push([file, ...args]);
-            return args[0] === 'search' ? '77\n' : '';
-          },
-          create: (settings, instance) => ({
-            instance, resizes: true, prepare: async () => {}, title: target => `s-${target.name}`, command: () => ({ file: 'x', args: [] })
-          })
-        });
-        await manager.configure();
-        await manager.sync();
-        await manager.entries.values().next().value.placed;
-        const { width, height } = manager.entries.values().next().value.geometry;
-        expect(commands.find(command => command[1] === 'windowsize')).to.deep.equal(['xdotool', 'windowsize', '77', String(width), String(height)]);
-        await manager.stop();
-      });
-
       it('stops under load and comes back after', async () => {
         const manager = projectmManager();
         await manager.configure();

@@ -132,6 +132,19 @@ describe('MenuCommand', () => {
     expect(await readNextFilters(runtime)).to.deep.equal({ tag: ['sky'] });
   });
 
+  it('clears the monitor picked with Tab, giving the first its windows back', async () => {
+    const order = [];
+    const leaves = name => async () => { order.push(`leave ${name}`); };
+    workspace.callsFake(async (name, monitor) => { order.push(`enter ${monitor}`); return leaves(monitor); });
+    const main = sinon.stub(command, 'mainMenu');
+    main.onCall(0).resolves({ monitor: 'HDMI-1' });
+    main.onCall(1).resolves({ monitor: 'HDMI-1' });
+    main.onCall(2).resolves({ quit: true });
+    await command.open({});
+    expect(order).to.deep.equal(['enter DP-1', 'leave DP-1', 'enter HDMI-1', 'leave HDMI-1']);
+    expect(main.lastCall.args[0]).to.equal('HDMI-1');
+  });
+
   it('shows the menu workspace while open and returns from it however the menu closes', async () => {
     await command.open();
     expect(workspace.calledOnceWith('backdrop', 'DP-1')).to.be.true;

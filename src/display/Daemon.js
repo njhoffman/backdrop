@@ -30,6 +30,8 @@ import { LoadShedding } from './daemon/LoadShedding.js';
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
 const RESTART_DELAY_MS = 1000;
+// mpv answers nothing while it sets up video, which a slow GPU or decoder probe can stretch to several seconds
+const MPV_COMMAND_TIMEOUT_MS = 15_000;
 const STOP_GRACE_MS = 2000;
 // An mpv that misses this many IPC health checks in a row is killed and restarted
 const HEALTH_INTERVAL_MS = 30_000;
@@ -95,7 +97,8 @@ export function buildCommand(monitor, socketPath, display) {
       '--really-quiet',
       '--framedrop=vo',
       '--panscan=1.0',
-      '--hwdec=auto-safe',
+      // VAAPI first: auto-safe tries NVIDIA's CUDA before it, which can stall mpv for 6 s on a machine without the card
+      '--hwdec=vaapi,auto-safe',
       ...display.mpv_args
     ]
   };
@@ -498,7 +501,7 @@ export class Daemon {
     child.on('error', error => this.logger.error('Failed to launch xwinwrap', { monitor: monitor.name, error: error.message }));
     child.on('exit', (code, signal) => this.handleExit(screen, code, signal));
 
-    screen.client = await this.connect(socketPath, { attempts: 50, delay: 100 });
+    screen.client = await this.connect(socketPath, { attempts: 50, delay: 100, timeout: MPV_COMMAND_TIMEOUT_MS });
     screen.client.on('error', error => this.logger.warn('mpv socket error', { monitor: monitor.name, error: error.message }));
     screen.client.on('property-change', event => {
       if (event.name === 'path' && event.data) {

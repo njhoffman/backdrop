@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.7] - 2026-11-05
+
+### Fixed
+
+- The daemon failed to start, or stalled about 6 s on every video, on a machine with NVIDIA's CUDA libraries but no NVIDIA card. mpv now tries VAAPI before the other hardware decoders, and the daemon waits up to 15 s for mpv's answers.
+- Picking another monitor with Tab in the menu now clears that monitor too, with `menu.workspace`, and gives the first its windows back.
+
+### Removed
+
+- backdrop no longer resizes sleeve's window after it maps. Update to sleeve 0.39.2 or later, or a thin line of unveiled wallpaper shows at the right and bottom.
+
 ## [2.50.6] - 2026-11-05
 
 ### Changed

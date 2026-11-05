@@ -65,17 +65,34 @@ function startXvfb() {
 
   const xdotool = args => execFileSync('xdotool', args, { env, encoding: 'utf8' });
 
+  const rofiWindow = () => {
+    try {
+      return xdotool(['search', '--class', 'rofi']).trim();
+    } catch {
+      // xdotool exits 1 until the window exists
+      return '';
+    }
+  };
+
   async function waitForRofi() {
-    const deadline = Date.now() + 10000;
+    const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
-      try {
-        if (xdotool(['search', '--class', 'rofi']).trim()) return;
-      } catch {
-        // xdotool exits 1 until the window exists
-      }
+      if (rofiWindow()) return;
       await sleep(50);
     }
     throw new Error('rofi did not open a window');
+  }
+
+  // Presses a key that ends this rofi run, again if a busy rofi had not yet taken the keyboard and missed it.
+  // Its window can outlive it for a moment and would pass for the next run's, so this waits for that too.
+  async function pressUntilClosed(run, key) {
+    const deadline = Date.now() + 15000;
+    while (run.code === null && Date.now() < deadline) {
+      xdotool(['key', key]);
+      for (let waited = 0; run.code === null && waited < 2000; waited += 50) await sleep(50);
+    }
+    if (run.code === null) throw new Error(`rofi did not close on ${key}`);
+    for (let waited = 0; rofiWindow() && waited < 5000; waited += 50) await sleep(50);
   }
 
   // rofi as the views start it, on the virtual display, recording stderr and the exit code per run
@@ -100,7 +117,7 @@ function startXvfb() {
       const shot = path.join(dir, `${runs.length}-${(menu.prompt ?? 'menu').replace(/\W+/g, '_')}.png`);
       execFileSync('import', ['-window', 'root', shot], { env });
       screenshots.push(shot);
-      xdotool(['key', queue.shift() ?? 'Escape']);
+      await pressUntilClosed(runs.at(-1), queue.shift() ?? 'Escape');
       return result;
     };
   }

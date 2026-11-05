@@ -210,6 +210,7 @@ export class MenuCommand {
   async open(options = {}) {
     let monitor;
     let leave;
+    let enter;
     try {
       const style = this.style(options.style);
       const workspace = workspaceName(this.config.get().menu?.workspace);
@@ -220,7 +221,8 @@ export class MenuCommand {
       await resolveNextFilters(this.config.get().paths.runtime, options, { persist: true });
       // In screensaver mode the screen already shows nothing but the wallpaper
       const saver = (await readState(this.config.get().paths.runtime).catch(() => null))?.screensaver?.active;
-      leave = await this.workspace(saver ? null : workspace, monitor, { logger: this.logger });
+      enter = target => this.workspace(saver ? null : workspace, target, { logger: this.logger });
+      leave = await enter(monitor);
     } catch (error) {
       await notifyError(error.message, { logger: this.logger });
       throw error;
@@ -245,7 +247,12 @@ export class MenuCommand {
           throw error;
         }
         if (result.quit) return;
-        if (result.monitor) monitor = result.monitor;
+        if (result.monitor && result.monitor !== monitor) {
+          monitor = result.monitor;
+          // The picked monitor is the one to clear now, and the one it left gets its windows back
+          await leave();
+          leave = await enter(monitor);
+        }
       }
     } finally {
       await leave();

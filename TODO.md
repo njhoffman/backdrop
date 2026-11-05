@@ -290,8 +290,9 @@ Reviewed: 2026-11-02
 - [x] **Lighter display under system load.** (p2) [feature] A `load` section: over `image_above` videos become images, over `off_above` the wallpaper and visualizer stop,
       with `sustain`, `resume_ratio` and `resume_after` against flapping (`src/display/LoadGovernor.js`, `src/display/daemon/LoadShedding.js`, `docs/specs/main.md`).
 
-- [ ] **The rofi integration tests are flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` failed twice on 2026-11-05 at a load around 9, with no code changed: `rofi did not open a window` in a full run, and
+- [x] **The rofi integration tests are flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` failed twice on 2026-11-05 at a load around 9, with no code changed: `rofi did not open a window` in a full run, and
       `draws the real main and step menus` alone with entries out of order (`[14, 1, 0, 1]`, expected `[14, 0, 1, 22, 1, 20]`). It passed 2 of 3 alone and passes on CI. Likely a fixed wait in `waitForRofi` and in reading what rofi drew.
+      Done: `driven` waits with a longer deadline, presses again until that run closes, and waits for its window to go before the next.
 - [x] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
@@ -476,9 +477,10 @@ Reviewed: 2026-11-02
       Done in 2.40.0: `next`, `skip` and the advance after a rating without filters just advance through the shuffled
       playlist, so the prefetched next-entry preview hits; `queueRandom` is gone, and a random filtered pick takes only
       matches still ahead. Previews for filtered picks and `prev` can still miss; background backfill would cover them.
-- [ ] **Menu workspace stays on the first monitor after Tab.** (p3) [feature] `menu.workspace` empties the monitor the menu
+- [x] **Menu workspace stays on the first monitor after Tab.** (p3) [feature] `menu.workspace` empties the monitor the menu
       opened on; picking another with Tab leaves that one covered. `MenuCommand.open` could leave and re-enter the workspace
       (`src/utils/workspace.js`) on the new output when the target changes.
+      Done: `MenuCommand.open` leaves and enters again when the monitor changes.
 - [x] **Menu rendering is only checked by hand.** (p2) [test] Unit tests check the rofi arguments, not what rofi does with
       them: a status with quotes or line breaks inside a `-theme-str` string failed rofi's theme parser, and a horizontal
       info box that expanded hid the second row of buttons, with every test passing. Both were found by rendering into
@@ -665,10 +667,11 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       Done in 2.38.0: the daemon observes mpv's `brightness`, recolors on a change, and checks contrast against it.
 - [ ] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches brightness in one step when music starts or
       stops; stepping it over half a second or so would look smoother (mpv has no fade for `brightness`).
-- [ ] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
+- [x] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
       `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
       disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a
       window maps (watch the root's SubstructureNotify), as GLava might, so those cases need `place()` too.
+      Done: the stand-in lowers itself whenever any window maps.
 - [x] **Stack other programs' overlay windows.** (p2) [feature] sleeve's lyrics overlay needs a place above or
       below the visualizer, and the wallpaper's colors behind it. Done in 2.41.0: `_BACKDROP_OVERLAY` marks
       (`below`/`above`), `backdrop restack`, overlays and their colors in `state.json` and `status`.
@@ -684,14 +687,16 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       settle recheck with GLava's own map and restack events, and drop `xdotool search`. It needs reconnecting when
       X restarts and a filter for the event volume; worth it if more overlay programs appear or the settle
       recheck proves flaky.
-      Deferred 2026-11-04: neither has happened (the overlay test's flake turned out to be the order in `state.json`, not the recheck).
-- [ ] **The rofi panel test is flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` "panel view
+      Deferred 2026-11-04: neither has happened (the overlay test's flake turned out to be the order in `state.json`, not the recheck). Kept deferred 2026-11-05: still neither, and GLava cannot run under Xvfb, so the risky parts could only be tested on the real desktop.
+- [x] **The rofi panel test is flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` "panel view
       parses the theme strings and returns a bound key" failed once in a full run on 2026-11-02 with "rofi did not
       open a window", then passed in a full rerun and 3 of 3 runs alone. Likely a fixed wait for rofi's window;
       wait on the window with a longer deadline instead.
-- [ ] **Overlay marks inside a window manager's frame are untested.** (p3) [test] `X11.overlays()` also looks at the
+      Done with the item above, which is the same wait.
+- [x] **Overlay marks inside a window manager's frame are untested.** (p3) [test] `X11.overlays()` also looks at the
       direct children of top-level windows, for a managed window in a frame; the integration test only covers
       unmanaged windows. Add a case under a nested window manager, or a unit test with a fake tree.
+      Done: a unit test with a fake tree, `test/display/x11.test.js`.
 - [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
       change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
       `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for
@@ -742,8 +747,9 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       The contract asks backdrop to send them again when it starts, which it does, but it cannot tell when sleeved alone restarts. `sleeve line` survives restarts over the socket, so watching
       that socket is one way, and the contract now backs it ("Changing a running instance"): every connection starts with `hello`, so a new one means a sleeved that forgot. A daemon
       restart or `visualizer reload` puts it right meanwhile.
-- [ ] **Drop the resize of sleeve's window.** (p3) [cleanup] sleeve 0.39.2 sizes a monitor-sized window exactly (1920x1080 on the real desktop), so `resizes` in `SleeveVisualizer.js` and its `xdotool windowsize` in
+- [x] **Drop the resize of sleeve's window.** (p3) [cleanup] sleeve 0.39.2 sizes a monitor-sized window exactly (1920x1080 on the real desktop), so `resizes` in `SleeveVisualizer.js` and its `xdotool windowsize` in
       `VisualizerManager.js` are no longer needed there. `atLeast` compares only major and minor, so it cannot tell 0.39.1 from 0.39.2: drop the workaround outright, raising "Requires sleeve" in `docs/specs/sleeve.md`, or compare the patch too.
+      Done: dropped outright, with 0.39.2 noted in `docs/specs/sleeve.md`.
 - [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
       colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`. All three layouts in `docs/specs/sleeve.md`, each tried only under Xvfb so far with no compositor and
       no GLava; a see-through background has not been seen over a real wallpaper, and a full-monitor window came out 1 px short there (1279x719, noted in sleeve's TODO), which an opaque one would show as a seam.

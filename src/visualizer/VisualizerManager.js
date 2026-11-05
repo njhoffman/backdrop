@@ -516,11 +516,6 @@ export class VisualizerManager {
   async findAndPlace(entry) {
     entry.window = await this.findWindow(entry.adapter.title(entry.monitor), entry);
     entry.searched = true;
-    // sleeve's window comes out a pixel short each way, which over the monitor leaves a line of wallpaper unveiled
-    if (entry.window && entry.adapter.resizes) {
-      await Promise.resolve(this.exec('xdotool', ['windowsize', String(entry.window), String(entry.geometry.width), String(entry.geometry.height)]))
-        .catch(error => this.logger.warn('Cannot size the visualizer window', { instance: entry.instance.name, error: error.message }));
-    }
     if (entry.window && entry.adapter.moves) {
       await Promise.resolve(this.exec('xdotool', ['windowmove', String(entry.window), String(entry.geometry.x), String(entry.geometry.y)]))
         .catch(error => this.logger.warn('Cannot move the visualizer window', { instance: entry.instance.name, error: error.message }));
