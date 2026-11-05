@@ -1,7 +1,7 @@
 # sleeve as a visualizer engine
 
 What sleeve (`~/git/sleeve`, synced lyrics) promises so backdrop can run it as a visualizer, the way it runs GLava.
-Agreed 2026-11-04. Requires sleeve 0.33.0 or later (`sleeve --version`), and 0.36.0 for the wallpaper layer below. Changing what is below is a breaking change for
+Agreed 2026-11-04. Requires sleeve 0.33.0 or later (`sleeve --version`), and 0.36.0 for the wallpaper layer below (0.39.2 for a window exactly the monitor's size). Changing what is below is a breaking change for
 the other side: add freely, but change or remove only with a version note in both CHANGELOGs.
 
 This is separate from the overlay contract in `visualizer.md`, where sleeve starts its own window and backdrop only

@@ -5,7 +5,7 @@ more API-based sources planned) and your own folders, lets you rate them while t
 them through mpv with one IPC socket per monitor.
 
 > **Status:** the display daemon, local import, Pexels search/download, rating, lists and stats work.
-> More sources and the screensaver are planned. See [TODO.md](TODO.md) for the roadmap and
+> More sources and screensaver playlists are planned. See [TODO.md](TODO.md) for the roadmap and
 > [docs/specs/main.md](docs/specs/main.md) for the design.
 
 ## Features and roadmap
@@ -18,7 +18,8 @@ them through mpv with one IPC socket per monitor.
 - Automatic import of local wallpapers as approved items (`local-1.jpg`, `local-2.mp4`, ...)
 - Synced lyrics as a visualizer instance through [sleeve](docs/specs/sleeve.md), alone or above GLava's bars (`engine: sleeve`, or the `lyrics` preset)
 - Optional lighter display under system load: videos become images, then the wallpaper and visualizer stop until it falls (`load` in the config)
-- Planned: a screensaver after a period of inactivity, from rated videos or stream links such as YouTube
+- A screensaver mode (`backdrop screensaver`) with its own visualizer preset, by key or after a period of inactivity
+- Planned: screensaver playlists, from rated videos or stream links such as YouTube
 - A music visualizer (GLava) above the wallpaper on each monitor, placed and styled from the config, with
   several at once, presets, and an option to run only while music plays
 - Overlays from other programs (such as sleeve's lyrics) stacked above or below the visualizer, with the

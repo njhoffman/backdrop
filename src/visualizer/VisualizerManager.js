@@ -428,8 +428,7 @@ export class VisualizerManager {
       this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}), ...(covered ? { look: this.shownLook(instance.sleeve, entry) } : {}) });
     }
     if (instance.pipe) {
-      // GLava draws nothing until every piped value has arrived: the wallpaper's colors when known, else the
-      // configured ones
+      // A piped value that never arrives stays unset: the wallpaper's colors when known, else the configured ones
       child.stdin?.on('error', () => {});
       this.sendColors(entry, this.colorsFor(monitor, instance, geometry) ?? instance.pipe);
     }

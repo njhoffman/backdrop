@@ -102,9 +102,15 @@ load:                      # see "System load" in docs/specs/main.md
   resume_after: 300        # time under it before each step back
 
 screensaver:
+  idle: false              # start by itself after idle_minutes without input (needs xprintidle); `backdrop screensaver` needs none of this
   idle_minutes: 10
-  sources: [rated_videos]  # what the screensaver draws from
-  streams: []              # URLs played through mpv/yt-dlp, e.g. YouTube links
+  max_load: null           # with idle, only under this load average (load.window); null for no limit
+  preset: screensaver      # visualizer preset while on; screensaver-projectm adds projectM, null keeps the running one
+  workspace: backdrop      # the empty i3 workspace to show; other outputs get backdrop-<output>
+  on_enter: ['polybar-msg cmd hide']  # shell commands run on entering and leaving
+  on_leave: ['polybar-msg cmd show']
+  sources: [rated_videos]  # planned: what screensaver playlists draw from; nothing reads this yet
+  streams: []              # planned: URLs played through mpv/yt-dlp; nothing reads this yet
 
 output:
   symbols: auto            # auto, nerd, unicode or ascii; auto is unicode on a UTF-8 terminal, else ascii

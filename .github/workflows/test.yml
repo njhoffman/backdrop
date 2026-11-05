@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A hung apt once held a job for over 20 minutes; a run takes about 2
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -23,8 +25,9 @@ jobs:
       # For the integration tests, which skip themselves without these. xwinwrap and GLava are not packaged,
       # so the stacking test stays local.
       - name: Install integration test tools
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mpv ffmpeg xvfb xserver-xephyr rofi xdotool imagemagick
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y mpv ffmpeg xvfb xserver-xephyr rofi xdotool imagemagick
       - run: npm ci
       - run: npm run test:brief

@@ -7,7 +7,7 @@ Guidance for coding agents (Claude Code, Codex and others) working in this repos
 backdrop (formerly pexels-cli): an X11 wallpaper and screensaver manager that collects media from
 API-based sources and local folders and displays it through mpv IPC sockets. It is mid-rewrite: the
 config, database, display, local import and legacy commands have been ported. The first source adapter
-is Pexels; more sources and the screensaver remain. Design decisions are in `docs/specs/main.md`;
+is Pexels; more sources and screensaver playlists remain. Design decisions are in `docs/specs/main.md`;
 the roadmap is `TODO.md`.
 
 ## Development Commands

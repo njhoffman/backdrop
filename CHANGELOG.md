@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.8] - 2026-11-05
+
+### Changed
+
+- `docs/specs/config.md` lists the screensaver settings, and says `screensaver.sources` and `streams` are not read yet.
+
 ## [2.50.7] - 2026-11-05
 
 ### Fixed

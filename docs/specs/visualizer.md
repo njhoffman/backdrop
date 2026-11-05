@@ -91,7 +91,7 @@ The contract:
 - `state.json` and `status --json` list each monitor's overlays as `{ window, name, position, geometry,
   colors }`. `colors` is `{ background, main }`: the average the wallpaper shows under the window after the
   current dim, and the wallpaper's main colors there with their shares, as `#rrggbb`; null until the item is
-  sampled. The state is written again when an item loads, when the brightness changes and when the overlays
+  sampled. The state is written again when an item loads, when the dim changes (mpv's `contrast`) and when the overlays
   change, so the program can watch the file and pick readable colors.
 
 Without backdrop running, the program stacks its own window. A plain, focusable window is the window
@@ -132,10 +132,10 @@ daemon does not stop for it when the wallpaper is off. When the state cannot be 
 sound, so the bars stand out without changing their colors. It is a floor: each monitor shows the stronger of its
 item's own dim and `wallpaper_dim` (`Daemon.shownDim`), and goes back to the item's dim, read again from the
 database, `silence_grace` seconds after the sound stops or when the visualizer turns off. The manager reports the
-change (`musicDim`, also in `state.json`'s visualizer summary) and the daemon sets each mpv's brightness;
+change (`musicDim`, also in `state.json`'s visualizer summary) and the daemon sets each mpv's `contrast`;
 `backdrop dim` stores the item's dim and shows the stronger of the two the same way. A dim is set as mpv's `contrast`, which scales every channel like a black veil over the picture (`--contrast=-25` shows `64,128,200` as `48,96,150`; `--brightness=-25` would show `0,64,136`), checked with mpv 0.40 on software GL. It needs no
 `only_while_playing`: the watcher runs for either, and only `only_while_playing` stops the instances. The daemon
-observes mpv's `brightness`, so colors from the wallpaper are checked for contrast against what shows after any
+observes mpv's `contrast`, so colors from the wallpaper are checked for contrast against what shows after any
 change to it.
 
 ## Colors from the wallpaper

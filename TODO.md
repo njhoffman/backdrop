@@ -5,143 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-11-02
-
-## 1. Existing bugs and tech debt
-
-- [x] **CLI crashes on startup: ImportCommand.js is empty.** (p1) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); rewritten in project 5. `src/commands/ImportCommand.js` is 0 bytes, but `src/index.js` imports `{ ImportCommand }` from it.
-      ES module linking fails, so every command dies, not just `import`. The 1.1.0 changelog describes
-      an implemented import command, so the file was likely lost; rewrite it (see project 5) or recover it.
-- [x] **addVideo/addImage insert into renamed tables.** (p1) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); tables replaced by the new schema in project 2. `src/database/DatabaseManager.js:139,166` still use `INSERT INTO videos` / `INSERT INTO images`.
-      The tables were renamed to `pexel_videos` / `pexel_images` in 1.1.1, so every new search result fails to save.
-      `addVideo` also lists a removed `ratings` column (13 columns, 12 values). Fix the SQL and add tests that insert.
-- [x] **undo leaves the rating in the database.** (p2) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); rating commands reworked in project 3; the new undo must delete the rating row. `src/commands/RatingCommand.js:119-122` moves the file back but only comments that the rating should be removed.
-      Stats and `--rated` lists stay wrong after undo. Add `DatabaseManager.removeRating()` and call it.
-- [x] **Filename-to-id parsing breaks on dotted names.** (p2) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); the current file comes from mpv in project 3, so filename parsing goes away. `src/commands/HookCommand.js:89` uses `basename.split('.')[0]`.
-      A file like `ocean.waves.4k.mp4` resolves to `ocean`. Use `path.parse(name).name`.
-- [x] **Hard-coded CLI version.** (p3) [bug] `src/index.js` passes `.version('1.0.0')` while `package.json` is 1.1.1. Now read from `package.json`.
-- [x] **Startup requires every hook and the API key for all commands.** (p2) [refactor] `validateConfig()` in `src/index.js` exited if any hook or `api_key` was missing, even for `list` or `stats`.
-      Removed with the hooks; ported commands must check the credentials they need (e.g. the Pexels source checks its own key).
-- [x] **No tests for commands.** (p2) [test] Search, download, rating, import, removal, lists and stats have command tests;
-      CLI subprocess tests cover registration, offline operation and failing exit codes. Real mpv tests cover rating and playback transitions.
-- [x] **Changelog lives in docs/specs.** (p3) [docs] `docs/specs/changelog.md` duplicates the new root `CHANGELOG.md` and embeds prompts. Removed; the root `CHANGELOG.md` already summarizes 1.0.0 to 1.1.1.
-- [x] **No version tags.** (p3) [chore] Releases 1.0.0 to 1.1.1 exist only in docs; every release from v2.0.0 on has an annotated `vX.Y.Z` tag.
-- [x] **Stale .claude/preferences.json.** (p3) [chore] Untracked generated file still names `pexels-cli` and describes jest/eslint/prettier setups the repo does not use.
-      Agents may read it as project guidance that contradicts `AGENTS.md`. Deleted and added to `.gitignore` in case the tool regenerates it.
-- [x] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
-      Replaced with a prerequisites list and a `command -v` check; limitations updated for purge, missing files and health checks.
-- [x] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
-      a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
-      Done in 2.32.0: `backdrop doctor` (`src/commands/DoctorCommand.js`), read-only, `--json`, `--visualizer`; also a daemon
-      behind the CLI's version and processes a crash left (`findOrphans`). On this machine it found the daemon a
-      version behind after a bump.
-- [x] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
-      `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
-      Done in 2.30.0: `src/config/schema.js` checks every key outside the visualizer section when the config loads and
-      fails with every problem listed (tolerant for `backdrop doctor`); durations take 90/90s/5m/1h. The checks that
-      were spread over Playlist, notify, purge, workspace and MenuCommand call it. A bad visualizer section stays a
-      warning, as the daemon already ran without it.
-- [x] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
-      accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. The
-      visualizer section rejects unknown keys since 2.24.0/2.25.0; top-level sections and the other sections still do
-      not. Warn on unknown keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries` does
-      for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
-      Done in 2.26.0: `unknownKeys()` checks the file against the defaults (visualizer excepted); warnings on stderr,
-      in `status` and `status --json`, the daemon log, and a notification for each one a save adds.
-- [x] **axios has known vulnerabilities.** (p1) [chore] `npm audit` (2026-10-30) reports high-severity advisories for
-      axios 1.0.0-1.19.0 (DoS, SSRF through NO_PROXY, prototype pollution) and, through it, critical `form-data`
-      4.0.0-4.0.5 and moderate `follow-redirects` <=1.15.11; the Pexels adapter uses it for every API call and download.
-      1.21.0 is in range (`npm update axios`), then run the source tests and one live `search-images`.
-      A recheck on 2026-10-31 found 15 advisories in all: runtime `yaml` 2.8.0 (deep nesting stack overflow, 2.9.1
-      fixes it) and `tmp` through `inquirer` 8.2.6 (8.2.7 fixes it) are also in range; dev-only `serialize-javascript`
-      needs mocha 12 (see the dependencies item). The `package.json` floors (`axios ^1.6.2`, `yaml ^2.3.4`) still
-      admit vulnerable versions; raise them with the fix.
-      Fixed in 2.25.1: `npm audit fix` and raised floors; only the mocha chain (dev) remains. A live `search-images`
-      ran clean on axios 1.21.0.
-- [x] **An empty config section crashes every command.** (p2) [bug] A section with all its keys commented out,
-      e.g. `library:` alone, parses as null; `deepMerge` replaces the defaults with it and `normalize()` fails on
-      `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
-      Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
-      Fixed in 2.26.2: a null over a mapping default keeps its defaults, over a list default is an empty list.
-- [x] **Subprocess and mpv tests fail under heavy load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
-      during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
-      replace them with polling on mpv properties. On 2026-10-31, at a load average of 17, `test/commands/cli.test.js`
-      ("runs offline commands ...") hit its 15 s timeout twice: each `node src/index.js` took about 1.8 s instead of
-      0.3 s, and the test runs many. Give subprocess-heavy tests a timeout scaled to the number of runs, or run the
-      commands in one process where they need no isolation.
-      Done in 2.33.0: the mpv test already polled (no fixed waits were left); `waitFor` now allows 15 s (the
-      video-duration check 10 s) under a 30 s suite timeout. `cli.test.js` starts each test at 5 s and every `run()`
-      adds 5 s to it (Mocha reads the timeout when a synchronous test ends, so the budget scales with the runs).
-- [x] **inquirer is six majors behind.** (p3) [chore] Left from the dependency upgrade (2026-10-31: `npm outdated` shows
-      only inquirer 8.2.7 vs 14, and fs-extra and winston minor releases in range). Originally: commander 11 (15 current),
-      inquirer 8 (14, ESM-only with a new prompt API, used by the interactive lists), mocha 10 (12), chai 4 (6, ESM-only),
-      sinon 17 (22). None is urgent; upgrade commander and the test stack together in one change, inquirer separately
-      since its API changed.
-      2.26.1 moved commander to 15 and the test stack to mocha 12, chai 6 and sinon 22 with no test changes; left:
-      inquirer 14 (`ListCommand`, `SearchCommand`), and mocha 12's own moderate `minimatch` advisory (upstream).
-      inquirer 14 is ESM-only with a new prompt API (`@inquirer/prompts`); both commands take `prompt` as an injected
-      option, so the change is contained there.
-      Done in 2.33.0: `inquirer` replaced by `@inquirer/prompts` 8 (what inquirer 14 wraps); `src/utils/prompts.js`
-      `ask()` turns Ctrl-C (`ExitPromptError`) into null, which `list --interactive` treats as Exit and `search-*`
-      as a quiet stop. The commands take `select` / `input` instead of `prompt`.
-- [x] **Daemon.js has grown to about 1040 lines.** (p2) [refactor] It holds playback supervision, hotplug, health checks,
-      CPU sampling, imports, purge, control requests, durations, the config watcher and live settings (2.31.0), the
-      wallpaper sampling for visualizer colors (2.27.0), crash cleanup and the visualizer glue; it grew by about 180
-      lines on 2026-10-31 alone. Move the control-request handling and durations (`applyControl`, `applyDurations`,
-      `setWallpaper`), the config watcher and live settings (`watchConfig`, `applyConfigChange`, `applySettings`,
-      `LIVE_SETTINGS`) and the color sampling (`colorsFor`, `sampleScreen`) into their own modules with the daemon passed
-      in, as `VisualizerManager` already is, so each can be tested without starting a daemon. Raised to p2: every
-      new daemon feature lands here.
-      Done in 2.32.3: `src/display/daemon/` holds `ControlRequests`, `ConfigChanges` (with `LIVE_SETTINGS`),
-      `WallpaperColors` and `Health`, each given the daemon; its state stays on the daemon and its methods forward, so no
-      test changed. `Daemon.js` is about 790 lines. The move dropped the `modeOfKind` import in `Health.js` (a decoder
-      test caught it); checked live after.
-- [x] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
-      integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
-      rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
-      `.github/workflows/test.yml` is written, keeping the stacking test local; its first run (2.50.2) found the sqlite warning on Node 22.13 and a timing failure in an Importer test, and 2.50.3's branch run passed on both Node versions.
-- [x] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
-      dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
-      (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed
-      key, before something starts using it.
-      Done in 2.33.0: removed with its two tests; `setInFile` is the only writer of an existing config.
-- [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
-      `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
-      and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
-- [x] **Tests default to the real data and cache paths.** (p2) [test] `makeConfig()` still leaves `paths.data`,
-      `paths.thumbnails`, `paths.logfile` and the media folders at their XDG defaults; a test that forgets to override
-      one writes into the user's library. Point every `paths.*` at a per-run temp directory in `makeConfig()`.
-      Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
-      removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
-- [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
-- [x] **A killed `visualizer check` leaves its visualizers running.** (p3) [bug] It starts them detached and stops them at the end, so killing it midway (a `timeout`, Ctrl-C) leaves GLava and
-      sleeve in 1x1 windows, with their `bd-vcheck-*` directory. Happened on 2026-11-05 with 19 of them. Done: it stops them and removes the directory on SIGINT and SIGTERM. A SIGKILL or crash still leaves them.
-- [x] **Ad-hoc mpv probes leave orphaned players.** (p3) [chore] Four headless `mpv --no-config --vo=null --idle=yes`
-      processes (about 35 MB each) ran for 7+ hours, adopted by init, with sockets under `/run/user/1000/bdh.*` and a
-      Claude scratchpad. They came from one-off `hook.mjs` probes in Claude session 7383774a (2026-11-03), which ran
-      `D=$(mktemp -d .../bdh.XXXX); node hook.mjs $D ...; rm -rf $D`: that removed the socket directory but never stopped
-      the mpv it had started. The daemon is not affected (it spawns players in their own process group and `killGroup`s
-      them on stop). Fix: give probes and real-mpv tests a shared helper that starts mpv and kills it on exit
-      (`trap 'kill $pid' EXIT` in shell, an `after()` / `process.on('exit')` kill in node). Clear the current ones with
-      `pkill -f 'mpv --no-config --vo=null --idle=yes'`. Done: `startMpv` in `test/helpers/mpv.js`, the shell form in `AGENTS.md`, and the four running were ended on 2026-11-05.
-
-## 2. Rename to backdrop
-
-- [x] **Rename project and repo to backdrop.** (p1) [chore] Package, bin, CLI name, README, CLAUDE.md and specs renamed; GitHub repo renamed to `njhoffman/backdrop` and origin updated.
-      `SETUP_GUIDE.md` removed; the old spec is kept as `docs/specs/legacy-pexels-cli.md`. Breaking change, so this ships as 2.0.0.
-- [x] **Move the local checkout.** (p2) [chore] Moved to `~/ghq/github.com/njhoffman/backdrop`; `~/git/backdrop` symlink replaces `~/git/pexels-cli`.
-- [x] **Decouple config and paths from Pexels.** (p1) [refactor] Move `~/.config/pexels.yaml` to `~/.config/backdrop/config.yaml` and `~/.local/share/pexels`, `~/.cache/pexels` to `backdrop`.
-      Put source credentials under a `sources:` map (`sources.pexels.api_key`, `sources.unsplash.access_key`), keep `PEXELS_API` as a fallback.
-      Done: XDG paths (`paths` not written to the file), `sources`/`library`/`display`/`screensaver` sections; see `docs/specs/config.md`.
-- [x] **Source-neutral database schema.** (p1) [refactor] `media`, `ratings`, `searches`, `search_results`, `sequences` on built-in `node:sqlite`; see `docs/specs/database.md`.
-      No data migration: backdrop starts with an empty database (decided 2026-10-21).
-- [x] **Port old commands onto the new layer.** (p1) [refactor] Search/Download, List, Stats and Rating use the new schema
-      and are registered alongside Import and Display. HookCommand is removed; `go-next` uses mpv IPC.
-      Lists default to text with optional interactive rating/M3U export; stats work offline. See `docs/specs/sources.md`.
-- [x] **Trash purge.** (p2) [feature] `backdrop purge [--dry-run]` and the daemon (at start and every 24h) delete trash files older than `library.trash_days` (0 disables).
-      Rows and ratings stay with a null path so searches do not resurrect the item; only files inside `trash/` are touched.
-- [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
-      Commander rejects unknown subcommands once any are registered; add a test for this when the first command is ported.
+Reviewed: 2026-11-05
 
 ## 3. Display engine on mpv sockets
 
@@ -297,6 +161,8 @@ Reviewed: 2026-11-02
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
 
+- [ ] **A hung mpv now takes longer to restart.** (p3) [bug] Commands wait 15 s since 2.50.7, so two failed health checks 30 s apart take about 45 s from the first where they took about 35 s. Give the health check's own `pid` query a shorter timeout than loads get.
+- [ ] **No test holds the decoder order.** (p3) [test] Nothing asserts `--hwdec=vaapi,auto-safe` or the 15 s timeout from 2.50.7, so either could regress to the startup failure unnoticed. It is also unexplained why CUDA's probe became slow here, having been fine earlier the same day, and VAAPI first is untried on an NVIDIA machine.
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
@@ -377,7 +243,7 @@ Reviewed: 2026-11-02
       Done (v2.33.1): most of the time is ffprobe starting up (about 0.15s of 0.19s on 2026-10-31), and lower probe sizes saved
       about 5%, so `rescan` and imports now hash and probe four files at once (two in the daemon) and still add them in path order.
 - [ ] **Pre-calculate average brightness.** (p3) [feature] Measure each item's average brightness once and store it, so later
-      features can react to how light the wallpaper is: automatic dim/opacity defaults for bright items, and terminal
+      features can react to how light the wallpaper is: automatic dim/opacity defaults for bright items (`background: auto` already works this out per load from `sampleMedia`, for one frame), and terminal
       (Alacritty) opacity that follows the wallpaper. Measure at import/download and in `backdrop rescan` (a schema v10
       `media.brightness` column, 0-1 luma): images from one downscaled decode, videos averaged over a few frames (ffmpeg
       `signalstats` YAVG, or the `sampleMedia` decode in `src/visualizer/palette.js` at several timestamps), since one frame
@@ -385,19 +251,6 @@ Reviewed: 2026-11-02
       `stripPixels` already does regions); and how to drive the terminal: rewriting `picom.conf` opacity rules means a
       picom reload per change, while `alacritty msg config window.opacity=N` or setting `_NET_WM_WINDOW_OPACITY` (which picom
       honors) changes it live without touching the file.
-
-## 6. Resolution-aware quality filter
-
-- [x] **Never upscale.** (p1) [feature] Search/download and playback filter against configured xrandr monitors;
-      `--resolution WIDTHxHEIGHT` supports headless source commands. `display.allow_upscale` is the explicit override.
-- [x] **Pick the best download variant.** (p2) [perf] Download the smallest variant by pixel area that meets all target
-      monitor dimensions and the library minimum.
-- [x] **Store measured dimensions.** (p2) [feature] Download/import probe real dimensions, kind and duration with ffprobe;
-      a later source search preserves measurements for files already downloaded.
-
-- [x] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
-      Add e.g. `backdrop download --upgrade`: for kept remote items below the current target, pick a larger stored variant, replace the file atomically and keep ratings, speed and history. Local imports cannot be upgraded.
-      Done: `download --upgrade` sets the old file aside until the database commits, and refreshes playlists afterwards.
 
 ## 7. Screensaver
 
@@ -408,16 +261,19 @@ Reviewed: 2026-11-02
       or a video call, and it ends only with Escape like the key does; decide whether input should end an idle start.
 - [ ] **Polybar once came back in the screensaver.** (p2) [bug] A capture on 2026-11-05, about 27 s into a real entry at load 20, showed polybar on screen and no ring or bars, with the veil up.
       A later entry logging the stacking and polybar's map state every 0.5 s for 22 s stayed correct throughout, as did a run without the workspace switch, so polybar's return is unexplained. The missing ring and bars are probably silence: the music was playing on a phone, so nothing reached the desktop's sink, and the ring's thin circle is easy to miss under the veil.
+- [ ] **Screensaver on two monitors.** (p2) [test] Only tried on one output. `enterWorkspaces` names the others `backdrop-<output>` and restores each, tested on i3 under Xvfb with one output and with fakes for two; real multi-monitor focus and restore are unseen.
+- [ ] **Show the screensaver in `status`.** (p3) [feature] `state.json` has `screensaver`, but `backdrop status`, `--json` (`docs/specs/json.md`) and the docs do not mention it, so the only way to ask is `backdrop screensaver status`.
+- [ ] **`doctor` does not know the screensaver's needs.** (p3) [feature] Nothing checks for the i3 `screensaver` mode (without it Escape cannot end the mode; `i3-msg -t get_binding_modes` tells), `polybar-msg`, `xprintidle` with `screensaver.idle` on, or `projectMSDL` with a preset using it.
+- [ ] **Empty ring when the music is elsewhere.** (p3) [feature] With sound on a phone, sleeve follows Spotify but nothing reaches the desktop's sink, so the bars are empty and the ring is a bare circle. Hide it in silence with the bars, or leave it. Decided so far: leave it, no fake motion.
 - [ ] **Hide the pointer in the screensaver.** (p3) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
-- [ ] **Follow the load levels.** (p2) [feature] The screensaver has to use the same `LoadGovernor` levels as the wallpaper
-      (`src/display/LoadGovernor.js`, `docs/specs/main.md`): images only at `image`, skipping `screensaver.streams`, and a blank screen at `off`.
-      It shares the `load` thresholds; a `screensaver.load` override can wait until there is a need.
+- [ ] **Follow the load levels.** (p2) [feature] Partly there: the screensaver's preset uses the daemon's visualizers, so they stop at `off` and projectM stops at `image`, and `max_load` holds back an idle start. Missing: skipping
+      `screensaver.streams` once playlists exist, and deciding whether the empty workspace should stay up at `off`, when nothing is left to show. A `screensaver.load` override can wait until there is a need.
 - [ ] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports
       images with no daemon running until the next start clears it (`LoadShedding.begin`). Harmless, since nothing plays; tagging the hold with the daemon's pid
       like `next-filters.json` would make it exact.
 - [ ] **The menu's mode button ignores a hold.** (p3) [bug] `MenuCommand` labels the button from the mode in force, so during a load hold it offers "switch to videos"
       even when video is already the choice, and pressing it only reports the hold. Label it from `getChosenMode` and show the hold.
-- [ ] **Screensaver playlists.** (p2) [feature] Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
+- [ ] **Screensaver playlists.** (p2) [feature] `screensaver.sources` and `streams` are in the config and example but nothing reads them yet, so setting them does nothing. Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
       Decide with the idle screensaver above: on 2026-11-04 there is no locker or idle tool running here and DPMS is off, so there is nothing to coexist with yet.
 
@@ -458,6 +314,11 @@ Reviewed: 2026-11-02
       Done in 2.33.0: `ignoreClosedPipes()` (`src/utils/output.js`, called from `src/index.js`) marks stdout or stderr
       closed on `EPIPE` and `write()` drops later lines, so the command finishes its work (no stop between a file
       move and its database write) and exits with its usual code; other stream errors still throw.
+- [x] **Docs and comments still describing older behavior.** (p3) [docs] `docs/specs/visualizer.md` lines 94, 135 and 138 say brightness where a dim is now contrast. "GLava draws nothing until every piped value has arrived" stays in `check.js`, `settings.js` and `VisualizerManager.js`, though a lost `fg2` was seen drawing a fade (2.48.1).
+      Done, along with the screensaver settings in `docs/specs/config.md`.
+- [ ] **Small cleanups.** (p3) [chore] `hex` is defined in both `palette.js` and `daemon/WallpaperColors.js`. `fs-extra` (11.3.0 to 11.4.1) and `winston` (3.17.0 to 3.19.0) have minor updates; `npm audit` is clean. `Daemon.js` (943 lines) and `VisualizerManager.js` (796) keep growing: sleeve's display and veil handling could move out of the manager as `daemon/` did.
+- [x] **CI jobs can hang on apt with no limit.** (p2) [chore] On 2026-11-05 the latest-Node job of the 2.50.7 run sat over 20 minutes in `Install integration test tools` while its 22.13 twin passed, and a GitHub job's default limit is 6 hours. Set `timeout-minutes` on the job and the install step, and pass apt `-o Acquire::Retries=3`.
+      Done: 15 minutes for the job, 5 for the install, and apt retries.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
       attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
       Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
@@ -628,9 +489,10 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       Done in 2.38.0: a floor over the item's dim while the visualizer is on and has sound (the audio watcher now runs
       for either setting), restored from the database after; `backdrop dim` reads `musicDim` from the state. Instant:
       mpv's `brightness` has no fade.
-- [ ] **Visualizer as the screensaver.** (p3) [feature] Let a screensaver playlist be a visualizer preset: a full-screen
+- [x] **Visualizer as the screensaver.** (p3) [feature] Let a screensaver playlist be a visualizer preset: a full-screen
       instance (e.g. radial or wave, `placement: {anchor: fill}`) over a dimmed or black wallpaper when idle, ties in
       with project 7.
+      Done differently: `screensaver.preset` picks any preset, with `screensaver` and `screensaver-projectm` built in.
 - [x] **CLI and menu controls.** (p3) [feature] `backdrop visualizer reload` (SIGHUP), `start/stop --wallpaper/--visualizer`
       and `backdrop visualizer preset` (control requests) exist, and presets cover switching modules. The visualizer menu
       (2.28.0) has on/off and preset buttons; a menu button for the wallpaper part is left. More requests would outgrow the signal-per-action
@@ -665,8 +527,8 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       the picks can lose contrast until the next load. Recolor when the daemon sees a dim change (DisplayControl sets it
       over mpv directly, so the daemon would need a control request or to observe mpv's `brightness`).
       Done in 2.38.0: the daemon observes mpv's `brightness`, recolors on a change, and checks contrast against it.
-- [ ] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches brightness in one step when music starts or
-      stops; stepping it over half a second or so would look smoother (mpv has no fade for `brightness`).
+- [ ] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches mpv's `contrast` in one step when music starts or
+      stops; stepping it over half a second or so would look smoother (mpv has no fade for it).
 - [x] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
       `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
       disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a
@@ -681,6 +543,11 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       likely the restack is read before the X server applied it. Wait for the expected order with a deadline instead.
       Measured 2026-11-04 at a load around 10: it fails 3 runs of 12 alone on v2.43.0. Not a read too soon after all: `state.json` listed overlays as they happened to map, not bottom to top as
       documented, so the test was right. Fixed in `findOverlays`.
+- [ ] **Tune the auto veil on real wallpapers.** (p2) [test] `veilBackground`'s limits (0.45 to 0.75, mean luma 0.3) were set from one wallpaper and a contact sheet at the old 0.3 floor, not seen since. Check lyrics contrast on bright and busy ones, and whether it should weigh the lyrics area over the whole window.
+- [ ] **The visualizer menu offers GLava's controls for projectM.** (p3) [bug] `MenuCommand` tests `look.engine === 'sleeve'` and otherwise shows module, amplify and colors, so a `projectm` instance gets controls that do nothing or fail. It needs its own branch, with `fps` and `preset_duration`.
+- [ ] **projectM has not run through backdrop on the real desktop.** (p2) [test] The window was tried alone under Xvfb. Unseen: placing and stacking in `screensaver-projectm`, what it costs on the GPU, and whether `PULSE_SOURCE=@DEFAULT_MONITOR@` hears the music rather than a microphone.
+- [ ] **`reference_height` covers only bars, radial and circle.** (p3) [feature] `SCALED_DEFINES` leaves wave and graph in pixels, so they do not follow the monitor, and a shader default left unset (radial's gradient of 95) stays in pixels too.
+- [ ] **Presets repeat the veil layout.** (p3) [refactor] `lyrics-veil` and `screensaver` are the same instances, written out twice with the ring's numbers, so tuning one leaves the other behind; `lyrics-stage` shares the rects. Build them from one constant.
 - [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
       of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
       PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms
@@ -700,7 +567,7 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [ ] **A second engine for when GLava breaks.** (p3) [feature] GLava has had no commits since 2021; a Mesa or distro
       change could stop it for good. The adapter seam allows another engine: mpv's lavfi visualizers (`showcqt`,
       `showfreqs`, `avectorscope`) reading the PulseAudio monitor, in an `xwinwrap -argb` window with a colorkey for
-      transparency, reusing the daemon's mpv machinery. Few styles, but nothing to lose if GLava goes.
+      transparency, reusing the daemon's mpv machinery. Few styles, but nothing to lose if GLava goes. `engine: projectm` (2.50.0) is a stopgap for the look but not for bars: it is opaque and far costlier.
 - [x] **Retire the old GLava setup.** (p3) [chore] The i3 `exec glava` is gone, the `glava.*` aliases were removed in
       `~/.shell` 0.23.1 and `~/.config/glava` was deleted (2026-10-30; still in the dotbare history).
 
@@ -750,6 +617,156 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
 - [x] **Drop the resize of sleeve's window.** (p3) [cleanup] sleeve 0.39.2 sizes a monitor-sized window exactly (1920x1080 on the real desktop), so `resizes` in `SleeveVisualizer.js` and its `xdotool windowsize` in
       `VisualizerManager.js` are no longer needed there. `atLeast` compares only major and minor, so it cannot tell 0.39.1 from 0.39.2: drop the workaround outright, raising "Requires sleeve" in `docs/specs/sleeve.md`, or compare the patch too.
       Done: dropped outright, with 0.39.2 noted in `docs/specs/sleeve.md`.
-- [ ] **Try it on the real desktop.** (p2) [test] Bars and lyrics together on one monitor: stacking order, window opacity,
-      colors following the wallpaper, a wallpaper restart, and the 2 s start in `windowAttempts`. All three layouts in `docs/specs/sleeve.md`, each tried only under Xvfb so far with no compositor and
-      no GLava; a see-through background has not been seen over a real wallpaper, and a full-monitor window came out 1 px short there (1279x719, noted in sleeve's TODO), which an opaque one would show as a seam.
+- [ ] **Try it on the real desktop.** (p2) [test] Veil, lyrics, ring and bars have now been seen together on the laptop panel (2026-11-05): stacking order, polybar hidden, ring scale and the veil's color.
+      Still unseen there: colors following the wallpaper over several wallpapers, a wallpaper restart under sleeve, `lyrics-stage` and `lyrics-now` (the opaque layouts, whose seam 0.39.2 should have removed), and all of it with audio on the desktop's sink, since the music was on a phone.
+
+## Completed
+
+### 1. Existing bugs and tech debt (completed 2026-11-05)
+
+- [x] **CLI crashes on startup: ImportCommand.js is empty.** (p1) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); rewritten in project 5. `src/commands/ImportCommand.js` is 0 bytes, but `src/index.js` imports `{ ImportCommand }` from it.
+      ES module linking fails, so every command dies, not just `import`. The 1.1.0 changelog describes
+      an implemented import command, so the file was likely lost; rewrite it (see project 5) or recover it.
+- [x] **addVideo/addImage insert into renamed tables.** (p1) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); tables replaced by the new schema in project 2. `src/database/DatabaseManager.js:139,166` still use `INSERT INTO videos` / `INSERT INTO images`.
+      The tables were renamed to `pexel_videos` / `pexel_images` in 1.1.1, so every new search result fails to save.
+      `addVideo` also lists a removed `ratings` column (13 columns, 12 values). Fix the SQL and add tests that insert.
+- [x] **undo leaves the rating in the database.** (p2) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); rating commands reworked in project 3; the new undo must delete the rating row. `src/commands/RatingCommand.js:119-122` moves the file back but only comments that the rating should be removed.
+      Stats and `--rated` lists stay wrong after undo. Add `DatabaseManager.removeRating()` and call it.
+- [x] **Filename-to-id parsing breaks on dotted names.** (p2) [bug] Won't fix: superseded by the redesign (option 2, decided 2026-10-21); the current file comes from mpv in project 3, so filename parsing goes away. `src/commands/HookCommand.js:89` uses `basename.split('.')[0]`.
+      A file like `ocean.waves.4k.mp4` resolves to `ocean`. Use `path.parse(name).name`.
+- [x] **Hard-coded CLI version.** (p3) [bug] `src/index.js` passes `.version('1.0.0')` while `package.json` is 1.1.1. Now read from `package.json`.
+- [x] **Startup requires every hook and the API key for all commands.** (p2) [refactor] `validateConfig()` in `src/index.js` exited if any hook or `api_key` was missing, even for `list` or `stats`.
+      Removed with the hooks; ported commands must check the credentials they need (e.g. the Pexels source checks its own key).
+- [x] **No tests for commands.** (p2) [test] Search, download, rating, import, removal, lists and stats have command tests;
+      CLI subprocess tests cover registration, offline operation and failing exit codes. Real mpv tests cover rating and playback transitions.
+- [x] **Changelog lives in docs/specs.** (p3) [docs] `docs/specs/changelog.md` duplicates the new root `CHANGELOG.md` and embeds prompts. Removed; the root `CHANGELOG.md` already summarizes 1.0.0 to 1.1.1.
+- [x] **No version tags.** (p3) [chore] Releases 1.0.0 to 1.1.1 exist only in docs; every release from v2.0.0 on has an annotated `vX.Y.Z` tag.
+- [x] **Stale .claude/preferences.json.** (p3) [chore] Untracked generated file still names `pexels-cli` and describes jest/eslint/prettier setups the repo does not use.
+      Agents may read it as project guidance that contradicts `AGENTS.md`. Deleted and added to `.gitignore` in case the tool regenerates it.
+- [x] **GETTING_STARTED.md describes one machine.** (p3) [docs] It records a 2026-10-23 check of this machine's tools and test count, which goes stale and means nothing on another checkout.
+      Replaced with a prerequisites list and a `command -v` check; limitations updated for purge, missing files and health checks.
+- [x] **No self-check command.** (p3) [feature] A `backdrop doctor` could report missing tools, X11 availability, config errors,
+      a stale `state.json`, and library rows whose files are missing (the daemon only drops those from playlists).
+      Done in 2.32.0: `backdrop doctor` (`src/commands/DoctorCommand.js`), read-only, `--json`, `--visualizer`; also a daemon
+      behind the CLI's version and processes a crash left (`findOrphans`). On this machine it found the daemon a
+      version behind after a bump.
+- [x] **Config is validated lazily.** (p3) [refactor] Values are checked where they are used (`trash_days` at purge, `output.*` at startup), so a typo like
+      `image_duration: 5m` only fails inside mpv. Validate the whole config in `ConfigManager.normalize()` with messages naming the key, and test each section.
+      Done in 2.30.0: `src/config/schema.js` checks every key outside the visualizer section when the config loads and
+      fails with every problem listed (tolerant for `backdrop doctor`); durations take 90/90s/5m/1h. The checks that
+      were spread over Playlist, notify, purge, workspace and MenuCommand call it. A bad visualizer section stays a
+      warning, as the daemon already ran without it.
+- [x] **Unknown config keys are ignored silently.** (p2) [bug] A `visualization:` section (meant as `visualizer:`) was
+      accepted without a word on 2026-10-30, so the visualizer stayed off with nothing in the log or `status`. The
+      visualizer section rejects unknown keys since 2.24.0/2.25.0; top-level sections and the other sections still do
+      not. Warn on unknown keys in `ConfigManager.loadConfig()`, naming the closest known key (as `closestQueries` does
+      for queries), from the CLI and in the daemon log. Part of the lazy-validation item above.
+      Done in 2.26.0: `unknownKeys()` checks the file against the defaults (visualizer excepted); warnings on stderr,
+      in `status` and `status --json`, the daemon log, and a notification for each one a save adds.
+- [x] **axios has known vulnerabilities.** (p1) [chore] `npm audit` (2026-10-30) reports high-severity advisories for
+      axios 1.0.0-1.19.0 (DoS, SSRF through NO_PROXY, prototype pollution) and, through it, critical `form-data`
+      4.0.0-4.0.5 and moderate `follow-redirects` <=1.15.11; the Pexels adapter uses it for every API call and download.
+      1.21.0 is in range (`npm update axios`), then run the source tests and one live `search-images`.
+      A recheck on 2026-10-31 found 15 advisories in all: runtime `yaml` 2.8.0 (deep nesting stack overflow, 2.9.1
+      fixes it) and `tmp` through `inquirer` 8.2.6 (8.2.7 fixes it) are also in range; dev-only `serialize-javascript`
+      needs mocha 12 (see the dependencies item). The `package.json` floors (`axios ^1.6.2`, `yaml ^2.3.4`) still
+      admit vulnerable versions; raise them with the fix.
+      Fixed in 2.25.1: `npm audit fix` and raised floors; only the mocha chain (dev) remains. A live `search-images`
+      ran clean on axios 1.21.0.
+- [x] **An empty config section crashes every command.** (p2) [bug] A section with all its keys commented out,
+      e.g. `library:` alone, parses as null; `deepMerge` replaces the defaults with it and `normalize()` fails on
+      `config.library.import_dirs` ("Failed to load config: Cannot read properties of null"), so even `stats` exits.
+      Treat a null section as empty in `deepMerge`/`loadConfig` and test each section; part of the lazy-validation item.
+      Fixed in 2.26.2: a null over a mapping default keeps its defaults, over a list default is an empty list.
+- [x] **Subprocess and mpv tests fail under heavy load.** (p3) [test] `test/display/mpv.integration.test.js` failed once
+      during a full `npm test` on 2026-10-30 and passed three runs alone. Its fixed waits likely race a busy machine;
+      replace them with polling on mpv properties. On 2026-10-31, at a load average of 17, `test/commands/cli.test.js`
+      ("runs offline commands ...") hit its 15 s timeout twice: each `node src/index.js` took about 1.8 s instead of
+      0.3 s, and the test runs many. Give subprocess-heavy tests a timeout scaled to the number of runs, or run the
+      commands in one process where they need no isolation.
+      Done in 2.33.0: the mpv test already polled (no fixed waits were left); `waitFor` now allows 15 s (the
+      video-duration check 10 s) under a 30 s suite timeout. `cli.test.js` starts each test at 5 s and every `run()`
+      adds 5 s to it (Mocha reads the timeout when a synchronous test ends, so the budget scales with the runs).
+- [x] **inquirer is six majors behind.** (p3) [chore] Left from the dependency upgrade (2026-10-31: `npm outdated` shows
+      only inquirer 8.2.7 vs 14, and fs-extra and winston minor releases in range). Originally: commander 11 (15 current),
+      inquirer 8 (14, ESM-only with a new prompt API, used by the interactive lists), mocha 10 (12), chai 4 (6, ESM-only),
+      sinon 17 (22). None is urgent; upgrade commander and the test stack together in one change, inquirer separately
+      since its API changed.
+      2.26.1 moved commander to 15 and the test stack to mocha 12, chai 6 and sinon 22 with no test changes; left:
+      inquirer 14 (`ListCommand`, `SearchCommand`), and mocha 12's own moderate `minimatch` advisory (upstream).
+      inquirer 14 is ESM-only with a new prompt API (`@inquirer/prompts`); both commands take `prompt` as an injected
+      option, so the change is contained there.
+      Done in 2.33.0: `inquirer` replaced by `@inquirer/prompts` 8 (what inquirer 14 wraps); `src/utils/prompts.js`
+      `ask()` turns Ctrl-C (`ExitPromptError`) into null, which `list --interactive` treats as Exit and `search-*`
+      as a quiet stop. The commands take `select` / `input` instead of `prompt`.
+- [x] **Daemon.js has grown to about 1040 lines.** (p2) [refactor] It holds playback supervision, hotplug, health checks,
+      CPU sampling, imports, purge, control requests, durations, the config watcher and live settings (2.31.0), the
+      wallpaper sampling for visualizer colors (2.27.0), crash cleanup and the visualizer glue; it grew by about 180
+      lines on 2026-10-31 alone. Move the control-request handling and durations (`applyControl`, `applyDurations`,
+      `setWallpaper`), the config watcher and live settings (`watchConfig`, `applyConfigChange`, `applySettings`,
+      `LIVE_SETTINGS`) and the color sampling (`colorsFor`, `sampleScreen`) into their own modules with the daemon passed
+      in, as `VisualizerManager` already is, so each can be tested without starting a daemon. Raised to p2: every
+      new daemon feature lands here.
+      Done in 2.32.3: `src/display/daemon/` holds `ControlRequests`, `ConfigChanges` (with `LIVE_SETTINGS`),
+      `WallpaperColors` and `Health`, each given the daemon; its state stays on the daemon and its methods forward, so no
+      test changed. `Daemon.js` is about 790 lines. The move dropped the `modeOfKind` import in `Health.js` (a decoder
+      test caught it); checked live after.
+- [x] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
+      integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
+      rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
+      `.github/workflows/test.yml` is written, keeping the stacking test local; its first run (2.50.2) found the sqlite warning on Node 22.13 and a timing failure in an Importer test, and 2.50.3's branch run passed on both Node versions.
+- [x] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
+      dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
+      (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed
+      key, before something starts using it.
+      Done in 2.33.0: removed with its two tests; `setInFile` is the only writer of an existing config.
+- [x] **Tests could act on the running daemon.** (p1) [test] `makeConfig()` left `paths.runtime` at the real
+      `$XDG_RUNTIME_DIR/backdrop`, so tests read the live `state.json` (the mpv integration test only passed through it)
+      and could write beside it. Fixed: `makeConfig()` points it at a missing directory; tests that need state set their own.
+- [x] **Tests default to the real data and cache paths.** (p2) [test] `makeConfig()` still leaves `paths.data`,
+      `paths.thumbnails`, `paths.logfile` and the media folders at their XDG defaults; a test that forgets to override
+      one writes into the user's library. Point every `paths.*` at a per-run temp directory in `makeConfig()`.
+      Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
+      removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
+- [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
+- [x] **A killed `visualizer check` leaves its visualizers running.** (p3) [bug] It starts them detached and stops them at the end, so killing it midway (a `timeout`, Ctrl-C) leaves GLava and
+      sleeve in 1x1 windows, with their `bd-vcheck-*` directory. Happened on 2026-11-05 with 19 of them. Done: it stops them and removes the directory on SIGINT and SIGTERM. A SIGKILL or crash still leaves them.
+- [x] **Ad-hoc mpv probes leave orphaned players.** (p3) [chore] Four headless `mpv --no-config --vo=null --idle=yes`
+      processes (about 35 MB each) ran for 7+ hours, adopted by init, with sockets under `/run/user/1000/bdh.*` and a
+      Claude scratchpad. They came from one-off `hook.mjs` probes in Claude session 7383774a (2026-11-03), which ran
+      `D=$(mktemp -d .../bdh.XXXX); node hook.mjs $D ...; rm -rf $D`: that removed the socket directory but never stopped
+      the mpv it had started. The daemon is not affected (it spawns players in their own process group and `killGroup`s
+      them on stop). Fix: give probes and real-mpv tests a shared helper that starts mpv and kills it on exit
+      (`trap 'kill $pid' EXIT` in shell, an `after()` / `process.on('exit')` kill in node). Clear the current ones with
+      `pkill -f 'mpv --no-config --vo=null --idle=yes'`. Done: `startMpv` in `test/helpers/mpv.js`, the shell form in `AGENTS.md`, and the four running were ended on 2026-11-05.
+
+### 2. Rename to backdrop (completed 2026-11-05)
+
+- [x] **Rename project and repo to backdrop.** (p1) [chore] Package, bin, CLI name, README, CLAUDE.md and specs renamed; GitHub repo renamed to `njhoffman/backdrop` and origin updated.
+      `SETUP_GUIDE.md` removed; the old spec is kept as `docs/specs/legacy-pexels-cli.md`. Breaking change, so this ships as 2.0.0.
+- [x] **Move the local checkout.** (p2) [chore] Moved to `~/ghq/github.com/njhoffman/backdrop`; `~/git/backdrop` symlink replaces `~/git/pexels-cli`.
+- [x] **Decouple config and paths from Pexels.** (p1) [refactor] Move `~/.config/pexels.yaml` to `~/.config/backdrop/config.yaml` and `~/.local/share/pexels`, `~/.cache/pexels` to `backdrop`.
+      Put source credentials under a `sources:` map (`sources.pexels.api_key`, `sources.unsplash.access_key`), keep `PEXELS_API` as a fallback.
+      Done: XDG paths (`paths` not written to the file), `sources`/`library`/`display`/`screensaver` sections; see `docs/specs/config.md`.
+- [x] **Source-neutral database schema.** (p1) [refactor] `media`, `ratings`, `searches`, `search_results`, `sequences` on built-in `node:sqlite`; see `docs/specs/database.md`.
+      No data migration: backdrop starts with an empty database (decided 2026-10-21).
+- [x] **Port old commands onto the new layer.** (p1) [refactor] Search/Download, List, Stats and Rating use the new schema
+      and are registered alongside Import and Display. HookCommand is removed; `go-next` uses mpv IPC.
+      Lists default to text with optional interactive rating/M3U export; stats work offline. See `docs/specs/sources.md`.
+- [x] **Trash purge.** (p2) [feature] `backdrop purge [--dry-run]` and the daemon (at start and every 24h) delete trash files older than `library.trash_days` (0 disables).
+      Rows and ratings stay with a null path so searches do not resurrect the item; only files inside `trash/` are touched.
+- [x] **Unknown commands exit 0 silently.** (p3) [bug] Fixed once display commands were registered. With no subcommands registered, `backdrop bogus` prints nothing and exits 0.
+      Commander rejects unknown subcommands once any are registered; add a test for this when the first command is ported.
+
+### 6. Resolution-aware quality filter (completed 2026-11-05)
+
+- [x] **Never upscale.** (p1) [feature] Search/download and playback filter against configured xrandr monitors;
+      `--resolution WIDTHxHEIGHT` supports headless source commands. `display.allow_upscale` is the explicit override.
+- [x] **Pick the best download variant.** (p2) [perf] Download the smallest variant by pixel area that meets all target
+      monitor dimensions and the library minimum.
+- [x] **Store measured dimensions.** (p2) [feature] Download/import probe real dimensions, kind and duration with ffprobe;
+      a later source search preserves measurements for files already downloaded.
+
+- [x] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
+      Add e.g. `backdrop download --upgrade`: for kept remote items below the current target, pick a larger stored variant, replace the file atomically and keep ratings, speed and history. Local imports cannot be upgraded.
+      Done: `download --upgrade` sets the old file aside until the database commits, and refreshes playlists afterwards.

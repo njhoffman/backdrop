@@ -86,7 +86,7 @@ export async function checkVisualizer(section, {
               result.output.splice(0, Math.max(0, result.output.length - OUTPUT_LINES));
             });
           }
-          // GLava draws nothing until piped colors arrive; sent one per line, as the manager does
+          // A piped value that never arrives stays unset; sent one per line, as the manager does
           if (instance.pipe) {
             child.stdin?.on('error', () => {});
             (async () => {

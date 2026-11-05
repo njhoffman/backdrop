@@ -245,7 +245,7 @@ function paletteSettings(value, prefix) {
 // With palette.source: wallpaper, the module's foreground #define reads its colors from GLava's stdin
 // (--pipe): `@fg:` for one color, `mix(@fg:, @fg2:, ...)` for a gradient, so each end can change. Returns
 // that #define and the configured colors as #rrggbbaa, which the visualizer sends as soon as it starts:
-// GLava draws nothing until every piped value has arrived.
+// A piped value that never arrives stays unset, so a gradient fades to nothing (the manager sends them again once the window is up).
 // Fixed colors are piped as well, so a change needs no restart, when they are set: the rest keep the shader's own
 // default, which may be more than one color can say. A raw #define for it stays in the shader.
 function pipesFixedColors(module, raw) {
