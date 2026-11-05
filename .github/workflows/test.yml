@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported (node:sqlite) and the newest
+        node: ['22.13', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # For the integration tests, which skip themselves without these. xwinwrap and GLava are not packaged,
+      # so the stacking test stays local.
+      - name: Install integration test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mpv ffmpeg xvfb xserver-xephyr rofi xdotool imagemagick
+      - run: npm ci
+      - run: npm run test:brief

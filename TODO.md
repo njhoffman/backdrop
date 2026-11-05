@@ -99,6 +99,7 @@ Reviewed: 2026-11-02
 - [ ] **No CI.** (p3) [chore] Nothing runs `npm test` on push. Add a GitHub Actions workflow on Node 22.13 and current Node, installing mpv and ffmpeg so the
       integration tests run instead of being skipped. Since 2.27.1 and 2.29.1 the rofi and stacking tests also need Xvfb,
       rofi, xdotool, ImageMagick and xwinwrap (not packaged on Ubuntu; build it in the workflow or keep that test local).
+      `.github/workflows/test.yml` is written, keeping the stacking test local; it has never run, so it stays open until a first run passes.
 - [x] **ConfigManager.save() would wipe the config's comments.** (p3) [refactor] `save()` writes `YAML.stringify(userConfig)`,
       dropping every comment and the user's layout (the commented reference in a hand-kept config). Nothing calls it today
       (`setInFile` / `spliceYaml`, 2.28.0, is the safe path). Remove it, or make it write through `spliceYaml` per changed
@@ -113,11 +114,16 @@ Reviewed: 2026-11-02
       Fixed in 2.26.3: `test/helpers/setup.js` points every XDG variable at one temp directory for the run and
       removes it afterwards; `test/helpers/isolation.test.js` checks every default path lands inside it.
 - [x] **Stray pexels.log.** (p3) [chore] A 0-byte `pexels.log` from pexels-cli sits in the repo root (ignored by `*.log`). Deleted.
-- [ ] **A killed `visualizer check` leaves its visualizers running.** (p3) [bug] It starts them detached and stops them at the end, so killing it midway (a `timeout`, Ctrl-C) leaves GLava and
-      sleeve in 1x1 windows, with their `bd-vcheck-*` directory. Happened on 2026-11-05 with 19 of them. It should stop them on SIGINT and SIGTERM, and could use `children.json` for a crash.
-- [ ] **Daemon restart test depends on timing.** (p3) [test] `gives up after repeated exits within a minute` in
-      `test/display/Daemon.test.js` waits a fixed 10 ms per exit and failed once with one restart short while several
-      test files ran; it passed 3 of 3 alone. Wait for the restart itself rather than a fixed time.
+- [x] **A killed `visualizer check` leaves its visualizers running.** (p3) [bug] It starts them detached and stops them at the end, so killing it midway (a `timeout`, Ctrl-C) leaves GLava and
+      sleeve in 1x1 windows, with their `bd-vcheck-*` directory. Happened on 2026-11-05 with 19 of them. Done: it stops them and removes the directory on SIGINT and SIGTERM. A SIGKILL or crash still leaves them.
+- [x] **Ad-hoc mpv probes leave orphaned players.** (p3) [chore] Four headless `mpv --no-config --vo=null --idle=yes`
+      processes (about 35 MB each) ran for 7+ hours, adopted by init, with sockets under `/run/user/1000/bdh.*` and a
+      Claude scratchpad. They came from one-off `hook.mjs` probes in Claude session 7383774a (2026-11-03), which ran
+      `D=$(mktemp -d .../bdh.XXXX); node hook.mjs $D ...; rm -rf $D`: that removed the socket directory but never stopped
+      the mpv it had started. The daemon is not affected (it spawns players in their own process group and `killGroup`s
+      them on stop). Fix: give probes and real-mpv tests a shared helper that starts mpv and kills it on exit
+      (`trap 'kill $pid' EXIT` in shell, an `after()` / `process.on('exit')` kill in node). Clear the current ones with
+      `pkill -f 'mpv --no-config --vo=null --idle=yes'`. Done: `startMpv` in `test/helpers/mpv.js`, the shell form in `AGENTS.md`, and the four running were ended on 2026-11-05.
 
 ## 2. Rename to backdrop
 
@@ -284,9 +290,9 @@ Reviewed: 2026-11-02
 - [x] **Lighter display under system load.** (p2) [feature] A `load` section: over `image_above` videos become images, over `off_above` the wallpaper and visualizer stop,
       with `sustain`, `resume_ratio` and `resume_after` against flapping (`src/display/LoadGovernor.js`, `src/display/daemon/LoadShedding.js`, `docs/specs/main.md`).
 
-- [ ] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
+- [x] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
-      the next spawn instead of sleeping.
+      the next spawn instead of sleeping. Done: it waits for each launch.
 
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable

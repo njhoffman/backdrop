@@ -1,6 +1,6 @@
 {
   "name": "backdrop",
-  "version": "2.50.1",
+  "version": "2.50.2",
   "description": "Wallpaper and screensaver manager: curate images and videos from free sources and display them with mpv",
   "type": "module",
   "main": "src/index.js",

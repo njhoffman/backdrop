@@ -479,12 +479,19 @@ describe('Daemon', () => {
       const daemon = makeDaemon();
       await daemon.start();
 
-      for (let i = 0; i < 6; i++) {
-        spawned[spawned.length - 1].child.exit(1);
-        await new Promise(resolve => setTimeout(resolve, 10));
+      // Each exit within the budget brings another launch, however long the machine takes
+      for (let i = 0; i < 5; i++) {
+        const launched = spawned.length;
+        spawned[launched - 1].child.exit(1);
+        for (let waited = 0; spawned.length === launched && waited < 5000; waited += 5) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
       }
+      expect(spawned).to.have.length(2 + 5);
 
-      // 2 initial launches; the second monitor restarts 5 times, then stops
+      // The sixth gets none
+      spawned[spawned.length - 1].child.exit(1);
+      await new Promise(resolve => setTimeout(resolve, 50));
       expect(spawned).to.have.length(2 + 5);
       await daemon.stop();
     });

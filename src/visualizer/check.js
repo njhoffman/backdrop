@@ -28,12 +28,27 @@ async function onPath(name) {
 // counts as running.
 export async function checkVisualizer(section, {
   spawn = spawnProcess, create = createVisualizer, kill = process.kill, runMs = RUN_MS, stopGrace = STOP_GRACE_MS,
-  tmpRoot = os.tmpdir(), hasSleeve = () => onPath('sleeve'), hasProjectm = () => onPath('projectMSDL')
+  tmpRoot = os.tmpdir(), hasSleeve = () => onPath('sleeve'), hasProjectm = () => onPath('projectMSDL'),
+  signals = process, die = signal => process.kill(process.pid, signal)
 } = {}) {
   const targets = [null, ...Object.keys(presetsOf(section))];
   const root = await fs.mkdtemp(path.join(tmpRoot, 'bd-vcheck-'));
   const runs = [];
   const results = [];
+  // They run detached, so a check killed midway would leave them all running
+  const handlers = ['SIGINT', 'SIGTERM'].map(signal => [signal, () => {
+    for (const { child } of runs) {
+      try {
+        kill(-child.pid, 'SIGTERM');
+      } catch {
+        // already gone
+      }
+    }
+    fs.removeSync(root);
+    for (const [name, handler] of handlers) signals.off(name, handler);
+    die(signal);
+  }]);
+  for (const [name, handler] of handlers) signals.on(name, handler);
   try {
     for (const [index, preset] of targets.entries()) {
       let settings;
@@ -107,6 +122,7 @@ export async function checkVisualizer(section, {
       if (await Promise.race([exited.then(() => false), sleep(stopGrace).then(() => true)])) killGroup('SIGKILL');
     }));
   } finally {
+    for (const [name, handler] of handlers) signals.off(name, handler);
     await fs.remove(root);
   }
   return results;

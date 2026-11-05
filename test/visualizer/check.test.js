@@ -1,3 +1,4 @@
+import path from 'path';
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import fs from 'fs-extra';
@@ -32,6 +33,32 @@ describe('visualizer check', () => {
   };
 
   beforeEach(() => { spawned = []; prepared = []; kills = []; written = []; });
+
+  it('stops what it started and removes its directory when killed', async () => {
+    const signals = new EventEmitter();
+    const killed = [];
+    const died = [];
+    const spawnOne = () => {
+      const child = new EventEmitter();
+      Object.assign(child, { pid: 4242, exitCode: null, signalCode: null, stdin: { write() {}, on() {} }, stdout: new EventEmitter(), stderr: new EventEmitter() });
+      return child;
+    };
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-check-'));
+    const running = checkVisualizer({ enabled: true }, {
+      spawn: spawnOne, tmpRoot, runMs: 150, stopGrace: 1, signals,
+      create: () => ({ prepare: async () => {}, command: () => ({ file: 'x', args: [] }) }),
+      kill: (pid, signal) => killed.push([pid, signal]),
+      die: signal => died.push(signal)
+    });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    signals.emit('SIGTERM');
+    expect(killed[0]).to.deep.equal([-4242, 'SIGTERM']);
+    expect(died).to.deep.equal(['SIGTERM']);
+    expect(await fs.readdir(tmpRoot)).to.deep.equal([]);
+    expect(signals.listenerCount('SIGTERM')).to.equal(0);
+    await running;
+    await fs.remove(tmpRoot);
+  });
 
   it('runs every instance of the section and each preset at 1x1, then stops them', async () => {
     const results = await checkVisualizer({ enabled: true }, { spawn, create, kill, hasSleeve: async () => false, runMs: 20, stopGrace: 20 });

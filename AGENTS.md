@@ -41,6 +41,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   full) or one file with `npx mocha <file>`, never the spec run; pipe long commands through `tail`/`grep`;
   read `TODO.md` (60 KB), `CHANGELOG.md` (30 KB) and large sources such as `test/display/Daemon.test.js` with
   Read offset/limit or `grep -n`, not `cat`; use `git diff --stat` before a full diff.
+- A one-off mpv with `--idle` outlives its socket directory: start it through `startMpv` (`test/helpers/mpv.js`), or in shell end it with `trap 'kill $pid' EXIT`.
 - Tests must not print: stub `console.log`/`console.error` with sinon (restored in `afterEach`) when a test
   drives a command that writes output.
 - Semantic versioning in `package.json`, with an annotated `vX.Y.Z` tag per release. Bump once per

@@ -11,6 +11,7 @@ import { RatingCommand } from '../../src/commands/RatingCommand.js';
 import { Daemon, statePath } from '../../src/display/Daemon.js';
 import { loadPlaylist, syncPlaylist, lastMediaKey, removeFailedEntry, queueMatching, reshuffleOnWrap } from '../../src/display/Playlist.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { startMpv } from '../helpers/mpv.js';
 
 function hasCommand(name) {
   try {
@@ -59,10 +60,7 @@ describe('mpv integration', function () {
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-int-'));
     const socketPath = path.join(tempDir, 'mpv.sock');
-    mpv = spawn('mpv', [
-      '--no-config', '--idle=yes', '--vo=null', '--ao=null', '--no-audio', '--loop-playlist=inf',
-      `--input-ipc-server=${socketPath}`
-    ], { stdio: 'ignore' });
+    mpv = startMpv(socketPath, ['--loop-playlist=inf']);
     client = await MpvClient.connect(socketPath, { attempts: 50, delay: 100 });
 
     db = new DatabaseManager();
