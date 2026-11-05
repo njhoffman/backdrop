@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.5] - 2026-11-06
+
+### Changed
+
+- The sleeve contract now records that backdrop resizes a `--managed` window once it is found (sleeve must take that) and that `background: auto` reaches sleeve as plain `#rrggbbaa` colors.
+
 ## [2.50.3] - 2026-11-05
 
 ### Fixed

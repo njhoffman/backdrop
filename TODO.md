@@ -290,6 +290,8 @@ Reviewed: 2026-11-02
 - [x] **Lighter display under system load.** (p2) [feature] A `load` section: over `image_above` videos become images, over `off_above` the wallpaper and visualizer stop,
       with `sustain`, `resume_ratio` and `resume_after` against flapping (`src/display/LoadGovernor.js`, `src/display/daemon/LoadShedding.js`, `docs/specs/main.md`).
 
+- [ ] **The rofi integration tests are flaky under load.** (p3) [test] `test/commands/menu.integration.test.js` failed twice on 2026-11-05 at a load around 9, with no code changed: `rofi did not open a window` in a full run, and
+      `draws the real main and step menus` alone with entries out of order (`[14, 1, 0, 1]`, expected `[14, 0, 1, 22, 1, 20]`). It passed 2 of 3 alone and passes on CI. Likely a fixed wait in `waitForRofi` and in reading what rofi drew.
 - [x] **The restart-limit test is flaky under load.** (p3) [test] `Daemon restarts gives up after repeated exits within a minute` waits a fixed 10 ms after each exit
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.

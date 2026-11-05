@@ -2,8 +2,7 @@
 
 What sleeve (`~/git/sleeve`, synced lyrics) promises so backdrop can run it as a visualizer, the way it runs GLava.
 Agreed 2026-11-04. Requires sleeve 0.33.0 or later (`sleeve --version`), and 0.36.0 for the wallpaper layer below. Changing what is below is a breaking change for
-the other side: add freely, but change or remove only with a version note in both CHANGELOGs. What backdrop still has
-to build is in `TODO.md`, section 9.
+the other side: add freely, but change or remove only with a version note in both CHANGELOGs.
 
 This is separate from the overlay contract in `visualizer.md`, where sleeve starts its own window and backdrop only
 stacks it. Use one or the other: an instance with this engine, or sleeve's own overlay (`sleeve-shell.service`), not both.
@@ -146,6 +145,14 @@ the window: `33%x100%+0+0` is the left third, `67%x100%+33%+0` the rest. The def
 - `cover` is the blurred treatment a window shows, not the plain picture, and follows the user's `--art-*` settings in their `style.css`,
   `--art-animation: sleeve-art-flow` and its `--flow-*` included. backdrop has no options for those; they are the user's.
 - Without `--background`, the window is transparent under `--managed`, so nothing changes for an existing instance.
+- backdrop's `background: auto` stays on backdrop's side: it works out a veil from the wallpaper (`veilBackground` in `palette.js`) and only ever sends
+  `#rrggbbaa`, with `#0a0f1a99` until it knows the wallpaper. sleeve gets a new one over `sleeve ctl display` for most new wallpapers, so changing it has to stay cheap.
+
+### Size
+
+A window the size of its monitor comes out 1 px short each way (1919x1079 from `--geometry 1920x1080+0+0`; see sleeve's `TODO.md`), which leaves a line of unveiled wallpaper at
+the right and bottom. Since backdrop 2.50.1 the window is resized with `xdotool windowsize` once it is found, on every start, so sleeve must take a resize of a `--managed` window and
+lay out its areas again. Tell backdrop when this is fixed in sleeve, so the workaround can go (`resizes` in `SleeveVisualizer.js`).
 
 ### Stacking
 
@@ -157,7 +164,7 @@ hide every other window until it is placed, so `--map-below` maps it at the bott
 
 The stdin line is unchanged, and sleeve works out the rest. With a transparent background it should describe what shows behind the window, so
 sample the strip under `--lyrics-area`, not the whole window, or a left third gets colors from the entire monitor. An opaque background ignores
-the line. A see-through one blends over it (unit tested; not yet seen over a real wallpaper). GLava above sleeve does not affect this.
+the line. A see-through one blends over it (unit tested, and readable over a real veiled wallpaper on 2026-11-05, one wallpaper so far). GLava above sleeve does not affect this.
 
 ### Cost
 
@@ -206,7 +213,7 @@ visualizer:
       engine: sleeve
       opacity: 1
       placement: {anchor: fill}
-      sleeve: {lyrics_area: 33%x100%+0+0, background: '#10203099'}
+      sleeve: {lyrics_area: 33%x100%+0+0, background: '#10203099'}   # or auto: a veil worked out from each wallpaper
     - name: bars
       module: bars
       placement: {anchor: bottom, width: 100%, height: 25%}
