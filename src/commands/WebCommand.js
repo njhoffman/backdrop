@@ -3,6 +3,7 @@ import { webPath } from '../display/runtimeFiles.js';
 import { DisplayService } from '../services/DisplayService.js';
 import { LibraryService } from '../services/LibraryService.js';
 import { RatingService } from '../services/RatingService.js';
+import { VisualizerService } from '../services/VisualizerService.js';
 import { out } from '../utils/output.js';
 import { createToken } from '../web/auth.js';
 import { WebServer } from '../web/server.js';
@@ -58,7 +59,9 @@ export class WebCommand {
     const display = new DisplayService({ config: this.config, database: this.database, logger: this.logger });
     const rating = new RatingService({ config: this.config, database: this.database, logger: this.logger, control: display.control });
     const library = new LibraryService({ config: this.config, database: this.database, logger: this.logger, control: display.control, rating });
-    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, library, token, version: this.version });
+    // Reads the visualizer section again on each request, so presets saved since the start and hand edits show
+    const visualizer = new VisualizerService({ config: this.config, logger: this.logger, control: display.control, reload: true });
+    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, library, visualizer, token, version: this.version });
     const port = await server.listen(wanted);
     await fs.ensureDir(this.config.get().paths.runtime, 0o700);
     await fs.writeJson(this.infoPath, { pid: process.pid, port, token }, { mode: 0o600 });

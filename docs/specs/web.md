@@ -1,6 +1,6 @@
 # Web interface
 
-Status: **agreed design** (2026-11-07); steps 1 to 3 of "Order of work" are built (2.53.2, 2.54.0, 2.55.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
+Status: **agreed design** (2026-11-07); steps 1 to 4 of "Order of work" are built (2.53.2, 2.54.0, 2.55.0, 2.56.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
 vanilla JS with no build; D4, server-sent events; D5 A, a token with Host and Origin checks; D6, services first;
 and the first version's scope under "Decisions on scope". The roadmap items are in `TODO.md`, "10. Web interface".
 
@@ -135,9 +135,11 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 | `PATCH /api/media/:id` *built* | `{ speed?, dim?, bounce? }` as the commands take them; applied at once on a monitor playing the item, stored either way: `{ item }` |
 | `POST /api/media/:id/play` *built* | `{ monitor }`: plays the item there now when that monitor's playlist has it (its mode and size decide), as `next` with it as the only match |
 | `GET /thumbs/:id.jpg` *built* | The cached thumbnail, made on demand (`thumbnailFor`, one at a time, at the lowest priority) |
-| `GET /api/visualizer` | Instances, their live looks and the presets (`presetsOf`) |
-| `POST /api/visualizer/live` | A `visualizer_set` control request; `DELETE` resets |
-| `POST /api/visualizer/presets/:name` | Saves the live look as a preset (`lookAsPreset`, `setInFile`) |
+| `GET /api/visualizer` *built* | `VisualizerService.describe`: `{ running, enabled, error, wallpaper, preset, presets: [{ name, source }], changed, instances: [{ name, look, changed, sent }], choices }`, the config's preset while the daemon is stopped |
+| `POST /api/visualizer/enabled` *built* | `{ on }`: turns the visualizer on or off |
+| `POST /api/visualizer/live` *built* | `{ instance, changes }`: one instance's change as visualizer settings (`{ opacity: 0.6 }`, `{ placement: { anchor: 'top' } }`), checked against the section, kept until the daemon restarts (a `visualizer_set` control request); `DELETE` drops every change |
+| `POST /api/visualizer/preset` *built* | `{ name }`, null for none |
+| `POST /api/visualizer/presets/:name` *built* | Saves the look with its changes as `visualizer.presets.<name>` (`setInFile`, which keeps comments) and switches to it; an existing name is a 409 unless `{ replace: true }` |
 | `GET /api/config` / `PATCH /api/config` | The config with each key's default and whether a change applies live (`LIVE_SETTINGS`); a patch is checked with `validateConfig` before `setInFile` writes it |
 | `GET /api/stats`, `GET /api/doctor` | What `stats` prints (it has no `--json` yet; the service from D6 gives it one) and `doctor --json` |
 

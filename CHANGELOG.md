@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.56.0] - 2026-11-07
+
+### Added
+
+- The web interface's Visualizer page (`/visualizer`): turn the visualizer on or off, pick a preset, and change each instance's module (or sleeve's now-playing view, panel and lyrics alignment), amplify, opacity, position and colors, from the wallpaper or fixed with color pickers and swatches. Changes apply at once and last until the daemon restarts, as the menu's do; Reset drops them and "Save as preset" writes the look into the config, keeping its comments.
+
+### Changed
+
+- The rofi menu's visualizer changes, presets and saving go through the same code as the web page, with the same checks.
+
 ## [2.55.0] - 2026-11-07
 
 ### Added

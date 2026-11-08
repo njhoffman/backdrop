@@ -133,14 +133,33 @@ async function startXvfb(attempts = 3) {
     return child;
   };
 
+  // Starts a view and waits for its rofi window. Under load a single rofi has failed to connect to a display that the
+  // runs before and after it used (\`Failed to open display\`, 2026-11-07), so that one failure starts it again, up to
+  // three times; the failed run is dropped from runs, so its stderr and exit code do not count. Resolves to
+  // { result }, the view's promise, which settles only once rofi closes.
+  async function startShown(start) {
+    for (let attempt = 1; ; attempt++) {
+      const result = start();
+      try {
+        await waitForRofi();
+        return { result };
+      } catch (error) {
+        const failed = runs.at(-1);
+        if (attempt >= 3 || !/Failed to open display/.test(failed?.stderr ?? '')) throw error;
+        await result.catch(() => {});
+        runs.pop();
+        await sleep(200);
+      }
+    }
+  }
+
   // A view that shows each menu with real rofi and presses the next of keys (xdotool key names) once its
   // window is up, after a screenshot
   function driven(makeView, keys) {
     const view = makeView([], spawnRofi);
     const queue = [...keys];
     return async menu => {
-      const result = view(menu);
-      await waitForRofi();
+      const { result } = await startShown(() => view(menu));
       await sleep(300);
       const shot = path.join(dir, `${runs.length}-${(menu.prompt ?? 'menu').replace(/\W+/g, '_')}.png`);
       execFileSync('import', ['-window', 'root', shot], { env });

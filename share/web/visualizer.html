@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="backdrop-token" content="{{token}}">
+  <title>backdrop visualizer</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/visualizer.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> backdrop</h1>
+    <nav class="tabs" aria-label="Pages"><a href="/">Now playing</a><a href="/library">Library</a><a href="/visualizer" aria-current="page">Visualizer</a></nav>
+    <span id="daemon" class="pill" aria-live="polite">connecting</span>
+    <span id="version" class="muted"></span>
+  </header>
+
+  <main>
+    <section id="stopped" class="notice" hidden>
+      <p>The daemon is not running; changes to the visualizer need it. The presets below are the config's.</p>
+    </section>
+    <section id="error" class="notice error-notice" hidden><p></p></section>
+
+    <section class="panel controls" aria-label="Visualizer">
+      <label class="switch"><input type="checkbox" id="enabled"> Visualizer on</label>
+      <label class="field"><span class="label">Preset</span>
+        <select id="preset" name="preset"></select>
+      </label>
+      <button type="button" id="reset" title="Drop the changes made here and in the menu">Reset changes</button>
+      <form id="save" class="field" autocomplete="off">
+        <span class="label">Save look</span>
+        <input name="name" size="12" placeholder="name" pattern="[A-Za-z0-9_\-]+" title="Letters, digits, - and _" required aria-label="Preset name">
+        <button type="submit">Save as preset</button>
+      </form>
+      <span id="changed" class="muted"></span>
+    </section>
+
+    <section id="instances" class="monitors" aria-label="Instances"></section>
+  </main>
+
+  <template id="instance-card">
+    <article class="panel card instance">
+      <header class="card-head">
+        <h2 class="instance-name"></h2>
+        <span class="instance-engine muted"></span>
+        <span class="instance-changed pill" hidden>changed</span>
+      </header>
+      <div class="settings">
+        <label class="glava-only">Module <select name="module" data-setting="module"></select></label>
+        <label class="glava-only">Amplify <input type="number" name="amplify" min="10" step="10" data-setting="amplify"></label>
+        <label class="sleeve-only">Now <select name="now" data-setting="now"></select></label>
+        <label class="sleeve-only">Panel <select name="now_position" data-setting="now_position"></select></label>
+        <label class="sleeve-only">Lyrics <select name="lyrics_align" data-setting="lyrics_align"></select></label>
+        <label>Opacity <input type="range" name="opacity" min="0.05" max="1" step="0.05" data-setting="opacity"> <output class="opacity-value"></output></label>
+        <label>Position <select name="anchor" data-setting="anchor"></select></label>
+      </div>
+      <fieldset class="colors">
+        <legend>Colors</legend>
+        <label class="switch"><input type="radio" value="config" data-setting="source"> Fixed</label>
+        <label class="switch"><input type="radio" value="wallpaper" data-setting="source"> From the wallpaper</label>
+        <select name="pick" data-setting="pick" aria-label="How colors are picked from the wallpaper"></select>
+        <div class="fixed-colors">
+          <span class="color-inputs"></span>
+          <span class="swatches" role="group" aria-label="Swatches"></span>
+        </div>
+        <p class="sent muted"></p>
+      </fieldset>
+    </article>
+  </template>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

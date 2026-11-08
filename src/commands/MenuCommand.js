@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { DisplayService } from '../services/DisplayService.js';
 import { RatingService } from '../services/RatingService.js';
+import { PRESET_NAME, SWATCHES, VisualizerService } from '../services/VisualizerService.js';
 import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
 import { bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
@@ -14,7 +15,7 @@ import { formatAdjustments } from '../utils/mediaView.js';
 import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
-import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, lookAsPreset, presetsOf, visualizerSettings } from '../visualizer/settings.js';
+import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, presetsOf } from '../visualizer/settings.js';
 import { readState } from '../display/Daemon.js';
 
 export { MENU_STYLES } from '../config/schema.js';
@@ -47,12 +48,6 @@ const VISUALIZER_ICONS = {
 };
 const OPACITIES = ['0.2', '0.4', '0.6', '0.8', '1', '-0.1', '+0.1'];
 const AMPLIFIES = ['100', '150', '200', '300', '400', '500', '-50', '+50'];
-// Fixed gradients for the swatches, base color first (bars run from the first to the second)
-const SWATCHES = {
-  ocean: ['#003a5c', '#33aacc'], ember: ['#3d0c02', '#ff7a33'], forest: ['#0b3d20', '#7ad151'],
-  violet: ['#2a0a4a', '#b07cff'], gold: ['#4a3200', '#ffd166'], mono: ['#202020', '#e0e0e0']
-};
-const PRESET_NAME = /^[A-Za-z0-9_-]+$/;
 
 // A step value applied to current: an absolute value, or +/- a step, kept within min and max
 export function stepValue(value, current, { min = -Infinity, max = Infinity, digits = 2 } = {}) {
@@ -199,6 +194,12 @@ export class MenuCommand {
 
   get control() {
     return this.display.control;
+  }
+
+  // Made on first use, from the display's control and the injected sendControl
+  get visualizer() {
+    this.visualizerService ??= new VisualizerService({ config: this.config, logger: this.logger, control: this.control, send: this.sendControl });
+    return this.visualizerService;
   }
 
   style(requested) {
@@ -507,26 +508,14 @@ export class MenuCommand {
 
   // Sends a control request to the daemon and waits for it; a visualizer_set the daemon refused shows as an error
   async sendVisualizer(state, change) {
-    const runtime = this.config.get().paths.runtime;
-    const current = await this.sendControl(runtime, state, change, { logfile: this.config.get().paths.logfile });
-    if (change.visualizer_set && current) {
-      const { instance, changes } = change.visualizer_set;
-      const applied = current.visualizer?.live?.[instance];
-      if (!applied || !Object.keys(changes).every(key => applied[key] !== undefined)) {
-        throw new Error(`The daemon refused the change; see ${this.config.get().paths.logfile}`);
-      }
-    }
+    await this.visualizer.send(state, change);
     return {};
   }
 
   // Checks one instance's change against the section, preset and earlier changes, then sends it
   async changeVisualizer(instance, changes) {
-    const state = await this.control.state();
-    const visualizer = state.visualizer ?? {};
-    const live = { ...(visualizer.live ?? {}) };
-    live[instance] = { ...(live[instance] ?? {}), ...changes };
-    visualizerSettings(this.config.get().visualizer, { preset: visualizer.preset ?? null, live });
-    return this.sendVisualizer(state, { visualizer_set: { instance, changes } });
+    await this.visualizer.change(instance, changes);
+    return {};
   }
 
   // One choice from values (modules, anchors), applied, then back to the visualizer menu
@@ -596,9 +585,8 @@ export class MenuCommand {
     if (picked === null) return {};
     if (picked.key === QUIT_KEY) return { quit: true };
     if (values[picked] === active) return {};
-    // The section and preset are checked here, before the daemon sees them
-    visualizerSettings(section, { preset: values[picked], live: state.visualizer?.live ?? {} });
-    return this.sendVisualizer(state, { preset: values[picked] });
+    await this.visualizer.setPreset(values[picked]);
+    return {};
   }
 
   // Writes the active preset with the menu's changes into the config as a preset, keeping the file's other
@@ -607,17 +595,12 @@ export class MenuCommand {
     const name = await this.ask('preset name', escapeMarkup(`Save the current look as visualizer.presets.<name> (letters, digits, - and _)${options.preset ? `; now: ${options.preset}` : ''}`));
     if (name === null) return {};
     if (!PRESET_NAME.test(name)) throw new Error(`A preset name is letters, digits, - and _, not "${name}"`);
-    const exists = await this.config.fileHas(['visualizer', 'presets', name]) || Boolean(presetsOf(section)[name]);
-    if (exists) {
+    if (await this.visualizer.presetExists(name)) {
       const picked = await this.show({ prompt: 'replace?', title: `replace preset ${name}?`, message: escapeMarkup(`A preset named ${name} exists`),
         columns: 2, entries: [{ icon: VISUALIZER_ICONS.save, label: 'replace' }, { icon: VISUALIZER_ICONS.reset, label: 'keep it' }], keys: [QUIT_KEY] });
       if (picked !== 0) return picked?.key === QUIT_KEY ? { quit: true } : {};
     }
-    const look = lookAsPreset(section, options);
-    // Checked as the daemon will read it
-    visualizerSettings({ ...section, presets: { ...(section.presets ?? {}), [name]: look } }, { preset: name });
-    await this.config.setInFile(['visualizer', 'presets', name], look);
-    await this.sendVisualizer(state, { reload_config: true, visualizer_reset: true, preset: name });
+    await this.visualizer.savePreset(name, { replace: true });
     return {};
   }
 }

@@ -33,7 +33,7 @@ export class HttpError extends Error {
 
 export class WebServer {
   constructor({
-    config, database, logger, display, rating, library, token, version = null,
+    config, database, logger, display, rating, library, visualizer, token, version = null,
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     staticDir = STATIC_DIR, hub
   }) {
@@ -43,6 +43,7 @@ export class WebServer {
     this.display = display;
     this.rating = rating;
     this.library = library;
+    this.visualizer = visualizer;
     this.token = token;
     this.version = version;
     this.thumbnail = limited(thumbnail, THUMBNAIL_CONCURRENCY);
@@ -106,6 +107,37 @@ export class WebServer {
     return [
       ['GET', /^\/$/, (request, match, response) => this.page(response, 'index.html')],
       ['GET', /^\/library$/, (request, match, response) => this.page(response, 'library.html')],
+      ['GET', /^\/visualizer$/, (request, match, response) => this.page(response, 'visualizer.html')],
+      ['GET', /^\/api\/visualizer$/, () => this.visualizer.describe()],
+      ['POST', /^\/api\/visualizer\/enabled$/, async request => {
+        const { on } = await this.body(request);
+        if (typeof on !== 'boolean') throw new HttpError(400, 'Give on as true or false');
+        await this.visualizer.setEnabled(on);
+        return this.visualizerChanged();
+      }],
+      // One instance's change until the daemon restarts: { instance, changes } with changes as visualizer settings
+      ['POST', /^\/api\/visualizer\/live$/, async request => {
+        const { instance, changes } = await this.body(request);
+        if (changes === null || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length) {
+          throw new HttpError(400, 'Give changes as a mapping of visualizer settings');
+        }
+        await this.visualizer.change(this.text(instance, 'instance'), changes);
+        return this.visualizerChanged();
+      }],
+      ['DELETE', /^\/api\/visualizer\/live$/, async () => {
+        await this.visualizer.reset();
+        return this.visualizerChanged();
+      }],
+      ['POST', /^\/api\/visualizer\/preset$/, async request => {
+        const { name } = await this.body(request);
+        await this.visualizer.setPreset(name === null || name === '' ? null : this.text(name, 'name'));
+        return this.visualizerChanged();
+      }],
+      ['POST', /^\/api\/visualizer\/presets\/([\w-]+)$/, async (request, match) => {
+        const { replace = false } = await this.body(request);
+        await this.visualizer.savePreset(match[1], { replace: Boolean(replace) });
+        return this.visualizerChanged();
+      }],
       ['GET', /^\/static\/([\w.-]+)$/, (request, match, response) => this.staticFile(response, match[1])],
       ['GET', /^\/thumbs\/(\d+)\.jpg$/, (request, match, response) => this.thumbnailFile(response, Number(match[1]))],
       ['GET', /^\/api\/state$/, () => this.snapshot()],
@@ -203,6 +235,11 @@ export class WebServer {
       this.hub.changed({ state: true });
     }
     this.json(response, 200, result ?? {});
+  }
+
+  // A visualizer change's answer: the page's view of the visualizer now, and a snapshot to every page
+  async visualizerChanged() {
+    return { changed: true, visualizer: await this.visualizer.describe() };
   }
 
   playing(playing) {

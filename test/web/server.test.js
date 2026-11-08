@@ -10,7 +10,7 @@ import { makeConfig, silentLogger } from '../helpers/fakes.js';
 // A real server on a free port with stand-ins for the services and the event hub, so the run stays offline
 describe('WebServer', () => {
   const token = 'test-token-0123456789';
-  let dir, db, config, server, base, display, rating, library, hub, thumbs, id;
+  let dir, db, config, server, base, display, rating, library, visualizer, hub, thumbs, id;
 
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
   const cookie = `backdrop_token=${token}`;
@@ -25,6 +25,7 @@ describe('WebServer', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-web-'));
     await fs.outputFile(path.join(dir, 'static', 'index.html'), '<meta content="{{token}}">');
     await fs.outputFile(path.join(dir, 'static', 'library.html'), '<p>library {{token}}</p>');
+    await fs.outputFile(path.join(dir, 'static', 'visualizer.html'), '<p>visualizer</p>');
     await fs.outputFile(path.join(dir, 'static', 'app.js'), 'export {};');
     await fs.outputFile(path.join(dir, 'thumb.jpg'), 'jpeg');
     config = makeConfig({ 'paths.runtime': dir, 'display.video_loop': 'bounce' });
@@ -56,13 +57,22 @@ describe('WebServer', () => {
       adjust: sinon.stub().resolves({ id: 5, dim: 10 }),
       play: sinon.stub().resolves(playing)
     };
+    visualizer = {
+      describe: sinon.stub().resolves({ running: true, preset: null }),
+      setEnabled: sinon.stub().resolves(), change: sinon.stub().resolves(), reset: sinon.stub().resolves(),
+      setPreset: sinon.stub().resolves(),
+      savePreset: sinon.stub().callsFake(async (name, { replace }) => {
+        if (!replace) throw Object.assign(new Error(`A preset named ${name} exists`), { status: 409 });
+        return { name };
+      })
+    };
     hub = { start: sinon.stub().resolves(), stop: sinon.stub().resolves(), changed: sinon.spy(), add: sinon.stub().callsFake(async response => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end('event: state\ndata: {}\n\n');
     }) };
     thumbs = [];
     server = new WebServer({
-      config, database: db, logger: silentLogger, display, rating, library, token, version: '9.9.9', hub,
+      config, database: db, logger: silentLogger, display, rating, library, visualizer, token, version: '9.9.9', hub,
       staticDir: path.join(dir, 'static'),
       thumbnail: async media => { thumbs.push(media.id); return path.join(dir, 'thumb.jpg'); }
     });
@@ -234,6 +244,38 @@ describe('WebServer', () => {
         await limitedServer.close();
       }
       expect(most).to.equal(2);
+    });
+  });
+
+  describe('visualizer', () => {
+    it('serves the page and the view', async () => {
+      expect(await (await get('/visualizer')).text()).to.equal('<p>visualizer</p>');
+      expect(await (await get('/api/visualizer')).json()).to.deep.equal({ running: true, preset: null });
+    });
+
+    it('turns it on and off, changes an instance live, resets, and answers with the view', async () => {
+      expect(await (await post('/api/visualizer/enabled', { on: false })).json()).to.deep.equal({ visualizer: { running: true, preset: null } });
+      expect(visualizer.setEnabled.firstCall.args).to.deep.equal([false]);
+      expect((await post('/api/visualizer/enabled', { on: 'no' })).status).to.equal(400);
+      await post('/api/visualizer/live', { instance: 'main', changes: { opacity: 0.5 } });
+      expect(visualizer.change.firstCall.args).to.deep.equal(['main', { opacity: 0.5 }]);
+      expect((await post('/api/visualizer/live', { instance: 'main', changes: {} })).status).to.equal(400);
+      expect((await post('/api/visualizer/live', { changes: { opacity: 1 } })).status).to.equal(400);
+      const reset = await fetch(`${base}/api/visualizer/live`, { method: 'DELETE', headers: { cookie, 'x-backdrop-token': token } });
+      expect(reset.status).to.equal(200);
+      expect(visualizer.reset.calledOnce).to.equal(true);
+      expect(hub.changed.callCount).to.equal(3);
+    });
+
+    it('switches presets, none included, and saves one, answering 409 for an existing name', async () => {
+      await post('/api/visualizer/preset', { name: 'ring' });
+      await post('/api/visualizer/preset', { name: null });
+      expect(visualizer.setPreset.args).to.deep.equal([['ring'], [null]]);
+      const taken = await post('/api/visualizer/presets/calm', {});
+      expect(taken.status).to.equal(409);
+      expect(await taken.json()).to.deep.equal({ error: 'A preset named calm exists' });
+      expect((await post('/api/visualizer/presets/calm', { replace: true })).status).to.equal(200);
+      expect((await post('/api/visualizer/presets/bad%20name', {})).status).to.equal(404);
     });
   });
 
