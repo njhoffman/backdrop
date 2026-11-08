@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.64.2] - 2026-11-08
+
+### Fixed
+
+- The first smoothed copy after the daemon starts is made at the size that covers the monitors, like the rest, instead of the video's own size (up to four times the pixels and the RIFE time for a 4K video on a 1080p screen).
+
 ## [2.64.1] - 2026-11-08
 
 ### Fixed

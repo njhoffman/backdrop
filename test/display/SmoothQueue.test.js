@@ -72,6 +72,20 @@ describe('Smooth (daemon)', () => {
     expect(swapped.map(ids => ids.at(-1))).to.deep.equal([high.id, low.id]);
   });
 
+  it('starts no job while no monitor is known, so no copy is made at the video\'s own size', async () => {
+    const media = await video(1);
+    const monitors = daemon.monitors;
+    daemon.monitors = new Map();
+    smooth.want(media);
+    await settle();
+    expect(made).to.deep.equal([]);
+    expect([...smooth.queue.keys()]).to.deep.equal([media.id]);
+    daemon.monitors = monitors;
+    smooth.kick();
+    await settle();
+    expect(made).to.deep.equal([{ id: media.id, size: { width: 1920, height: 1080 } }]);
+  });
+
   it('carries on with an item a stopped job left chunks for before the rest of the backlog', async () => {
     const high = await video(1);
     const started = await video(2);

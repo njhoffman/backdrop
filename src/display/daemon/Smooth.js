@@ -101,8 +101,11 @@ export class Smooth {
     }
   }
 
+  // Starts the next job. None while no monitor is known (at start, or all unplugged): its size would fall back to the
+  // video's own, up to four times the pixels a 1080p screen shows; the next load starts it again.
   kick() {
     if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.enabled) return;
+    if (!this.daemon.monitors.size) return;
     const [id, queued] = this.queue.entries().next().value;
     this.queue.delete(id);
     // The item as it is now: its speed may have changed while it waited

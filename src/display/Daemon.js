@@ -251,7 +251,6 @@ export class Daemon {
     await this.screensaver.begin();
     await this.load.begin();
     await this.bounce.begin().catch(error => this.logger.warn('Failed to clear old bounce work', { error: error.message }));
-    await this.smoothing.begin().catch(error => this.logger.warn('Failed to start smoothing', { error: error.message }));
 
     try {
       // Before the wallpapers, since the look in use can do without them
@@ -264,6 +263,8 @@ export class Daemon {
       await this.stop();
       throw error;
     }
+    // After the monitors, since a copy is made at the size that covers them
+    await this.smoothing.begin().catch(error => this.logger.warn('Failed to start smoothing', { error: error.message }));
 
     await this.visualizers.sync();
     if (!this.wallpaper && !this.visualizers.active) {
