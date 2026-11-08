@@ -95,6 +95,11 @@ export class MpvClient extends EventEmitter {
   }
 
   command(...command) {
+    return this.send(command);
+  }
+
+  // One command with its own timeout, for a caller that must not wait as long as a load may take
+  send(command, { timeout = this.timeout } = {}) {
     if (!this.socket) {
       return Promise.reject(new Error('mpv connection is not open'));
     }
@@ -103,16 +108,16 @@ export class MpvClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
-        reject(new Error(`mpv ${command[0]} timed out after ${this.timeout}ms`));
-      }, this.timeout);
+        reject(new Error(`mpv ${command[0]} timed out after ${timeout}ms`));
+      }, timeout);
 
       this.pending.set(requestId, { resolve, reject, timer, command });
       this.socket.write(`${JSON.stringify({ command, request_id: requestId })}\n`);
     });
   }
 
-  getProperty(name) {
-    return this.command('get_property', name);
+  getProperty(name, { timeout } = {}) {
+    return timeout === undefined ? this.command('get_property', name) : this.send(['get_property', name], { timeout });
   }
 
   setProperty(name, value) {

@@ -127,7 +127,10 @@ describe('DoctorCommand', () => {
       expect(byName(await doctor().run(), 'bounce cache')).to.equal(undefined);
       await fs.outputFile(path.join(dir, '1.mp4'), Buffer.alloc(2048));
       config.set('display.bounce_cache_gb', 1);
-      expect(byName(await doctor().run(), 'bounce cache')).to.include({ status: 'ok', detail: '1 reversed copy, 2.0 KB of 1.0 GB' });
+      db.setSetting('bounce_encodes', { [new Date().toISOString().slice(0, 10)]: { count: 3, seconds: 90 } });
+      expect(byName(await doctor().run(), 'bounce cache')).to.include({
+        status: 'ok', detail: '1 reversed copy, 2.0 KB of 1.0 GB; 3 encoded today (1.5 min), 0 yesterday'
+      });
       config.set('display.bounce_cache_gb', 1 / 1024 ** 2);
       expect(byName(await doctor().run(), 'bounce cache').status).to.equal('warn');
       config.set('display.bounce_cache_gb', 0);

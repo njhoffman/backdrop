@@ -606,7 +606,9 @@ export class Daemon {
     screen.media = media;
     // A bouncing video plays as its file and the reversed copy together (src/display/bounce.js)
     screen.bouncing = isBounceUrl(filename);
-    screen.loadedAt = this.now();
+    // A switch to the bounce at the end of a pass (daemon/Bounce.js) goes on counting from the replaced entry's load
+    const carried = this.bounce.carried(screen, media);
+    screen.loadedAt = carried ?? this.now();
     try {
       await screen.client.setProperty('contrast', contrastFor(this.shownDim(media)));
     } catch (error) {
@@ -617,7 +619,7 @@ export class Daemon {
     } catch (error) {
       this.logger.warn('Failed to reshuffle playlist', { monitor: screen.monitor.name, error: error.message });
     }
-    await this.applyLimits(screen, media);
+    await this.applyLimits(screen, media, carried === null ? {} : { elapsed: (this.now() - carried) / 1000, position: 0 });
     if (!media) {
       this.logger.warn('Playing file not in library', { monitor: screen.monitor.name, path: filePath });
       return;

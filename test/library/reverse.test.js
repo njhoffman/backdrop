@@ -4,9 +4,10 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  chunkSeconds, chunkStarts, listReversed, removeReversed, removeStaleWork, reverseVideo, reversedPath, reversedReady, run
+  chunkSeconds, chunkStarts, encodeCounts, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { silentLogger } from '../helpers/fakes.js';
+import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 
 function hasTool(name) {
   try {
@@ -147,6 +148,24 @@ describe('reverse', () => {
       await removeStaleWork(dir);
       expect(await fs.readdir(dir)).to.deep.equal(['4.mp4']);
       await removeStaleWork(path.join(dir, 'missing'));
+    });
+  });
+
+  describe('encode counts', () => {
+    it('adds up each day\'s encodes and keeps the last week', () => {
+      const db = new DatabaseManager();
+      db.initialize(':memory:');
+      try {
+        const day = n => new Date(Date.UTC(2026, 10, n, 12));
+        recordEncode(db, day(1), 10);
+        for (let n = 2; n <= 9; n++) recordEncode(db, day(n), 5);
+        recordEncode(db, day(9), 2.25);
+        expect(encodeCounts(db, day(9))).to.deep.equal({ today: { count: 2, seconds: 7.3 }, yesterday: { count: 1, seconds: 5 } });
+        expect(Object.keys(db.getSetting('bounce_encodes'))).to.have.length(7);
+        expect(encodeCounts(db, day(20))).to.deep.equal({ today: { count: 0, seconds: 0 }, yesterday: { count: 0, seconds: 0 } });
+      } finally {
+        db.close();
+      }
     });
   });
 

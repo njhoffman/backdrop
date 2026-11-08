@@ -7,7 +7,7 @@ import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
-import { listReversed } from '../library/reverse.js';
+import { encodeCounts, listReversed } from '../library/reverse.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
@@ -187,7 +187,11 @@ export class DoctorCommand {
     const of = limit ? ` of ${formatBytes(limit)}` : ' (no limit)';
     // The daemon prunes after each encode, so being well over means it is not running or cannot delete
     const over = limit && used > limit * 1.1;
-    add('library', 'bounce cache', over ? 'warn' : 'ok', `${copies.length} reversed ${copies.length === 1 ? 'copy' : 'copies'}, ${formatBytes(used)}${of}`,
+    // How often videos are reversed: with a cache far smaller than the videos, about one encode per play
+    const { today, yesterday } = encodeCounts(this.database);
+    const minutes = seconds => `${Math.round(seconds / 6) / 10} min`;
+    const encodes = `; ${today.count} encoded today (${minutes(today.seconds)}), ${yesterday.count} yesterday`;
+    add('library', 'bounce cache', over ? 'warn' : 'ok', `${copies.length} reversed ${copies.length === 1 ? 'copy' : 'copies'}, ${formatBytes(used)}${of}${encodes}`,
       over ? `the daemon prunes it to display.bounce_cache_gb; delete ${displayPath(paths.bounce)} to clear it` : undefined);
   }
 

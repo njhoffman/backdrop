@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.57.0] - 2026-11-07
+
+### Added
+
+- A video that is playing when its reversed copy is ready switches to the bounce where it would loop anyway, rather than at its next play, when the video duration leaves room for a whole bounce.
+- `backdrop doctor` shows how many videos were reversed today and yesterday, next to the bounce cache's size.
+
+### Changed
+
+- The bounce cache keeps the copies of higher-rated videos, then the oldest copies, deleting the newest first. Deleting the least recently played removed every copy just before its video came round again, so nearly every play needed an encode; now a steady set of copies is used every pass.
+
+### Fixed
+
+- A hung mpv is restarted about 35 seconds after the first failed health check again, rather than 45: the check waits 5 seconds for mpv instead of the 15 a loading file gets.
+- A video could be reversed twice when it was asked for again while its first encode ran.
+
 ## [2.56.0] - 2026-11-07
 
 ### Added

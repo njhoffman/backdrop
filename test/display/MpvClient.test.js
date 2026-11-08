@@ -113,6 +113,16 @@ describe('MpvClient', () => {
     expect(client.pending.size).to.equal(0);
   });
 
+  it('gives one property read its own, shorter timeout', async () => {
+    await serve(() => {});
+    const started = Date.now();
+    let caught;
+    try { await client.getProperty('pid', { timeout: 20 }); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('mpv get_property timed out after 20ms');
+    expect(Date.now() - started).to.be.below(client.timeout);
+    expect(client.pending.size).to.equal(0);
+  });
+
   it('emits events, including split and batched lines', async () => {
     await serve(() => {});
     const events = [];

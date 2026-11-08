@@ -103,6 +103,13 @@ describe('Daemon', () => {
       ]);
       expect(args[args.length - 1]).to.equal('--vo=gpu');
     });
+
+    // 2.50.7: VAAPI first, since CUDA's probe stalled mpv's start past the IPC timeout on the NVIDIA desktop;
+    // auto-safe keeps the other hardware decoders and software decoding after it
+    it('tries VAAPI before the other safe hardware decoders', () => {
+      const { args } = buildCommand({ width: 1920, height: 1080, x: 0, y: 0 }, '/run/backdrop/DP-1.sock', config.get().display);
+      expect(args.filter(arg => arg.startsWith('--hwdec'))).to.deep.equal(['--hwdec=vaapi,auto-safe']);
+    });
   });
 
   describe('readState', () => {
@@ -582,6 +589,31 @@ describe('Daemon', () => {
   });
 
   describe('health checks', () => {
+    it('waits 15 s for mpv on loads but only 5 s on a health check', async () => {
+      const options = [];
+      const daemon = makeDaemon({
+        connect: async (socketPath, connectOptions) => {
+          options.push(connectOptions);
+          const client = new FakeMpvClient();
+          clients.push({ socketPath, client });
+          return client;
+        }
+      });
+      await daemon.start();
+      expect(options[0]).to.include({ timeout: 15000 });
+      const asked = [];
+      const { client } = clients.at(-1);
+      const getProperty = client.getProperty.bind(client);
+      client.getProperty = (name, propertyOptions) => {
+        asked.push([name, propertyOptions]);
+        return getProperty(name);
+      };
+      await daemon.checkHealth();
+      expect(asked[0]).to.deep.equal(['pid', { timeout: 5000 }]);
+      await daemon.stop();
+    });
+
+
     it('kills an mpv that misses two checks in a row, and resets on success', async () => {
       const daemon = makeDaemon();
       await daemon.start();

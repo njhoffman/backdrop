@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -21,6 +22,7 @@ describe('Bounce (daemon)', () => {
     // Each encode waits for the test: finish(true) writes the copy, finish(false) fails it
     daemon = {
       config, database: db, logger: silentLogger, stopping: false, screens: new Map(), load: { level: 'normal' },
+      now: () => Date.now(), videoDuration: () => 600,
       enqueue: task => task(),
       reverse: (media, { signal }) => new Promise(resolve => {
         encodes.push({
@@ -80,6 +82,15 @@ describe('Bounce (daemon)', () => {
     expect(encodes.map(encode => encode.media.id)).to.deep.equal([1, 2]);
     // The playing entry waits for its next play
     expect([...bounce.pending]).to.deep.equal([1]);
+  });
+
+  it('does not queue an item again while it is being reversed', async () => {
+    const media = await video(1);
+    bounce.want(media);
+    bounce.want(media);
+    await encodes[0].finish(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(encodes).to.have.length(1);
   });
 
   it('swaps the next entry for its bounce URL when its copy is ready', async () => {
@@ -152,17 +163,22 @@ describe('Bounce (daemon)', () => {
     }
     const left = async () => (await fs.readdir(path.join(dir, 'bounce'))).sort();
 
-    it('deletes the least recently played copies until the rest fit, never the one playing', async () => {
-      config.set('display.bounce_cache_gb', 3 / 1024);
-      const [oldest, older, playing, newest] = await videos(4);
-      await copy(oldest, MB, 400);
-      await copy(older, MB, 300);
-      await copy(playing, MB, 500);
-      await copy(newest, MB, 100);
+    it('deletes the lowest-rated copies first, newest first among equals, never the one playing or just made', async () => {
+      config.set('display.bounce_cache_gb', 4 / 1024);
+      const [old, newer, playing, newest, rated, made] = await videos(6);
+      await copy(old, MB, 900);
+      await copy(newer, MB, 300);
+      await copy(playing, MB, 100);
+      await copy(newest, MB, 50);
+      await copy(rated, MB, 10);
+      await copy(made, MB, 1);
+      db.addRating(rated.id, 3);
       daemon.screens.set('DP-3', { monitor: { name: 'DP-3' }, media: playing, client: null });
 
-      expect(await bounce.prune()).to.deep.equal([oldest.id]);
-      expect(await left()).to.deep.equal(['2.mp4', '3.mp4', '4.mp4']);
+      // Six copies with room for four: the newest unrated go first; the oldest unrated, the rated one, the one
+      // playing and the one just made stay
+      expect(await bounce.prune(new Set([made.id]))).to.deep.equal([newest.id, newer.id]);
+      expect(await left()).to.deep.equal(['1.mp4', '3.mp4', '5.mp4', '6.mp4']);
       // 0 is no limit
       config.set('display.bounce_cache_gb', 0);
       expect(await bounce.prune()).to.deep.equal([]);
@@ -185,13 +201,65 @@ describe('Bounce (daemon)', () => {
       expect(shown.client.commands).to.deep.include(['loadfile', off.path, 'insert-at', 1]);
     });
 
-    it('marks a copy played when its bounce loads, so it is kept over older ones', async () => {
+    it('counts each encode for doctor', async () => {
       const media = await video(1);
-      const file = await copy(media, MB, 1000);
-      const shown = screen([{ id: 1, filename: bounceUrl(media.path, file), current: true }]);
-      shown.bouncing = true;
-      await bounce.onLoaded(shown, media);
-      expect(Date.now() - (await fs.stat(file)).mtimeMs).to.be.below(5000);
+      bounce.want(media);
+      await encodes[0].finish(true);
+      await encodesReach(1);
+      for (let i = 0; i < 50 && !db.getSetting('bounce_encodes'); i++) await tick();
+      const days = db.getSetting('bounce_encodes');
+      expect(Object.values(days)[0].count).to.equal(1);
+    });
+  });
+
+  describe('switching at the end of a pass', () => {
+    let clock, shown, media, url;
+
+    beforeEach(async () => {
+      clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['setTimeout', 'clearTimeout'] });
+      media = await video(1);
+      await fs.outputFile(path.join(dir, 'bounce', '1.mp4'), 'reversed');
+      url = playUrl(media, config.get());
+      shown = screen([{ id: 1, filename: media.path, current: true, playing: true }, { id: 2, filename: '/m/next.mp4' }]);
+      shown.media = media;
+      shown.loadedAt = Date.now() - 4000;
+      shown.client.properties['time-pos'] = 4;
+    });
+
+    afterEach(() => clock.restore());
+
+    it('swaps the playing entry for its bounce where it would loop, carrying its play time', async () => {
+      await bounce.swap(new Set([1]));
+      expect(bounce.switches.get(shown).mediaId).to.equal(1);
+      // 6 s left of a 10 s video at speed 1
+      shown.client.properties['time-pos'] = 9.95;
+      await clock.tickAsync(5900);
+      expect(shown.client.commands.slice(-3)).to.deep.equal([
+        ['loadfile', url, 'insert-next'], ['playlist-next', 'force'], ['playlist-remove', 0]
+      ]);
+      expect(bounce.carried(shown, media)).to.equal(shown.loadedAt);
+      expect(bounce.carried(shown, media)).to.equal(null);
+    });
+
+    it('waits for the next play when the video duration leaves no room for a whole bounce', async () => {
+      daemon.videoDuration = () => 20;
+      await bounce.swap(new Set([1]));
+      expect(bounce.switches.size).to.equal(0);
+      expect([...bounce.pending]).to.deep.equal([1]);
+    });
+
+    it('plans again when the end moved, and drops the plan when another item loads', async () => {
+      await bounce.swap(new Set([1]));
+      // Slowed down: still 3 s from the end when the timer fires
+      shown.client.properties['time-pos'] = 7;
+      await clock.tickAsync(5900);
+      expect(shown.client.commands.some(command => command[0] === 'loadfile')).to.equal(false);
+      expect(bounce.switches.get(shown).mediaId).to.equal(1);
+      // next: the other entry plays
+      shown.client.properties.playlist = [{ id: 1, filename: media.path }, { id: 2, filename: '/m/next.mp4', current: true, playing: true }];
+      shown.media = null;
+      await bounce.onLoaded(shown, null);
+      expect(bounce.switches.size).to.equal(0);
     });
   });
 

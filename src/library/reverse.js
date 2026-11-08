@@ -127,10 +127,28 @@ export async function listReversed(dir) {
   return copies.sort((a, b) => a.mtimeMs - b.mtimeMs);
 }
 
-// Marks a copy as just played, for the cache limit (least recently played go first). Its time stays newer
-// than the video's, which reversedReady needs.
-export async function touchReversed(media, dir, now = new Date()) {
-  await fs.utimes(reversedPath(media, dir), now, now);
+// Encodes counted per day in the settings table, for `doctor`: { 'YYYY-MM-DD': { count, seconds } }, the last week
+const ENCODES_KEY = 'bounce_encodes';
+const ENCODE_DAYS = 7;
+
+function dayOf(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function recordEncode(database, now, seconds) {
+  const days = database.getSetting(ENCODES_KEY, {});
+  const day = dayOf(now);
+  const today = days[day] ?? { count: 0, seconds: 0 };
+  days[day] = { count: today.count + 1, seconds: Math.round((today.seconds + seconds) * 10) / 10 };
+  const kept = Object.keys(days).sort().slice(-ENCODE_DAYS);
+  database.setSetting(ENCODES_KEY, Object.fromEntries(kept.map(key => [key, days[key]])));
+}
+
+// { today, yesterday }, each { count, seconds } (UTC days)
+export function encodeCounts(database, now = new Date()) {
+  const days = database.getSetting(ENCODES_KEY, {});
+  const empty = { count: 0, seconds: 0 };
+  return { today: days[dayOf(now)] ?? empty, yesterday: days[dayOf(new Date(now.getTime() - 86400000))] ?? empty };
 }
 
 // Drops an item's reversed copy (purged, or its file replaced)

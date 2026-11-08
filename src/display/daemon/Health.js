@@ -3,6 +3,9 @@ import { readCpuSeconds, isSoftwareDecoder, isLargeVideo, RECENT_SAMPLES } from 
 
 // Failed IPC checks in a row before mpv is restarted
 const HEALTH_FAILURES = 2;
+// The check's own wait for mpv's answer, shorter than the 15 s commands get while a file loads (Daemon.js), so a
+// hung mpv is restarted about 35 s after the first failed check; a slow load fails one check at most
+export const HEALTH_TIMEOUT_MS = 5000;
 
 // mpv health checks, CPU sampling and decoder recording for a Daemon (passed in), whose screens they visit.
 export class Health {
@@ -19,7 +22,7 @@ export class Health {
       }
       screen.checking = true;
       try {
-        const pid = await screen.client.getProperty('pid');
+        const pid = await screen.client.getProperty('pid', { timeout: HEALTH_TIMEOUT_MS });
         screen.healthFailures = 0;
         await this.sample(screen, pid);
       } catch (error) {

@@ -50,9 +50,9 @@ display:
                            #   `backdrop bounce on|off|reset` sets it per video. A bounce needs a reversed copy,
                            #   made in the background the first time the video plays, so it starts the next time.
                            #   Videos longer than video_duration stop before their end and never bounce
-  bounce_cache_gb: 10      # room for reversed copies in ~/.cache/backdrop/bounce; the least recently played go
-                           #   first (made again ahead of their next play), and copies of items that no longer
-                           #   bounce at once. 0 for no limit
+  bounce_cache_gb: 10      # room for reversed copies in ~/.cache/backdrop/bounce; over it, copies of the
+                           #   lowest-rated videos go first, the newest of them first (made again ahead of their
+                           #   next play), and copies of items that no longer bounce at once. 0 for no limit
   allow_upscale: false     # true allows media smaller than the monitor
   order: random            # how next with filters picks a match: random (any still ahead this pass) or shuffle
                            #   (the next in playlist order); --random / --no-random override it per command.
