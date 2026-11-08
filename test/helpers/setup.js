@@ -28,6 +28,8 @@ export const notifications = [];
 // and notifications closed (gdbus) here
 export const closedNotifications = [];
 configureNotify({
+  // No ffmpeg for the notification's picture; tests that check it pass their own
+  still: async () => null,
   exec: async (file, args) => {
     if (file === 'gdbus') {
       closedNotifications.push(args.at(-1));

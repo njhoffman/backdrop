@@ -32,6 +32,20 @@ describe('notify', () => {
     expect(describeNotification({ monitor, media: image, rating: { rating: 0 } }).body).to.equal('skipped · DP-1');
   });
 
+  it('sets the time apart and colors the tags in desktop notifications', () => {
+    const media = { ...video(), fps: 25 };
+    const tags = ['sea', 'r&b', 'a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const { summary, body } = describeNotification({ monitor, media, rating: { rating: 2 }, tags }, { rich: true });
+    expect(summary).to.equal(`#${media.id}  video  3840x2160`);
+    const [first, second] = body.split('\n');
+    expect(first).to.equal('<span size="large" weight="bold">0:18</span>  <span alpha="70%">25 fps · ★★☆ · DP-1</span>');
+    expect(second).to.equal(['sea', 'r&amp;b', 'a', 'b', 'c', 'd', 'e', 'f']
+      .map((tag, index) => `<span foreground="${['#7aa2f7', '#9ece6a', '#e0af68', '#bb9af7', '#7dcfff'][index % 5]}">${tag}</span>`).join('  '));
+    // An image has no time to show
+    const image = { id: 7, kind: 'image', width: 1920, height: 1080, duration: null };
+    expect(describeNotification({ monitor, media: image, rating: null }, { rich: true }).body).to.equal('<span alpha="70%">unrated · DP-1</span>');
+  });
+
   it('replaces the previous notification of the same monitor', async () => {
     const media = video();
     await notifyPlaying(db, { monitor, media, rating: null });
@@ -49,6 +63,40 @@ describe('notify', () => {
     await notifyPlaying(db, { monitor, media: null, rating: null });
     expect(recorded).to.have.length(1);
     expect(recorded[0]).to.include('--icon=/m/i.png');
+  });
+
+  it('shows a still of the item as a file:// image-path hint, the icon only when there is no still', async () => {
+    const asked = [];
+    configureNotify({ still: async (media, dir) => { asked.push([media.id, dir]); return `/cache/thumbs/${media.id} a.still.jpg`; } });
+    try {
+      const media = video();
+      await notifyPlaying(db, { monitor, media, rating: null }, { thumbnails: '/cache/thumbs' });
+      expect(asked).to.deep.equal([[media.id, '/cache/thumbs']]);
+      expect(recorded[0]).to.include(`--hint=string:image-path:file:///cache/thumbs/${media.id}%20a.still.jpg`);
+      expect(recorded[0].some(arg => arg.startsWith('--icon='))).to.equal(false);
+
+      configureNotify({ still: async () => null });
+      await notifyPlaying(db, { monitor, media, rating: null }, { thumbnails: '/cache/thumbs' });
+      expect(recorded[1]).to.include('--icon=video-x-generic');
+      // A failing still falls back the same way
+      configureNotify({ still: async () => { throw new Error('ffmpeg missing'); } });
+      await notifyPlaying(db, { monitor, media, rating: null }, { thumbnails: '/cache/thumbs' });
+      expect(recorded[2]).to.include('--icon=video-x-generic');
+    } finally {
+      configureNotify({ still: async () => null });
+    }
+  });
+
+  it('passes the thumbnail folder from the config for command notifications', async () => {
+    const dirs = [];
+    configureNotify({ still: async (media, dir) => { dirs.push(dir); return null; } });
+    try {
+      const config = makeConfig({ 'display.notify': 'commands', 'paths.thumbnails': '/cache/thumbs' });
+      await notifyCommand(config, db, { monitor, media: video(), rating: null });
+      expect(dirs).to.deep.equal(['/cache/thumbs']);
+    } finally {
+      configureNotify({ still: async () => null });
+    }
   });
 
   it('only logs when notify-send fails', async () => {

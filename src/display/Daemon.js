@@ -689,7 +689,7 @@ export class Daemon {
       return;
     }
     const rating = this.database.getLatestRating(media.id);
-    await notifyPlaying(this.database, { monitor: screen.monitor, media, rating }, { logger: this.logger });
+    await notifyPlaying(this.database, { monitor: screen.monitor, media, rating }, { logger: this.logger, thumbnails: this.config.get().paths.thumbnails });
   }
 
   // The playing video's speed changed (`backdrop speed`, or mpv's own keys): the limit is counted again from

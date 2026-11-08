@@ -8,7 +8,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MenuCommand, minimalView, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { readNextFilters } from '../../src/display/nextFilters.js';
-import { thumbnailFor } from '../../src/library/thumbnail.js';
+import { stillFor, thumbnailFor } from '../../src/library/thumbnail.js';
 import { notifications } from '../helpers/setup.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
@@ -367,6 +367,19 @@ describe('MenuCommand', () => {
       const later = new Date(Date.now() + 5000);
       await fs.utimes(file, later, later);
       await thumbnailFor(media, thumbs, { exec });
+      expect(exec.calledTwice).to.be.true;
+    });
+
+    it('makes the notification\'s 16:9 still beside the banner, cached the same way', async () => {
+      const file = path.join(dir, 'v.mp4');
+      await fs.outputFile(file, 'video');
+      const exec = sinon.stub().callsFake(async (cmd, args) => fs.outputFile(args.at(-1), 'jpg'));
+      const media = { id: 7, kind: 'video', path: file, duration: 18 };
+      expect(await stillFor(media, dir, { exec })).to.equal(path.join(dir, '7.still.jpg'));
+      expect(exec.firstCall.args[1]).to.include('scale=320:180:force_original_aspect_ratio=increase,crop=320:180');
+      await stillFor(media, dir, { exec });
+      expect(exec.calledOnce).to.be.true;
+      expect(await thumbnailFor(media, dir, { exec })).to.equal(path.join(dir, '7.jpg'));
       expect(exec.calledTwice).to.be.true;
     });
 

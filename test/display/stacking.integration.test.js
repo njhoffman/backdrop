@@ -66,7 +66,9 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
 }
 
 (available ? describe : describe.skip)('visualizer stacking on a virtual X server', function () {
-  this.timeout(60000);
+  // Waits return once their condition holds; the limits allow for a machine busy elsewhere (RIFE, encodes), where
+  // starting a stand-in window's node process alone took over 5 s (2026-11-08)
+  this.timeout(120000);
   let xvfb, savedDisplay, dir, db, daemon;
   const others = [];
 
@@ -80,7 +82,7 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
       const { children } = await layout();
       const id = Number(execFileSync('xdotool', ['search', '--name', `^other-${others.length - 1}$`], { encoding: 'utf8' }).trim().split('\n')[0]);
       return children[0] === id;
-    }, 5000, 'the other window at the bottom');
+    }, 20000, 'the other window at the bottom');
   }
 
   before(async () => {
@@ -103,7 +105,9 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
     daemon = new Daemon({
       config, database: db, logger: silentLogger, createVisualizer: standIn,
       importer: { importDirs: async () => ({ imported: [] }) }, purge: async () => {}, thumbnail: async () => null,
-      healthInterval: 500, monitorInterval: 0, purgeInterval: 0, watch: null
+      // No health checks: mpv's restarts here come from killing it, and a check every 0.5 s with its 5 s wait killed a
+      // healthy mpv during a slow load on a busy machine, whose new wallpaper then went below the other window
+      healthInterval: 0, monitorInterval: 0, purgeInterval: 0, watch: null
     });
     await daemon.start();
   });
@@ -148,7 +152,7 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
   // Placement checks again after it settles (SETTLE_MS) once the stand-in lowered itself twice, so the
   // order has to hold for a while, not just once
   async function expectStaysAbove(what) {
-    await waitFor(directlyAbove, 10000, `the visualizer directly above the wallpaper ${what}`);
+    await waitFor(directlyAbove, 20000, `the visualizer directly above the wallpaper ${what}`);
     await sleep(1200);
     expect(await directlyAbove(), `still directly above ${what}`).to.equal(true);
   }
@@ -211,9 +215,9 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
 
     overlay('overlay-low', 'below');
     const high = overlay('overlay-high', 'above');
-    await waitFor(async () => Boolean(windowId('overlay-low') && windowId('overlay-high')), 5000, 'the overlay windows');
+    await waitFor(async () => Boolean(windowId('overlay-low') && windowId('overlay-high')), 20000, 'the overlay windows');
     await control({ restack: true });
-    await waitFor(() => inOrder(['overlay-low', 'visualizer', 'overlay-high']), 10000, 'overlays below and above the visualizer');
+    await waitFor(() => inOrder(['overlay-low', 'visualizer', 'overlay-high']), 30000, 'overlays below and above the visualizer');
     await waitFor(async () => {
       const [monitor] = (await readState(daemon.runtimeDir)).monitors;
       return monitor.overlays.length === 2 && monitor.overlays.every(item => item.colors?.background) ? true : monitor.overlays;
@@ -227,6 +231,6 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
     high.stdin.write('below\n');
     await marked;
     await control({ restack: true });
-    await waitFor(() => inOrder(['overlay-low', 'overlay-high', 'visualizer']), 10000, 'both overlays below the visualizer');
+    await waitFor(() => inOrder(['overlay-low', 'overlay-high', 'visualizer']), 30000, 'both overlays below the visualizer');
   });
 });

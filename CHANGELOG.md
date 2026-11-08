@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.63.0] - 2026-11-08
+
+### Added
+
+- Notifications show a still of the wallpaper: a 16:9 picture, 320x180, made once per item in the thumbnail cache, sent as a `file://` image the way deadd shows it (a plain path showed a placeholder). Without a still they show the icon as before.
+
+### Changed
+
+- Notifications set the running time apart, large and bold, dim the frame rate, rating and monitor beside it, and show the tags spaced apart in colors instead of a comma list.
+
 ## [2.62.0] - 2026-11-08
 
 ### Added
