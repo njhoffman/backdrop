@@ -637,9 +637,12 @@ A local HTML interface for what the CLI and the rofi menu do now: the library, w
 presets and the config. It talks to the running daemon the way the CLI does (`DisplayControl`, control requests,
 `ConfigManager.setInFile`), so it adds a front end rather than a second control path.
 
-- [ ] **Design the web interface.** (p2) [docs] Write `docs/specs/web.md` before any code: a `backdrop web` command serving on 127.0.0.1 only, the server (`node:http` with no framework, or a small one such as fastify),
+- [x] **Design the web interface.** (p2) [docs] Write `docs/specs/web.md` before any code: a `backdrop web` command serving on 127.0.0.1 only, the server (`node:http` with no framework, or a small one such as fastify),
       the front end (plain HTML with a little vanilla JS or htmx, versus a bundled SPA, which the project has no build step for), live updates (server-sent events from `state.json` changes), and
       authentication (a random token in the URL or a cookie, since any local program can reach a localhost port). List which commands it covers in its first version.
+      Done: `docs/specs/web.md`. Its own `backdrop web` process on `node:http`, vanilla JS with no build, server-sent events, a token with Host and Origin checks, port 7737 with a free-port fallback; no autostart, video previews or `remove` in the first version.
+- [ ] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
+      parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
 - [ ] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
       speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
 - [ ] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,

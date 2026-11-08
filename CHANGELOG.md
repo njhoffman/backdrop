@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.53.1] - 2026-11-07
+
+### Added
+
+- `docs/specs/web.md`: the design of the planned web interface (`backdrop web`), with the decisions it rests on and the order of work.
+
 ## [2.53.0] - 2026-11-07
 
 ### Added
