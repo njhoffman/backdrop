@@ -1,25 +1,11 @@
-import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { Daemon, readState } from '../display/Daemon.js';
-import { reapOrphans } from '../display/children.js';
-import { sendControl } from '../display/control.js';
-import { DisplayControl } from '../display/DisplayControl.js';
-import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
-import { getMode, getChosenMode, displayMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
-import { matchFilters, matchingMedia } from '../library/match.js';
+import { readNextFilters } from '../display/nextFilters.js';
+import { getMode, getChosenMode, displayMode, eligibleMedia } from '../display/Playlist.js';
+import { DisplayService } from '../services/DisplayService.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting, formatBytes } from '../utils/output.js';
 import {
-  printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, mediaJson, playingJson
+  printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, playingJson
 } from '../utils/mediaView.js';
-import { notifyCommand } from '../utils/notify.js';
-import { visualizerSettings } from '../visualizer/settings.js';
-
-const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
-const START_TIMEOUT_MS = 15_000;
-// The parts of the daemon `start` and `stop` can address on their own
-const PARTS = ['wallpaper', 'visualizer'];
-
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // A visualizer's colors for status: GLava's { fg, fg2 }, or the background sleeve was sent ('' before any)
 function colorText(colors) {
@@ -29,18 +15,19 @@ function colorText(colors) {
 }
 
 export class DisplayCommand {
-  constructor(config, database, logger, {
-    kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS,
-    reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger })
-  } = {}) {
+  constructor(config, database, logger, { service, ...options } = {}) {
     this.config = config;
     this.database = database;
     this.logger = logger;
-    this.control = new DisplayControl({ config, database });
-    this.kill = kill;
-    this.spawnProcess = spawnProcess;
-    this.timeout = timeout;
-    this.reap = reap;
+    this.service = service ?? new DisplayService({ config, database, logger, ...options });
+  }
+
+  get control() {
+    return this.service.control;
+  }
+
+  set control(control) {
+    this.service.control = control;
   }
 
   get runtimeDir() {
@@ -55,106 +42,41 @@ export class DisplayCommand {
       .run({ wallpaper: options.wallpaper ?? true, visualizer: options.visualizer ?? null });
   }
 
-  // The parts --wallpaper and --visualizer name, or null for the whole daemon
-  parts(options) {
-    const named = PARTS.filter(part => options[part]);
-    return named.length ? named : null;
-  }
-
   // Without flags, starts the daemon with the wallpaper and, if visualizer.enabled, the visualizer.
   // --wallpaper/--visualizer start only those parts, or turn them on in a running daemon.
   async start(options = {}) {
-    const parts = this.parts(options);
-    const running = await readState(this.runtimeDir);
-    if (running) {
-      if (!parts) out.info(`Already running (pid ${running.pid})`);
-      else await this.request(running, Object.fromEntries(parts.map(part => [part, true])));
-      return;
-    }
-    // Checked here so a mistake shows at the prompt rather than only in the daemon log
-    if (parts?.includes('visualizer')) visualizerSettings(this.config.get().visualizer);
-
-    const flags = parts
-      ? [parts.includes('wallpaper') ? '--wallpaper' : '--no-wallpaper', parts.includes('visualizer') ? '--visualizer' : '--no-visualizer']
-      : [];
-    const child = this.spawnProcess(process.execPath, [ENTRY_POINT, 'daemon', ...flags], { detached: true, stdio: 'ignore' });
-    child.unref();
-
-    const deadline = Date.now() + this.timeout;
-    while (Date.now() < deadline) {
-      const state = await readState(this.runtimeDir);
-      if (state) {
-        out.success(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}: ${this.describeParts(state)}`);
-        return;
-      }
-      if (child.exitCode !== null) {
-        break;
-      }
-      await sleep(200);
-    }
-    throw new Error(`Daemon did not start; see ${this.config.get().paths.logfile}`);
+    const { action, state } = await this.service.start(options);
+    if (action === 'running') out.info(`Already running (pid ${state.pid})`);
+    else if (action === 'changed') this.printParts(state);
+    else out.success(`Started (pid ${state.pid}) on ${state.monitors.map(m => m.name).join(', ')}: ${this.describeParts(state)}`);
   }
 
   // Without flags, stops the daemon. --wallpaper/--visualizer turn only those parts off; the daemon stops
   // itself when neither is left on.
   async stop(options = {}) {
-    const state = await readState(this.runtimeDir);
-    if (!state) {
-      // Wallpapers and visualizers a crashed daemon left running are what a stop is wanted for
-      const orphans = await this.reap(this.runtimeDir);
-      if (orphans.length) {
-        const names = orphans.map(({ command, pid }) => `${command} (pid ${pid})`).join(', ');
-        out.success(`Stopped ${names}, left running by a daemon that exited without stopping`);
-      } else {
-        out.info('Not running');
-      }
-      return;
-    }
-    const parts = this.parts(options);
-    if (parts) {
-      await this.request(state, Object.fromEntries(parts.map(part => [part, false])));
-      return;
-    }
-
-    this.kill(state.pid, 'SIGTERM');
-    await this.waitForExit(state.pid);
-    out.success('Stopped');
-  }
-
-  async waitForExit(pid) {
-    const deadline = Date.now() + this.timeout;
-    while (Date.now() < deadline && await readState(this.runtimeDir)) {
-      await sleep(100);
-    }
-    if (await readState(this.runtimeDir)) {
-      throw new Error(`Daemon (pid ${pid}) did not stop`);
+    const result = await this.service.stop(options);
+    if (result.action === 'reaped') {
+      const names = result.orphans.map(({ command, pid }) => `${command} (pid ${pid})`).join(', ');
+      out.success(`Stopped ${names}, left running by a daemon that exited without stopping`);
+    } else if (result.action === 'not-running') {
+      out.info('Not running');
+    } else if (result.action === 'changed') {
+      this.printParts(result.state);
+    } else {
+      out.success('Stopped');
     }
   }
 
-  // Asks the running daemon to switch parts on or off ({ wallpaper, visualizer }) and reports what is on
-  // afterwards, or that it stopped because nothing was left on
-  async request(state, change) {
-    if (change.visualizer) visualizerSettings(this.config.get().visualizer);
-    const current = await sendControl(this.runtimeDir, state, change, {
-      kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
-    });
-    if (!current) {
-      out.success('Stopped: the wallpaper and visualizer are both off');
-      return;
-    }
-    if (change.visualizer && current.visualizer.error) throw new Error(`Visualizer off: ${current.visualizer.error}`);
-    out.success(this.describeParts(current));
+  // What is on after a part was switched, or that the daemon stopped because nothing was left on
+  printParts(state) {
+    if (!state) out.success('Stopped: the wallpaper and visualizer are both off');
+    else out.success(this.describeParts(state));
   }
 
   // `backdrop restack`, for programs that draw overlays: run when their window maps or changes between
   // above and below. Reports the overlays found on each monitor.
   async restack(options = {}) {
-    const state = await readState(this.runtimeDir);
-    if (!state) throw new Error('The daemon is not running (backdrop start)');
-    const current = await sendControl(this.runtimeDir, state, { restack: true }, {
-      kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
-    });
-    const monitors = (current?.monitors ?? []).map(monitor => ({ name: monitor.name, overlays: monitor.overlays ?? [] }));
+    const monitors = await this.service.restack();
     if (wantsJson(options)) {
       out.json({ monitors });
       return;
@@ -254,38 +176,9 @@ export class DisplayCommand {
     }
   }
 
-  // status --json: cpu_percent, decoder and gpu_memory_bytes are the daemon's recent samples, null until it has them
-  async statusJson() {
-    const state = await readState(this.runtimeDir);
-    const mode = getMode(this.database);
-    const { allow_upscale: allowUpscale } = this.config.get().display;
-    const monitors = [];
-    for (const monitor of state?.monitors ?? []) {
-      const { media, rating } = await this.control.current(monitor.name).catch(() => ({}));
-      monitors.push({
-        name: monitor.name, width: monitor.width, height: monitor.height,
-        eligible: eligibleMedia(this.database, displayMode(this.database, monitor, { allowUpscale }), monitor, { allowUpscale }).length,
-        cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
-        decoder: formatDecoder(monitor.hwdec) || null,
-        gpu_memory_bytes: Number.isFinite(monitor.gpuMemory) ? monitor.gpuMemory : null,
-        visualizer: monitor.visualizer ?? null,
-        visualizers: monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : []),
-        overlays: monitor.overlays ?? [],
-        playing: media ? mediaJson(this.database, media, rating) : null
-      });
-    }
-    const daemon = {
-      running: Boolean(state), pid: state?.pid ?? null,
-      wallpaper: state ? state.wallpaper !== false : null,
-      visualizer: state ? Boolean(state.visualizer?.enabled && !state.visualizer.error) : null,
-      // Whether a compositor ran at the visualizer's last placement; null when not checked
-      compositor: state?.visualizer?.compositor ?? null,
-      // { level, value, window, limit, resume_below }, or null with the load section off
-      load: state?.load ?? null,
-      // The active preset has visualizer.wallpaper: false, so mpv is stopped whatever wallpaper says
-      wallpaper_hidden: Boolean(state?.visualizer?.hidesWallpaper)
-    };
-    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, config_warnings: this.config.warnings ?? [] };
+  // status --json (DisplayService.status)
+  statusJson() {
+    return this.service.status();
   }
 
   // colors are the ones piped from the wallpaper (or the config, until it is sampled); opaque ones lose their alpha
@@ -352,38 +245,27 @@ export class DisplayCommand {
   // --query, --tag and --keywords jump to a matching item instead; the playlist itself stays as it was
   // Filters and order given here stay in effect until next --clear or a daemon restart
   async next(options = {}) {
-    // Checked before they are stored, so a mistyped query is not kept
-    matchFilters(this.database, options);
-    options = await resolveNextFilters(this.runtimeDir, options, {
-      persist: true, kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
-    });
-    const random = randomOrder(this.config.get().display, options.random);
-    const matches = matchingMedia(this.database, options);
-    await this.show(await this.control.next(options.monitor, matches ? { random, matches } : { random }), options);
+    const { playing, options: resolved } = await this.service.next(options);
+    printPlaying(this.database, playing, resolved);
   }
 
   async prev(options = {}) {
-    await this.show(await this.control.prev(options.monitor), options);
-  }
-
-  // Prints and announces what a monitor plays after a command switched it
-  async show(playing, options) {
+    const { playing } = await this.service.prev(options);
     printPlaying(this.database, playing, options);
-    await notifyCommand(this.config, this.database, playing, { logger: this.logger });
   }
 
   async speed(value, options) {
-    const { monitor, speed } = await this.control.speed(value, options.monitor);
+    const { monitor, speed } = await this.service.speed(value, options);
     out.print(`${monitor.name}: speed ${fmt.cyan(speed)}`);
   }
 
   async dim(value, options) {
-    const { monitor, dim, shown = dim } = await this.control.dim(value, options.monitor);
+    const { monitor, dim, shown = dim } = await this.service.dim(value, options);
     out.print(`${monitor.name}: dim ${fmt.cyan(dim)}${shown > dim ? fmt.dim(` (${shown} while music plays)`) : ''}`);
   }
 
   async bounce(value, options) {
-    const { monitor, bounce, bouncing } = await this.control.bounce(value, options.monitor);
+    const { monitor, bounce, bouncing } = await this.service.bounce(value, options);
     const source = bounce === null ? fmt.dim(' (display.video_loop)') : '';
     const when = bouncing ? fmt.dim(', from its next play once reversed') : '';
     out.print(`${monitor.name}: bounce ${fmt.cyan(bouncing ? 'on' : 'off')}${source}${when}`);
@@ -391,10 +273,7 @@ export class DisplayCommand {
 
   // With the daemon running, the reload also shows what the target monitor now plays
   async mode(requested, options = {}) {
-    // With the wallpaper off only the mode changes; the wallpaper starts in it when turned on
-    const running = await this.control.state({ required: false });
-    const playing = running && running.wallpaper !== false && running.load?.level !== 'off' && !running.visualizer?.hidesWallpaper ? await this.control.switchTo(options.monitor, () => this.control.mode(requested)) : null;
-    const { mode, held, counts } = playing?.result ?? await this.control.mode(requested);
+    const { mode, held, counts, running, playing } = await this.service.mode(requested, options);
     // --json: the new mode and what the target monitor now plays, or a null monitor when stopped
     if (wantsJson(options)) {
       out.json({ mode, ...(held ? { held } : {}), ...(playing ? playingJson(this.database, playing) : { monitor: null, item: null }) });
@@ -404,6 +283,6 @@ export class DisplayCommand {
     for (const [name, count] of Object.entries(running ? counts : {})) {
       out.print(`  ${fmt.bold(name)}: ${count ? `${count} items` : fmt.yellow(`no ${mode}s at this resolution`)}`);
     }
-    if (playing) await this.show(playing, options);
+    if (playing) printPlaying(this.database, playing, options);
   }
 }

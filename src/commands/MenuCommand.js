@@ -2,8 +2,8 @@ import { checkSetting } from '../config/schema.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DisplayCommand } from './DisplayCommand.js';
-import { RatingCommand } from './RatingCommand.js';
+import { DisplayService } from '../services/DisplayService.js';
+import { RatingService } from '../services/RatingService.js';
 import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
 import { bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
@@ -172,6 +172,12 @@ export function panelView(extraArgs = [], spawnProcess = spawn, theme = PANEL_TH
 // --random/--no-random and --query/--tag/--keywords are stored like next's (see nextFilters.js), apply to
 // next and to the advance after skip, and are shown beside the item's details. With i3 the menu
 // shows an empty workspace (menu.workspace) while open, so the wallpaper is in full view.
+// An action's result is the menu's next state ({ quit }, { monitor }), so a service's own result is dropped
+async function done(action) {
+  await action;
+  return {};
+}
+
 // Menus are built as { prompt, title, message, status, preview, entries: [{ icon, label, caption, key,
 // active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key } or null.
 export class MenuCommand {
@@ -183,8 +189,9 @@ export class MenuCommand {
     this.sendControl = control;
     this.database = database;
     this.logger = logger;
-    this.display = display ?? new DisplayCommand(config, database, logger);
-    this.rating = rating ?? new RatingCommand(config, database, logger, { control: this.display.control });
+    // The services the CLI's commands print for; the menu shows their results by drawing itself again
+    this.display = display ?? new DisplayService({ config, database, logger });
+    this.rating = rating ?? new RatingService({ config, database, logger, control: this.display.control });
     this.view = view;
     this.thumbnail = thumbnail;
     this.workspace = workspace;
@@ -331,17 +338,17 @@ export class MenuCommand {
     const other = otherMode(getMode(this.database));
     const keep = value => ({
       icon: ICONS.keep, label: `keep ${value}`, key: String(value), disabled: !media, active: item.rating?.rating === value,
-      run: () => this.rating.keep(value, target)
+      run: () => done(this.rating.keep(value, target))
     });
     const entries = [
-      { icon: ICONS.next, label: 'next', key: 'n', disabled: off, run: () => this.display.next(target) },
+      { icon: ICONS.next, label: 'next', key: 'n', disabled: off, run: () => done(this.display.next(target)) },
       keep(1), keep(2), keep(3),
       { icon: ICONS.speed, label: 'speed ▸', caption: video && media.speed !== 1 ? `speed ${media.speed}` : 'speed', key: 'v',
         disabled: !video, active: video && media.speed !== 1, run: () => this.stepMenu(monitor, 'speed', SPEEDS) },
-      { icon: ICONS.prev, label: 'prev', key: 'p', disabled: off, run: () => this.display.prev({ monitor }) },
-      { icon: ICONS.skip, label: 'skip', key: 's', disabled: !media, run: () => this.rating.skip(target) },
-      { icon: ICONS.undo, label: 'undo', key: 'u', run: () => this.rating.undo() },
-      { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: 'mode', key: 'm', run: () => this.display.mode(other, { monitor }) },
+      { icon: ICONS.prev, label: 'prev', key: 'p', disabled: off, run: () => done(this.display.prev({ monitor })) },
+      { icon: ICONS.skip, label: 'skip', key: 's', disabled: !media, run: () => done(this.rating.skip(target)) },
+      { icon: ICONS.undo, label: 'undo', key: 'u', run: () => done(this.rating.undo()) },
+      { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: 'mode', key: 'm', run: () => done(this.display.mode(other, { monitor })) },
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
         disabled: !media, active: Boolean(media?.dim), run: () => this.stepMenu(monitor, 'dim', DIMS) }
     ];
@@ -352,7 +359,7 @@ export class MenuCommand {
     if (picked === null || picked.key === QUIT_KEY) return { quit: true };
     if (picked.key === MONITOR_KEY) return this.attempt(() => this.monitorMenu(monitor));
     if (picked.key === VISUALIZER_KEY) return this.attempt(() => this.visualizerMenu(monitor));
-    if (picked.key === WALLPAPER_KEY) return this.attempt(() => this.display.start({ wallpaper: true }));
+    if (picked.key === WALLPAPER_KEY) return this.attempt(() => done(this.display.start({ wallpaper: true })));
     const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
     if (!entry || entry.disabled) return {};
     return this.attempt(entry.run);

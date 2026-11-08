@@ -95,7 +95,8 @@ The token is kept in `$XDG_RUNTIME_DIR/backdrop/web.json` (mode 0600) with the p
 
 ### D6. Moving command logic into services
 
-**Decided: services first, as a change of its own.**
+**Decided: services first, as a change of its own.** Done in 2.53.2: `src/services/RatingService.js` and
+`DisplayService.js`, with the menu on them.
 
 The commands print as they work: `RatingCommand.keep` rates, moves the file, syncs the playlists and prints the
 item. The web server needs the same steps returning data. Before any route is written, the logic moves into

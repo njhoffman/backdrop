@@ -161,6 +161,8 @@ Reviewed: 2026-11-07
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
 
+- [ ] **rofi cannot open the test's Xvfb display.** (p3) [test] In a full run on 2026-11-07 (load about 5) three tests in `test/commands/menu.integration.test.js` failed with `Failed to open display: :1` from rofi, before any window,
+      though Xvfb had reported `:1` through `-displayfd`; the file passed 2 of 2 alone right after. Wait until a client can connect (`xdpyinfo`, or retry rofi's first start) before the tests begin.
 - [ ] **A hung mpv now takes longer to restart.** (p3) [bug] Commands wait 15 s since 2.50.7, so two failed health checks 30 s apart take about 45 s from the first where they took about 35 s. Give the health check's own `pid` query a shorter timeout than loads get.
 - [ ] **No test holds the decoder order.** (p3) [test] Nothing asserts `--hwdec=vaapi,auto-safe` or the 15 s timeout from 2.50.7, so either could regress to the startup failure unnoticed. It is also unexplained why CUDA's probe became slow here, having been fine earlier the same day, and VAAPI first is untried on an NVIDIA machine.
 - [x] **Bounce videos.** (p2) [feature] Play a video to its end, backwards to its start and forwards again: `display.video_loop: bounce`, or `backdrop bounce on|off|toggle|reset` per item (schema v10, also in the menu's speed panel).
@@ -641,8 +643,10 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
       the front end (plain HTML with a little vanilla JS or htmx, versus a bundled SPA, which the project has no build step for), live updates (server-sent events from `state.json` changes), and
       authentication (a random token in the URL or a cookie, since any local program can reach a localhost port). List which commands it covers in its first version.
       Done: `docs/specs/web.md`. Its own `backdrop web` process on `node:http`, vanilla JS with no build, server-sent events, a token with Host and Origin checks, port 7737 with a free-port fallback; no autostart, video previews or `remove` in the first version.
-- [ ] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
+- [x] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
       parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
+      Done: `RatingService` and `DisplayService`; the commands print their results and the menu calls them directly. The existing tests passed unchanged, plus service tests of the returned data.
+- [ ] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
 - [ ] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
       speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
 - [ ] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,

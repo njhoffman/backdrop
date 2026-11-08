@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.53.2] - 2026-11-07
+
+### Changed
+
+- The rating and display logic moved into services that the CLI, the rofi menu and the planned web interface share; commands work and print as before.
+
 ## [2.53.1] - 2026-11-07
 
 ### Added

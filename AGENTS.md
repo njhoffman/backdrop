@@ -123,6 +123,12 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Sources** (`src/sources/`) - `Source` defines normalized search/metadata/download variants and rate limits;
   `SourceRegistry` resolves adapters, with `PexelsSource` first. Credentials are checked on API requests only.
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
+- **Services** (`src/services/`) - `RatingService` (keep, skip, undo, go-next, rate) and `DisplayService` (start, stop,
+  parts, next, prev, mode, speed/dim/bounce, status) do the work and return data, never printing: playlist failures
+  after a committed rating come back as `warnings`, and a failure after one carries `error.done`. `RatingCommand`
+  and `DisplayCommand` print their results (their `control` forwards to the service's); the menu calls the services
+  directly and drops their results (`done`), since an action's result is its next state. The web interface will
+  call them too (`docs/specs/web.md`).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips; v10 adds `media.bounce`); failed database writes restore the file. The obsolete shell-hook command has been removed.
