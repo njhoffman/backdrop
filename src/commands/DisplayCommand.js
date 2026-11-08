@@ -2,6 +2,7 @@ import { Daemon, readState } from '../display/Daemon.js';
 import { readNextFilters } from '../display/nextFilters.js';
 import { getMode, getChosenMode, displayMode, eligibleMedia } from '../display/Playlist.js';
 import { DisplayService } from '../services/DisplayService.js';
+import { readWebInfo, webAddress } from '../web/info.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting, formatBytes } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, playingJson
@@ -127,6 +128,9 @@ export class DisplayCommand {
     const shown = getMode(this.database);
     out.row('Mode', `${fmt.cyan(shown)}${shown === chosen ? '' : fmt.dim(` (${chosen} held back by the system load)`)}`);
     for (const warning of this.config.warnings ?? []) out.row('Config', fmt.yellow(warning));
+    // Without the token: `backdrop web --open` opens it with one
+    const web = await readWebInfo(this.runtimeDir);
+    if (web) out.row('Web', `${webAddress(web.port)} ${fmt.dim(`(pid ${web.pid}; backdrop web --open)`)}`);
     if (!state) {
       out.row('Daemon', fmt.yellow('not running'));
       return;

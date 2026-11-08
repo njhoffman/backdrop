@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.59.0] - 2026-11-07
+
+### Added
+
+- The web interface's Status page (`/status`): the daemon, its monitors, load and screensaver; the library by kind and status, ratings, resolutions, storage, sources and searches, recent activity and the API quota; playback cost; and `doctor`'s checks, run from the page.
+- `backdrop web --open` opens the page in the browser, the running server's when there is one.
+- `backdrop systemd --web` prints a user unit that runs `backdrop web` as a service.
+- `backdrop stats --json`, and `status` (and `status --json`) show the running web interface's address, without its token, and the screensaver's state.
+
 ## [2.58.0] - 2026-11-07
 
 ### Added

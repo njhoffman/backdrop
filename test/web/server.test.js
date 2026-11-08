@@ -10,7 +10,7 @@ import { makeConfig, silentLogger } from '../helpers/fakes.js';
 // A real server on a free port with stand-ins for the services and the event hub, so the run stays offline
 describe('WebServer', () => {
   const token = 'test-token-0123456789';
-  let dir, db, config, server, base, display, rating, library, visualizer, settings, hub, thumbs, id;
+  let dir, db, config, server, base, display, rating, library, visualizer, settings, stats, doctor, hub, thumbs, id;
 
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
   const cookie = `backdrop_token=${token}`;
@@ -27,6 +27,7 @@ describe('WebServer', () => {
     await fs.outputFile(path.join(dir, 'static', 'library.html'), '<p>library {{token}}</p>');
     await fs.outputFile(path.join(dir, 'static', 'visualizer.html'), '<p>visualizer</p>');
     await fs.outputFile(path.join(dir, 'static', 'config.html'), '<p>config</p>');
+    await fs.outputFile(path.join(dir, 'static', 'status.html'), '<p>status</p>');
     await fs.outputFile(path.join(dir, 'static', 'app.js'), 'export {};');
     await fs.outputFile(path.join(dir, 'thumb.jpg'), 'jpeg');
     config = makeConfig({ 'paths.runtime': dir, 'display.video_loop': 'bounce' });
@@ -78,13 +79,15 @@ describe('WebServer', () => {
         return { fields: [] };
       })
     };
+    stats = { collect: sinon.stub().resolves({ library: { total: { total: 3 } }, raw: { stats: 'internal' } }) };
+    doctor = { check: sinon.stub().resolves({ ok: true, failed: 0, warned: 0, checks: [] }) };
     hub = { start: sinon.stub().resolves(), stop: sinon.stub().resolves(), changed: sinon.spy(), add: sinon.stub().callsFake(async response => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end('event: state\ndata: {}\n\n');
     }) };
     thumbs = [];
     server = new WebServer({
-      config, database: db, logger: silentLogger, display, rating, library, visualizer, settings, token, version: '9.9.9', hub,
+      config, database: db, logger: silentLogger, display, rating, library, visualizer, settings, stats, doctor, token, version: '9.9.9', hub,
       staticDir: path.join(dir, 'static'),
       thumbnail: async media => { thumbs.push(media.id); return path.join(dir, 'thumb.jpg'); }
     });
@@ -315,6 +318,12 @@ describe('WebServer', () => {
       const unsigned = await fetch(`${base}/api/config`, { method: 'PATCH', headers: { cookie }, body: '{}' });
       expect(unsigned.status).to.equal(403);
     });
+  });
+
+  it('serves the status page, the stats without the raw rows, and doctor\'s checks', async () => {
+    expect(await (await get('/status')).text()).to.equal('<p>status</p>');
+    expect(await (await get('/api/stats')).json()).to.deep.equal({ library: { total: { total: 3 } } });
+    expect(await (await get('/api/doctor')).json()).to.deep.equal({ ok: true, failed: 0, warned: 0, checks: [] });
   });
 
   it('hands the event stream to the hub', async () => {

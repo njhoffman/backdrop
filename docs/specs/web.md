@@ -1,6 +1,6 @@
 # Web interface
 
-Status: **agreed design** (2026-11-07); steps 1 to 5 of "Order of work" are built (2.53.2, 2.54.0, 2.55.0, 2.56.0, 2.58.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
+Status: **agreed design** (2026-11-07); every step of "Order of work" is built (2.53.2 to 2.59.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
 vanilla JS with no build; D4, server-sent events; D5 A, a token with Host and Origin checks; D6, services first;
 and the first version's scope under "Decisions on scope". The roadmap items are in `TODO.md`, "10. Web interface".
 
@@ -143,7 +143,8 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 | `GET /api/config` *built* | `ConfigService.describe`: `{ path, errors, warnings, fields: [{ key, kind, choices, min, max, nullable, help, value, default, inFile, applies }] }` for every setting but the visualizer section, from the checks' info (`configFields` in `src/config/schema.js`); `applies` is live, command, daemon or web; a secret gives only `set` and `fromEnvironment` |
 | `PATCH /api/config` *built* | `{ changes: { 'display.order': 'shuffle' } }`: checked with the whole config (rules between settings included), then written in place with `setInFile`, the values as given (`5m` stays `5m`); all or nothing |
 | `DELETE /api/config/:key` *built* | Removes the key from the file (`removeInFile`), so its default applies |
-| `GET /api/stats`, `GET /api/doctor` | What `stats` prints (it has no `--json` yet; the service from D6 gives it one) and `doctor --json` |
+| `GET /api/stats` *built* | `StatsService.collect` without its raw rows: what `stats --json` prints (format in `json.md`) |
+| `GET /api/doctor` *built* | `DoctorCommand.check`: `{ ok, failed, warned, checks }` as `doctor --json`; the page asks on request, since every library file is looked for |
 
 ## Pages
 

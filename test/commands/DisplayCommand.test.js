@@ -39,6 +39,16 @@ describe('DisplayCommand', () => {
   });
 
   describe('status', () => {
+    it('shows the running web interface\'s address without its token', async () => {
+      command.control = { current: async () => ({ path: null }) };
+      await fs.outputJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 'secret' });
+      await command.status();
+      const text = lines.join('\n');
+      expect(text).to.include('Web: http://127.0.0.1:7737/ (pid');
+      expect(text).to.not.include('secret');
+    });
+
+
     it('shows eligible counts and explains a monitor too large for the library', async () => {
       const id = addVideo(1, 1920, 1080, { speed: 0.8, dim: 20 });
       db.addRating(id, 2);
@@ -200,7 +210,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], screensaver: null, web: null, config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });

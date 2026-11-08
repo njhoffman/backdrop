@@ -72,6 +72,16 @@ export class DoctorCommand {
   }
 
   async run(options = {}) {
+    const { ok, failed, warned, checks } = await this.check(options);
+    if (wantsJson(options)) out.json({ ok, failed, warned, checks });
+    else this.print(checks, failed, warned);
+    if (failed) process.exitCode = 1;
+    return checks;
+  }
+
+  // Every check as data, nothing printed: { ok, failed, warned, checks: [{ group, name, status, detail, hint? }] },
+  // for run and the web interface's Status page
+  async check(options = {}) {
     const checks = [];
     const add = (group, name, status, detail, hint) => checks.push({ group, name, status, detail, ...(hint ? { hint } : {}) });
     const settings = this.config.get();
@@ -95,10 +105,7 @@ export class DoctorCommand {
 
     const failed = checks.filter(check => check.status === 'fail').length;
     const warned = checks.filter(check => check.status === 'warn').length;
-    if (wantsJson(options)) out.json({ ok: !failed, failed, warned, checks });
-    else this.print(checks, failed, warned);
-    if (failed) process.exitCode = 1;
-    return checks;
+    return { ok: !failed, failed, warned, checks };
   }
 
   async checkDisplay(settings, add) {

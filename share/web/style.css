@@ -400,3 +400,38 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
 }
 .savebar #pending { margin-right: auto; }
 .savebar.busy { opacity: 0.7; }
+
+.panel-title { margin: 0 0 10px; font-size: 15px; font-weight: 650; }
+.panel-head { display: flex; align-items: center; gap: 12px; }
+.panel-head .panel-title { margin: 0; }
+.small { font-size: 13px; }
+.status-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+}
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 10px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.data-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--line); padding: 4px 8px 6px 0; }
+.data-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table .total-row td { font-weight: 650; border-bottom: none; }
+.bar-row { display: grid; grid-template-columns: 70px 1fr 48px; gap: 10px; align-items: center; margin: 4px 0; }
+.bar-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.meter { display: block; height: 8px; min-width: 60px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.meter-fill { display: block; height: 100%; background: var(--accent); }
+.plain-list { margin: 8px 0 0; padding-left: 18px; }
+.warn-text { color: #a36b00; }
+.check-ok, .check-warn, .check-fail { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.check-ok { background: #d8f0e0; color: #1f6b3d; }
+.check-warn { background: #f6e7c1; color: #6b4e00; }
+.check-fail { background: #f8d7d4; color: #8f1d14; }
+@media (prefers-color-scheme: dark) {
+  .warn-text { color: #e7c66b; }
+  .check-ok { background: #173b26; color: #7fd6a0; }
+  .check-warn { background: #3b3018; color: #e7c66b; }
+  .check-fail { background: #4a1b17; color: #ff9a91; }
+}

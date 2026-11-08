@@ -170,6 +170,17 @@ describe('ListCommand and StatsCommand', () => {
     expect(text).to.not.match(/\x1b|█/);
   });
 
+  it('prints the stats as one JSON document with --json', async () => {
+    const id = await add('image', 'local', 1); db.addRating(id, 2);
+    console.log.resetHistory();
+    await new StatsCommand(config, db, silentLogger).showStats({ json: true });
+    const json = JSON.parse(console.log.args.at(-1)[0]);
+    expect(Object.keys(json).sort()).to.deep.equal(['library', 'monitors', 'playback', 'queries', 'quota', 'ratings', 'recent', 'resolutions', 'sources', 'storage']);
+    expect(json.library.total).to.include({ total: 1, kept: 1 });
+    expect(json.ratings.byRating).to.deep.equal([0, 0, 1, 0]);
+    expect(json).to.not.have.property('raw');
+  });
+
   it('counts files and bytes under a directory, treating a missing one as empty', async () => {
     await fs.outputFile(path.join(dir, 'u', 'a'), 'abc');
     await fs.outputFile(path.join(dir, 'u', 'sub', 'b'), 'de');

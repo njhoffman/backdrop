@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="backdrop-token" content="{{token}}">
+  <title>backdrop status</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/status.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> backdrop</h1>
+    <nav class="tabs" aria-label="Pages"><a href="/">Now playing</a><a href="/library">Library</a><a href="/visualizer">Visualizer</a><a href="/config">Config</a><a href="/status" aria-current="page">Status</a></nav>
+    <span id="daemon" class="pill" aria-live="polite">connecting</span>
+    <span id="version" class="muted"></span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2 class="panel-title">Daemon</h2>
+      <dl id="daemon-facts" class="facts"></dl>
+      <div id="monitors" class="table-wrap"></div>
+    </section>
+
+    <div class="status-grid">
+      <section class="panel">
+        <h2 class="panel-title">Library</h2>
+        <div id="library" class="table-wrap"></div>
+        <p id="library-note" class="muted small"></p>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Ratings</h2>
+        <div id="ratings"></div>
+        <p id="ratings-note" class="muted small"></p>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Resolution</h2>
+        <p class="muted small">Downloaded, not skipped; by the short side</p>
+        <div id="resolutions"></div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Storage</h2>
+        <div id="storage" class="table-wrap"></div>
+        <p id="storage-note" class="muted small"></p>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title" id="recent-title">Recent activity</h2>
+        <dl id="recent" class="facts"></dl>
+        <div id="quota"></div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Sources and searches</h2>
+        <div id="sources" class="table-wrap"></div>
+        <div id="queries" class="table-wrap"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2 class="panel-title">Playback cost</h2>
+      <p class="muted small">mpv's CPU while items played, as a share of one core, from the daemon's samples</p>
+      <div id="playback" class="table-wrap"></div>
+      <ul id="expensive" class="plain-list small"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Checks</h2>
+        <button type="button" id="run-checks">Run checks</button>
+        <span id="checks-summary" class="muted"></span>
+      </div>
+      <p class="muted small">What <code>backdrop doctor</code> checks: tools, the X display, the config, the daemon and the library. Every library file is looked for, so this can take a moment.</p>
+      <div id="checks" class="table-wrap"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

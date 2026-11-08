@@ -659,7 +659,8 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
       Done: `backdrop web` (2.54.0), with live updates; seen working against the daemon on 2026-11-07. Not yet: next's filters from the page, which come with the library browser.
 - [ ] **The durations' Reset also drops next's filters.** (p3) [feature] `POST /api/durations { clear: true }` is `next --clear`, the only way `nextFilters.js` drops stored durations, so it clears `--query`/`--tag` too.
       Add a way to drop only the durations (`resolveNextFilters` with a `clearDurations` option), and use it from the page.
-- [ ] **`status` and `doctor` do not know about `backdrop web`.** (p3) [feature] `web.json` records the running server, as the spec intends for them; `status` could print its address (without the token unless asked) and `doctor` find a stale `web.json` whose process is gone.
+- [x] **`status` and `doctor` do not know about `backdrop web`.** (p3) [feature] `web.json` records the running server, as the spec intends for them; `status` could print its address (without the token unless asked) and `doctor` find a stale `web.json` whose process is gone.
+      Done (2.59.0): `status` shows the address without the token, and `status --json` has `web`; `doctor` is left alone, since a stale `web.json` is ignored and replaced by the next `backdrop web` (`src/web/info.js`).
 - [x] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,
       rating and per-item speed/dim/bounce, and "play next" (`queueMatching`). Thumbnails for items never played need making on demand (`thumbnailFor`), which is slow for a large page: page it.
       Done (2.55.0): the Library page, 48 items a page, thumbnails made two at a time as they come into view, a dialog to rate, adjust and play an item on a monitor, and "play next matching" with the page's filters.
@@ -673,8 +674,10 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
       and settings that need a restart (`LIVE_SETTINGS` in `daemon/ConfigChanges.js`) are marked as such.
       Done (2.58.0): the Config page on `ConfigService`, every setting but the visualizer's with its control from the checks' info, default, "set in the file" and when it applies; saved together, checked with the whole config; Reset removes the key (`removeInFile`); the API key is write-only.
 - [ ] **The Config page edits only the settings the checks know.** (p3) [feature] `screensaver.streams` (a list of mappings) shows read-only, and sources other than Pexels or keys the checks lack are not listed. A YAML field for such values, checked by parsing, would cover them.
-- [ ] **Stats and status pages.** (p3) [feature] What `status`, `stats` and `doctor` print: playback cost by kind and decoder, load level, screensaver, and the bounce cache once it reports its size.
-- [ ] **Run it as a service.** (p3) [chore] A `systemd` user unit for `backdrop web` (`SystemdCommand`), or the daemon serving it itself behind a config switch; decide in the design.
+- [x] **Stats and status pages.** (p3) [feature] What `status`, `stats` and `doctor` print: playback cost by kind and decoder, load level, screensaver, and the bounce cache once it reports its size.
+      Done (2.59.0): the Status page, from `StatsService` (which also gives `stats --json`), `DoctorCommand.check()` on request, and the snapshot's daemon, load and screensaver state.
+- [x] **Run it as a service.** (p3) [chore] A `systemd` user unit for `backdrop web` (`SystemdCommand`), or the daemon serving it itself behind a config switch; decide in the design.
+      Done (2.59.0): `backdrop systemd --web` prints `backdrop-web.service`; `backdrop web --open` opens the running server's page.
 - [ ] **Tests for the web interface.** (p3) [test] Request handlers driven with the fakes the command tests use (`test/helpers/fakes.js`), so routine runs stay offline, and one optional browser test skipped
       when no headless browser is installed, like the rofi and Xvfb integration tests.
 

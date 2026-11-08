@@ -58,7 +58,8 @@ backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-d
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop bounce on          # play the video backwards at its end and forwards again (off, toggle, reset)
-backdrop web                # the web interface on 127.0.0.1:7737 until Ctrl-C; open the address it prints
+backdrop web --open         # the web interface on 127.0.0.1:7737 until Ctrl-C, opened in the browser
+backdrop systemd --web      # a user unit running it as a service; `backdrop status` shows its address
 backdrop screensaver        # toggle: only the wallpaper and visualizers on an empty workspace
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
@@ -87,7 +88,7 @@ backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with co
 backdrop menu               # rofi panel for the item under the pointer, with keys: n 1 2 3 v / p s u m d, q quits
 backdrop menu --tag ocean   # sets the filter like next does (also --query, --no-random)
 backdrop menu visualizer    # the visualizer menu (also z in the menu): module, opacity, colors, presets, save, wallpaper on/off
-backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline
+backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline (--json)
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)
 backdrop remove 42          # or remove an item by its database id
 backdrop purge --dry-run    # trash files older than library.trash_days (the daemon purges daily)

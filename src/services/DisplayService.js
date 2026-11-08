@@ -8,6 +8,7 @@ import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, getChosenMode, displayMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
 import { formatDecoder } from '../utils/output.js';
+import { readWebInfo } from '../web/info.js';
 import { mediaJson } from '../utils/mediaView.js';
 import { notifyCommand } from '../utils/notify.js';
 import { visualizerSettings } from '../visualizer/settings.js';
@@ -156,7 +157,11 @@ export class DisplayService {
       // The active preset has visualizer.wallpaper: false, so mpv is stopped whatever wallpaper says
       wallpaper_hidden: Boolean(state?.visualizer?.hidesWallpaper)
     };
-    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, config_warnings: this.config.warnings ?? [] };
+    // The screensaver's state while the daemon runs; the running `backdrop web` (its port, never its token)
+    const screensaver = state?.screensaver ?? null;
+    const info = await readWebInfo(this.runtimeDir);
+    const web = info ? { pid: info.pid, port: info.port } : null;
+    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, screensaver, web, config_warnings: this.config.warnings ?? [] };
   }
 
   // What options.monitor (or the monitor under the pointer) plays: { monitor, path, media, rating }

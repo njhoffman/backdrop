@@ -41,4 +41,20 @@ describe('SystemdCommand', () => {
     expect(result.stderr).to.equal('');
     expect(result.status).to.equal(0);
   });
+
+  it('prints the web interface\'s unit with --web', () => {
+    const text = new SystemdCommand(null, null, null, { execPath: '/opt/node', entryPoint: '/src/backdrop/src/index.js', env: { PATH: '/nowhere' } })
+      .generate('9.9.9', { web: true });
+    expect(text).to.include('ExecStart="/opt/node" "/src/backdrop/src/index.js" web');
+    expect(text).to.include('backdrop-web.service');
+    expect(text).to.include('WantedBy=default.target');
+  });
+
+  (hasVerify ? it : it.skip)('passes systemd-analyze verify with --web', async () => {
+    const file = path.join(dir, 'backdrop-web.service');
+    await fs.writeFile(file, new SystemdCommand(null, null, null, { env: { PATH: process.env.PATH } }).generate('9.9.9', { web: true }));
+    const result = spawnSync('systemd-analyze', ['--user', 'verify', file], { encoding: 'utf8' });
+    expect(result.stderr).to.equal('');
+    expect(result.status).to.equal(0);
+  });
 });

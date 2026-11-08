@@ -29,11 +29,12 @@ describe('WebCommand', () => {
   });
 
   // The server stands in with the port it was asked for, or busy's port when that one is taken
-  function command({ busy = null, alive = () => false } = {}) {
+  function command({ busy = null, alive = () => false, opened = [] } = {}) {
     let release;
     stop = () => release();
     return new WebCommand(config, db, silentLogger, {
       alive,
+      open: url => opened.push(url),
       until: () => new Promise(resolve => { release = resolve; }),
       createServer: options => {
         const server = { options, closed: false, listen: async port => (port === busy ? 40000 : port), close: async () => { server.closed = true; } };
@@ -72,6 +73,21 @@ describe('WebCommand', () => {
     expect(await command({ alive: pid => pid === 1 }).run()).to.equal(null);
     expect(lines.at(-1)).to.include('Already serving (pid 1) at http://127.0.0.1:7737/?token=abc');
     expect(servers).to.deep.equal([]);
+  });
+
+  it('opens the page with --open: its own, or the running server\'s', async () => {
+    const opened = [];
+    const running = command({ opened }).run({ open: true });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const { token } = await fs.readJson(webPath(config.get().paths.runtime));
+    expect(opened).to.deep.equal([address(7737, token)]);
+    expect(servers[0].options).to.include.keys('stats', 'doctor', 'settings', 'library', 'visualizer');
+    stop();
+    await running;
+
+    await fs.outputJson(webPath(config.get().paths.runtime), { pid: 1, port: 8000, token: 'abc' });
+    await command({ alive: pid => pid === 1, opened }).run({ open: true });
+    expect(opened.at(-1)).to.equal('http://127.0.0.1:8000/?token=abc');
   });
 
   it('refuses a port out of range', async () => {

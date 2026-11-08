@@ -1,51 +1,21 @@
-import fs from 'fs-extra';
-import path from 'path';
-import { readState } from '../display/Daemon.js';
-import { MODES, eligibleMedia } from '../display/Playlist.js';
+import { MODES } from '../display/Playlist.js';
+import { StatsService, directoryUsage, sqliteTime } from '../services/StatsService.js';
 import {
   out, fmt, icon, isInteractive, colorDepth, symbolSet, SYMBOL_SETS, renderBar, stackedBar, formatTable,
   formatDuration, formatBytes, formatStars, formatResolution, displayPath, formatCpu
 } from '../utils/output.js';
-import { formatPlaybackCost } from '../utils/mediaView.js';
+import { formatPlaybackCost, wantsJson } from '../utils/mediaView.js';
 
-const KINDS = ['video', 'gif', 'image'];
-const RESOLUTION_BUCKETS = ['8K', '4K', '1440p', '1080p', 'smaller', 'unknown'];
+export { directoryUsage };
+
 const BAR_WIDTH = 24;
-const RECENT_DAYS = 7;
 
-// Files and bytes under a directory; a missing directory counts as empty
-export async function directoryUsage(dir) {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { recursive: true, withFileTypes: true });
-  } catch (error) {
-    if (error.code === 'ENOENT') return { files: 0, bytes: 0 };
-    throw error;
-  }
-  let bytes = 0;
-  let files = 0;
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    try {
-      bytes += (await fs.stat(path.join(entry.parentPath ?? entry.path, entry.name))).size;
-      files++;
-    } catch {
-      // removed while counting
-    }
-  }
-  return { files, bytes };
-}
-
-// SQLite CURRENT_TIMESTAMP format (UTC), for comparing against stored timestamps
-function sqliteTime(date) {
-  return date.toISOString().replace('T', ' ').slice(0, 19);
-}
-
+// `backdrop stats`: StatsService collects, this prints, or with --json gives it as one document (raw left out)
 export class StatsCommand {
   constructor(config, database, logger, { now = () => new Date() } = {}) {
     this.config = config;
     this.database = database;
-    this.now = now;
+    this.service = new StatsService({ config, database, now });
   }
 
   // Bars only on a terminal; piped output keeps the aligned numbers alone
@@ -60,39 +30,31 @@ export class StatsCommand {
     for (const line of formatTable(rows, options)) out.print(line);
   }
 
-  async showStats() {
-    const stats = this.database.getStats();
-    const since = sqliteTime(new Date(this.now().getTime() - RECENT_DAYS * 24 * 60 * 60 * 1000));
-    const detail = this.database.getDetailedStats({ since });
-
-    this.library(stats, detail);
-    this.ratings(stats, detail);
-    this.resolutions(detail);
-    this.sources(detail);
-    this.queries(detail);
-    this.activity(stats, detail);
-    await this.storage();
-    await this.monitors();
-    this.playbackCost();
-    this.quota();
-    return { ...stats, detail };
+  async showStats(options = {}) {
+    const data = await this.service.collect();
+    const { raw, ...shown } = data;
+    if (wantsJson(options)) {
+      out.json(shown);
+    } else {
+      this.library(data.library);
+      this.ratings(data.ratings);
+      this.resolutions(data.resolutions);
+      this.sources(data.sources);
+      this.queries(data.queries);
+      this.activity(data.recent);
+      this.storage(data.storage);
+      this.monitors(data.monitors);
+      this.playbackCost(data.playback);
+      this.quota(data.quota);
+    }
+    return { ...raw.stats, detail: raw.detail };
   }
 
-  library(stats, detail) {
-    const extra = Object.fromEntries(detail.kinds.map(row => [row.kind, row]));
-    const totals = { new: 0, kept: 0, skipped: 0, pending: 0, duration: 0 };
+  library({ kinds, total }) {
     const rows = [[fmt.dim('kind'), fmt.dim('total'), fmt.dim('new'), fmt.dim('kept'), fmt.dim('skipped'),
       fmt.dim('pending'), fmt.dim('playing time'), '']];
-    for (const kind of KINDS) {
-      const { pending = 0, duration = 0 } = extra[kind] ?? {};
-      // Pending items are new but not downloaded; they get their own column
-      const counts = { ...stats.media[kind], new: stats.media[kind].new - pending };
-      for (const key of ['new', 'kept', 'skipped']) totals[key] += counts[key];
-      totals.pending += pending;
-      totals.duration += duration;
-      rows.push(this.libraryRow(`${icon(kind)}${fmt.cyan(kind)}`, { ...counts, pending, duration }, kind !== 'image'));
-    }
-    rows.push(this.libraryRow(fmt.bold('total'), totals, true));
+    for (const counts of kinds) rows.push(this.libraryRow(`${icon(counts.kind)}${fmt.cyan(counts.kind)}`, counts, counts.kind !== 'image'));
+    rows.push(this.libraryRow(fmt.bold('total'), total, true));
     this.section('Library', rows, { align: ['l', 'r', 'r', 'r', 'r', 'r', 'r'] });
     if (isInteractive()) {
       out.detail(`bar: ${fmt.green('kept')} ${fmt.cyan('new')} ${fmt.red('skipped')}; pending items are saved by searches, not downloaded`);
@@ -100,104 +62,85 @@ export class StatsCommand {
   }
 
   libraryRow(label, counts, timed) {
-    const total = counts.new + counts.kept + counts.skipped;
     const bar = isInteractive() ? stackedBar([
       { value: counts.kept, style: 'green' }, { value: counts.new, style: 'cyan' }, { value: counts.skipped, style: 'red' }
     ], BAR_WIDTH) : '';
-    return [label, fmt.bold(total), counts.new, fmt.green(counts.kept), fmt.red(counts.skipped), fmt.yellow(counts.pending),
+    return [label, fmt.bold(counts.total), counts.new, fmt.green(counts.kept), fmt.red(counts.skipped), fmt.yellow(counts.pending),
       timed && counts.duration ? formatDuration(counts.duration) : fmt.dim('-'), bar];
   }
 
-  ratings(stats, detail) {
-    const byRating = [0, 0, 0, 0];
-    const orientations = { landscape: 0, portrait: 0 };
-    for (const row of detail.ratings) {
-      byRating[row.rating] += row.count;
-      if (row.rating > 0) orientations[row.orientation] += row.count;
-    }
-    const rated = byRating[1] + byRating[2] + byRating[3];
+  ratings({ byRating, rated, orientations, changes, last }) {
     const rows = [3, 2, 1].map(rating => [formatStars({ rating }), byRating[rating], percent(byRating[rating], rated),
       this.bar(rated ? byRating[rating] / rated : 0)]);
     rows.push([formatStars({ rating: 0 }), byRating[0], '', '']);
     this.section('Ratings (current, per item)', rows, { align: ['l', 'r', 'r'] });
-    const parts = [`${orientations.landscape} landscape`, `${orientations.portrait} portrait`,
-      `${stats.ratings} rating changes`];
-    if (detail.lastRating) parts.push(`last ${detail.lastRating.slice(0, 16)} UTC`);
+    const parts = [`${orientations.landscape} landscape`, `${orientations.portrait} portrait`, `${changes} rating changes`];
+    if (last) parts.push(`last ${last.slice(0, 16)} UTC`);
     out.detail(parts.join(', '));
   }
 
-  resolutions(detail) {
-    const counts = Object.fromEntries(detail.resolutions.map(row => [row.bucket, row.count]));
-    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    const rows = RESOLUTION_BUCKETS.filter(bucket => counts[bucket] || !['unknown', '8K'].includes(bucket))
-      .map(bucket => [bucket, counts[bucket] ?? 0, percent(counts[bucket] ?? 0, total), this.bar(total ? (counts[bucket] ?? 0) / total : 0)]);
+  resolutions(buckets) {
+    const total = buckets.reduce((sum, { count }) => sum + count, 0);
+    const rows = buckets.map(({ bucket, count }) => [bucket, count, percent(count, total), this.bar(total ? count / total : 0)]);
     this.section('Resolution (downloaded, not skipped; by short side)', rows, { align: ['l', 'r', 'r'] });
   }
 
-  sources(detail) {
-    if (!detail.sources.length) return;
+  sources(sources) {
+    if (!sources.length) return;
     const rows = [[fmt.dim('source'), fmt.dim('items'), fmt.dim('downloaded'), fmt.dim('kept'), fmt.dim('skipped'),
       fmt.dim('pending'), fmt.dim('avg rating')]];
-    for (const row of detail.sources) {
+    for (const row of sources) {
       rows.push([fmt.cyan(row.source), row.total, row.downloaded, fmt.green(row.kept), fmt.red(row.skipped),
         fmt.yellow(row.pending), row.average ? row.average.toFixed(1) : fmt.dim('-')]);
     }
     this.section('Sources', rows, { align: ['l', 'r', 'r', 'r', 'r', 'r', 'r'] });
   }
 
-  queries(detail) {
-    if (!detail.queries.length) return;
+  queries(queries) {
+    if (!queries.length) return;
     const rows = [[fmt.dim('query'), fmt.dim('results'), fmt.dim('downloaded'), fmt.dim('kept')]];
-    for (const row of detail.queries) {
+    for (const row of queries) {
       rows.push([`${icon('query')}"${row.query}"`, row.results, row.downloaded, fmt.green(row.kept)]);
     }
     this.section('Top searches', rows, { align: ['l', 'r', 'r', 'r'] });
   }
 
-  activity(stats, detail) {
-    const { recent } = detail;
+  activity(recent) {
     const rows = [
       [`${icon('download')}added`, recent.added],
       [`${icon('star')}ratings`, recent.ratings],
       [`${icon('query')}searches`, recent.searches]
     ];
-    this.section(`Last ${RECENT_DAYS} days`, rows, { align: ['l', 'r'] });
-    const totals = [`all time: ${stats.searches} ${stats.searches === 1 ? 'search' : 'searches'}`];
-    if (stats.duplicates) totals.push(`${stats.duplicates} duplicate downloads detected`);
+    this.section(`Last ${recent.days} days`, rows, { align: ['l', 'r'] });
+    const totals = [`all time: ${recent.searches_all_time} ${recent.searches_all_time === 1 ? 'search' : 'searches'}`];
+    if (recent.duplicates) totals.push(`${recent.duplicates} duplicate downloads detected`);
     out.detail(totals.join(', '));
   }
 
-  async storage() {
-    const { paths, library } = this.config.get();
-    const usage = {};
-    for (const name of ['media', 'inbox', 'trash']) usage[name] = await directoryUsage(paths[name]);
-    const total = Object.values(usage).reduce((sum, { bytes }) => sum + bytes, 0);
-    const rows = Object.entries(usage).map(([name, { files, bytes }]) => [
-      name, `${files} files`, formatBytes(bytes), this.bar(total ? bytes / total : 0), fmt.dim(displayPath(paths[name]))
+  storage({ dirs, bytes, trashDays }) {
+    const rows = dirs.map(dir => [
+      dir.name, `${dir.files} files`, formatBytes(dir.bytes), this.bar(bytes ? dir.bytes / bytes : 0), fmt.dim(displayPath(dir.path))
     ]);
-    rows.push([fmt.bold('total'), '', fmt.bold(formatBytes(total)), '', '']);
+    rows.push([fmt.bold('total'), '', fmt.bold(formatBytes(bytes)), '', '']);
     this.section('Storage', rows, { align: ['l', 'r', 'r'] });
-    out.detail(library.trash_days
-      ? `trash files are purged ${library.trash_days} days after they were skipped`
+    out.detail(trashDays
+      ? `trash files are purged ${trashDays} days after they were skipped`
       : 'trash purging is off (library.trash_days: 0)');
   }
 
-  // Eligible counts need the monitor sizes, which only the running daemon knows offline
-  async monitors() {
-    const state = await readState(this.config.get().paths.runtime);
-    if (!state) return;
-    const { allow_upscale: allowUpscale } = this.config.get().display;
+  // Eligible counts need the monitor sizes, which only the running daemon knows
+  monitors(monitors) {
+    if (!monitors) return;
     const rows = [[fmt.dim('monitor'), fmt.dim('size'), ...MODES.map(mode => fmt.dim(`${mode}s`))]];
-    for (const monitor of state.monitors) {
+    for (const monitor of monitors) {
       rows.push([`${icon('monitor')}${fmt.bold(monitor.name)}`, formatResolution(monitor.width, monitor.height),
-        ...MODES.map(mode => eligibleMedia(this.database, mode, monitor, { allowUpscale }).length)]);
+        ...MODES.map(mode => monitor.eligible[mode])]);
     }
     this.section('Eligible on each monitor', rows, { align: ['l', 'l', 'r', 'r'] });
   }
 
   // Average mpv CPU (percent of one core) while items played, from the daemon's samples
-  playbackCost() {
-    const { groups, expensive, software } = this.database.getPlaybackCost();
+  playbackCost({ groups, expensive, software }) {
     if (!groups.length) return;
     const rows = [[fmt.dim('kind'), fmt.dim('size'), fmt.dim('decoder'), fmt.dim('items'), fmt.dim('sampled'), fmt.dim('avg cpu')]];
     for (const row of groups) {
@@ -213,10 +156,9 @@ export class StatsCommand {
     if (software) out.detail(fmt.yellow(`${software} item(s) last played with software decoding`));
   }
 
-  quota() {
-    const limits = this.database.getSetting('source_rate_limit:pexels');
-    if (!limits) return;
-    const { remaining, limit, reset } = limits;
+  quota(quota) {
+    if (!quota) return;
+    const { remaining, limit, reset } = quota;
     const rows = [['pexels', `${remaining ?? '?'} / ${limit ?? '?'}`,
       limit && Number.isFinite(remaining) ? this.bar(remaining / limit) : '',
       fmt.dim(`reset ${reset ? `${sqliteTime(new Date(reset * 1000)).slice(0, 16)} UTC` : 'unknown'}`)]];

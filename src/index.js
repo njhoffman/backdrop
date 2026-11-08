@@ -204,6 +204,7 @@ class BackdropApp {
       .command('web')
       .description('Serve the web interface on 127.0.0.1 until Ctrl-C, printing its address (docs/specs/web.md)')
       .option('-p, --port <port>', 'Port to listen on (default: web.port, 7737; a taken one falls back to a free port)')
+      .option('-o, --open', 'Open the page in the browser (the running server\'s when there is one)')
       .action(this.action(options => web.run(options)));
 
     program
@@ -319,7 +320,8 @@ class BackdropApp {
         .action(this.action(options => list[method](options)));
     }
     program.command('stats').description('Show library totals and last observed API quota')
-      .action(this.action(() => stats.showStats()));
+      .option(...jsonOption)
+      .action(this.action(options => stats.showStats(options)));
     program.command('completion').description('Print a shell completion script, e.g. backdrop completion zsh > "${fpath[1]}/_backdrop"')
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
@@ -341,7 +343,8 @@ class BackdropApp {
       .option(...jsonOption)
       .action(this.action(options => doctor.run(options)));
     program.command('systemd').description('Print a systemd user unit for the daemon, e.g. backdrop systemd > ~/.config/systemd/user/backdrop.service')
-      .action(this.action(() => systemd.print(version)));
+      .option('--web', 'The unit for `backdrop web` instead (backdrop-web.service)')
+      .action(this.action(options => systemd.print(version, options)));
   }
 
   async run() {

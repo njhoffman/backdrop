@@ -130,7 +130,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   lists with the list filters, rating and adjusting any item, playing one on a monitor) and `VisualizerService`
   (looks, live changes, presets and saving them, shared by the rofi menu and the web page; with `reload` it reads the
   visualizer section again on each call, for the long-running web server) and `ConfigService` (the Config page:
-  fields with values, defaults and when they apply, changes checked with the whole config, resets) do the work and return data, never printing: playlist failures
+  fields with values, defaults and when they apply, changes checked with the whole config, resets) and
+  `StatsService` (what `stats` prints, as data; `stats --json`) do the work. `DoctorCommand.check()` returns the
+  checks without printing, for the web Status page and return data, never printing: playlist failures
   after a committed rating come back as `warnings`, and a failure after one carries `error.done`. `RatingCommand`
   and `DisplayCommand` print their results (their `control` forwards to the service's); the menu calls the services
   directly and drops their results (`done`), since an action's result is its next state. The web interface will
