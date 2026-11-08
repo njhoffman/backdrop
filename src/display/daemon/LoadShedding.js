@@ -71,6 +71,9 @@ export class LoadShedding {
     const modes = new Map([...daemon.screens.values()].map(screen => [screen, daemon.screenMode(screen.monitor)]));
     this.hold(level);
     daemon.logger.info('Load level changed', { from: previous, to: level, ...this.summary() });
+    // Reversing videos for bounce waits for a normal load
+    if (level === 'normal') daemon.bounce?.kick();
+    else daemon.bounce?.pause();
     await daemon.visualizers.setLightened(level !== 'normal');
 
     if (level === 'off') {

@@ -33,9 +33,10 @@ export function formatPlaybackCost(stats) {
   return `cpu ${formatCpu((stats.cpu_seconds / stats.seconds) * 100)} over ${formatDuration(stats.seconds)}${decoder ? `, ${decoder}` : ''}`;
 }
 
-// Stored playback changes, e.g. "speed 0.8, dim 20"; empty when there are none
+// Stored playback changes, e.g. "speed 0.8, dim 20, bounce"; empty when there are none
 export function formatAdjustments(media) {
-  return [media.speed !== 1 && `speed ${media.speed}`, media.dim && `dim ${media.dim}`].filter(Boolean).join(', ');
+  const bounce = media.bounce === true ? 'bounce' : media.bounce === false && 'no bounce';
+  return [media.speed !== 1 && `speed ${media.speed}`, media.dim && `dim ${media.dim}`, bounce].filter(Boolean).join(', ');
 }
 
 // Fixed widths, so lines printed by separate commands still line up:
@@ -97,6 +98,7 @@ export function mediaJson(database, media, rating = database.getLatestRating(med
     fps: media.kind === 'image' ? null : media.fps ?? null,
     speed: media.speed,
     dim: media.dim,
+    bounce: media.kind === 'image' ? null : media.bounce ?? null,
     status: media.status,
     rating: rating ? { value: rating.rating, orientation: rating.orientation, at: rating.created_at } : null,
     tags: database.getTags(media.id),

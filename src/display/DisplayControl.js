@@ -1,3 +1,5 @@
+import { bounces, entryPath } from './bounce.js';
+import { sendControl } from './control.js';
 import { readNextFilters } from './nextFilters.js';
 import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
@@ -42,6 +44,17 @@ export function parseDim(spec, current) {
   throw new Error(`Invalid dim: ${spec} (use 0-100, a step like +10 or -10, or reset)`);
 }
 
+// 'on', 'off', 'toggle' (from whether it bounces now) or 'reset' (follow display.video_loop): the stored value,
+// true, false or null
+export function parseBounce(spec, media, display) {
+  const text = String(spec).trim().toLowerCase();
+  if (text === 'on') return true;
+  if (text === 'off') return false;
+  if (text === 'reset') return null;
+  if (text === 'toggle') return !bounces(media, display);
+  throw new Error(`Invalid bounce: ${spec} (use on, off, toggle or reset)`);
+}
+
 // Monitors with a running wallpaper (an mpv socket); none while the wallpaper is off or the daemon stopped
 function wallpaperMonitors(state) {
   return (state?.monitors ?? []).filter(monitor => monitor.socket);
@@ -50,11 +63,12 @@ function wallpaperMonitors(state) {
 // Talks to the running daemon's mpv instances; the target is the monitor under the pointer
 // unless one is named
 export class DisplayControl {
-  constructor({ config, database, exec = run, connect = MpvClient.connect }) {
+  constructor({ config, database, exec = run, connect = MpvClient.connect, send = sendControl }) {
     this.config = config;
     this.database = database;
     this.exec = exec;
     this.connect = connect;
+    this.send = send;
   }
 
   async state({ required = true } = {}) {
@@ -112,7 +126,8 @@ export class DisplayControl {
     });
   }
 
-  describe(monitor, filePath) {
+  describe(monitor, filename) {
+    const filePath = entryPath(filename);
     const media = filePath ? this.database.getMediaByPath(filePath) : null;
     const rating = media ? this.database.getLatestRating(media.id) : null;
     return { monitor, path: filePath, media, rating };
@@ -160,7 +175,7 @@ export class DisplayControl {
       const other = otherMode(mode);
       return `No matching ${mode}s; ${matches.length} matching ${other}s (switch with \`backdrop mode ${other}\`)`;
     }
-    const currentPath = await client.getProperty('path').catch(() => null);
+    const currentPath = entryPath(await client.getProperty('path').catch(() => null));
     if (inMode.length === 1 && inMode[0].path === currentPath) return `Only the item playing on ${monitor.name} matches`;
     return `None of the ${inMode.length} matching ${mode}s is in the ${monitor.name} playlist besides the one playing`
       + ' (items smaller than the monitor are left out unless display.allow_upscale is set)';
@@ -202,6 +217,25 @@ export class DisplayControl {
     return { monitor, media, dim, shown };
   }
 
+  // Sets whether the playing video bounces and stores it; the daemon swaps its playlist entries, reversing the
+  // video first when it has no copy yet, so the change shows from the item's next play
+  async bounce(spec, monitorName) {
+    const { monitor, media } = await this.current(monitorName);
+    if (!media) {
+      throw new Error(`Nothing from the library is playing on ${monitor.name}`);
+    }
+    if (!MODE_KINDS.video.includes(media.kind)) {
+      throw new Error('Bounce only applies to videos and GIFs');
+    }
+
+    const { display, paths } = this.config.get();
+    const bounce = parseBounce(spec, media, display);
+    this.database.setBounce(media.id, bounce);
+    const state = await this.state({ required: false });
+    if (state) await this.send(paths.runtime, state, { bounce: media.id }, { logfile: paths.logfile });
+    return { monitor, media, bounce, bouncing: bounces({ ...media, bounce }, display) };
+  }
+
   // Appends media to every running monitor's playlist; returns { [monitor]: count }, empty when not running
   async appendMedia(mediaIds) {
     const state = await this.state({ required: false });
@@ -226,7 +260,7 @@ export class DisplayControl {
       await this.withClient(monitor, async client => {
         const playlist = await client.getProperty('playlist');
         for (let index = playlist.length - 1; index >= 0; index--) {
-          if (playlist[index].filename === media.path) {
+          if (entryPath(playlist[index].filename) === media.path) {
             await client.command('playlist-remove', index);
           }
         }
@@ -240,8 +274,8 @@ export class DisplayControl {
     for (const monitor of wallpaperMonitors(state)) {
       await this.withClient(monitor, async client => {
         const playlist = await client.getProperty('playlist');
-        if (!playlist.some(entry => entry.filename === previous.path)) return;
-        const currentPath = await client.getProperty('path').catch(() => null);
+        if (!playlist.some(entry => entryPath(entry.filename) === previous.path)) return;
+        const currentPath = entryPath(await client.getProperty('path').catch(() => null));
         const current = currentPath === previous.path ? previous : this.database.getMediaByPath(currentPath);
         await loadPlaylist(client, {
           database: this.database, config: this.config.get(), mode: this.monitorMode(monitor),

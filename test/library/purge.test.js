@@ -53,6 +53,15 @@ describe('trash purge', () => {
     expect((await run()).purged).to.deep.equal([]);
   });
 
+  it('deletes the reversed copy of a purged video', async () => {
+    config.set('paths.bounce', path.join(dir, 'bounce'));
+    const id = await skipped('old.mp4');
+    const copy = path.join(dir, 'bounce', `${id}.mp4`);
+    await fs.outputFile(copy, 'reversed');
+    await run();
+    expect(await fs.pathExists(copy)).to.be.false;
+  });
+
   it('lists without deleting on a dry run', async () => {
     const id = await skipped('old.jpg');
     const result = await run({ dryRun: true });

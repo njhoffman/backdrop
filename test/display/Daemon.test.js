@@ -422,6 +422,31 @@ describe('Daemon', () => {
       expect(client.properties).to.include({ 'loop-file': 'inf', end: 'none' });
     });
 
+    it('counts a bounce as twice the video and reverses bouncing videos as they load', async () => {
+      const reversed = [];
+      await daemon.stop();
+      clients.length = 0;
+      daemon = makeDaemon({ reverse: async media => { reversed.push(media.id); return null; } });
+      await daemon.start();
+      config.set('display.video_loop', 'bounce');
+      const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/b.mp4', duration: 20 });
+      const { client } = clients[0];
+
+      await load(0, `edl://%8%/m/b.mp4;%12%/c/bounce/1`);
+      // 600 s of 40 s passes: this one and 14 more
+      expect(client.properties).to.include({ 'loop-file': 14, end: 'none' });
+      expect([...daemon.screens.values()].find(screen => screen.client === client).media.id).to.equal(id);
+      await tick();
+      expect(reversed).to.deep.equal([id]);
+
+      // A failed encode is not tried again on the next play
+      await load(0, '/m/other.mp4');
+      await load(0, '/m/b.mp4');
+      await tick();
+      expect(client.properties).to.include({ 'loop-file': 29 });
+      expect(reversed).to.deep.equal([id]);
+    });
+
     it('notifies on every load only with display.notify: all', async () => {
       notifications.length = 0;
       db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', duration: 20 });

@@ -199,6 +199,13 @@ class BackdropApp {
       .action(this.action((value, options) => display.dim(value, options)));
 
     program
+      .command('bounce')
+      .description('Play the playing video backwards at its end and forwards again, and remember it (on, off, toggle, reset)')
+      .argument('<value>', 'on, off, toggle, or reset to follow display.video_loop')
+      .option(...monitorOption)
+      .action(this.action((value, options) => display.bounce(value, options)));
+
+    program
       .command('import')
       .description('Copy approved local media into the library (default: library.import_dirs)')
       .argument('[dirs...]', 'Directories to import from')

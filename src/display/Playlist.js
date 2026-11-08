@@ -1,5 +1,6 @@
 import { checkSetting } from '../config/schema.js';
 import { loadMedia } from './prescale.js';
+import { entryPath, playUrl } from './bounce.js';
 
 // GIFs are animated, so they play in video mode
 export const MODE_KINDS = {
@@ -106,8 +107,8 @@ export function randomOrder(display, requested) {
 async function queueEntry(client, pick) {
   const playlist = await client.getProperty('playlist');
   const current = playlist.findIndex(entry => entry.current);
-  const currentFile = playlist[current]?.filename;
-  const candidates = playlist.flatMap((entry, index) => (entry.filename === currentFile ? [] : [index]));
+  const currentFile = entryPath(playlist[current]?.filename);
+  const candidates = playlist.flatMap((entry, index) => (entryPath(entry.filename) === currentFile ? [] : [index]));
   const index = candidates.length ? pick(candidates, current, playlist) : undefined;
   if (index === undefined) return null;
   // mpv inserts the entry before index2 (or at the end when index2 is the count), so current + 1 is right after it
@@ -119,7 +120,7 @@ async function queueEntry(client, pick) {
 // or with random any of those after it (earlier ones already played this pass), or any when none is left
 export async function queueMatching(client, paths, { random = false, rng = Math.random } = {}) {
   return queueEntry(client, (candidates, current, playlist) => {
-    const matching = candidates.filter(index => paths.has(playlist[index].filename));
+    const matching = candidates.filter(index => paths.has(entryPath(playlist[index].filename)));
     if (random) {
       const ahead = matching.filter(index => index > current);
       const pool = ahead.length ? ahead : matching;
@@ -212,8 +213,8 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ra
   // One loadfile per item rather than a loadlist, so each oversized image carries its own prescale (prescale.js).
   // The appends are sent together: mpv handles one connection's commands in order.
   const [first, ...rest] = media;
-  await loadMedia(client, first, 'replace', monitor);
-  await Promise.all(rest.map(item => loadMedia(client, item, 'append', monitor)));
+  await loadMedia(client, first, 'replace', monitor, { url: playUrl(first, config) });
+  await Promise.all(rest.map(item => loadMedia(client, item, 'append', monitor, { url: playUrl(item, config) })));
   return media.length;
 }
 
@@ -224,7 +225,7 @@ export async function removeFailedEntry(client, entryId) {
   const index = playlist.findIndex(entry => entry.id === entryId);
   if (index === -1) return null;
   await client.command('playlist-remove', index);
-  return { filename: playlist[index].filename, remaining: playlist.length - 1 };
+  return { filename: entryPath(playlist[index].filename), remaining: playlist.length - 1 };
 }
 
 // Adds newly added media to a running playlist without interrupting what is playing;
@@ -232,12 +233,12 @@ export async function removeFailedEntry(client, entryId) {
 export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds }) {
   const wanted = new Set(mediaIds);
   if (!wanted.size) return 0;
-  const existing = new Set((await client.getProperty('playlist')).map(entry => entry.filename));
+  const existing = new Set((await client.getProperty('playlist')).map(entry => entryPath(entry.filename)));
   const media = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale })
     .filter(item => wanted.has(item.id) && !existing.has(item.path));
 
   for (const item of shuffle(media)) {
-    await loadMedia(client, item, 'append-play', monitor);
+    await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config) });
   }
   return media.length;
 }
@@ -260,18 +261,42 @@ export async function syncPlaylist(client, { database, config, mode, monitor }) 
 
   const wanted = new Set(eligible.map(item => item.path));
   const current = playlist.findIndex(entry => entry.current);
-  const stale = playlist.flatMap((entry, index) => (wanted.has(entry.filename) || index === current ? [] : [index]));
+  const stale = playlist.flatMap((entry, index) => (wanted.has(entryPath(entry.filename)) || index === current ? [] : [index]));
   // Highest first, so the indexes still to remove do not shift
   for (const index of [...stale].reverse()) await client.command('playlist-remove', index);
 
-  const present = new Set(playlist.map(entry => entry.filename));
+  const present = new Set(playlist.map(entry => entryPath(entry.filename)));
   const added = shuffle(eligible.filter(item => !present.has(item.path)));
-  for (const item of added) await loadMedia(client, item, 'append-play', monitor);
+  for (const item of added) await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config) });
 
   let removed = stale.length;
-  if (current !== -1 && !wanted.has(playlist[current].filename)) {
+  if (current !== -1 && !wanted.has(entryPath(playlist[current].filename))) {
     await client.command('playlist-remove', current - stale.filter(index => index < current).length);
     removed++;
   }
   return { removed, added: added.length, count: eligible.length };
+}
+
+// Swaps entries whose URL is no longer what the item should load (its reversed copy is ready, or its bounce
+// was turned on or off) for the right one, in place. mediaIds limits it to those items; without it every
+// entry is checked. The playing entry is left until it plays again, since reloading it would restart it.
+// Returns { swapped, held }: how many were swapped and the ids of the playing entries left as they are.
+export async function refreshEntries(client, { database, config, mediaIds }) {
+  const playlist = await client.getProperty('playlist');
+  const held = new Set();
+  let swapped = 0;
+  for (const [index, entry] of playlist.entries()) {
+    const media = database.getMediaByPath(entryPath(entry.filename));
+    if (!media || (mediaIds && !mediaIds.has(media.id))) continue;
+    const url = playUrl(media, config);
+    if (url === entry.filename) continue;
+    if (entry.current || entry.playing) {
+      held.add(media.id);
+      continue;
+    }
+    await client.command('loadfile', url, 'insert-at', index);
+    await client.command('playlist-remove', index + 1);
+    swapped++;
+  }
+  return { swapped, held };
 }

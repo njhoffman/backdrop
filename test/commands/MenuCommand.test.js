@@ -31,7 +31,7 @@ describe('MenuCommand', () => {
       state: sinon.stub().resolves({ monitors })
     };
     display = { control, next: sinon.stub().resolves(), prev: sinon.stub().resolves(), mode: sinon.stub().resolves(),
-      speed: sinon.stub().resolves(), dim: sinon.stub().resolves() };
+      speed: sinon.stub().resolves(), dim: sinon.stub().resolves(), bounce: sinon.stub().resolves() };
     rating = { keep: sinon.stub().resolves(), skip: sinon.stub().resolves(), undo: sinon.stub().resolves() };
     shown = [];
     picks = [];
@@ -164,16 +164,30 @@ describe('MenuCommand', () => {
     expect(workspace.lastCall.args[0]).to.be.null;
   });
 
+  it('turns the video\'s bounce on and off from the speed submenu', async () => {
+    picks = [{ key: 'v' }, 'bounce', null, { key: 'q' }];
+    await command.open();
+    expect(display.bounce.args).to.deep.equal([['on', { monitor: 'DP-1' }]]);
+    expect(flagged(shown[1], 'active')).to.not.include('bounce');
+
+    db.setBounce(playing.media.id, true);
+    playing.media = db.getMedia(playing.media.id);
+    picks = [{ key: 'v' }, 'bounce', null, { key: 'q' }];
+    await command.open();
+    expect(flagged(shown.at(-3), 'active')).to.include('bounce');
+    expect(display.bounce.lastCall.args[0]).to.equal('off');
+  });
+
   it('steps speed in a submenu until Escape returns to the main menu; q there closes it', async () => {
     db.setSpeed(playing.media.id, 1);
     playing.media = db.getMedia(playing.media.id);
     picks = [{ key: 'v' }, '0.65', '+0.1', null, 'dim ▸', { key: 'q' }];
     await command.open();
-    expect(labels(shown[1])).to.deep.equal(['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1']);
+    expect(labels(shown[1])).to.deep.equal(['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1', 'bounce']);
     // The fake leaves the speed at 1, where +0.1 stops
     expect(display.speed.args).to.deep.equal([['0.65', { monitor: 'DP-1' }], ['1', { monitor: 'DP-1' }]]);
     expect(shown.map(menu => menu.prompt)).to.deep.equal(['backdrop', 'speed (now 1)', 'speed (now 1)', 'speed (now 1)', 'backdrop', 'dim (now 0)']);
-    expect(shown[1]).to.include({ columns: 8 });
+    expect(shown[1]).to.include({ columns: 9 });
     expect(flagged(shown[1], 'active')).to.deep.equal(['1']);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2']);
 

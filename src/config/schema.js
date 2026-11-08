@@ -8,6 +8,8 @@ import { SYMBOL_SETS } from '../utils/output.js';
 
 export const ORDERS = ['shuffle', 'random'];
 export const NOTIFY_MODES = ['commands', 'all', 'off'];
+// How a video repeats: from the start again, or played backwards to the start and forwards again
+export const VIDEO_LOOPS = ['loop', 'bounce'];
 export const MENU_STYLES = ['panel', 'minimal'];
 export const SYMBOL_MODES = ['auto', ...Object.keys(SYMBOL_SETS)];
 export const PEXELS_IMAGE_SIZES = ['large', 'medium', 'small'];
@@ -56,6 +58,7 @@ const SECTIONS = {
       : fail('auto or a list of output names such as [DP-1, HDMI-1]')),
     image_duration: value => seconds(value),
     video_duration: value => seconds(value, { allowZero: true }),
+    video_loop: oneOf(VIDEO_LOOPS),
     allow_upscale: boolean,
     order: oneOf(ORDERS),
     notify: oneOf(NOTIFY_MODES),

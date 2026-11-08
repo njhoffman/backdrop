@@ -17,6 +17,7 @@ file again, keeps every running setting on a mistake (with a notification), rest
 section changed (only `opacity`, `palette.pick` or `palette.min_contrast` apply to the running instances without
 one), and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
+`video_loop` swaps playlist entries for the next play;
 `allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
 reconciles the monitors; `library.import_dirs` and `watch_imports` import the folders and watch them again. `display.mpv_args`, `xwinwrap_args` and
 `paths` need a restart, which a notification names. The `load` section applies at once. `sources`, `menu` and `output` are read by the CLI on each
@@ -45,6 +46,10 @@ display:
   image_duration: 300      # seconds per image in a slideshow
   video_duration: 600      # seconds of wall time per video before the next; 0 loops each video forever.
                            #   Shorter videos loop whole times that fit, longer ones stop at the limit
+  video_loop: loop         # loop (from the start again) or bounce (backwards to the start, then forwards);
+                           #   `backdrop bounce on|off|reset` sets it per video. A bounce needs a reversed copy,
+                           #   made in the background the first time the video plays, so it starts the next time.
+                           #   Videos longer than video_duration stop before their end and never bounce
   allow_upscale: false     # true allows media smaller than the monitor
   order: random            # how next with filters picks a match: random (any still ahead this pass) or shuffle
                            #   (the next in playlist order); --random / --no-random override it per command.

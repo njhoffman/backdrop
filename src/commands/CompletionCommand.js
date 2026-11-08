@@ -35,6 +35,7 @@ function valueSpecs(sources) {
     'keep:rating': { words: ['1', '2', '3'] },
     'speed:value': { words: ['reset', '0.5', '0.8', '1', '+0.1', '-0.1'] },
     'dim:value': { words: ['reset', '0', '20', '40', '+10', '-10'] },
+    'bounce:value': { words: ['on', 'off', 'toggle', 'reset'] },
     'import:dirs': { directories: true },
     'completion:shell': { words: SHELLS },
     'visualizer:action': { words: ['reload', 'preset'] },

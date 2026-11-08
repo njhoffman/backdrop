@@ -169,6 +169,8 @@ export class ConfigManager {
       trash: path.join(dataDir, 'trash'),
       inbox: path.join(cacheDir, 'inbox'),
       thumbnails: path.join(cacheDir, 'thumbnails'),
+      // Reversed copies of videos that bounce (display.video_loop, `backdrop bounce`)
+      bounce: path.join(cacheDir, 'bounce'),
       runtime: runtimeDir()
     };
   }
@@ -195,6 +197,7 @@ export class ConfigManager {
         monitors: 'auto',
         image_duration: 300,
         video_duration: 600,
+        video_loop: 'loop',
         allow_upscale: false,
         order: 'random',
         notify: 'commands',

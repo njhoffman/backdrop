@@ -12,6 +12,9 @@ import {
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
+import { reverseVideo } from '../library/reverse.js';
+import { entryPath, isBounceUrl } from './bounce.js';
+import { Bounce } from './daemon/Bounce.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
@@ -114,6 +117,8 @@ export class Daemon {
     importer = new Importer({ config, database, logger }),
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
+    // A bouncing video's reversed copy (src/library/reverse.js); resolves to its path, or null
+    reverse = (media, { signal } = {}) => reverseVideo(media, config.get().paths.bounce, { logger, signal }),
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
     // The whole config file loaded and checked again, for a saved change; throws on a mistake in it
     readConfig = async () => {
@@ -162,6 +167,7 @@ export class Daemon {
     this.reconciling = null;
     this.purge = purge;
     this.thumbnail = thumbnail;
+    this.reverse = reverse;
     this.timers = [];
     // Active monitors by name; screens holds their wallpaper processes, empty while the wallpaper is off
     this.monitors = new Map();
@@ -180,6 +186,7 @@ export class Daemon {
     this.health = new Health(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
+    this.bounce = new Bounce(this);
     this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
@@ -237,6 +244,7 @@ export class Daemon {
     this.visualizers.override = visualizer;
     await this.screensaver.begin();
     await this.load.begin();
+    await this.bounce.begin().catch(error => this.logger.warn('Failed to clear old bounce work', { error: error.message }));
 
     try {
       // Before the wallpapers, since the look in use can do without them
@@ -592,9 +600,12 @@ export class Daemon {
 
   // Applies the stored speed and dim and remembers the item so a restart resumes it.
   // Brightness is set on every load because mpv keeps it from the previous file.
-  async onFileLoaded(screen, filePath) {
+  async onFileLoaded(screen, filename) {
+    const filePath = entryPath(filename);
     const media = this.database.getMediaByPath(filePath);
     screen.media = media;
+    // A bouncing video plays as its file and the reversed copy together (src/display/bounce.js)
+    screen.bouncing = isBounceUrl(filename);
     screen.loadedAt = this.now();
     try {
       await screen.client.setProperty('contrast', contrastFor(this.shownDim(media)));
@@ -624,6 +635,7 @@ export class Daemon {
     await this.notify(screen, media);
     if (this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) this.sampleScreen(screen.monitor.name);
     this.prefetchThumbnails(screen, media);
+    await this.bounce.onLoaded(screen, media);
   }
 
   // Makes the panel menu's previews ahead of time so opening it does not wait for ffmpeg: the item
@@ -638,7 +650,7 @@ export class Daemon {
       if (!await this.thumbnail(media)) return;
       const playlist = await screen.client.getProperty('playlist');
       const next = playlist[playlist.findIndex(entry => entry.current) + 1];
-      const upcoming = next && this.database.getMediaByPath(next.filename);
+      const upcoming = next && this.database.getMediaByPath(entryPath(next.filename));
       if (upcoming) await this.thumbnail(upcoming);
     }).catch(error => this.logger.warn('Thumbnail prefetch failed', { monitor: screen.monitor.name, error: error.message }));
   }
@@ -691,7 +703,9 @@ export class Daemon {
   async applyLimits(screen, media, { elapsed = 0, position } = {}) {
     try {
       const timeout = this.videoDuration();
-      const limits = media || this.screenMode(screen.monitor) !== 'video' ? playbackLimits(media, timeout, elapsed, position) : { 'loop-file': 'inf', end: 'none' };
+      // A bounce plays the video forwards and backwards, so one pass is twice the video
+      const played = media && screen.bouncing ? { ...media, duration: media.duration * 2 } : media;
+      const limits = media || this.screenMode(screen.monitor) !== 'video' ? playbackLimits(played, timeout, elapsed, position) : { 'loop-file': 'inf', end: 'none' };
       for (const [name, value] of Object.entries(limits)) {
         await screen.client.setProperty(name, value);
       }
@@ -823,6 +837,7 @@ export class Daemon {
     await this.reconciling;
 
     await this.screensaver.leave();
+    await this.bounce.stop();
     await this.visualizers.stop();
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();

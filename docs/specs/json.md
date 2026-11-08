@@ -25,6 +25,7 @@ A library item, as printed by every command below.
 | `fps` | number or null | null for images and videos not probed or played yet |
 | `speed` | number | playback speed, 1 by default |
 | `dim` | number | 0 (none) to 100 (black) |
+| `bounce` | boolean or null | the item's own `backdrop bounce` setting; null follows `display.video_loop` (always null for images) |
 | `status` | `"new"`, `"kept"` or `"skipped"` | |
 | `doctor` | `{ ok, failed, warned, checks: [{ group, name, status, detail, hint }] }`, where `group` is tools, display, config, daemon, library or visualizer, `status` is ok, warn or fail, and `hint` (on some) names the fix |
 | `rating` | object or null | `{ value, orientation, at }`: 0 (skip) to 3, the orientation of the monitor it was given on, UTC time |

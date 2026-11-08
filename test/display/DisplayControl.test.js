@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { DisplayControl, parseSpeed, parseDim } from '../../src/display/DisplayControl.js';
+import { DisplayControl, parseSpeed, parseDim, parseBounce } from '../../src/display/DisplayControl.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { getMode, getChosenMode, setMode, setModeHold } from '../../src/display/Playlist.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -35,6 +35,17 @@ describe('DisplayControl', () => {
       for (const bad of ['fast', '', '1.2.3', '+', '--1']) {
         expect(() => parseSpeed(bad, 1), bad).to.throw('Invalid speed');
       }
+    });
+  });
+
+  describe('parseBounce', () => {
+    it('takes on, off, reset and a toggle of whether it bounces now', () => {
+      expect(parseBounce('on', {}, {})).to.equal(true);
+      expect(parseBounce('OFF', {}, {})).to.equal(false);
+      expect(parseBounce('reset', {}, {})).to.equal(null);
+      expect(parseBounce('toggle', { kind: 'video', bounce: null }, { video_loop: 'bounce' })).to.equal(false);
+      expect(parseBounce('toggle', { kind: 'video', bounce: null }, { video_loop: 'loop' })).to.equal(true);
+      expect(() => parseBounce('yes', {}, {})).to.throw('Invalid bounce');
     });
   });
 
@@ -291,6 +302,30 @@ describe('DisplayControl', () => {
         let message;
         try { await control.dim('10'); } catch (error) { message = error.message; }
         expect(message).to.include('Nothing from the library is playing');
+      });
+    });
+
+    describe('bounce', () => {
+      it('stores the playing video\'s bounce and asks the daemon to swap its entries', async () => {
+        const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4' });
+        const sent = [];
+        control.send = async (runtimeDir, state, change) => { sent.push(change); return state; };
+        clientFor('DP-1').properties.path = 'edl://%8%/m/v.mp4;%9%/c/1.mp4';
+
+        expect(await control.bounce('on')).to.include({ bounce: true, bouncing: true });
+        expect(db.getMedia(id).bounce).to.equal(true);
+        expect(await control.bounce('toggle')).to.include({ bounce: false, bouncing: false });
+        expect(await control.bounce('reset')).to.include({ bounce: null, bouncing: false });
+        expect(db.getMedia(id).bounce).to.equal(null);
+        expect(sent).to.deep.equal([{ bounce: id }, { bounce: id }, { bounce: id }]);
+      });
+
+      it('refuses images', async () => {
+        db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png' });
+        clientFor('DP-1').properties.path = '/m/i.png';
+        let message;
+        try { await control.bounce('on'); } catch (error) { message = error.message; }
+        expect(message).to.include('only applies to videos');
       });
     });
 

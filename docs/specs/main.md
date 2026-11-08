@@ -22,6 +22,7 @@ in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open w
 | Minimum quality | Nothing below `library.min_width` x `library.min_height` (1024x768, either orientation) enters the library; media below the current monitor is kept but never shown |
 | Resolution | Never upscale: only media at least as large as the target monitor is selected, unless `display.allow_upscale` |
 | Playback speed | One speed per video, independent of monitor orientation, applied on every play |
+| Bounce | `display.video_loop: bounce`, or `backdrop bounce` per item, plays a video to its end, backwards to its start and forwards again, from a reversed copy made in the background |
 | System load | The `load` section lightens the display under load; the chosen mode and parts stay the user's and return when it ends |
 | Screensaver streams | YouTube and other links live in `screensaver.streams` in config, not in the media library |
 
@@ -83,6 +84,14 @@ IPC socket) would break a wallpaper.
   `dim` apply immediately and are saved per item. Every command that switches what plays (`next`, `prev`, `skip`,
   `go-next`, `keep --next`, `mode`) prints the new item on the target monitor, read from the entry mpv marks
   current, so it shows before the file finishes loading. `--line` prints it as one aligned line instead.
+- **Bounce:** a bouncing video loads as one EDL URL, `edl://<video>;<reversed copy>` (`src/display/bounce.js`),
+  so `loop-file` and the video duration work on the pair at twice the length; code that compares mpv's paths
+  with the library's reads them through `entryPath`. The copy (`src/library/reverse.js`, in `paths.bounce`,
+  `~/.cache/backdrop/bounce/<id>.mp4`) is made by the daemon (`daemon/Bounce.js`) when the item first plays and
+  for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
+  in chunks of about 256 MiB of raw frames each, with VAAPI or else libx264, and the chunks are joined without
+  encoding again. Once a copy is ready the item's entries are swapped for the URL, the playing one at its next
+  play. Purging the item deletes its copy; a replaced file (download --upgrade) is reversed again.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
   current layout; a configured monitor that is unplugged is picked up again when it returns.

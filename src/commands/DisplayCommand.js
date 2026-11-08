@@ -382,6 +382,13 @@ export class DisplayCommand {
     out.print(`${monitor.name}: dim ${fmt.cyan(dim)}${shown > dim ? fmt.dim(` (${shown} while music plays)`) : ''}`);
   }
 
+  async bounce(value, options) {
+    const { monitor, bounce, bouncing } = await this.control.bounce(value, options.monitor);
+    const source = bounce === null ? fmt.dim(' (display.video_loop)') : '';
+    const when = bouncing ? fmt.dim(', from its next play once reversed') : '';
+    out.print(`${monitor.name}: bounce ${fmt.cyan(bouncing ? 'on' : 'off')}${source}${when}`);
+  }
+
   // With the daemon running, the reload also shows what the target monitor now plays
   async mode(requested, options = {}) {
     // With the wallpaper off only the mode changes; the wallpaper starts in it when turned on

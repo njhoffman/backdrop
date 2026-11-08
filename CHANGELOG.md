@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.52.0] - 2026-11-07
+
+### Added
+
+- Bouncing videos: with `display.video_loop: bounce`, or `backdrop bounce on` for one video (also `off`, `toggle` and `reset`, and an entry in the menu's speed panel), a video plays to its end, backwards to its start and forwards again. The daemon makes a reversed copy in `~/.cache/backdrop/bounce` in the background the first time a video plays, and for the next one in the playlist, so the bounce starts from the video's next play. It uses VAAPI where the GPU has it, else libx264, runs one at a time at the lowest priority and waits while the load is high. The video duration counts a bounce as twice the video; purging an item deletes its copy.
+- `--json` output has a `bounce` field, and `--line` output shows `bounce` or `no bounce` among the adjustments.
+
 ## [2.51.0] - 2026-11-05
 
 ### Changed

@@ -1,6 +1,7 @@
 import { checkSetting } from '../config/schema.js';
 import fs from 'fs-extra';
 import path from 'path';
+import { removeReversed } from './reverse.js';
 
 // Validated library.trash_days; 0 disables purging
 export function trashDays(config) {
@@ -35,6 +36,9 @@ export async function purgeTrash({ config, database, logger, dryRun = false, unl
         continue;
       }
     }
+    await removeReversed(media, config.get().paths.bounce).catch(error => {
+      logger.warn('Failed to remove the reversed copy', { mediaId: media.id, error: error.message });
+    });
     // The file is gone for good, so undo must not stop at this item's ratings
     database.transaction(() => {
       database.updateMedia(media.id, { path: null });

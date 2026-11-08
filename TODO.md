@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-11-05
+Reviewed: 2026-11-07
 
 ## 3. Display engine on mpv sockets
 
@@ -163,6 +163,14 @@ Reviewed: 2026-11-05
 
 - [ ] **A hung mpv now takes longer to restart.** (p3) [bug] Commands wait 15 s since 2.50.7, so two failed health checks 30 s apart take about 45 s from the first where they took about 35 s. Give the health check's own `pid` query a shorter timeout than loads get.
 - [ ] **No test holds the decoder order.** (p3) [test] Nothing asserts `--hwdec=vaapi,auto-safe` or the 15 s timeout from 2.50.7, so either could regress to the startup failure unnoticed. It is also unexplained why CUDA's probe became slow here, having been fine earlier the same day, and VAAPI first is untried on an NVIDIA machine.
+- [x] **Bounce videos.** (p2) [feature] Play a video to its end, backwards to its start and forwards again: `display.video_loop: bounce`, or `backdrop bounce on|off|toggle|reset` per item (schema v10, also in the menu's speed panel).
+      Done: the daemon reverses a video in chunks (VAAPI, else libx264, nice 19, normal load only) into `~/.cache/backdrop/bounce/<id>.mp4` on its first play and for the next entry, and plays the pair as one `edl://` entry (`src/display/bounce.js`, `daemon/Bounce.js`, `src/library/reverse.js`).
+- [ ] **Judge the bounce seam by eye.** (p2) [test] mpv sets up the decoder again where the video meets its reversed copy. On the desktop (2026-11-07, 2732x1440 at 24 fps, VAAPI) no frame dropped at the seam or the loop,
+      but nobody has watched for a visible hitch, nor tried 4K at 60 fps or software decoding. If it shows, encode the copy to match the original's codec settings, or try `--demuxer-cache-wait`/a larger `--demuxer-readahead-secs`.
+- [ ] **Reversed copies outlive their bounce.** (p3) [chore] `bounce off`, `video_loop: loop` and items dropped from the playlist keep their copy until the item is purged, and `video_loop: bounce` grows
+      `~/.cache/backdrop/bounce` by about 1.7x each played video with no limit. Have purge drop copies of items that no longer bounce, add a size cap (oldest played first), and show the cache's size in `doctor` or `stats`.
+- [ ] **The item that starts an encode bounces only from its next play.** (p3) [feature] Its entry is playing, so it is not swapped (reloading would restart it). When the copy is ready before its last pass, it could
+      be swapped at the loop with `loadfile <url> replace` plus `start=` the current position, which needs a check that it shows no jump (`daemon/Bounce.js`).
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
@@ -619,6 +627,28 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done: dropped outright, with 0.39.2 noted in `docs/specs/sleeve.md`.
 - [ ] **Try it on the real desktop.** (p2) [test] Veil, lyrics, ring and bars have now been seen together on the laptop panel (2026-11-05): stacking order, polybar hidden, ring scale and the veil's color.
       Still unseen there: colors following the wallpaper over several wallpapers, a wallpaper restart under sleeve, `lyrics-stage` and `lyrics-now` (the opaque layouts, whose seam 0.39.2 should have removed), and all of it with audio on the desktop's sink, since the music was on a phone.
+
+## 10. Web interface
+
+A local HTML interface for what the CLI and the rofi menu do now: the library, what each monitor plays, visualizer
+presets and the config. It talks to the running daemon the way the CLI does (`DisplayControl`, control requests,
+`ConfigManager.setInFile`), so it adds a front end rather than a second control path.
+
+- [ ] **Design the web interface.** (p2) [docs] Write `docs/specs/web.md` before any code: a `backdrop web` command serving on 127.0.0.1 only, the server (`node:http` with no framework, or a small one such as fastify),
+      the front end (plain HTML with a little vanilla JS or htmx, versus a bundled SPA, which the project has no build step for), live updates (server-sent events from `state.json` changes), and
+      authentication (a random token in the URL or a cookie, since any local program can reach a localhost port). List which commands it covers in its first version.
+- [ ] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
+      speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
+- [ ] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,
+      rating and per-item speed/dim/bounce, and "play next" (`queueMatching`). Thumbnails for items never played need making on demand (`thumbnailFor`), which is slow for a large page: page it.
+- [ ] **Visualizer presets editor.** (p2) [feature] The built-in and config presets (`src/visualizer/presets.js`, `presetsOf`), each instance's look with live changes (`visualizer_set` control requests),
+      reset, and save as a preset (`ConfigManager.setInFile`, which keeps comments), covering what the visualizer menu does plus the settings it has no room for.
+- [ ] **Config editor.** (p3) [feature] Forms for the display, library, load and screensaver sections, checked with `validateConfig` (`src/config/schema.js`) before `setInFile` writes them; the daemon's config watch applies them,
+      and settings that need a restart (`LIVE_SETTINGS` in `daemon/ConfigChanges.js`) are marked as such.
+- [ ] **Stats and status pages.** (p3) [feature] What `status`, `stats` and `doctor` print: playback cost by kind and decoder, load level, screensaver, and the bounce cache once it reports its size.
+- [ ] **Run it as a service.** (p3) [chore] A `systemd` user unit for `backdrop web` (`SystemdCommand`), or the daemon serving it itself behind a config switch; decide in the design.
+- [ ] **Tests for the web interface.** (p3) [test] Request handlers driven with the fakes the command tests use (`test/helpers/fakes.js`), so routine runs stay offline, and one optional browser test skipped
+      when no headless browser is installed, like the rofi and Xvfb integration tests.
 
 ## Completed
 

@@ -57,6 +57,7 @@ backdrop next --tag ocean   # jump to a matching item; the filter sticks for lat
 backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-duration), until --clear
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
+backdrop bounce on          # play the video backwards at its end and forwards again (off, toggle, reset)
 backdrop screensaver        # toggle: only the wallpaper and visualizers on an empty workspace
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current
@@ -130,6 +131,11 @@ piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` 
 every pass, so the order is random without repeats; automatic advances follow it too. Images change every
 `display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
+With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video
+plays backwards to its start at its end and then forwards again. The daemon makes a reversed copy in
+`~/.cache/backdrop/bounce` in the background, with VAAPI where the GPU has it, the first time the video plays (and
+for the next one in the playlist), so the bounce starts from its next play; the copy takes about as much disk as
+the video again.
 
 The daemon samples each mpv's CPU use every 30 seconds. `status` shows each monitor's recent average and
 decoder (`vaapi` or another hardware API, or `software`), `current` the playing item's average, and `stats` a

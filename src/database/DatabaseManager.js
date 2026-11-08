@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { tagsFor } from '../library/tags.js';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -15,7 +15,7 @@ const MAX_SPEED = 100;
 // Columns callers may write through addMedia/updateMedia; id, status and timestamps are managed here
 const MEDIA_FIELDS = [
   'kind', 'source', 'source_id', 'path', 'original_name', 'width', 'height', 'duration',
-  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url', 'duplicate_of', 'fps'
+  'sha256', 'speed', 'dim', 'tags', 'variants', 'author', 'page_url', 'duplicate_of', 'fps', 'bounce'
 ];
 // Changing any of these rebuilds an item's derived tags
 const TAG_FIELDS = ['source', 'original_name', 'page_url', 'tags'];
@@ -131,6 +131,9 @@ const MIGRATIONS = [`
   -- Final ratings stay in the history but undo skips them: their file was purged, or undo --discard dropped them
   ALTER TABLE ratings ADD COLUMN final INTEGER NOT NULL DEFAULT 0;
   UPDATE ratings SET final = 1 WHERE media_id IN (SELECT id FROM media WHERE path IS NULL AND status = 'skipped');
+`, `
+  -- Whether a video plays backwards at its end and forwards again: 1 or 0 for the item, NULL follows display.video_loop
+  ALTER TABLE media ADD COLUMN bounce INTEGER;
 `];
 
 export function orientationOf(resolution) {
@@ -146,6 +149,7 @@ function statusForRating(rating) {
 }
 
 function serialize(field, value) {
+  if (field === 'bounce') return typeof value === 'boolean' ? Number(value) : null;
   return JSON_FIELDS.includes(field) ? JSON.stringify(value ?? []) : value ?? null;
 }
 
@@ -157,6 +161,7 @@ function parseMedia(row) {
   for (const field of JSON_FIELDS) {
     media[field] = JSON.parse(media[field]);
   }
+  if ('bounce' in media) media.bounce = media.bounce === null ? null : Boolean(media.bounce);
   return media;
 }
 
@@ -425,6 +430,17 @@ export class DatabaseManager {
 
   setDim(id, dim) {
     this.updateMedia(id, { dim });
+  }
+
+  // true or false for the item, null to follow display.video_loop
+  setBounce(id, bounce) {
+    if (bounce !== null && typeof bounce !== 'boolean') throw new Error('Bounce must be true, false or null');
+    this.updateMedia(id, { bounce });
+  }
+
+  // Whether any item bounces on its own, so the daemon looks ahead for bounces with display.video_loop: loop
+  hasBounceOverrides() {
+    return Boolean(this.db.prepare('SELECT 1 FROM media WHERE bounce = 1 LIMIT 1').get());
   }
 
   // rating 0 skips the item, 1-3 keeps it; status follows the latest rating

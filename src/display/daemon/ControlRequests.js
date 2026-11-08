@@ -66,6 +66,8 @@ export class ControlRequests {
   async applyRequest(request) {
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
     if (request.durations) await this.applyDurations();
+    // `backdrop bounce` changed an item: its entries are swapped and it is reversed if it needs to be
+    if (Number.isInteger(request.bounce)) await this.daemon.bounce.changed(request.bounce);
     // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
     if (request.reload_config) await this.daemon.reloadConfig().catch(error => this.daemon.logger.error('Config reload failed', { error: error.message }));
     if (request.visualizer_reset) {

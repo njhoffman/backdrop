@@ -30,10 +30,10 @@ export function prescaleFilter(media, monitor) {
 }
 
 // loadfile for one item, with the item's prescale as a per-file option when it needs one.
-// flags is mpv's loadfile flag (replace, append, append-play).
-export function loadMedia(client, item, flags, monitor) {
+// flags is mpv's loadfile flag (replace, append, append-play, insert-at with index); url is what mpv loads,
+// the item's bounce URL when it bounces (src/display/bounce.js).
+export function loadMedia(client, item, flags, monitor, { url = item.path, index = -1 } = {}) {
   const filter = prescaleFilter(item, monitor);
-  return filter
-    ? client.command('loadfile', item.path, flags, -1, `vf=${filter}`)
-    : client.command('loadfile', item.path, flags);
+  if (filter) return client.command('loadfile', url, flags, index, `vf=${filter}`);
+  return index === -1 ? client.command('loadfile', url, flags) : client.command('loadfile', url, flags, index);
 }

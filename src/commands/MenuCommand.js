@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { DisplayCommand } from './DisplayCommand.js';
 import { RatingCommand } from './RatingCommand.js';
 import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
+import { bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
 import { thumbnailFor } from '../library/thumbnail.js';
@@ -367,10 +368,17 @@ export class MenuCommand {
       const entries = values.map(value => ({
         icon: ICONS[kind], label: value, active: Number(value) === current && !/^[+-]/.test(value)
       }));
+      // The speed panel also turns the video's bounce on and off (backwards at its end, then forwards)
+      const bouncing = kind === 'speed' && bounces(item.media, this.config.get().display);
+      if (kind === 'speed') entries.push({ icon: ICONS.bounce, label: 'bounce', active: bouncing });
       const picked = await this.show({ prompt, title: `${item.title}  ·  ${prompt}`, message: item.message, preview: item.preview,
-        entries, keys: [QUIT_KEY], columns: values.length });
+        entries, keys: [QUIT_KEY], columns: entries.length });
       if (picked === null) return {};
       if (picked.key === QUIT_KEY) return { quit: true };
+      if (picked === values.length) {
+        await this.display.bounce(bouncing ? 'off' : 'on', { monitor });
+        continue;
+      }
       await this.display[kind](this.step(kind, values[picked], current), { monitor });
     }
   }

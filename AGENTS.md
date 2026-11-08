@@ -97,6 +97,10 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   With the `load` section, `src/display/LoadGovernor.js` (only levels, from `os.loadavg()`) and `daemon/LoadShedding.js` drop to images and then
   stop the wallpaper and visualizer under load. The hold is apart from the user's choices: `getMode` returns the `mode_hold` setting over the
   chosen mode (`getChosenMode`), `displayMode` gives a monitor's mode, and `daemon.wallpaper` stays the user's (`showsWallpaper` adds the load).
+- **Bounce** (`src/display/bounce.js`, `daemon/Bounce.js`, `src/library/reverse.js`) - `display.video_loop: bounce` or
+  `media.bounce` (schema v10, `backdrop bounce`) plays a video and its reversed copy as one `edl://` entry; mpv
+  reports that URL as the path, so compare mpv filenames with library paths through `entryPath`, and load items
+  with `playUrl`. The daemon reverses an item on its first play and the next entry ahead, one at a time at the normal load level.
 - **Screensaver** (`src/display/daemon/Screensaver.js`) - the daemon's mode, asked for through a control request by `ScreensaverCommand`; see `docs/specs/main.md`.
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
@@ -121,7 +125,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
-  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips); failed database writes restore the file. The obsolete shell-hook command has been removed.
+  undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips; v10 adds `media.bounce`); failed database writes restore the file. The obsolete shell-hook command has been removed.
   Lists support plain output, interactive rating and M3U export; stats work offline. Terminal prompts go through
   `ask()` (`src/utils/prompts.js`, `@inquirer/prompts`; Ctrl-C answers null), with `select`/`input` injected for tests. `MenuCommand` drives the
   rating and display commands from `rofi -dmenu`, and the visualizer (`menu visualizer` or `z`: live `visualizer_set`
