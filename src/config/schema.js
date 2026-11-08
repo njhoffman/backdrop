@@ -81,6 +81,9 @@ const SECTIONS = {
       ? value
       : fail('true, false or a workspace name'))
   },
+  web: {
+    port: integer(1, 65535)
+  },
   load: {
     enabled: boolean,
     window: oneOf([1, 5, 15]),

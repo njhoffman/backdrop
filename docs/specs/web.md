@@ -1,6 +1,6 @@
 # Web interface
 
-Status: **agreed design** (2026-11-07), not built yet: D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
+Status: **agreed design** (2026-11-07); steps 1 and 2 of "Order of work" are built (2.53.2, 2.54.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
 vanilla JS with no build; D4, server-sent events; D5 A, a token with Host and Origin checks; D6, services first;
 and the first version's scope under "Decisions on scope". The roadmap items are in `TODO.md`, "10. Web interface".
 
@@ -109,24 +109,31 @@ it no longer prints to a stdout nobody reads.
 - Alternative: have the server call the commands with output captured (`setJsonOutput`). Quicker, but the web
   server would parse its own JSON output, and errors would arrive as printed text.
 
-## API (first sketch)
+## API
 
-JSON in and out; errors are `{ error }` with a 4xx or 5xx status. `:monitor` is an output name such as `DP-3`.
+JSON in and out; errors are `{ error }` with a 4xx or 5xx status (a service's error is a 400 with its message).
+`:monitor` is an output name such as `DP-3`. Routes marked *built* exist (`src/web/server.js`); the rest are still a
+sketch for the later steps. Every built changing route sends a snapshot to the pages afterwards.
 
 | Route | Does |
 |---|---|
-| `GET /api/state` | `state.json` plus each monitor's playing item (`playingJson`); `{ running: false }` while stopped |
-| `GET /api/events` | Server-sent events (D4) |
-| `POST /api/monitors/:monitor/next` `prev` | Optional `{ query, tag, keywords, random }` as `next` takes |
-| `POST /api/mode` | `{ mode: video \| image \| toggle }` |
-| `POST /api/parts` | `{ wallpaper?, visualizer? }`, as `start`/`stop --wallpaper`/`--visualizer` |
-| `POST /api/durations` | `{ image_duration?, video_duration? }`, or `{ clear: true }` |
+| `GET /api/state` *built* | `{ status, durations, settings, version }`: `status --json` (`DisplayService.status`), the durations in force (`{ image, video }`, each `{ seconds, set }`, set when next or the menu gave it), `settings.video_loop` for items that follow it |
+| `GET /api/events` *built* | Server-sent events (D4): an `event: state` with the same snapshot on connect and on each change |
+| `POST /api/monitors/:monitor/next` `prev` *built* | `playingJson` of what the monitor plays now; next's filters (`{ query, tag, keywords, random }`) come with the library step |
+| `POST /api/monitors/:monitor/keep` *built* | `{ rating: 1-3, next? }` on the playing item: `{ item, warnings, playing? }` |
+| `POST /api/monitors/:monitor/skip` *built* | Skips the playing item: `{ item, warnings, playing }` |
+| `POST /api/monitors/:monitor/speed` `dim` `bounce` *built* | `{ value }` as the commands take it (`0.8`, `+10`, `on`, `reset`) |
+| `POST /api/undo` *built* | Undoes the last rating: `{ action: none \| undone, item, warnings }` |
+| `POST /api/mode` *built* | `{ mode: video \| image \| toggle, monitor? }`: `{ mode, held }` |
+| `POST /api/daemon` *built* | `{ running: true \| false }`: starts or stops the daemon |
+| `POST /api/parts` *built* | `{ wallpaper?, visualizer? }`, each true or false, as `start`/`stop --wallpaper`/`--visualizer`; a part turned on starts a stopped daemon |
+| `POST /api/durations` *built* | `{ image?, video? }` as times (`90`, `5m`), or `{ clear: true }`, which also drops next's filters (as `next --clear`) |
 | `GET /api/media` | List with `kind`, `status`, `min_rating`, `query`, `tag`, `keywords`, `sort`, `page`, `per_page` (`src/library/match.js`) |
 | `GET /api/media/:id` | `mediaJson` |
-| `POST /api/media/:id/rating` | `{ rating: 0-3 }` (0 skips); `POST /api/undo` undoes the last |
+| `POST /api/media/:id/rating` | `{ rating: 0-3 }` (0 skips) on any item, playing or not |
 | `PATCH /api/media/:id` | `{ speed?, dim?, bounce? }`; applied now on any monitor playing it, stored otherwise |
 | `POST /api/media/:id/queue` | Play next on `{ monitor }` (`queueMatching`) |
-| `GET /thumbs/:id.jpg` | The cached thumbnail, made on demand (`thumbnailFor`, one at a time, at the lowest priority) |
+| `GET /thumbs/:id.jpg` *built* | The cached thumbnail, made on demand (`thumbnailFor`, one at a time, at the lowest priority) |
 | `GET /api/visualizer` | Instances, their live looks and the presets (`presetsOf`) |
 | `POST /api/visualizer/live` | A `visualizer_set` control request; `DELETE` resets |
 | `POST /api/visualizer/presets/:name` | Saves the live look as a preset (`lookAsPreset`, `setInFile`) |

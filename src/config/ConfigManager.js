@@ -210,6 +210,10 @@ export class ConfigManager {
         rofi_args: [],
         workspace: true
       },
+      // `backdrop web` (docs/specs/web.md); a taken port falls back to a free one
+      web: {
+        port: 7737
+      },
       visualizer: {
         enabled: false,
         engine: 'glava',

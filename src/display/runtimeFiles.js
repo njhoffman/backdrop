@@ -33,3 +33,8 @@ export function nextFiltersPath(runtimeDir) {
 export function nextFiltersLockPath(runtimeDir) {
   return path.join(runtimeDir, 'next-filters.lock');
 }
+
+// The running `backdrop web`: { pid, port, token }, mode 0600 (src/commands/WebCommand.js)
+export function webPath(runtimeDir) {
+  return path.join(runtimeDir, 'web.json');
+}

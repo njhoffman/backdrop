@@ -67,6 +67,9 @@ menu:
   rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme-str, 'window { width: 900px; }']
   workspace: true          # i3: an empty workspace (true: "backdrop", or a name) while the menu is open; false to stay
 
+web:
+  port: 7737               # `backdrop web` listens on 127.0.0.1 here; a taken port falls back to a free one (docs/specs/web.md)
+
 visualizer:                # see docs/specs/visualizer.md; checked at daemon start and on `backdrop visualizer reload`
   enabled: false
   engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance

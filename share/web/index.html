@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="backdrop-token" content="{{token}}">
+  <title>backdrop</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> backdrop</h1>
+    <span id="daemon" class="pill" aria-live="polite">connecting</span>
+    <span id="version" class="muted"></span>
+  </header>
+
+  <main>
+    <section id="stopped" class="notice" hidden>
+      <p>The daemon is not running.</p>
+      <button type="button" id="start" class="primary">Start it</button>
+    </section>
+
+    <section class="panel controls" aria-label="Display settings">
+      <div class="field">
+        <span class="label">Mode</span>
+        <div class="segmented" role="group" aria-label="Mode">
+          <button type="button" data-mode="video">Videos</button>
+          <button type="button" data-mode="image">Images</button>
+        </div>
+        <span id="held" class="muted"></span>
+      </div>
+      <div class="field">
+        <span class="label">Show</span>
+        <label class="switch"><input type="checkbox" id="wallpaper"> Wallpaper</label>
+        <label class="switch"><input type="checkbox" id="visualizer"> Visualizer</label>
+      </div>
+      <form id="durations" class="field" autocomplete="off">
+        <span class="label">Durations</span>
+        <label>Images <input name="image" size="5" placeholder="5m" aria-describedby="durations-help"></label>
+        <label>Videos <input name="video" size="5" placeholder="10m" aria-describedby="durations-help"></label>
+        <button type="submit">Set</button>
+        <button type="button" id="clear-durations" title="Drop the durations and filters next and the menu set">Reset</button>
+        <span id="durations-help" class="muted">90, 90s, 5m or 1h; 0 loops videos forever</span>
+      </form>
+      <div class="field">
+        <button type="button" id="undo">Undo last rating</button>
+      </div>
+    </section>
+
+    <section id="monitors" class="monitors" aria-label="Monitors"></section>
+  </main>
+
+  <template id="monitor-card">
+    <article class="panel card">
+      <header class="card-head">
+        <h2 class="monitor-name"></h2>
+        <span class="monitor-size muted"></span>
+      </header>
+      <div class="preview"><img class="thumb" alt="" width="728" height="200"><span class="nothing">Nothing playing</span></div>
+      <div class="item">
+        <h3 class="item-title"></h3>
+        <p class="item-meta muted"></p>
+        <p class="item-rating"></p>
+      </div>
+      <div class="actions" role="group" aria-label="Playback">
+        <button type="button" data-action="prev" title="Previous">Prev</button>
+        <button type="button" data-action="next" class="primary" title="Next">Next</button>
+        <span class="spacer"></span>
+        <button type="button" data-action="keep" data-rating="1" title="Keep, rated 1">★1</button>
+        <button type="button" data-action="keep" data-rating="2" title="Keep, rated 2">★2</button>
+        <button type="button" data-action="keep" data-rating="3" title="Keep, rated 3">★3</button>
+        <button type="button" data-action="skip" class="danger" title="Skip: move to the trash and play the next">Skip</button>
+      </div>
+      <div class="adjust">
+        <label class="video-only">Speed
+          <select name="speed" data-adjust="speed">
+            <option>0.4</option><option>0.5</option><option>0.65</option><option>0.75</option><option>0.85</option><option>1</option>
+          </select>
+        </label>
+        <label>Dim <input type="range" name="dim" min="0" max="100" step="5" data-adjust="dim"> <output class="dim-value"></output></label>
+        <label class="video-only">Bounce
+          <select name="bounce" data-adjust="bounce">
+            <option value="reset">Default</option><option value="on">On</option><option value="off">Off</option>
+          </select>
+        </label>
+      </div>
+    </article>
+  </template>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

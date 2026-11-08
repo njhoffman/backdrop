@@ -129,6 +129,12 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   and `DisplayCommand` print their results (their `control` forwards to the service's); the menu calls the services
   directly and drops their results (`done`), since an action's result is its next state. The web interface will
   call them too (`docs/specs/web.md`).
+- **Web** (`src/web/`, `share/web/`) - `backdrop web` (`WebCommand`, its own process; `docs/specs/web.md`): `WebServer`
+  on `node:http` bound to 127.0.0.1 (a taken `web.port` falls back to a free one), routes calling the services,
+  `auth.js` (a per-run token swapped for an HttpOnly cookie, the token header on changes, Host and Origin checked),
+  `EventHub` (server-sent snapshots on `state.json` changes and mpv `path`/`speed`/`contrast` changes), and
+  `web.json` (`{ pid, port, token }`, 0600) in the runtime dir. The page is plain HTML and ES modules with no build,
+  under a strict content security policy (no inline script or style).
 - **Commands** (`src/commands/`) - one class per command, constructed with `(config, database, logger)`.
   All are registered. `RatingCommand` uses `DisplayControl.current()` and records file movements for persistent
   undo (schema v4; v5 adds per-item `dim`; v6 adds `duplicate_of`; v7 adds `fps` and `media_tags`; v8 adds `playback_stats`; v9 adds `ratings.final`, which undo skips; v10 adds `media.bounce`); failed database writes restore the file. The obsolete shell-hook command has been removed.

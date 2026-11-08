@@ -4,7 +4,7 @@ import { readState } from '../display/Daemon.js';
 import { reapOrphans } from '../display/children.js';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { resolveNextFilters } from '../display/nextFilters.js';
+import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { getMode, getChosenMode, displayMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
 import { formatDecoder } from '../utils/output.js';
@@ -184,6 +184,27 @@ export class DisplayService {
     const playing = await this.control.prev(options.monitor);
     await this.announce(playing);
     return { playing, options };
+  }
+
+  // The image and video durations in force: { image, video } in seconds, each with whether next or the menu set it
+  // (until next --clear or a daemon restart) or it is display.*'s
+  async durations() {
+    const stored = await readNextFilters(this.runtimeDir);
+    const { display } = this.config.get();
+    return {
+      image: { seconds: stored.image_duration ?? display.image_duration, set: stored.image_duration !== undefined },
+      video: { seconds: stored.video_duration ?? display.video_duration, set: stored.video_duration !== undefined }
+    };
+  }
+
+  // Sets the durations as --image-duration and --video-duration do ({ imageDuration, videoDuration }, times such as
+  // 90, 5m), or with clear drops them along with next's stored filters; the daemon applies a change at once.
+  // Returns durations().
+  async setDurations(options) {
+    await resolveNextFilters(this.runtimeDir, options, {
+      persist: true, kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
+    });
+    return this.durations();
   }
 
   // The desktop notification for what a monitor plays after a command switched it (display.notify)

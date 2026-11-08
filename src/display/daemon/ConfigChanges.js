@@ -99,7 +99,7 @@ export class ConfigChanges {
       await this.daemon.load.reconfigure(wasEnabled);
     }
     // Read by the CLI only, which loads the file on every run; kept current for anything else that asks
-    for (const section of ['sources', 'menu', 'output', 'screensaver']) settings[section] = next[section];
+    for (const section of ['sources', 'menu', 'output', 'screensaver', 'web']) settings[section] = next[section];
 
     const restart = changed.filter(key => LIVE_SETTINGS[key] === undefined);
     const applied = changed.filter(key => LIVE_SETTINGS[key] !== undefined);

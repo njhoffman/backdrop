@@ -647,8 +647,12 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
       parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
       Done: `RatingService` and `DisplayService`; the commands print their results and the menu calls them directly. The existing tests passed unchanged, plus service tests of the returned data.
 - [ ] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
-- [ ] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
+- [x] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
       speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
+      Done: `backdrop web` (2.54.0), with live updates; seen working against the daemon on 2026-11-07. Not yet: next's filters from the page, which come with the library browser.
+- [ ] **The durations' Reset also drops next's filters.** (p3) [feature] `POST /api/durations { clear: true }` is `next --clear`, the only way `nextFilters.js` drops stored durations, so it clears `--query`/`--tag` too.
+      Add a way to drop only the durations (`resolveNextFilters` with a `clearDurations` option), and use it from the page.
+- [ ] **`status` and `doctor` do not know about `backdrop web`.** (p3) [feature] `web.json` records the running server, as the spec intends for them; `status` could print its address (without the token unless asked) and `doctor` find a stale `web.json` whose process is gone.
 - [ ] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,
       rating and per-item speed/dim/bounce, and "play next" (`queueMatching`). Thumbnails for items never played need making on demand (`thumbnailFor`), which is slow for a large page: page it.
 - [ ] **Visualizer presets editor.** (p2) [feature] The built-in and config presets (`src/visualizer/presets.js`, `presetsOf`), each instance's look with live changes (`visualizer_set` control requests),

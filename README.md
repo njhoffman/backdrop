@@ -58,6 +58,7 @@ backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-d
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop bounce on          # play the video backwards at its end and forwards again (off, toggle, reset)
+backdrop web                # the web interface on 127.0.0.1:7737 until Ctrl-C; open the address it prints
 backdrop screensaver        # toggle: only the wallpaper and visualizers on an empty workspace
 backdrop dim 30             # darken the current image or video (0-100, +10, -10, reset); remembered
 backdrop current

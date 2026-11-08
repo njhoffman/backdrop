@@ -22,6 +22,7 @@ import { SystemdCommand } from './commands/SystemdCommand.js';
 import { DoctorCommand } from './commands/DoctorCommand.js';
 import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerCommand.js';
 import { ScreensaverCommand, SCREENSAVER_ACTIONS } from './commands/ScreensaverCommand.js';
+import { WebCommand } from './commands/WebCommand.js';
 import { configureOutput, ignoreClosedPipes, out, printVersion, setJsonOutput } from './utils/output.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
@@ -101,6 +102,7 @@ class BackdropApp {
     const doctor = new DoctorCommand(this.config, this.database, this.logger, { version });
     const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
     const screensaver = new ScreensaverCommand(this.config, this.database, this.logger);
+    const web = new WebCommand(this.config, this.database, this.logger, { version });
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'With filters, pick any matching item still ahead instead of the next one (default: display.order)'];
     const noRandomOption = ['--no-random', 'With filters, play the next matching item in the shuffled order'];
@@ -197,6 +199,12 @@ class BackdropApp {
       .option(...monitorOption)
       .allowUnknownOption()
       .action(this.action((value, options) => display.dim(value, options)));
+
+    program
+      .command('web')
+      .description('Serve the web interface on 127.0.0.1 until Ctrl-C, printing its address (docs/specs/web.md)')
+      .option('-p, --port <port>', 'Port to listen on (default: web.port, 7737; a taken one falls back to a free port)')
+      .action(this.action(options => web.run(options)));
 
     program
       .command('bounce')

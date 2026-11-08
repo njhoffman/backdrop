@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.54.0] - 2026-11-07
+
+### Added
+
+- `backdrop web`: a web interface on 127.0.0.1 (port `web.port`, 7737 by default, or a free one when it is taken) until Ctrl-C. Open the address it prints. Its Now playing page shows each monitor's item with its thumbnail and updates live, and has next, prev, keep 1-3, skip, undo, speed, dim and bounce, the mode, the wallpaper and visualizer switches, the durations, and a start button while the daemon is stopped. Each run has its own token, which only the printed address carries; other programs and web sites cannot use it.
+
 ## [2.53.2] - 2026-11-07
 
 ### Changed
