@@ -2,8 +2,8 @@ import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl } from '../bounce.js';
 import { MODE_KINDS } from '../Playlist.js';
 import {
-  listSmoothed, removeStaleSmoothWork, smoothSize, smoothedPath, smoothedReady, smoothedReversedPath, smoothedReversedReady,
-  smoothFactor, wantsSmoothing
+  listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
+  smoothedReversedReady, smoothFactor, wantsSmoothing
 } from '../../library/smooth.js';
 
 // Smoothed copies of slowed videos (display.smooth, src/library/smooth.js) for a Daemon (passed in), and mpv's frame
@@ -42,12 +42,16 @@ export class Smooth {
     this.backlog();
   }
 
-  // Every slowed video without its copy, the highest rated first, after whatever waits already
+  // Every slowed video without its copy, after whatever waits already: those a stopped job left chunks for first, so
+  // they carry on, then the highest rated
   backlog() {
     if (!this.enabled) return;
     const { database } = this.daemon;
-    const items = database.findMedia({ kind: MODE_KINDS.video, status: ['new', 'kept'], downloaded: true, order: 'rating' })
+    const dir = this.settings.paths.smooth;
+    const slowed = database.findMedia({ kind: MODE_KINDS.video, status: ['new', 'kept'], downloaded: true, order: 'rating' })
       .filter(media => media.speed < 1);
+    const started = slowed.filter(media => fs.existsSync(smoothWorkPath(media, dir)));
+    const items = [...started, ...slowed.filter(media => !started.includes(media))];
     for (const media of items) this.want(media, { start: false });
     this.kick();
   }
@@ -187,7 +191,7 @@ export class Smooth {
   }
 
   // Deletes copies no longer wanted: smoothing off, the item gone, skipped, at another speed or no longer slowed, and a
-  // reversed copy of an item that no longer bounces. Copies of what plays now stay. Their entries go back to what the
+  // reversed copy of an item that no longer bounces, and the kept work of jobs for them. Copies of what plays now stay. Their entries go back to what the
   // item loads now. Returns the ids whose copies were deleted.
   async prune() {
     const { paths, display } = this.settings;
@@ -202,6 +206,13 @@ export class Smooth {
       if (wanted) continue;
       await fs.remove(copy.file).catch(error => this.daemon.logger.warn('Failed to delete a smoothed copy', { file: copy.file, error: error.message }));
       removed.add(copy.id);
+    }
+    // A stopped job's chunks stay only while its item still wants that copy (the job running now keeps its own)
+    for (const work of await listSmoothWork(paths.smooth)) {
+      if (work.id === this.encoding) continue;
+      const media = this.daemon.database.getMedia(work.id);
+      const wanted = display.smooth && media?.path && media.status !== 'skipped' && media.speed === work.speed && wantsSmoothing(media, this.target);
+      if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     if (removed.size) {
       this.daemon.logger.info('Pruned smoothed copies', { items: removed.size });

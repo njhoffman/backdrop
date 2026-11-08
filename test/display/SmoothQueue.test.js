@@ -6,7 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Smooth } from '../../src/display/daemon/Smooth.js';
 import { bounceUrl } from '../../src/display/bounce.js';
-import { smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
+import { smoothWorkPath, smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -70,6 +70,27 @@ describe('Smooth (daemon)', () => {
     expect(made[0].size).to.deep.equal({ width: 1920, height: 1080 });
     // Each finished item's entries are swapped for its copy
     expect(swapped.map(ids => ids.at(-1))).to.deep.equal([high.id, low.id]);
+  });
+
+  it('carries on with an item a stopped job left chunks for before the rest of the backlog', async () => {
+    const high = await video(1);
+    const started = await video(2);
+    db.addRating(high.id, 3);
+    await fs.ensureDir(smoothWorkPath(started, config.get().paths.smooth));
+    await smooth.begin();
+    await settle();
+    expect(made.map(item => item.id)).to.deep.equal([started.id, high.id]);
+  });
+
+  it('deletes kept work of items that no longer want that copy', async () => {
+    const kept = await video(1);
+    const respeeded = await video(2);
+    const dirSmooth = config.get().paths.smooth;
+    for (const media of [kept, respeeded]) await fs.ensureDir(smoothWorkPath(media, dirSmooth));
+    await fs.ensureDir(path.join(dirSmooth, '99@0.5.smooth.work'));
+    db.updateMedia(respeeded.id, { speed: 0.75 });
+    await smooth.prune();
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.id}@0.5.smooth.work`]);
   });
 
   it('makes a bouncing video\'s reversed copy from its smoothed one', async () => {

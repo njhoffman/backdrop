@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.64.0] - 2026-11-08
+
+### Changed
+
+- Smoothing keeps each finished two-second chunk, so a job stopped by the load or a daemon restart carries on where it stopped instead of starting over; the backlog takes such items first. Kept chunks of items no longer slowed, at another speed, skipped or gone are deleted.
+
 ## [2.63.0] - 2026-11-08
 
 ### Added

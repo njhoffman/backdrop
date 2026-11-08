@@ -3,7 +3,8 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  listSmoothed, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothedPath, smoothedReady, smoothedReversedPath, wantsSmoothing
+  listSmoothWork, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
+  smoothedReversedPath, wantsSmoothing
 } from '../../src/library/smooth.js';
 import { silentLogger } from '../helpers/fakes.js';
 
@@ -66,6 +67,15 @@ describe('smooth', () => {
       .to.deep.equal([{ id: 7, speed: 0.5, reversed: false }, { id: 7, speed: 0.5, reversed: true }]);
   });
 
+  it('lists kept work folders, and clears only temporary leftovers', async () => {
+    await fs.ensureDir(path.join(dir, '7@0.5.smooth.work'));
+    await fs.ensureDir(path.join(dir, '8.1234.smooth.tmp'));
+    await fs.outputFile(path.join(dir, '9.mp4.tmp'), 'x');
+    expect((await listSmoothWork(dir)).map(({ id, speed }) => ({ id, speed }))).to.deep.equal([{ id: 7, speed: 0.5 }]);
+    await removeStaleSmoothWork(dir);
+    expect(await fs.readdir(dir)).to.deep.equal(['7@0.5.smooth.work']);
+  });
+
   describe('smoothVideo', () => {
     let media, calls;
 
@@ -124,6 +134,57 @@ describe('smooth', () => {
       expect(await smoothVideo(media, dir, {
         rife: '/opt/rife', size: { width: 640, height: 360 }, exec: fakeExec({ fail: file => file === '/opt/rife' }), nice: false, logger: silentLogger
       })).to.equal(null);
+    });
+
+    const options = (exec, extra = {}) => ({ rife: '/opt/rife', size: { width: 640, height: 360 }, exec, nice: false, logger: silentLogger, encoders: ['x264'], ...extra });
+    const extractions = () => calls.filter(call => call[0] === 'ffmpeg' && call.some(arg => String(arg).endsWith('%06d.png'))).map(call => call[call.indexOf('-ss') + 1]);
+
+    // Stops the job (as a load rise or a daemon restart does) once the first chunk is encoded
+    async function stopAfterFirstChunk(extra) {
+      const controller = new AbortController();
+      const inner = fakeExec();
+      const exec = async (file, args, ...rest) => {
+        await inner(file, args, ...rest);
+        if (file === 'ffmpeg' && args.includes('-framerate')) controller.abort();
+      };
+      expect(await smoothVideo(media, dir, options(exec, { signal: controller.signal, ...extra }))).to.equal(null);
+    }
+
+    it('keeps the finished chunks of a stopped job, and the next one carries on from them', async () => {
+      await stopAfterFirstChunk();
+      const work = smoothWorkPath(media, dir);
+      expect(work).to.equal(path.join(dir, '3@0.5.smooth.work'));
+      expect((await fs.readdir(work)).filter(name => name.endsWith('.mp4'))).to.deep.equal(['p00000.mp4']);
+      calls = [];
+      const copy = await smoothVideo(media, dir, options(fakeExec()));
+      expect(copy).to.equal(smoothedPath(media, dir));
+      // Only the second chunk is extracted again; the join takes both
+      expect(extractions()).to.deep.equal(['1.95']);
+      expect(await fs.pathExists(work)).to.equal(false);
+      // A file moved since (a rating) is the same source: same size and modification time
+      await stopAfterFirstChunk();
+      const moved = path.join(dir, 'library', 'v.mp4');
+      await fs.move(media.path, moved);
+      media.path = moved;
+      calls = [];
+      await smoothVideo(media, dir, options(fakeExec()));
+      expect(extractions()).to.deep.equal(['1.95']);
+    });
+
+    it('starts afresh when the kept chunks were made another way, and resumes with the encoder they used', async () => {
+      await stopAfterFirstChunk();
+      calls = [];
+      // Another size: the chunks no longer fit
+      await smoothVideo(media, dir, options(fakeExec(), { size: { width: 320, height: 180 } }));
+      expect(extractions()).to.deep.equal(['0', '1.95']);
+
+      // VAAPI failed before, so the kept chunks are libx264's: the next job goes on with libx264
+      await fs.remove(smoothedPath(media, dir));
+      await stopAfterFirstChunk({ encoders: ['x264'] });
+      calls = [];
+      await smoothVideo(media, dir, options(fakeExec(), { encoders: ['vaapi', 'x264'] }));
+      expect(extractions()).to.deep.equal(['1.95']);
+      expect(calls.some(call => call.includes('h264_vaapi'))).to.equal(false);
     });
 
     it('does nothing for a video that needs no smoothing, and stops without a copy when aborted', async () => {

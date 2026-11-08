@@ -107,7 +107,10 @@ IPC socket) would break a wallpaper.
   `src/library/smooth.js`): the frame rate times the whole factor that reaches `smooth_fps` at the item's speed
   (within 1%), at the size that covers the largest monitor, in `paths.smooth` as `<id>@<speed>.mp4`, so a speed
   change leaves it stale. It is made in two-second chunks (ffmpeg to PNG, RIFE, encoded with VAAPI or libx264, the
-  frame shared across a join interpolated with the chunk before), then joined. The daemon (`daemon/Smooth.js`) makes
+  frame shared across a join interpolated with the chunk before), then joined. Finished chunks are kept in
+  `<id>@<speed>.smooth.work` with a `job.json` (source size and modification time, copy size, factor, chunk length,
+  encoder), so a job stopped by the load or a restart carries on from its first missing chunk when that matches, and
+  starts afresh when it does not; such items go first in the backlog. The daemon (`daemon/Smooth.js`) makes
   one at a time at the normal load level, the items playing and next first, then every other slowed video, highest
   rated first; a bouncing item also gets the copy's reversed copy. It plays through an EDL URL that carries the
   library path as a tag (`edl://!global_tags,backdrop_path=...`), which `entryPath` reads. Until its copy is ready,
