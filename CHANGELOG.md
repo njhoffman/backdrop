@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.58.0] - 2026-11-07
+
+### Added
+
+- The web interface's Config page (`/config`): every setting but the visualizer's, grouped by section, each with a control for its kind, its help, its default, whether the file sets it, and when a change takes effect (at once, from the next command, or after a daemon or `backdrop web` restart). Changes are saved together and checked with the rest of the config first, so nothing is written when one is wrong; they are written in place, keeping the file's comments and your own forms such as `5m`. Reset removes a setting from the file so its default applies. The Pexels API key can be replaced but is never shown.
+
 ## [2.57.0] - 2026-11-07
 
 ### Added

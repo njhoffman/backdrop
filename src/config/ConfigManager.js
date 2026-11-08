@@ -133,6 +133,34 @@ export function spliceYaml(text, keys, value) {
   return output;
 }
 
+// text without keys, by cutting that entry's own lines (its trailing comment too) and nothing else. A mapping the
+// removal would leave empty goes with it, up to the top, since an empty `display:` reads as null, not as the defaults.
+// A key the file does not set leaves it as it is. Checked like spliceYaml's edits.
+export function removeYaml(text, keys) {
+  const doc = YAML.parseDocument(text);
+  if (doc.errors.length) throw new Error(`Failed to edit config: ${doc.errors[0].message}`);
+  if (!doc.hasIn(keys)) return text;
+  let depth = keys.length;
+  while (depth > 1) {
+    const parent = doc.getIn(keys.slice(0, depth - 1), true);
+    if (!YAML.isMap(parent) || parent.items.length !== 1) break;
+    depth--;
+  }
+  let parent = doc.contents;
+  let pair;
+  for (let index = 0; index < depth; index++) {
+    if (!isBlockMap(parent)) throw new Error(`Failed to edit config: ${keys.slice(0, index).join('.') || 'the file'} is not a block mapping`);
+    pair = parent.items.find(item => YAML.isScalar(item.key) && item.key.value === keys[index]);
+    parent = pair.value;
+  }
+  const start = lineStart(text, pair.key.range[0]);
+  const end = lineEndAt(text, Math.max(pair.key.range[1], entryEnd(pair) - 1));
+  const output = `${text.slice(0, start)}${text.slice(Math.min(end + 1, text.length))}`;
+  const check = YAML.parseDocument(output);
+  if (check.errors.length || check.hasIn(keys)) throw new Error('Failed to edit config: the edited file would still hold the key');
+  return output;
+}
+
 // The visualizer section's problem as a message, or null
 function visualizerProblem(section) {
   try {
@@ -341,6 +369,16 @@ export class ConfigManager {
     const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
     const temporary = `${this.configPath}.${process.pid}.tmp`;
     await fs.writeFile(temporary, spliceYaml(text, keys, value));
+    await fs.rename(temporary, this.configPath);
+  }
+
+  // Drops keys from the file itself, so their defaults apply again; the rest of the file stays as it was (see removeYaml)
+  async removeInFile(keys) {
+    const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
+    const output = removeYaml(text, keys);
+    if (output === text) return;
+    const temporary = `${this.configPath}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, output);
     await fs.rename(temporary, this.configPath);
   }
 

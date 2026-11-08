@@ -6,7 +6,7 @@ import { visualizerSettings } from '../../visualizer/settings.js';
 // durations (also changed on what plays now), bounce (playlist entries swapped), eligibility (playlists brought in line, keeping what plays), monitors (layout
 // reconciled) or imports (the folders imported). Any other display, library or paths setting needs a
 // restart: mpv's and xwinwrap's arguments are given when they start.
-const LIVE_SETTINGS = {
+export const LIVE_SETTINGS = {
   'display.order': 'taken', 'display.notify': 'taken',
   'library.trash_days': 'taken', 'library.default_import_rating': 'taken',
   'display.image_duration': 'durations', 'display.video_duration': 'durations', 'display.video_loop': 'bounce', 'display.bounce_cache_gb': 'bounce',

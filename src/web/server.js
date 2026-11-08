@@ -33,7 +33,7 @@ export class HttpError extends Error {
 
 export class WebServer {
   constructor({
-    config, database, logger, display, rating, library, visualizer, token, version = null,
+    config, database, logger, display, rating, library, visualizer, settings, token, version = null,
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     staticDir = STATIC_DIR, hub
   }) {
@@ -44,6 +44,8 @@ export class WebServer {
     this.rating = rating;
     this.library = library;
     this.visualizer = visualizer;
+    // ConfigService: the Config page's view and changes of the config file
+    this.settings = settings;
     this.token = token;
     this.version = version;
     this.thumbnail = limited(thumbnail, THUMBNAIL_CONCURRENCY);
@@ -108,6 +110,11 @@ export class WebServer {
       ['GET', /^\/$/, (request, match, response) => this.page(response, 'index.html')],
       ['GET', /^\/library$/, (request, match, response) => this.page(response, 'library.html')],
       ['GET', /^\/visualizer$/, (request, match, response) => this.page(response, 'visualizer.html')],
+      ['GET', /^\/config$/, (request, match, response) => this.page(response, 'config.html')],
+      ['GET', /^\/api\/config$/, () => this.settings.describe()],
+      // { changes: { 'display.order': 'shuffle', ... } }, written together or not at all
+      ['PATCH', /^\/api\/config$/, async request => ({ ...changed, config: await this.settings.update((await this.body(request)).changes) })],
+      ['DELETE', /^\/api\/config\/([\w.]+)$/, async (request, match) => ({ ...changed, config: await this.settings.reset(match[1]) })],
       ['GET', /^\/api\/visualizer$/, () => this.visualizer.describe()],
       ['POST', /^\/api\/visualizer\/enabled$/, async request => {
         const { on } = await this.body(request);

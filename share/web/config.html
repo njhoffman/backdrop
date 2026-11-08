@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="backdrop-token" content="{{token}}">
+  <title>backdrop config</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/config.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> backdrop</h1>
+    <nav class="tabs" aria-label="Pages"><a href="/">Now playing</a><a href="/library">Library</a><a href="/visualizer">Visualizer</a><a href="/config" aria-current="page">Config</a></nav>
+    <span id="daemon" class="pill" aria-live="polite">connecting</span>
+    <span id="version" class="muted"></span>
+  </header>
+
+  <main>
+    <p class="muted">Settings in <code id="path"></code>, written in place so its comments stay. The visualizer has its own page.</p>
+    <section id="problems" class="notice error-notice" hidden><div></div></section>
+    <form id="settings" autocomplete="off" novalidate></form>
+    <div id="savebar" class="savebar" hidden>
+      <span id="pending"></span>
+      <button type="button" id="discard">Discard</button>
+      <button type="submit" form="settings" class="primary">Save changes</button>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

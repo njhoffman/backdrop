@@ -10,7 +10,7 @@ import { makeConfig, silentLogger } from '../helpers/fakes.js';
 // A real server on a free port with stand-ins for the services and the event hub, so the run stays offline
 describe('WebServer', () => {
   const token = 'test-token-0123456789';
-  let dir, db, config, server, base, display, rating, library, visualizer, hub, thumbs, id;
+  let dir, db, config, server, base, display, rating, library, visualizer, settings, hub, thumbs, id;
 
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
   const cookie = `backdrop_token=${token}`;
@@ -26,6 +26,7 @@ describe('WebServer', () => {
     await fs.outputFile(path.join(dir, 'static', 'index.html'), '<meta content="{{token}}">');
     await fs.outputFile(path.join(dir, 'static', 'library.html'), '<p>library {{token}}</p>');
     await fs.outputFile(path.join(dir, 'static', 'visualizer.html'), '<p>visualizer</p>');
+    await fs.outputFile(path.join(dir, 'static', 'config.html'), '<p>config</p>');
     await fs.outputFile(path.join(dir, 'static', 'app.js'), 'export {};');
     await fs.outputFile(path.join(dir, 'thumb.jpg'), 'jpeg');
     config = makeConfig({ 'paths.runtime': dir, 'display.video_loop': 'bounce' });
@@ -66,13 +67,24 @@ describe('WebServer', () => {
         return { name };
       })
     };
+    settings = {
+      describe: sinon.stub().resolves({ fields: [] }),
+      update: sinon.stub().callsFake(async changes => {
+        if (changes?.['display.order'] === 'sorted') throw new Error('display.order must be shuffle or random, not "sorted"');
+        return { fields: [{ key: 'display.order' }] };
+      }),
+      reset: sinon.stub().callsFake(async key => {
+        if (key === 'nope.key') throw Object.assign(new Error('Unknown setting: nope.key'), { status: 404 });
+        return { fields: [] };
+      })
+    };
     hub = { start: sinon.stub().resolves(), stop: sinon.stub().resolves(), changed: sinon.spy(), add: sinon.stub().callsFake(async response => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end('event: state\ndata: {}\n\n');
     }) };
     thumbs = [];
     server = new WebServer({
-      config, database: db, logger: silentLogger, display, rating, library, visualizer, token, version: '9.9.9', hub,
+      config, database: db, logger: silentLogger, display, rating, library, visualizer, settings, token, version: '9.9.9', hub,
       staticDir: path.join(dir, 'static'),
       thumbnail: async media => { thumbs.push(media.id); return path.join(dir, 'thumb.jpg'); }
     });
@@ -276,6 +288,32 @@ describe('WebServer', () => {
       expect(await taken.json()).to.deep.equal({ error: 'A preset named calm exists' });
       expect((await post('/api/visualizer/presets/calm', { replace: true })).status).to.equal(200);
       expect((await post('/api/visualizer/presets/bad%20name', {})).status).to.equal(404);
+    });
+  });
+
+  describe('config', () => {
+    const send = (method, url, body) => fetch(`${base}${url}`, {
+      method, headers: { cookie, 'x-backdrop-token': token }, body: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    it('serves the page and the settings', async () => {
+      expect(await (await get('/config')).text()).to.equal('<p>config</p>');
+      expect(await (await get('/api/config')).json()).to.deep.equal({ fields: [] });
+    });
+
+    it('writes changes and resets a key, answering a refused change or an unknown key with its error', async () => {
+      const written = await send('PATCH', '/api/config', { changes: { 'display.order': 'shuffle' } });
+      expect(await written.json()).to.deep.equal({ config: { fields: [{ key: 'display.order' }] } });
+      expect(settings.update.firstCall.args[0]).to.deep.equal({ 'display.order': 'shuffle' });
+      const refused = await send('PATCH', '/api/config', { changes: { 'display.order': 'sorted' } });
+      expect(refused.status).to.equal(400);
+      expect(await refused.json()).to.deep.equal({ error: 'display.order must be shuffle or random, not "sorted"' });
+      expect((await send('DELETE', '/api/config/display.order')).status).to.equal(200);
+      expect(settings.reset.firstCall.args[0]).to.equal('display.order');
+      expect((await send('DELETE', '/api/config/nope.key')).status).to.equal(404);
+      // Changing the config needs the page token too
+      const unsigned = await fetch(`${base}/api/config`, { method: 'PATCH', headers: { cookie }, body: '{}' });
+      expect(unsigned.status).to.equal(403);
     });
   });
 

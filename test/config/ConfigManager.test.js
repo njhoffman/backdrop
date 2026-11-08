@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
-import { ConfigManager, spliceYaml } from '../../src/config/ConfigManager.js';
+import { ConfigManager, removeYaml, spliceYaml } from '../../src/config/ConfigManager.js';
 
 const ENV_KEYS = ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'PEXELS_API'];
 
@@ -256,6 +256,29 @@ describe('ConfigManager', () => {
       expect(() => spliceYaml('visualizer: {enabled: true}\n', ['visualizer', 'presets', 'a'], {})).to.throw('visualizer is not a block mapping');
       expect(() => spliceYaml('visualizer: [1]\n', ['visualizer', 'presets', 'a'], {})).to.throw('visualizer is not a block mapping');
       expect(() => spliceYaml('a: [\n', ['a'], 1)).to.throw('Failed to edit config');
+    });
+
+    it('removes an entry\'s own lines, its comment too, and a mapping it leaves empty', () => {
+      const withPreset = spliceYaml(file, ['visualizer', 'presets', 'calm'], { opacity: 0.4 });
+      expect(removeYaml(withPreset, ['visualizer', 'presets', 'calm'])).to.equal(file);
+      // display had only image_duration: both go, the comment line before visualizer stays
+      expect(removeYaml(file, ['display', 'image_duration'])).to.equal(file.replace('display:\n  image_duration: 300           # aligned comment\n', ''));
+      expect(removeYaml(file, ['visualizer', 'glava', 'args'])).to.equal(file.replace('  glava:\n    args: []                    # last entry\n', ''));
+      expect(removeYaml(file, ['library', 'trash_days'])).to.equal(file);
+      expect(removeYaml('a: 1\n', ['a'])).to.equal('');
+      // Its only key: the whole line goes; with others beside it, a flow mapping cannot be edited by lines
+      expect(removeYaml('visualizer: {enabled: true}\n', ['visualizer', 'enabled'])).to.equal('');
+      expect(() => removeYaml('visualizer: {enabled: true, module: bars}\n', ['visualizer', 'enabled'])).to.throw('visualizer is not a block mapping');
+    });
+
+    it('drops keys from the file so the defaults apply again', async () => {
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeFile(configPath, file);
+      await configManager.removeInFile(['display', 'image_duration']);
+      expect(await configManager.fileHas(['display', 'image_duration'])).to.equal(false);
+      await configManager.initialize();
+      expect(configManager.get().display.image_duration).to.equal(300);
+      await configManager.removeInFile(['display', 'image_duration']);
     });
 
     it('writes through a temporary file and reports what the file sets', async () => {

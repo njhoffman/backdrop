@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { ConfigManager } from '../../src/config/ConfigManager.js';
-import { validateConfig, checkSetting, seconds } from '../../src/config/schema.js';
+import { validateConfig, checkSetting, seconds, configFields, checkField } from '../../src/config/schema.js';
 
 // The defaults with overrides laid over one section's keys
 function config(section, values) {
@@ -104,5 +104,27 @@ describe('config schema', () => {
     expect(checkSetting('display.image_duration', '2m')).to.equal(120);
     expect(() => checkSetting('display.notify', 'loud')).to.throw('display.notify must be commands, all or off, not "loud"');
     expect(checkSetting('display.whatever', 1)).to.equal(1);
+  });
+
+  it('describes every setting for a form, with its kind, choices, limits and help', () => {
+    const fields = configFields();
+    const byKey = Object.fromEntries(fields.map(field => [field.key, field]));
+    expect(fields.every(field => field.kind && field.help)).to.equal(true);
+    expect(byKey['display.order'].kind).to.equal('choice');
+    expect(byKey['display.order'].choices).to.deep.equal(['shuffle', 'random']);
+    expect(byKey['display.order'].keys).to.deep.equal(['display', 'order']);
+    expect(byKey['library.default_import_rating']).to.include({ kind: 'integer', min: 1, max: 3 });
+    expect(byKey['load.image_above']).to.include({ kind: 'number', nullable: true });
+    expect(byKey['display.video_duration']).to.include({ kind: 'duration', allowZero: true });
+    expect(byKey['sources.pexels.api_key'].kind).to.equal('secret');
+    expect(byKey['sources.pexels.api_key'].keys).to.deep.equal(['sources', 'pexels', 'api_key']);
+  });
+
+  it('checks one setting by its full key, sources too, and refuses unknown ones', () => {
+    expect(checkField('display.image_duration', '5m')).to.equal(300);
+    expect(checkField('sources.pexels.per_page', 40)).to.equal(40);
+    expect(() => checkField('sources.pexels.per_page', 99)).to.throw('sources.pexels.per_page must be a whole number from 1 to 80, not 99');
+    expect(() => checkField('display.nope', 1)).to.throw('Unknown setting: display.nope');
+    expect(() => checkField('display', 1)).to.throw('Unknown setting: display');
   });
 });

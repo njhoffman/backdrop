@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import { webPath } from '../display/runtimeFiles.js';
+import { ConfigService } from '../services/ConfigService.js';
 import { DisplayService } from '../services/DisplayService.js';
 import { LibraryService } from '../services/LibraryService.js';
 import { RatingService } from '../services/RatingService.js';
@@ -61,7 +62,8 @@ export class WebCommand {
     const library = new LibraryService({ config: this.config, database: this.database, logger: this.logger, control: display.control, rating });
     // Reads the visualizer section again on each request, so presets saved since the start and hand edits show
     const visualizer = new VisualizerService({ config: this.config, logger: this.logger, control: display.control, reload: true });
-    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, library, visualizer, token, version: this.version });
+    const settings = new ConfigService({ config: this.config, logger: this.logger });
+    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, library, visualizer, settings, token, version: this.version });
     const port = await server.listen(wanted);
     await fs.ensureDir(this.config.get().paths.runtime, 0o700);
     await fs.writeJson(this.infoPath, { pid: process.pid, port, token }, { mode: 0o600 });

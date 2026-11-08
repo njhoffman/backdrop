@@ -60,7 +60,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   are not written to the file. `set()` changes values in memory only; `setInFile()` is the one way to write an
   existing config, splicing a single key so comments and layout survive.
   `loadConfig()` collects `warnings` for keys the defaults do not have (`unknownKeys`), so every new config key
-  needs a default in `getUserDefaults()` or it is reported as unknown.
+  needs a default in `getUserDefaults()` or it is reported as unknown, and a check with its form info in
+  `src/config/schema.js` (`field(check, { kind, help, ... })`, listed by `configFields()` for the web Config page).
+  `removeInFile()` drops a key's lines (`removeYaml`), and a mapping it leaves empty.
 - **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
   `media_tags` (derived by `src/library/tags.js`), `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.
@@ -127,7 +129,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   parts, next, prev, mode, speed/dim/bounce, status, durations) and `LibraryService` (the web Library page: paged
   lists with the list filters, rating and adjusting any item, playing one on a monitor) and `VisualizerService`
   (looks, live changes, presets and saving them, shared by the rofi menu and the web page; with `reload` it reads the
-  visualizer section again on each call, for the long-running web server) do the work and return data, never printing: playlist failures
+  visualizer section again on each call, for the long-running web server) and `ConfigService` (the Config page:
+  fields with values, defaults and when they apply, changes checked with the whole config, resets) do the work and return data, never printing: playlist failures
   after a committed rating come back as `warnings`, and a failure after one carries `error.done`. `RatingCommand`
   and `DisplayCommand` print their results (their `control` forwards to the service's); the menu calls the services
   directly and drops their results (`done`), since an action's result is its next state. The web interface will

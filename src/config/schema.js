@@ -50,75 +50,118 @@ const color = value => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(valu
 const threshold = value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a load above 0, or null for none'));
 const waitTime = value => (value === 0 || value === '0' ? 0 : seconds(value));
 
+// A check with what a form needs to know about its setting (src/services/ConfigService.js, the web Config page):
+// kind (boolean, choice, integer, number, duration, strings, text, monitors, workspace, colors, list, secret),
+// choices, min and max, nullable (null allowed, an empty field), allowZero (for durations) and help text
+const field = (check, info) => Object.assign(value => check(value), { info });
+
 // Key -> check, per section; a check returns the value to keep (converted) or throws Invalid
 const SECTIONS = {
   display: {
-    monitors: value => (value === 'auto' || (Array.isArray(value) && value.length && value.every(name => typeof name === 'string' && name.trim()))
+    monitors: field(value => (value === 'auto' || (Array.isArray(value) && value.length && value.every(name => typeof name === 'string' && name.trim()))
       ? value
       : fail('auto or a list of output names such as [DP-1, HDMI-1]')),
-    image_duration: value => seconds(value),
-    video_duration: value => seconds(value, { allowZero: true }),
-    video_loop: oneOf(VIDEO_LOOPS),
-    bounce_cache_gb: value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')),
-    allow_upscale: boolean,
-    order: oneOf(ORDERS),
-    notify: oneOf(NOTIFY_MODES),
-    xwinwrap_args: strings,
-    mpv_args: strings
+    { kind: 'monitors', help: 'auto (every active output, from xrandr) or the outputs to use, such as DP-1' }),
+    image_duration: field(value => seconds(value), { kind: 'duration', help: 'How long each image shows' }),
+    video_duration: field(value => seconds(value, { allowZero: true }), {
+      kind: 'duration', allowZero: true, help: 'Wall time per video before the next; shorter videos loop whole times that fit, 0 loops each forever'
+    }),
+    video_loop: field(oneOf(VIDEO_LOOPS), { kind: 'choice', choices: VIDEO_LOOPS, help: 'loop from the start, or bounce: backwards to the start, then forwards' }),
+    bounce_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
+      kind: 'number', min: 0, step: 1, help: 'Room for reversed copies of bouncing videos, in GB; 0 for no limit'
+    }),
+    allow_upscale: field(boolean, { kind: 'boolean', help: 'Show media smaller than the monitor' }),
+    order: field(oneOf(ORDERS), { kind: 'choice', choices: ORDERS, help: 'How next with filters picks a match: random (any still ahead) or shuffle (the next in order)' }),
+    notify: field(oneOf(NOTIFY_MODES), { kind: 'choice', choices: NOTIFY_MODES, help: 'Desktop notifications: on commands, on every load, or off' }),
+    xwinwrap_args: field(strings, { kind: 'strings', help: 'xwinwrap arguments, one per line; -g geometry is added per monitor' }),
+    mpv_args: field(strings, { kind: 'strings', help: 'Extra mpv options, one per line; mpv runs with --no-config' })
   },
   library: {
-    import_dirs: strings,
-    watch_imports: boolean,
-    default_import_rating: integer(1, 3),
-    min_width: integer(0),
-    min_height: integer(0),
-    trash_days: integer(0)
+    import_dirs: field(strings, { kind: 'strings', help: 'Folders imported into the library, one per line' }),
+    watch_imports: field(boolean, { kind: 'boolean', help: 'Import new files in those folders as they appear' }),
+    default_import_rating: field(integer(1, 3), { kind: 'integer', min: 1, max: 3, help: 'Rating imported files are kept at' }),
+    min_width: field(integer(0), { kind: 'integer', min: 0, help: 'Narrowest media kept, in pixels (either orientation)' }),
+    min_height: field(integer(0), { kind: 'integer', min: 0, help: 'Lowest media kept, in pixels (either orientation)' }),
+    trash_days: field(integer(0), { kind: 'integer', min: 0, help: 'Days skipped files stay in the trash; 0 keeps them' })
   },
   menu: {
-    style: oneOf(MENU_STYLES),
-    rofi_args: strings,
-    workspace: value => (typeof value === 'boolean' || (typeof value === 'string' && value.trim())
+    style: field(oneOf(MENU_STYLES), { kind: 'choice', choices: MENU_STYLES, help: 'panel (preview, details, buttons) or minimal' }),
+    rofi_args: field(strings, { kind: 'strings', help: 'Extra rofi arguments, one per line' }),
+    workspace: field(value => (typeof value === 'boolean' || (typeof value === 'string' && value.trim())
       ? value
-      : fail('true, false or a workspace name'))
+      : fail('true, false or a workspace name')), { kind: 'workspace', help: 'i3: an empty workspace while the menu is open (true: "backdrop", or a name); false to stay' })
   },
   web: {
-    port: integer(1, 65535)
+    port: field(integer(1, 65535), { kind: 'integer', min: 1, max: 65535, help: 'Port `backdrop web` listens on; a taken one falls back to a free port' })
   },
   load: {
-    enabled: boolean,
-    window: oneOf([1, 5, 15]),
-    image_above: threshold,
-    off_above: threshold,
-    resume_ratio: value => (typeof value === 'number' && value > 0 && value <= 1 ? value : fail('a number above 0, up to 1')),
-    sustain: waitTime,
-    resume_after: waitTime
+    enabled: field(boolean, { kind: 'boolean', help: 'Lighten the display while the system load is high' }),
+    window: field(oneOf([1, 5, 15]), { kind: 'choice', choices: [1, 5, 15], help: 'Load average read: over 1, 5 or 15 minutes' }),
+    image_above: field(threshold, { kind: 'number', min: 0, nullable: true, help: 'Load above which videos give way to images; empty for none' }),
+    off_above: field(threshold, { kind: 'number', min: 0, nullable: true, help: 'Load above which the wallpaper and visualizer stop; above image_above; empty for none' }),
+    resume_ratio: field(value => (typeof value === 'number' && value > 0 && value <= 1 ? value : fail('a number above 0, up to 1')), {
+      kind: 'number', min: 0, max: 1, step: 0.05, help: 'A level ends once the load falls below this share of its threshold'
+    }),
+    sustain: field(waitTime, { kind: 'duration', allowZero: true, help: 'How long the load must stay above a threshold first' }),
+    resume_after: field(waitTime, { kind: 'duration', allowZero: true, help: 'How long it must stay below before a level ends' })
   },
   screensaver: {
-    idle: boolean,
-    idle_minutes: positive,
-    max_load: value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a number above 0, or null for no limit')),
-    preset: value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep the running one')),
-    workspace: value => (typeof value === 'string' && value.trim() ? value : fail('a workspace name')),
-    on_enter: strings,
-    on_leave: strings,
-    sources: strings,
-    streams: list
+    idle: field(boolean, { kind: 'boolean', help: 'Start the screensaver when the desktop has been idle' }),
+    idle_minutes: field(positive, { kind: 'number', min: 0, step: 1, help: 'Idle minutes before it starts' }),
+    max_load: field(value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a number above 0, or null for no limit')), {
+      kind: 'number', min: 0, nullable: true, help: 'No idle start above this load; empty for no limit'
+    }),
+    preset: field(value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep the running one')), {
+      kind: 'text', nullable: true, help: 'Visualizer preset while it runs; empty keeps the running one'
+    }),
+    workspace: field(value => (typeof value === 'string' && value.trim() ? value : fail('a workspace name')), { kind: 'text', help: 'i3 workspace it shows on' }),
+    on_enter: field(strings, { kind: 'strings', help: 'Command run on entering, one argument per line' }),
+    on_leave: field(strings, { kind: 'strings', help: 'Command run on leaving, one argument per line' }),
+    sources: field(strings, { kind: 'strings', help: 'Not read yet' }),
+    streams: field(list, { kind: 'list', help: 'Not read yet; edit in the file' })
   },
   output: {
-    symbols: oneOf(SYMBOL_MODES),
-    progress_gradient: value => (Array.isArray(value) && value.length >= 2 && value.every(item => color(item))
+    symbols: field(oneOf(SYMBOL_MODES), { kind: 'choice', choices: SYMBOL_MODES, help: 'Symbols in the CLI\'s output: auto picks by terminal' }),
+    progress_gradient: field(value => (Array.isArray(value) && value.length >= 2 && value.every(item => color(item))
       ? value
-      : fail('a list of at least two colors such as ["#00c8ff", "#a050ff"]'))
+      : fail('a list of at least two colors such as ["#00c8ff", "#a050ff"]')), { kind: 'colors', help: 'Progress bar colors, at least two' })
   }
 };
 
 const SOURCES = {
   pexels: {
-    api_key: text,
-    per_page: integer(1, 80),
-    image_min_size: oneOf(PEXELS_IMAGE_SIZES)
+    api_key: field(text, { kind: 'secret', help: 'Pexels API key (PEXELS_API in the environment also works); never shown' }),
+    per_page: field(integer(1, 80), { kind: 'integer', min: 1, max: 80, help: 'Results asked for per search page' }),
+    image_min_size: field(oneOf(PEXELS_IMAGE_SIZES), { kind: 'choice', choices: PEXELS_IMAGE_SIZES, help: 'Smallest image variant considered' })
   }
 };
+
+// Every setting the checks know, with its info, as [{ key: 'display.order', keys: ['display', 'order'], kind, ... }],
+// sources under sources.<name>
+export function configFields() {
+  const fields = [];
+  for (const [section, checks] of Object.entries(SECTIONS)) {
+    for (const [name, check] of Object.entries(checks)) fields.push({ key: `${section}.${name}`, keys: [section, name], ...check.info });
+  }
+  for (const [source, checks] of Object.entries(SOURCES)) {
+    for (const [name, check] of Object.entries(checks)) fields.push({ key: `sources.${source}.${name}`, keys: ['sources', source, name], ...check.info });
+  }
+  return fields;
+}
+
+// A setting checked by its full key ('sources.pexels.per_page' too), throwing with the key named; returns the
+// converted value
+export function checkField(key, value) {
+  const keys = key.split('.');
+  const check = keys[0] === 'sources' ? SOURCES[keys[1]]?.[keys[2]] : SECTIONS[keys[0]]?.[keys[1]];
+  if (!check || keys.length !== (keys[0] === 'sources' ? 3 : 2)) throw new Error(`Unknown setting: ${key}`);
+  try {
+    return check(value);
+  } catch (error) {
+    if (!(error instanceof Invalid)) throw error;
+    throw new Error(`${key} must be ${error.message}, not ${describe(value)}`);
+  }
+}
 
 const describe = value => (typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value) ?? String(value));
 
