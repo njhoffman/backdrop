@@ -134,8 +134,9 @@ as many whole times as fit, longer ones stop at the limit, and 0 loops each vide
 With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video
 plays backwards to its start at its end and then forwards again. The daemon makes a reversed copy in
 `~/.cache/backdrop/bounce` in the background, with VAAPI where the GPU has it, the first time the video plays (and
-for the next one in the playlist), so the bounce starts from its next play; the copy takes about as much disk as
-the video again.
+for the next one in the playlist), so the bounce starts from its next play; a copy takes about as much disk as
+the video again, so the cache is kept within `display.bounce_cache_gb` (10 by default), least recently played first,
+and `doctor` shows its size.
 
 The daemon samples each mpv's CPU use every 30 seconds. `status` shows each monitor's recent average and
 decoder (`vaapi` or another hardware API, or `software`), `current` the playing item's average, and `stats` a

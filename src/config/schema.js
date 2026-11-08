@@ -59,6 +59,7 @@ const SECTIONS = {
     image_duration: value => seconds(value),
     video_duration: value => seconds(value, { allowZero: true }),
     video_loop: oneOf(VIDEO_LOOPS),
+    bounce_cache_gb: value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')),
     allow_upscale: boolean,
     order: oneOf(ORDERS),
     notify: oneOf(NOTIFY_MODES),

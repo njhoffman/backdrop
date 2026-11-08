@@ -1,4 +1,7 @@
 import { expect } from 'chai';
+import fs from 'fs-extra';
+import os from 'os';
+import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DoctorCommand } from '../../src/commands/DoctorCommand.js';
@@ -115,6 +118,23 @@ describe('DoctorCommand', () => {
 
     expect(byName(checks, 'animated WebP')).to.include({ status: 'warn', detail: '1 not imported: FFmpeg cannot decode them (a.webp)' });
     expect(byName(checks, 'animated WebP').hint).to.include('magick a.webp a.gif');
+  });
+
+  it('reports the bounce cache against its limit, warning when the daemon left it well over', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-doctor-bounce-'));
+    try {
+      config.set('paths.bounce', dir);
+      expect(byName(await doctor().run(), 'bounce cache')).to.equal(undefined);
+      await fs.outputFile(path.join(dir, '1.mp4'), Buffer.alloc(2048));
+      config.set('display.bounce_cache_gb', 1);
+      expect(byName(await doctor().run(), 'bounce cache')).to.include({ status: 'ok', detail: '1 reversed copy, 2.0 KB of 1.0 GB' });
+      config.set('display.bounce_cache_gb', 1 / 1024 ** 2);
+      expect(byName(await doctor().run(), 'bounce cache').status).to.equal('warn');
+      config.set('display.bounce_cache_gb', 0);
+      expect(byName(await doctor().run(), 'bounce cache').detail).to.include('(no limit)');
+    } finally {
+      await fs.remove(dir);
+    }
   });
 
   it('runs the visualizer check with --visualizer, and prints JSON', async () => {

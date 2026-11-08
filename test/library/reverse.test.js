@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  chunkSeconds, chunkStarts, removeReversed, removeStaleWork, reverseVideo, reversedPath, reversedReady, run
+  chunkSeconds, chunkStarts, listReversed, removeReversed, removeStaleWork, reverseVideo, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { silentLogger } from '../helpers/fakes.js';
 
@@ -128,6 +128,17 @@ describe('reverse', () => {
       expect(reversedReady(media, undefined)).to.equal(false);
       await removeReversed(media, dir);
       expect(reversedReady(media, dir)).to.equal(false);
+    });
+
+    it('lists finished copies oldest first, leaving out work folders and other files', async () => {
+      await fs.outputFile(path.join(dir, '5.mp4'), 'abc');
+      await fs.outputFile(path.join(dir, '6.mp4'), 'a');
+      await fs.outputFile(path.join(dir, '7.1.tmp', 'c00000.mp4'), 'chunk');
+      await fs.outputFile(path.join(dir, 'notes.txt'), 'x');
+      const old = new Date(Date.now() - 60000);
+      await fs.utimes(path.join(dir, '6.mp4'), old, old);
+      expect((await listReversed(dir)).map(({ id, size }) => ({ id, size }))).to.deep.equal([{ id: 6, size: 1 }, { id: 5, size: 3 }]);
+      expect(await listReversed(path.join(dir, 'missing'))).to.deep.equal([]);
     });
 
     it('removes work folders a daemon left behind and keeps finished copies', async () => {

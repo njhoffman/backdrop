@@ -198,6 +198,7 @@ export class ConfigManager {
         image_duration: 300,
         video_duration: 600,
         video_loop: 'loop',
+        bounce_cache_gb: 10,
         allow_upscale: false,
         order: 'random',
         notify: 'commands',

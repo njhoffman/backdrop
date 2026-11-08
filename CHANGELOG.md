@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.53.0] - 2026-11-07
+
+### Added
+
+- `display.bounce_cache_gb` (10 by default, 0 for no limit) keeps the reversed copies for bouncing videos within a size: the least recently played copies are deleted first, and are made again ahead of their next play. `backdrop doctor` shows how much of it the copies use.
+
+### Changed
+
+- Reversed copies of items that were removed, skipped or no longer bounce are deleted, and their playlist entries go back to playing the file.
+
 ## [2.52.0] - 2026-11-07
 
 ### Added

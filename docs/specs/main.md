@@ -91,7 +91,11 @@ IPC socket) would break a wallpaper.
   for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
   in chunks of about 256 MiB of raw frames each, with VAAPI or else libx264, and the chunks are joined without
   encoding again. Once a copy is ready the item's entries are swapped for the URL, the playing one at its next
-  play. Purging the item deletes its copy; a replaced file (download --upgrade) is reversed again.
+  play. Purging the item deletes its copy; a replaced file (download --upgrade) is reversed again. After each
+  encode, on start and when the setting or an item's bounce changes, the daemon deletes copies of items that are
+  gone, skipped or no longer bounce, then the least recently played (a copy's mtime is set on each play) until the
+  rest fit in `display.bounce_cache_gb`; copies playing now stay. Their entries go back to the plain file, since
+  mpv would fail to load the URL and drop the entry. `doctor` shows the cache's size against the limit.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
   current layout; a configured monitor that is unplugged is picked up again when it returns.

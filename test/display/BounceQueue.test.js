@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Bounce } from '../../src/display/daemon/Bounce.js';
-import { playUrl } from '../../src/display/bounce.js';
+import { bounceUrl, playUrl } from '../../src/display/bounce.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -48,6 +48,18 @@ describe('Bounce (daemon)', () => {
     return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: id, duration: 10, path: file }));
   }
 
+  // Videos 1 to count, made one after another so their ids follow
+  async function videos(count) {
+    const made = [];
+    for (let id = 1; id <= count; id++) made.push(await video(id));
+    return made;
+  }
+
+  // Waits for the background encodes to reach count
+  async function encodesReach(count) {
+    for (let i = 0; i < 50 && encodes.length < count; i++) await tick();
+  }
+
   function screen(playlist) {
     const value = { monitor: { name: 'DP-3' }, client: new FakeMpvClient({ playlist }) };
     daemon.screens.set('DP-3', value);
@@ -62,7 +74,7 @@ describe('Bounce (daemon)', () => {
     await bounce.onLoaded(shown, playing);
     expect(encodes.map(encode => encode.media.id)).to.deep.equal([1]);
     await encodes[0].finish(true);
-    await tick();
+    await encodesReach(2);
     expect(encodes.map(encode => encode.media.id)).to.deep.equal([1, 2]);
     // The playing entry waits for its next play
     expect([...bounce.pending]).to.deep.equal([1]);
@@ -123,6 +135,62 @@ describe('Bounce (daemon)', () => {
     db.setBounce(media.id, true);
     await bounce.onLoaded(shown, db.getMedia(media.id));
     expect(encodes).to.have.length(1);
+  });
+
+  describe('cache limit', () => {
+    const MB = 1024 ** 2;
+
+    // A finished copy of size bytes, last played age seconds ago
+    async function copy(media, size, age) {
+      const file = path.join(dir, 'bounce', `${media.id}.mp4`);
+      await fs.outputFile(file, Buffer.alloc(size));
+      const when = new Date(Date.now() - age * 1000);
+      await fs.utimes(file, when, when);
+      return file;
+    }
+    const left = async () => (await fs.readdir(path.join(dir, 'bounce'))).sort();
+
+    it('deletes the least recently played copies until the rest fit, never the one playing', async () => {
+      config.set('display.bounce_cache_gb', 3 / 1024);
+      const [oldest, older, playing, newest] = await videos(4);
+      await copy(oldest, MB, 400);
+      await copy(older, MB, 300);
+      await copy(playing, MB, 500);
+      await copy(newest, MB, 100);
+      daemon.screens.set('DP-3', { monitor: { name: 'DP-3' }, media: playing, client: null });
+
+      expect(await bounce.prune()).to.deep.equal([oldest.id]);
+      expect(await left()).to.deep.equal(['2.mp4', '3.mp4', '4.mp4']);
+      // 0 is no limit
+      config.set('display.bounce_cache_gb', 0);
+      expect(await bounce.prune()).to.deep.equal([]);
+    });
+
+    it('deletes copies of items gone, skipped or no longer bouncing, and swaps their entries back', async () => {
+      const [off, skipped, kept] = await videos(3);
+      await copy(off, MB, 10);
+      await copy(skipped, MB, 10);
+      await copy(kept, MB, 10);
+      await fs.outputFile(path.join(dir, 'bounce', '99.mp4'), 'no such item');
+      // The copies are dated before their videos, so the URL is built rather than asked of playUrl
+      const url = bounceUrl(off.path, path.join(dir, 'bounce', '1.mp4'));
+      const shown = screen([{ id: 1, filename: '/m/other', current: true }, { id: 2, filename: url }]);
+      db.setBounce(off.id, false);
+      db.addRating(skipped.id, 0);
+
+      expect((await bounce.prune()).sort()).to.deep.equal([1, 2, 99]);
+      expect(await left()).to.deep.equal(['3.mp4']);
+      expect(shown.client.commands).to.deep.include(['loadfile', off.path, 'insert-at', 1]);
+    });
+
+    it('marks a copy played when its bounce loads, so it is kept over older ones', async () => {
+      const media = await video(1);
+      const file = await copy(media, MB, 1000);
+      const shown = screen([{ id: 1, filename: bounceUrl(media.path, file), current: true }]);
+      shown.bouncing = true;
+      await bounce.onLoaded(shown, media);
+      expect(Date.now() - (await fs.stat(file)).mtimeMs).to.be.below(5000);
+    });
   });
 
   it('removes work an earlier daemon left on start', async () => {

@@ -1,12 +1,15 @@
 import { bounces, entryPath } from '../bounce.js';
 import { refreshEntries } from '../Playlist.js';
-import { reversedReady, removeStaleWork } from '../../library/reverse.js';
+import fs from 'fs-extra';
+import { listReversed, reversedReady, removeStaleWork, touchReversed } from '../../library/reverse.js';
+
+const GIGABYTE = 1024 ** 3;
 
 // Reversed copies for bouncing videos (src/display/bounce.js), for a Daemon (passed in). An item is reversed
 // the first time it plays and, ahead of time, when it is next in a playlist; one encode runs at a time, at the
 // lowest CPU priority, and only while the load level is normal (a rise aborts it, to start again later). When
 // a copy is ready the item's playlist entries are swapped for its bounce URL; the playing one waits for its
-// next play, since reloading it would restart it.
+// next play, since reloading it would restart it. The copies are kept within display.bounce_cache_gb (prune).
 export class Bounce {
   constructor(daemon) {
     this.daemon = daemon;
@@ -25,7 +28,9 @@ export class Bounce {
   }
 
   async begin() {
-    if (this.settings.paths.bounce) await removeStaleWork(this.settings.paths.bounce);
+    if (!this.settings.paths.bounce) return;
+    await removeStaleWork(this.settings.paths.bounce);
+    await this.prune();
   }
 
   // Whether anything can bounce, so loads skip the look-ahead otherwise
@@ -40,6 +45,10 @@ export class Bounce {
   // On every load: entries still waiting are swapped, and the item and the next entry are queued
   async onLoaded(screen, media) {
     if (this.pending.size) await this.swap(this.pending);
+    if (media && screen.bouncing) {
+      await touchReversed(media, this.settings.paths.bounce, new Date(this.daemon.now?.() ?? Date.now()))
+        .catch(error => this.daemon.logger.warn('Failed to mark the reversed copy played', { mediaId: media.id, error: error.message }));
+    }
     if (!media || !this.active()) return;
     this.want(media);
     try {
@@ -78,7 +87,10 @@ export class Bounce {
         return;
       }
       this.pending.add(id);
-      await this.daemon.enqueue(() => this.swap(this.pending));
+      await this.daemon.enqueue(async () => {
+        await this.swap(this.pending);
+        await this.prune();
+      });
     })().catch(error => this.daemon.logger.warn('Bounce failed', { mediaId: id, error: error.message }))
       .finally(() => {
         this.running = null;
@@ -105,11 +117,13 @@ export class Bounce {
     this.failed.delete(mediaId);
     this.pending.add(mediaId);
     await this.swap(this.pending);
+    await this.prune();
     this.want(media);
   }
 
   // display.video_loop changed: every entry is checked, and what plays now is queued
   async reconfigure() {
+    await this.prune();
     await this.swap(null);
     for (const screen of this.daemon.screens.values()) this.want(screen.media);
   }
@@ -130,5 +144,44 @@ export class Bounce {
     // Ids added while this ran stay pending
     for (const id of checked ?? []) if (!held.has(id)) this.pending.delete(id);
     held.forEach(id => this.pending.add(id));
+  }
+
+  // Deletes the copies no longer wanted: of items gone, skipped or no longer bouncing, then the least recently
+  // played until the rest fit in display.bounce_cache_gb (0 for no limit). Copies of what plays now stay. The
+  // entries of deleted copies go back to the plain file, which mpv would otherwise fail to load and drop.
+  // Returns the ids whose copy was deleted.
+  async prune() {
+    const { paths, display } = this.settings;
+    if (!paths.bounce) return [];
+    const playing = new Set([...this.daemon.screens.values()].map(screen => screen.media?.id).filter(Boolean));
+    const all = await listReversed(paths.bounce);
+    const copies = all.filter(copy => !playing.has(copy.id));
+    const unwanted = copies.filter(copy => {
+      const media = this.daemon.database.getMedia(copy.id);
+      return !media?.path || media.status === 'skipped' || !bounces(media, display);
+    });
+    const kept = copies.filter(copy => !unwanted.includes(copy));
+    const limit = (display.bounce_cache_gb ?? 0) * GIGABYTE;
+    // Oldest first; copies playing now count toward the limit but are never deleted
+    let total = all.filter(copy => !unwanted.includes(copy)).reduce((sum, copy) => sum + copy.size, 0);
+    const evicted = [];
+    for (const copy of kept) {
+      if (!limit || total <= limit) break;
+      evicted.push(copy);
+      total -= copy.size;
+    }
+    const removed = [];
+    for (const copy of [...unwanted, ...evicted]) {
+      try {
+        await fs.remove(copy.file);
+        removed.push(copy.id);
+      } catch (error) {
+        this.daemon.logger.warn('Failed to delete a reversed copy', { mediaId: copy.id, error: error.message });
+      }
+    }
+    if (!removed.length) return removed;
+    this.daemon.logger.info('Pruned reversed copies', { unwanted: unwanted.length, overLimit: evicted.length, bytesKept: total });
+    await this.swap(removed);
+    return removed;
   }
 }

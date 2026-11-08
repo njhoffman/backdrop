@@ -7,8 +7,9 @@ import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
+import { listReversed } from '../library/reverse.js';
 import { wantsJson } from '../utils/mediaView.js';
-import { out, fmt, displayPath } from '../utils/output.js';
+import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
 // mpv's IPC socket path limit; the daemon refuses longer ones
 const MAX_SOCKET_PATH = 107;
@@ -163,6 +164,7 @@ export class DoctorCommand {
       add('library', 'database', 'fail', error.message);
     }
     await this.checkAnimatedWebp(add);
+    await this.checkBounceCache(add);
     const items = this.database.findMedia({ downloaded: true }).filter(item => item.path);
     const missing = [];
     for (const item of items) if (!await this.pathExists(item.path)) missing.push(item);
@@ -173,6 +175,20 @@ export class DoctorCommand {
     const shown = missing.slice(0, MISSING_SHOWN).map(item => `#${item.id}`).join(', ');
     add('library', 'files', 'warn', `${missing.length} of ${items.length} items have no file (${shown}${missing.length > MISSING_SHOWN ? ', ...' : ''})`,
       'backdrop rescan --all lists them; backdrop remove <id> drops one');
+  }
+
+  // How much of display.bounce_cache_gb the reversed copies use; nothing to show when there are none
+  async checkBounceCache(add) {
+    const { display, paths } = this.config.get();
+    const copies = await listReversed(paths.bounce);
+    if (!copies.length) return;
+    const used = copies.reduce((sum, copy) => sum + copy.size, 0);
+    const limit = (display.bounce_cache_gb ?? 0) * 1024 ** 3;
+    const of = limit ? ` of ${formatBytes(limit)}` : ' (no limit)';
+    // The daemon prunes after each encode, so being well over means it is not running or cannot delete
+    const over = limit && used > limit * 1.1;
+    add('library', 'bounce cache', over ? 'warn' : 'ok', `${copies.length} reversed ${copies.length === 1 ? 'copy' : 'copies'}, ${formatBytes(used)}${of}`,
+      over ? `the daemon prunes it to display.bounce_cache_gb; delete ${displayPath(paths.bounce)} to clear it` : undefined);
   }
 
   // Animated WebP in the import folders that this FFmpeg could not decode, still there to convert

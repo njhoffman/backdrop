@@ -53,6 +53,8 @@ describe('config schema', () => {
     expect(errorsFor('display', { monitors: ['DP-1', 'HDMI-1'] })).to.deep.equal([]);
     expect(errorsFor('display', { video_loop: 'bounce' })).to.deep.equal([]);
     expect(errorsFor('display', { video_loop: 'pingpong' })).to.deep.equal(['display.video_loop must be loop or bounce, not "pingpong"']);
+    expect(errorsFor('display', { bounce_cache_gb: 0.5 })).to.deep.equal([]);
+    expect(errorsFor('display', { bounce_cache_gb: -1 })).to.deep.equal(['display.bounce_cache_gb must be a number of gigabytes, 0 for no limit, not -1']);
     expect(errorsFor('display', { monitors: 'DP-1', allow_upscale: 'yes', order: 'sorted', notify: 'always', mpv_args: '--hwdec=vaapi' })).to.deep.equal([
       'display.monitors must be auto or a list of output names such as [DP-1, HDMI-1], not "DP-1"',
       'display.allow_upscale must be true or false, not "yes"',

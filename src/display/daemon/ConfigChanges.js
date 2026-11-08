@@ -9,7 +9,7 @@ import { visualizerSettings } from '../../visualizer/settings.js';
 const LIVE_SETTINGS = {
   'display.order': 'taken', 'display.notify': 'taken',
   'library.trash_days': 'taken', 'library.default_import_rating': 'taken',
-  'display.image_duration': 'durations', 'display.video_duration': 'durations', 'display.video_loop': 'bounce',
+  'display.image_duration': 'durations', 'display.video_duration': 'durations', 'display.video_loop': 'bounce', 'display.bounce_cache_gb': 'bounce',
   'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
   'display.monitors': 'monitors',
   // Read when used

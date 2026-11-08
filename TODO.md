@@ -167,8 +167,11 @@ Reviewed: 2026-11-07
       Done: the daemon reverses a video in chunks (VAAPI, else libx264, nice 19, normal load only) into `~/.cache/backdrop/bounce/<id>.mp4` on its first play and for the next entry, and plays the pair as one `edl://` entry (`src/display/bounce.js`, `daemon/Bounce.js`, `src/library/reverse.js`).
 - [ ] **Judge the bounce seam by eye.** (p2) [test] mpv sets up the decoder again where the video meets its reversed copy. On the desktop (2026-11-07, 2732x1440 at 24 fps, VAAPI) no frame dropped at the seam or the loop,
       but nobody has watched for a visible hitch, nor tried 4K at 60 fps or software decoding. If it shows, encode the copy to match the original's codec settings, or try `--demuxer-cache-wait`/a larger `--demuxer-readahead-secs`.
-- [ ] **Reversed copies outlive their bounce.** (p3) [chore] `bounce off`, `video_loop: loop` and items dropped from the playlist keep their copy until the item is purged, and `video_loop: bounce` grows
+- [x] **Reversed copies outlive their bounce.** (p3) [chore] `bounce off`, `video_loop: loop` and items dropped from the playlist keep their copy until the item is purged, and `video_loop: bounce` grows
       `~/.cache/backdrop/bounce` by about 1.7x each played video with no limit. Have purge drop copies of items that no longer bounce, add a size cap (oldest played first), and show the cache's size in `doctor` or `stats`.
+      Done: `display.bounce_cache_gb` (10) with the least recently played deleted first, copies of items gone, skipped or no longer bouncing deleted, their entries swapped back to the file, and the size in `doctor` (`Bounce.prune`).
+- [ ] **A small bounce cache encodes every play.** (p3) [perf] With 779 eligible videos (32 GB) and the 10 GB default, most copies are deleted before a video comes round again, so nearly every
+      play costs one encode (13 s for an 11 s 1440p clip with VAAPI, at nice 19). Log encodes per day, and if they matter raise the default or keep copies of kept, higher-rated videos first.
 - [ ] **The item that starts an encode bounces only from its next play.** (p3) [feature] Its entry is playing, so it is not swapped (reloading would restart it). When the copy is ready before its last pass, it could
       be swapped at the loop with `loadfile <url> replace` plus `start=` the current position, which needs a check that it shows no jump (`daemon/Bounce.js`).
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,

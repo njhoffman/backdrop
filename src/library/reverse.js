@@ -113,6 +113,26 @@ export async function removeStaleWork(dir) {
   await Promise.all(names.filter(name => name.endsWith('.tmp')).map(name => fs.remove(path.join(dir, name))));
 }
 
+// The finished copies in dir: { id, file, size, mtimeMs }, oldest first. Work folders and other names are left out.
+export async function listReversed(dir) {
+  const names = await fs.readdir(dir).catch(() => []);
+  const copies = [];
+  for (const name of names) {
+    const match = /^(\d+)\.mp4$/.exec(name);
+    if (!match) continue;
+    const file = path.join(dir, name);
+    const stat = await fs.stat(file).catch(() => null);
+    if (stat?.isFile()) copies.push({ id: Number(match[1]), file, size: stat.size, mtimeMs: stat.mtimeMs });
+  }
+  return copies.sort((a, b) => a.mtimeMs - b.mtimeMs);
+}
+
+// Marks a copy as just played, for the cache limit (least recently played go first). Its time stays newer
+// than the video's, which reversedReady needs.
+export async function touchReversed(media, dir, now = new Date()) {
+  await fs.utimes(reversedPath(media, dir), now, now);
+}
+
 // Drops an item's reversed copy (purged, or its file replaced)
 export async function removeReversed(media, dir) {
   if (!dir) return;
