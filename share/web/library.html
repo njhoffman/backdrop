@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="backdrop-token" content="{{token}}">
+  <title>backdrop library</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/library.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> backdrop</h1>
+    <nav class="tabs" aria-label="Pages"><a href="/">Now playing</a><a href="/library" aria-current="page">Library</a></nav>
+    <span id="daemon" class="pill" aria-live="polite">connecting</span>
+    <span id="version" class="muted"></span>
+  </header>
+
+  <main>
+    <form id="filters" class="panel controls" aria-label="Filters" autocomplete="off">
+      <label class="field"><span class="label">Kind</span>
+        <select name="kind"><option value="all">All</option><option value="video">Videos</option><option value="image">Images</option></select>
+      </label>
+      <label class="field"><span class="label">Status</span>
+        <select name="status">
+          <option value="shown">New and kept</option><option value="new">New</option><option value="kept">Kept</option>
+          <option value="skipped">Skipped</option><option value="all">All</option>
+        </select>
+      </label>
+      <label class="field"><span class="label">Rating</span>
+        <select name="min_rating"><option value="">Any</option><option value="1">★1+</option><option value="2">★2+</option><option value="3">★3</option></select>
+      </label>
+      <label class="field"><span class="label">Tag</span>
+        <input name="tag" list="tag-list" size="12" placeholder="ocean">
+        <datalist id="tag-list"></datalist>
+      </label>
+      <label class="field"><span class="label">Search</span>
+        <select name="query"><option value="">Any</option></select>
+      </label>
+      <label class="field"><span class="label">Words</span>
+        <input name="keywords" size="14" placeholder="waves night">
+      </label>
+      <label class="field"><span class="label">Sort</span>
+        <select name="sort"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="largest">Largest</option></select>
+      </label>
+      <div class="field">
+        <button type="button" id="next-matching" title="Play the next matching item, and keep these filters for later nexts (as next --tag does)">Play next matching on</button>
+        <select id="next-monitor" name="next-monitor" aria-label="Monitor"></select>
+      </div>
+    </form>
+
+    <div class="pager">
+      <span id="count" class="muted" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button type="button" id="prev-page">Previous</button>
+      <span id="page" class="muted"></span>
+      <button type="button" id="next-page">Next</button>
+    </div>
+
+    <section id="grid" class="grid" aria-label="Library items"></section>
+  </main>
+
+  <template id="tile">
+    <button type="button" class="tile">
+      <img class="tile-thumb" alt="" loading="lazy" decoding="async" width="728" height="200">
+      <span class="tile-body">
+        <span class="tile-title"></span>
+        <span class="tile-meta muted"></span>
+      </span>
+    </button>
+  </template>
+
+  <dialog id="details" class="details" aria-labelledby="details-title">
+    <form method="dialog" class="details-close"><button aria-label="Close">Close</button></form>
+    <img class="details-thumb" alt="" width="728" height="200">
+    <h2 id="details-title"></h2>
+    <p class="details-meta muted"></p>
+    <p class="details-rating"></p>
+    <p class="details-tags muted"></p>
+    <p class="details-credit"></p>
+    <div class="actions" role="group" aria-label="Rating">
+      <button type="button" data-rating="1">★1</button>
+      <button type="button" data-rating="2">★2</button>
+      <button type="button" data-rating="3">★3</button>
+      <button type="button" data-rating="0" class="danger" title="Move to the trash">Skip</button>
+    </div>
+    <div class="adjust">
+      <label class="video-only">Speed
+        <select name="speed" data-adjust="speed">
+          <option>0.4</option><option>0.5</option><option>0.65</option><option>0.75</option><option>0.85</option><option>1</option>
+        </select>
+      </label>
+      <label>Dim <input type="range" name="dim" min="0" max="100" step="5" data-adjust="dim"> <output class="dim-value"></output></label>
+      <label class="video-only">Bounce
+        <select name="bounce" data-adjust="bounce">
+          <option value="reset">Default</option><option value="on">On</option><option value="off">Off</option>
+        </select>
+      </label>
+    </div>
+    <div class="actions play-on" role="group" aria-label="Play"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -10,7 +10,7 @@ import { makeConfig, silentLogger } from '../helpers/fakes.js';
 // A real server on a free port with stand-ins for the services and the event hub, so the run stays offline
 describe('WebServer', () => {
   const token = 'test-token-0123456789';
-  let dir, db, config, server, base, display, rating, hub, thumbs, id;
+  let dir, db, config, server, base, display, rating, library, hub, thumbs, id;
 
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
   const cookie = `backdrop_token=${token}`;
@@ -24,6 +24,7 @@ describe('WebServer', () => {
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-web-'));
     await fs.outputFile(path.join(dir, 'static', 'index.html'), '<meta content="{{token}}">');
+    await fs.outputFile(path.join(dir, 'static', 'library.html'), '<p>library {{token}}</p>');
     await fs.outputFile(path.join(dir, 'static', 'app.js'), 'export {};');
     await fs.outputFile(path.join(dir, 'thumb.jpg'), 'jpeg');
     config = makeConfig({ 'paths.runtime': dir, 'display.video_loop': 'bounce' });
@@ -47,13 +48,21 @@ describe('WebServer', () => {
       skip: sinon.stub().resolves({ rated: db.getMedia(id), warnings: [], playing }),
       undo: sinon.stub().resolves({ action: 'none', media: null, warnings: [] })
     };
+    library = {
+      list: sinon.stub().returns({ total: 0, page: 1, pages: 1, per_page: 48, items: [] }),
+      facets: sinon.stub().returns({ tags: [], queries: [] }),
+      item: sinon.stub().throws(Object.assign(new Error('No library item #5'), { status: 404 })),
+      rate: sinon.stub().resolves({ item: { id: 5 }, warnings: [] }),
+      adjust: sinon.stub().resolves({ id: 5, dim: 10 }),
+      play: sinon.stub().resolves(playing)
+    };
     hub = { start: sinon.stub().resolves(), stop: sinon.stub().resolves(), changed: sinon.spy(), add: sinon.stub().callsFake(async response => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end('event: state\ndata: {}\n\n');
     }) };
     thumbs = [];
     server = new WebServer({
-      config, database: db, logger: silentLogger, display, rating, token, version: '9.9.9', hub,
+      config, database: db, logger: silentLogger, display, rating, library, token, version: '9.9.9', hub,
       staticDir: path.join(dir, 'static'),
       thumbnail: async media => { thumbs.push(media.id); return path.join(dir, 'thumb.jpg'); }
     });
@@ -164,6 +173,68 @@ describe('WebServer', () => {
     expect((await get('/static/..%2Fthumb.jpg')).status).to.equal(404);
     expect((await get('/nowhere')).status).to.equal(404);
     expect((await get('/api/undo')).status).to.equal(405);
+  });
+
+  describe('library', () => {
+    it('serves the library page and lists items, passing the filters as the service takes them', async () => {
+      expect(await (await get('/library')).text()).to.equal(`<p>library ${token}</p>`);
+      await get('/api/media?kind=video&tag=ocean&tag=night&keywords=waves%20%20blue&query=storm&page=2&ignored=1');
+      expect(library.list.firstCall.args[0]).to.deep.equal({
+        kind: 'video', page: '2', tag: ['ocean', 'night'], keywords: ['waves', 'blue'], query: ['storm']
+      });
+      expect(await (await get('/api/media/facets')).json()).to.deep.equal({ tags: [], queries: [] });
+    });
+
+    it('answers an unknown item with the service\'s 404', async () => {
+      const response = await get('/api/media/5');
+      expect(response.status).to.equal(404);
+      expect(await response.json()).to.deep.equal({ error: 'No library item #5' });
+    });
+
+    it('rates, adjusts and plays an item, and changing one needs the page token', async () => {
+      expect(await (await post('/api/media/5/rating', { rating: 0 })).json()).to.deep.equal({ item: { id: 5 }, warnings: [] });
+      expect(library.rate.firstCall.args).to.deep.equal(['5', 0]);
+      const patch = body => fetch(`${base}/api/media/5`, { method: 'PATCH', headers: { cookie, 'x-backdrop-token': token }, body: JSON.stringify(body) });
+      expect(await (await patch({ dim: '+10' })).json()).to.deep.equal({ item: { id: 5, dim: 10 } });
+      expect(library.adjust.firstCall.args).to.deep.equal(['5', { dim: '+10' }]);
+      const unsigned = await fetch(`${base}/api/media/5`, { method: 'PATCH', headers: { cookie }, body: '{}' });
+      expect(unsigned.status).to.equal(403);
+      const played = await (await post('/api/media/5/play', { monitor: 'DP-1' })).json();
+      expect(library.play.firstCall.args).to.deep.equal(['5', 'DP-1']);
+      expect(played.item.id).to.equal(id);
+      expect((await post('/api/media/5/play', {})).status).to.equal(400);
+      expect(hub.changed.callCount).to.equal(3);
+    });
+
+    it('passes next the library\'s filters, checking they are lists of strings', async () => {
+      await post('/api/monitors/DP-1/next', { tag: ['ocean', ' '], keywords: ['waves'], random: 1 });
+      expect(display.next.firstCall.args[0]).to.deep.equal({ monitor: 'DP-1', tag: ['ocean'], keywords: ['waves'], random: true });
+      const refused = await post('/api/monitors/DP-1/next', { tag: 'ocean' });
+      expect(await refused.json()).to.deep.equal({ error: 'tag must be a list of strings' });
+    });
+
+    it('makes at most two thumbnails at once', async () => {
+      let running = 0;
+      let most = 0;
+      const ids = [1, 2, 3, 4, 5].map(n => db.addMedia({ kind: 'image', source: 'local', source_id: `t${n}`, path: `/m/t${n}.jpg` }));
+      const limitedServer = new WebServer({
+        config, database: db, logger: silentLogger, display, rating, library, token, hub, staticDir: path.join(dir, 'static'),
+        thumbnail: async () => {
+          running++;
+          most = Math.max(most, running);
+          await new Promise(resolve => setTimeout(resolve, 20));
+          running--;
+          return path.join(dir, 'thumb.jpg');
+        }
+      });
+      const port = await limitedServer.listen(0);
+      try {
+        await Promise.all(ids.map(item => fetch(`http://127.0.0.1:${port}/thumbs/${item}.jpg`, { headers: { cookie } }).then(response => response.text())));
+      } finally {
+        await limitedServer.close();
+      }
+      expect(most).to.equal(2);
+    });
   });
 
   it('hands the event stream to the hub', async () => {

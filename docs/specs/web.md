@@ -1,6 +1,6 @@
 # Web interface
 
-Status: **agreed design** (2026-11-07); steps 1 and 2 of "Order of work" are built (2.53.2, 2.54.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
+Status: **agreed design** (2026-11-07); steps 1 to 3 of "Order of work" are built (2.53.2, 2.54.0, 2.55.0). D1 A, a `backdrop web` process; D2 A, `node:http`; D3 A,
 vanilla JS with no build; D4, server-sent events; D5 A, a token with Host and Origin checks; D6, services first;
 and the first version's scope under "Decisions on scope". The roadmap items are in `TODO.md`, "10. Web interface".
 
@@ -119,7 +119,7 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 |---|---|
 | `GET /api/state` *built* | `{ status, durations, settings, version }`: `status --json` (`DisplayService.status`), the durations in force (`{ image, video }`, each `{ seconds, set }`, set when next or the menu gave it), `settings.video_loop` for items that follow it |
 | `GET /api/events` *built* | Server-sent events (D4): an `event: state` with the same snapshot on connect and on each change |
-| `POST /api/monitors/:monitor/next` `prev` *built* | `playingJson` of what the monitor plays now; next's filters (`{ query, tag, keywords, random }`) come with the library step |
+| `POST /api/monitors/:monitor/next` `prev` *built* | `playingJson` of what the monitor plays now; next takes `{ query, tag, keywords }` (lists of strings) and `random`, kept for later nexts as `next --tag` keeps them |
 | `POST /api/monitors/:monitor/keep` *built* | `{ rating: 1-3, next? }` on the playing item: `{ item, warnings, playing? }` |
 | `POST /api/monitors/:monitor/skip` *built* | Skips the playing item: `{ item, warnings, playing }` |
 | `POST /api/monitors/:monitor/speed` `dim` `bounce` *built* | `{ value }` as the commands take it (`0.8`, `+10`, `on`, `reset`) |
@@ -128,11 +128,12 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 | `POST /api/daemon` *built* | `{ running: true \| false }`: starts or stops the daemon |
 | `POST /api/parts` *built* | `{ wallpaper?, visualizer? }`, each true or false, as `start`/`stop --wallpaper`/`--visualizer`; a part turned on starts a stopped daemon |
 | `POST /api/durations` *built* | `{ image?, video? }` as times (`90`, `5m`), or `{ clear: true }`, which also drops next's filters (as `next --clear`) |
-| `GET /api/media` | List with `kind`, `status`, `min_rating`, `query`, `tag`, `keywords`, `sort`, `page`, `per_page` (`src/library/match.js`) |
-| `GET /api/media/:id` | `mediaJson` |
-| `POST /api/media/:id/rating` | `{ rating: 0-3 }` (0 skips) on any item, playing or not |
-| `PATCH /api/media/:id` | `{ speed?, dim?, bounce? }`; applied now on any monitor playing it, stored otherwise |
-| `POST /api/media/:id/queue` | Play next on `{ monitor }` (`queueMatching`) |
+| `GET /api/media` *built* | A page of downloaded items (`LibraryService.list`): `kind` (all, video, image), `status` (shown: new and kept, new, kept, skipped, all), `min_rating`, `query` and `tag` (each repeated), `keywords` (space-separated), `sort` (newest, oldest, largest), `page`, `per_page` (48, at most 100); answers `{ total, page, pages, per_page, items }` with `mediaJson` items |
+| `GET /api/media/facets` *built* | The 60 most common tags with their counts and the saved searches' queries, for the filters |
+| `GET /api/media/:id` *built* | `mediaJson`; 404 for an unknown id |
+| `POST /api/media/:id/rating` *built* | `{ rating: 0-3 }` (0 skips) on any item, playing or not: `{ item, warnings }` |
+| `PATCH /api/media/:id` *built* | `{ speed?, dim?, bounce? }` as the commands take them; applied at once on a monitor playing the item, stored either way: `{ item }` |
+| `POST /api/media/:id/play` *built* | `{ monitor }`: plays the item there now when that monitor's playlist has it (its mode and size decide), as `next` with it as the only match |
 | `GET /thumbs/:id.jpg` *built* | The cached thumbnail, made on demand (`thumbnailFor`, one at a time, at the lowest priority) |
 | `GET /api/visualizer` | Instances, their live looks and the presets (`presetsOf`) |
 | `POST /api/visualizer/live` | A `visualizer_set` control request; `DELETE` resets |

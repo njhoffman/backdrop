@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.55.0] - 2026-11-07
+
+### Added
+
+- The web interface's Library page (`/library`): the downloaded items with thumbnails, 48 a page, filtered by kind, status, rating, tag, saved search and words and sorted newest, oldest or largest, with the filters in the address so a view can be bookmarked. Choosing an item opens its details, where it can be rated or skipped, given its own speed, dim and bounce (applied at once if it is playing), and played on a monitor. "Play next matching" plays the next item matching the filters and keeps them for later nexts, as `next --tag` does.
+
 ## [2.54.0] - 2026-11-07
 
 ### Added

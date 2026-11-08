@@ -123,8 +123,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 - **Sources** (`src/sources/`) - `Source` defines normalized search/metadata/download variants and rate limits;
   `SourceRegistry` resolves adapters, with `PexelsSource` first. Credentials are checked on API requests only.
   Search/download share monitor-aware selection in `src/library/quality.js`; see `docs/specs/sources.md`.
-- **Services** (`src/services/`) - `RatingService` (keep, skip, undo, go-next, rate) and `DisplayService` (start, stop,
-  parts, next, prev, mode, speed/dim/bounce, status) do the work and return data, never printing: playlist failures
+- **Services** (`src/services/`) - `RatingService` (keep, skip, undo, go-next, rate), `DisplayService` (start, stop,
+  parts, next, prev, mode, speed/dim/bounce, status, durations) and `LibraryService` (the web Library page: paged
+  lists with the list filters, rating and adjusting any item, playing one on a monitor) do the work and return data, never printing: playlist failures
   after a committed rating come back as `warnings`, and a failure after one carries `error.done`. `RatingCommand`
   and `DisplayCommand` print their results (their `control` forwards to the service's); the menu calls the services
   directly and drops their results (`done`), since an action's result is its next state. The web interface will

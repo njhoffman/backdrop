@@ -27,7 +27,7 @@ const available = ['Xvfb', 'rofi', 'xdotool', 'import'].every(hasCommand);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Starts Xvfb on a free display; resolves to { display, stop }
-function startXvfb() {
+function spawnXvfb() {
   return new Promise((resolve, reject) => {
     const child = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', '1600x900x24', '-nolisten', 'tcp'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
     let output = '';
@@ -38,6 +38,32 @@ function startXvfb() {
     child.on('error', reject);
     child.on('exit', code => reject(new Error(`Xvfb exited with ${code}`)));
   });
+}
+
+// Whether a client can open display now
+function accepts(display) {
+  return new Promise(resolve => {
+    const child = spawn('xdotool', ['getdisplaygeometry'], { env: { ...process.env, DISPLAY: display }, stdio: 'ignore' });
+    child.on('error', () => resolve(false));
+    child.on('exit', code => resolve(code === 0));
+  });
+}
+
+// An Xvfb that clients can reach. Under load, rofi has failed to open a display -displayfd had already
+// reported (2026-11-07), so each start is checked with a real client and a server that never answers is
+// replaced by a new one.
+async function startXvfb(attempts = 3) {
+  let last;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const server = await spawnXvfb();
+    for (let wait = 0; wait < 50; wait++) {
+      if (await accepts(server.display)) return server;
+      await sleep(100);
+    }
+    server.stop();
+    last = server.display;
+  }
+  throw new Error(`No client could open the Xvfb display (last ${last})`);
 }
 
 (available ? describe : describe.skip)('rofi menus on a virtual X server', function () {

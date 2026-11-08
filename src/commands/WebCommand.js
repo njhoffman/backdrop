@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import { webPath } from '../display/runtimeFiles.js';
 import { DisplayService } from '../services/DisplayService.js';
+import { LibraryService } from '../services/LibraryService.js';
 import { RatingService } from '../services/RatingService.js';
 import { out } from '../utils/output.js';
 import { createToken } from '../web/auth.js';
@@ -56,7 +57,8 @@ export class WebCommand {
     const token = createToken();
     const display = new DisplayService({ config: this.config, database: this.database, logger: this.logger });
     const rating = new RatingService({ config: this.config, database: this.database, logger: this.logger, control: display.control });
-    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, token, version: this.version });
+    const library = new LibraryService({ config: this.config, database: this.database, logger: this.logger, control: display.control, rating });
+    const server = this.createServer({ config: this.config, database: this.database, logger: this.logger, display, rating, library, token, version: this.version });
     const port = await server.listen(wanted);
     await fs.ensureDir(this.config.get().paths.runtime, 0o700);
     await fs.writeJson(this.infoPath, { pid: process.pid, port, token }, { mode: 0o600 });

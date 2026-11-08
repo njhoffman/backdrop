@@ -187,6 +187,16 @@ describe('DatabaseManager', () => {
     });
   });
 
+  describe('tag counts', () => {
+    it('counts the tags of downloaded items, most common first', () => {
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'ocean night.mp4', path: '/m/1.mp4' });
+      db.addMedia({ kind: 'video', source: 'local', source_id: 2, original_name: 'ocean.mp4', path: '/m/2.mp4' });
+      db.addMedia({ kind: 'video', source: 'local', source_id: 3, original_name: 'ocean storm.mp4' });
+      expect(db.getTagCounts()).to.deep.equal([{ tag: 'ocean', count: 2 }, { tag: 'night', count: 1 }]);
+      expect(db.getTagCounts(1)).to.deep.equal([{ tag: 'ocean', count: 2 }]);
+    });
+  });
+
   describe('bounce', () => {
     it('stores true, false or null to follow display.video_loop, and knows when any item bounces', () => {
       const id = db.addMedia(video());

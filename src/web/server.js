@@ -13,6 +13,8 @@ import { EventHub } from './events.js';
 
 export const STATIC_DIR = fileURLToPath(new URL('../../share/web/', import.meta.url));
 const MAX_BODY = 64 * 1024;
+// Thumbnails made at once: a library page asks for dozens, each an ffmpeg
+const THUMBNAIL_CONCURRENCY = 2;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 // Only this server's own files, styles and scripts; nothing inline, nothing from elsewhere
 const SECURITY_HEADERS = {
@@ -31,7 +33,7 @@ export class HttpError extends Error {
 
 export class WebServer {
   constructor({
-    config, database, logger, display, rating, token, version = null,
+    config, database, logger, display, rating, library, token, version = null,
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     staticDir = STATIC_DIR, hub
   }) {
@@ -40,9 +42,10 @@ export class WebServer {
     this.logger = logger;
     this.display = display;
     this.rating = rating;
+    this.library = library;
     this.token = token;
     this.version = version;
-    this.thumbnail = thumbnail;
+    this.thumbnail = limited(thumbnail, THUMBNAIL_CONCURRENCY);
     this.staticDir = staticDir;
     this.port = null;
     this.hub = hub ?? new EventHub({ runtimeDir: config.get().paths.runtime, snapshot: () => this.snapshot(), logger });
@@ -101,7 +104,8 @@ export class WebServer {
     }];
     const changed = { changed: true };
     return [
-      ['GET', /^\/$/, (request, match, response) => this.page(response)],
+      ['GET', /^\/$/, (request, match, response) => this.page(response, 'index.html')],
+      ['GET', /^\/library$/, (request, match, response) => this.page(response, 'library.html')],
       ['GET', /^\/static\/([\w.-]+)$/, (request, match, response) => this.staticFile(response, match[1])],
       ['GET', /^\/thumbs\/(\d+)\.jpg$/, (request, match, response) => this.thumbnailFile(response, Number(match[1]))],
       ['GET', /^\/api\/state$/, () => this.snapshot()],
@@ -109,7 +113,14 @@ export class WebServer {
         await this.hub.add(response);
         return { streamed: true };
       }],
-      monitorAction('next', async monitor => ({ ...changed, ...this.playing((await this.display.next({ monitor })).playing) })),
+      // With the library's filters: { query, tag, keywords } (lists of strings) and random, kept for later nexts as
+      // `next --tag ...` keeps them
+      monitorAction('next', async (monitor, body) => {
+        const filters = {};
+        for (const key of ['query', 'tag', 'keywords']) if (body[key] !== undefined) filters[key] = this.strings(body[key], key);
+        if (body.random !== undefined) filters.random = Boolean(body.random);
+        return { ...changed, ...this.playing((await this.display.next({ monitor, ...filters })).playing) };
+      }),
       monitorAction('prev', async monitor => ({ ...changed, ...this.playing((await this.display.prev({ monitor })).playing) })),
       monitorAction('keep', async (monitor, { rating, next = false }) => {
         const result = await this.rating.keep(rating, { monitor, next: Boolean(next) });
@@ -128,6 +139,15 @@ export class WebServer {
         const { bounce, bouncing } = await this.display.bounce(this.text(value, 'value'), { monitor });
         return { ...changed, bounce, bouncing };
       }),
+      ['GET', /^\/api\/media$/, (request, match, response, url) => this.library.list(listOptions(url.searchParams))],
+      ['GET', /^\/api\/media\/facets$/, () => this.library.facets()],
+      ['GET', /^\/api\/media\/(\d+)$/, (request, match) => this.library.item(match[1])],
+      ['POST', /^\/api\/media\/(\d+)\/rating$/, async (request, match) => ({ ...changed, ...await this.library.rate(match[1], (await this.body(request)).rating) })],
+      ['PATCH', /^\/api\/media\/(\d+)$/, async (request, match) => ({ ...changed, item: await this.library.adjust(match[1], await this.body(request)) })],
+      ['POST', /^\/api\/media\/(\d+)\/play$/, async (request, match) => {
+        const { monitor } = await this.body(request);
+        return { ...changed, ...this.playing(await this.library.play(match[1], this.text(monitor, 'monitor'))) };
+      }],
       ['POST', /^\/api\/undo$/, async () => {
         const { action, media, warnings } = await this.rating.undo();
         return { ...changed, action, item: media ? mediaJson(this.database, media) : null, warnings };
@@ -171,9 +191,9 @@ export class WebServer {
     const [method, pattern, run] = route;
     let result;
     try {
-      result = await run(request, pattern.exec(url.pathname), response);
+      result = await run(request, pattern.exec(url.pathname), response, url);
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 400;
+      const status = error.status ?? 400;
       this.logger.warn('Web request refused', { method, path: url.pathname, error: error.message });
       return this.json(response, status, { error: error.message });
     }
@@ -198,6 +218,11 @@ export class WebServer {
     if (on.length) await this.display.start(Object.fromEntries(on.map(part => [part, true])));
     if (off.length) await this.display.stop(Object.fromEntries(off.map(part => [part, true])));
     return { status: await this.display.status() };
+  }
+
+  strings(value, name) {
+    if (Array.isArray(value) && value.every(item => typeof item === 'string')) return value.map(item => item.trim()).filter(Boolean);
+    throw new HttpError(400, `${name} must be a list of strings`);
   }
 
   text(value, name) {
@@ -229,9 +254,9 @@ export class WebServer {
     response.end(JSON.stringify(body));
   }
 
-  // The page, with this run's token for the changing requests' header. Only a request with the cookie gets here.
-  async page(response) {
-    const html = await fs.readFile(path.join(this.staticDir, 'index.html'), 'utf8');
+  // A page, with this run's token for the changing requests' header. Only a request with the cookie gets here.
+  async page(response, name) {
+    const html = await fs.readFile(path.join(this.staticDir, name), 'utf8');
     response.writeHead(200, { ...SECURITY_HEADERS, 'content-type': TYPES['.html'], 'cache-control': 'no-store' });
     response.end(html.replace('{{token}}', this.token));
     return { streamed: true };
@@ -239,7 +264,7 @@ export class WebServer {
 
   async staticFile(response, name) {
     const type = TYPES[path.extname(name)];
-    if (!type || name === 'index.html') throw new HttpError(404, 'Not found');
+    if (!type || type === TYPES['.html']) throw new HttpError(404, 'Not found');
     const file = path.join(this.staticDir, name);
     const content = await fs.readFile(file).catch(() => null);
     if (!content) throw new HttpError(404, 'Not found');
@@ -258,4 +283,38 @@ export class WebServer {
     fs.createReadStream(file).pipe(response);
     return { streamed: true };
   }
+}
+
+// GET /api/media's query string as LibraryService.list takes it: query and tag repeat; keywords is space-separated
+function listOptions(params) {
+  const options = {};
+  for (const key of ['kind', 'status', 'min_rating', 'sort', 'page', 'per_page']) {
+    if (params.get(key)) options[key] = params.get(key);
+  }
+  const query = params.getAll('query').filter(Boolean);
+  const tag = params.getAll('tag').filter(Boolean);
+  const keywords = (params.get('keywords') ?? '').split(/\s+/).filter(Boolean);
+  if (query.length) options.query = query;
+  if (tag.length) options.tag = tag;
+  if (keywords.length) options.keywords = keywords;
+  return options;
+}
+
+// fn limited to concurrency calls at once, the rest waiting their turn
+function limited(fn, concurrency) {
+  let running = 0;
+  const waiting = [];
+  const next = () => {
+    if (running >= concurrency || !waiting.length) return;
+    running++;
+    const { args, resolve, reject } = waiting.shift();
+    Promise.resolve().then(() => fn(...args)).then(resolve, reject).finally(() => {
+      running--;
+      next();
+    });
+  };
+  return (...args) => new Promise((resolve, reject) => {
+    waiting.push({ args, resolve, reject });
+    next();
+  });
 }

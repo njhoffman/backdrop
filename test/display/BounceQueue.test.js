@@ -55,9 +55,11 @@ describe('Bounce (daemon)', () => {
     return made;
   }
 
-  // Waits for the background encodes to reach count
+  // Waits for the background encodes to reach count; the swap and prune before the next encode do real file
+  // work, so this waits on time rather than a number of ticks
   async function encodesReach(count) {
-    for (let i = 0; i < 50 && encodes.length < count; i++) await tick();
+    const deadline = Date.now() + 2000;
+    while (encodes.length < count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
   }
 
   function screen(playlist) {

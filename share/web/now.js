@@ -1,53 +1,10 @@
 // The Now playing page (docs/specs/web.md): one card per monitor, drawn again from every snapshot the server sends
-// over /api/events. Changes go out as JSON POSTs with this run's token in a header.
+// over /api/events. Changes go out through common.js with this run's token in a header.
+import { $, act, formatTime, post, stars, toast, watchState } from './common.js';
 
-const token = document.querySelector('meta[name="backdrop-token"]').content;
-const $ = selector => document.querySelector(selector);
 let snapshot = null;
 // Cards keep their elements between snapshots, so a slider being dragged is not replaced under the pointer
 const cards = new Map();
-
-async function post(url, body = {}) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-backdrop-token': token },
-    body: JSON.stringify(body)
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error ?? `${response.status} ${response.statusText}`);
-  for (const warning of result.warnings ?? []) toast(warning, true);
-  return result;
-}
-
-// Runs a change, showing its error rather than failing silently; busy marks what waits for it
-async function act(change, busy) {
-  busy?.classList.add('busy');
-  try {
-    return await change();
-  } catch (error) {
-    toast(error.message, true);
-    return null;
-  } finally {
-    busy?.classList.remove('busy');
-  }
-}
-
-let toastTimer;
-function toast(message, error = false) {
-  const element = $('#toast');
-  element.textContent = message;
-  element.classList.toggle('error', error);
-  element.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { element.hidden = true; }, error ? 7000 : 3000);
-}
-
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds)) return '';
-  const total = Math.round(seconds);
-  const minutes = Math.floor(total / 60);
-  return `${minutes}:${String(total % 60).padStart(2, '0')}`;
-}
 
 function formatDuration(seconds) {
   if (seconds === 0) return '0';
@@ -62,12 +19,8 @@ function bouncesNow(item) {
 
 function render(next) {
   snapshot = next;
-  const { status, durations, version } = next;
+  const { status, durations } = next;
   const { daemon } = status;
-  $('#version').textContent = version ? `v${version}` : '';
-  const pill = $('#daemon');
-  pill.textContent = daemon.running ? `running, pid ${daemon.pid}` : 'stopped';
-  pill.className = `pill ${daemon.running ? 'ok' : 'off'}`;
   $('#stopped').hidden = daemon.running;
 
   for (const button of document.querySelectorAll('[data-mode]')) {
@@ -123,9 +76,7 @@ function renderCard(monitor) {
     ? [item.kind, `${item.width}x${item.height}`, formatTime(item.duration), item.fps ? `${item.fps} fps` : '', item.tags?.slice(0, 6).join(', ')]
       .filter(Boolean).join(' · ')
     : '';
-  card.querySelector('.item-rating').textContent = item
-    ? (item.rating ? (item.rating.value ? `Kept ${'★'.repeat(item.rating.value)}` : 'Skipped') : 'Unrated')
-    : '';
+  card.querySelector('.item-rating').textContent = item ? stars(item.rating) : '';
 
   for (const button of card.querySelectorAll('button[data-action]')) {
     button.disabled = !item && button.dataset.action !== 'next' && button.dataset.action !== 'prev';
@@ -197,14 +148,5 @@ function bindPage() {
   $('#start').addEventListener('click', () => act(() => post('/api/daemon', { running: true }), $('#stopped')));
 }
 
-function connect() {
-  const events = new EventSource('/api/events');
-  events.addEventListener('state', event => render(JSON.parse(event.data)));
-  events.addEventListener('error', () => {
-    $('#daemon').textContent = 'reconnecting';
-    $('#daemon').className = 'pill';
-  });
-}
-
 bindPage();
-connect();
+watchState(render);
