@@ -67,6 +67,10 @@ describe('LibraryService', () => {
     expect(listed({ sort: 'largest' })[0]).to.equal(ids.forest);
   });
 
+  it('sorts by rating, unrated items last', () => {
+    expect(listed({ sort: 'rating', status: 'all' })).to.deep.equal([ids.forest, ids.sky, ids.loop, ids.ocean]);
+  });
+
   it('pages, keeping the page within range', () => {
     const second = library.list({ per_page: '2', page: '2' });
     expect(second).to.include({ total: 3, page: 2, pages: 2, per_page: 2 });

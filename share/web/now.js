@@ -138,8 +138,8 @@ function bindPage() {
     });
   });
   $('#clear-durations').addEventListener('click', () => act(async () => {
-    await post('/api/durations', { clear: true });
-    toast('Durations and next filters dropped');
+    await post('/api/durations', { reset: true });
+    toast('Durations back to display.image_duration and display.video_duration');
   }));
   $('#undo').addEventListener('click', () => act(async () => {
     const { action, item } = await post('/api/undo');

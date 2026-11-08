@@ -16,6 +16,8 @@ function changesFor(setting, value, look) {
     case 'now': return { sleeve: { now: value } };
     case 'now_position': return { sleeve: { now_position: value } };
     case 'lyrics_align': return { sleeve: { lyrics_align: value } };
+    case 'fps': return { projectm: { fps: Number(value) } };
+    case 'preset_duration': return { projectm: { preset_duration: Number(value) } };
     case 'source': return { palette: value === 'wallpaper' ? { source: 'wallpaper', pick: look.palette.pick } : { source: 'config' } };
     case 'pick': return { palette: { source: 'wallpaper', pick: value } };
     default: throw new Error(`Unknown setting ${setting}`);
@@ -56,6 +58,13 @@ function render(next) {
   preset.value = next.preset ?? '';
   preset.disabled = !next.running;
   $('#reset').disabled = !next.running || !next.changed;
+  // Only presets the config saves can go, and not the one in use
+  const deletable = next.presets.filter(({ name, source }) => source.startsWith('config') && name !== next.preset);
+  const choice = $('#delete-preset');
+  const chosen = choice.value;
+  choice.replaceChildren(...deletable.map(({ name, source }) => new Option(source === 'config' ? name : `${name} (back to built in)`, name)));
+  if (deletable.some(({ name }) => name === chosen)) choice.value = chosen;
+  $('#delete-field').hidden = !deletable.length;
   $('#save').querySelector('button').disabled = !next.running;
   $('#changed').textContent = next.changed ? 'Changed here or in the menu until the daemon restarts' : '';
 
@@ -84,16 +93,22 @@ function addCard(name) {
   return card;
 }
 
-function renderCard(card, { name, look, changed, sent }, { choices, running }) {
+function renderCard(card, { name, look, changed, sent, yaml }, { choices, running }) {
   const sleeve = look.engine === 'sleeve';
+  const projectm = look.engine === 'projectm';
   card.classList.toggle('sleeve', sleeve);
-  card.classList.toggle('glava', !sleeve);
+  card.classList.toggle('projectm', projectm);
+  card.classList.toggle('glava', !sleeve && !projectm);
   card.querySelector('.instance-name').textContent = name;
-  card.querySelector('.instance-engine').textContent = sleeve ? 'sleeve' : look.module;
+  card.querySelector('.instance-engine').textContent = sleeve ? 'sleeve' : projectm ? 'projectM' : look.module;
   card.querySelector('.instance-changed').hidden = !changed;
   const field = setting => card.querySelector(`[data-setting="${setting}"]`);
-  options(field('module'), choices.modules, look.module);
+  if (!sleeve && !projectm) options(field('module'), choices.modules, look.module);
   field('amplify').value = String(look.amplify ?? '');
+  if (projectm) {
+    field('fps').value = String(look.projectm.fps);
+    field('preset_duration').value = String(look.projectm.preset_duration);
+  }
   if (sleeve) {
     options(field('now'), choices.sleeve.now, look.sleeve.now);
     options(field('now_position'), choices.sleeve.positions, look.sleeve.now_position);
@@ -134,6 +149,8 @@ function renderCard(card, { name, look, changed, sent }, { choices, running }) {
     button.append(swatch);
     return button;
   }));
+  card.querySelector('.yaml-settings').textContent = yaml.settings || '(defaults only)';
+  card.querySelector('.yaml-changes').value = yaml.live;
   card.querySelector('.sent').textContent = sent ? `Last sent: ${Object.values(sent).map(color => color.slice(0, 7)).join(' to ')}` : '';
   for (const control of card.querySelectorAll('select, input, button')) control.disabled = !running;
 }
@@ -158,6 +175,11 @@ function bindCard(card) {
   card.querySelector('[data-setting="opacity"]').addEventListener('input', event => {
     card.querySelector('.opacity-value').textContent = event.target.value;
   });
+  card.querySelector('.apply-yaml').addEventListener('click', () => act(async () => {
+    const result = await post('/api/visualizer/live', { instance: instance(), yaml: card.querySelector('.yaml-changes').value });
+    render(result.visualizer);
+    toast(`Changed ${instance()} until the daemon restarts`);
+  }, card));
   card.querySelector('.swatches').addEventListener('click', event => {
     const button = event.target.closest('[data-swatch]');
     if (!button) return;
@@ -178,6 +200,14 @@ function bindPage() {
     render((await request('DELETE', '/api/visualizer/live')).visualizer);
     toast('Changes dropped');
   }));
+  $('#delete').addEventListener('click', () => {
+    const name = $('#delete-preset').value;
+    if (!name || !window.confirm(`Delete the preset ${name} from the config file?`)) return;
+    act(async () => {
+      render((await request('DELETE', `/api/visualizer/presets/${encodeURIComponent(name)}`)).visualizer);
+      toast(`Deleted ${name}`);
+    });
+  });
   $('#save').addEventListener('submit', event => {
     event.preventDefault();
     const name = event.target.elements.name.value.trim();

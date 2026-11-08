@@ -1,8 +1,9 @@
+import YAML from 'yaml';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { BUILTIN_PRESETS } from '../visualizer/presets.js';
 import {
-  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, lookAsPreset, presetsOf, visualizerSettings
+  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetsOf, visualizerSettings
 } from '../visualizer/settings.js';
 
 // The running visualizer's look, its presets and live changes, for the rofi menu and the web interface's Visualizer page
@@ -70,8 +71,10 @@ export class VisualizerService {
         name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in'
       })),
       changed: Object.keys(options.live).length > 0,
+      // yaml: the instance's settings as they apply now and its live changes alone, for the page's Advanced box
       instances: names.map(name => ({
-        name, look: instanceLook(section, options, name), changed: Boolean(options.live[name]), sent: sent(name)
+        name, look: instanceLook(section, options, name), changed: Boolean(options.live[name]), sent: sent(name),
+        yaml: { settings: toYaml(instanceRaw(section, options, name)), live: options.live[name] ? toYaml(options.live[name]) : '' }
       })),
       choices: {
         modules: MODULES, anchors: ANCHORS, picks: PALETTE_PICKS, swatches: SWATCHES,
@@ -108,6 +111,21 @@ export class VisualizerService {
     live[instance] = { ...(live[instance] ?? {}), ...changes };
     visualizerSettings(this.section, { preset: visualizer.preset ?? null, live });
     return this.send(state, { visualizer_set: { instance, changes } });
+  }
+
+  // The Advanced box's changes: YAML of visualizer settings for one instance (`placement: { size: 0.3 }`), parsed and
+  // applied as change() applies the page's controls
+  async changeYaml(instance, text) {
+    let changes;
+    try {
+      changes = YAML.parse(String(text ?? ''));
+    } catch (error) {
+      throw new Error(`The changes are not YAML: ${error.message.split('\n')[0]}`);
+    }
+    if (changes === null || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length) {
+      throw new Error('Give the changes as a mapping of visualizer settings, such as `opacity: 0.6`');
+    }
+    return this.change(instance, changes);
   }
 
   // Switches to a preset (null for none), checked before the daemon sees it; live changes stay
@@ -148,4 +166,30 @@ export class VisualizerService {
     this.logger.info('Visualizer preset saved', { preset: name });
     return { name, look };
   }
+
+  // Removes a preset saved in the config file (removeInFile), and has the daemon read its presets again. A built-in
+  // preset has nothing in the file to remove; one the config sets over a built-in one goes back to the built-in. The
+  // preset in use, the daemon's or the config's own visualizer.preset, is refused.
+  async deletePreset(name) {
+    if (typeof name !== 'string' || !PRESET_NAME.test(name)) throw new Error(`A preset name is letters, digits, - and _, not "${name}"`);
+    await this.refresh();
+    if (!await this.config.fileHas(['visualizer', 'presets', name])) {
+      throw Object.assign(new Error(BUILTIN_PRESETS[name] ? `${name} is built in; only presets saved in the config can be deleted` : `No preset named ${name} in the config`),
+        { status: BUILTIN_PRESETS[name] ? 409 : 404 });
+    }
+    const state = await this.control.state({ required: false });
+    const active = state ? state.visualizer?.preset ?? null : this.section.preset ?? null;
+    if (active === name || this.section.preset === name) {
+      throw Object.assign(new Error(`${name} is in use; switch to another preset first`), { status: 409 });
+    }
+    await this.config.removeInFile(['visualizer', 'presets', name]);
+    await this.refresh();
+    if (state) await this.send(state, { reload_config: true });
+    this.logger.info('Visualizer preset deleted', { preset: name });
+    return { name, restored: Boolean(BUILTIN_PRESETS[name]) };
+  }
+}
+
+function toYaml(value) {
+  return Object.keys(value ?? {}).length ? YAML.stringify(value, { indent: 2, lineWidth: 0 }) : '';
 }

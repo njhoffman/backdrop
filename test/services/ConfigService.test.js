@@ -83,6 +83,17 @@ describe('ConfigService', () => {
     expect(await fs.readFile(file, 'utf8')).to.equal(before);
   });
 
+  it('takes values given as YAML, and shows lists of mappings as YAML', async () => {
+    const view = await service.update({}, { 'screensaver.streams': '- url: https://example.com/rain\n  title: rain\n' });
+    expect(config.get().screensaver.streams).to.deep.equal([{ url: 'https://example.com/rain', title: 'rain' }]);
+    expect(field(view, 'screensaver.streams')).to.include({ kind: 'list', yaml: '- url: https://example.com/rain\n  title: rain\n' });
+    let caught;
+    try { await service.update({}, { 'screensaver.streams': '- [unclosed' }); } catch (error) { caught = error; }
+    expect(caught.message).to.include('screensaver.streams is not YAML');
+    try { await service.update({}, { 'screensaver.streams': 'just text' }); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('screensaver.streams must be a list, not "just text"');
+  });
+
   it('resets a setting by removing it from the file', async () => {
     const view = await service.reset('display.order');
     expect(await fs.readFile(file, 'utf8')).to.not.include('order: shuffle');

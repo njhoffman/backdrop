@@ -68,6 +68,24 @@ describe('VisualizerService', () => {
     expect(caught.message).to.include('The daemon refused the change');
   });
 
+  it('shows each instance\'s settings and changes as YAML, and applies YAML changes checked like the controls', async () => {
+    const service = make(makeConfig({ 'paths.runtime': dir, 'visualizer.placement': { anchor: 'top' } }));
+    state.visualizer.live = { main: { opacity: 0.5 } };
+    const view = await service.describe();
+    // Everything that applies, defaults included; the changes alone apart
+    expect(view.instances[0].yaml.live).to.equal('opacity: 0.5\n');
+    expect(view.instances[0].yaml.settings).to.include('opacity: 0.5\n').and.include('placement:\n  anchor: top\n');
+    await service.changeYaml('main', 'placement: { size: 0.3 }');
+    expect(sent.at(-1)).to.deep.equal({ visualizer_set: { instance: 'main', changes: { placement: { size: 0.3 } } } });
+    let caught;
+    try { await service.changeYaml('main', 'opacity: [1'); } catch (error) { caught = error; }
+    expect(caught.message).to.include('not YAML');
+    try { await service.changeYaml('main', '- a list'); } catch (error) { caught = error; }
+    expect(caught.message).to.include('Give the changes as a mapping');
+    try { await service.changeYaml('main', 'opacity: 3'); } catch (error) { caught = error; }
+    expect(caught.message).to.include('opacity');
+  });
+
   it('switches presets, checking the name, and resets or turns the visualizer off', async () => {
     const service = make();
     await service.setPreset('ring');
@@ -110,6 +128,25 @@ describe('VisualizerService', () => {
       expect(caught).to.include({ status: 409, message: 'A preset named ring exists' });
       await service.savePreset('ring', { replace: true });
       expect(await fs.readFile(file, 'utf8')).to.include('ring:');
+    });
+
+    it('deletes a saved preset, refusing built-in ones, unknown ones and the one in use', async () => {
+      const service = make(config, { reload: true });
+      await fs.appendFile(file, '  presets:\n    dusk:\n      opacity: 0.3\n    ring:\n      opacity: 0.5\n    calm:\n      opacity: 0.4\n');
+      expect(await service.deletePreset('dusk')).to.deep.equal({ name: 'dusk', restored: false });
+      expect(await fs.readFile(file, 'utf8')).to.not.include('dusk');
+      expect(sent.at(-1)).to.deep.equal({ reload_config: true });
+      // A config preset over a built-in one: the built-in comes back
+      expect(await service.deletePreset('ring')).to.deep.equal({ name: 'ring', restored: true });
+      let caught;
+      try { await service.deletePreset('wave'); } catch (error) { caught = error; }
+      expect(caught).to.include({ status: 409, message: 'wave is built in; only presets saved in the config can be deleted' });
+      try { await service.deletePreset('nothing'); } catch (error) { caught = error; }
+      expect(caught).to.include({ status: 404 });
+      state.visualizer.preset = 'calm';
+      try { await service.deletePreset('calm'); } catch (error) { caught = error; }
+      expect(caught).to.include({ status: 409, message: 'calm is in use; switch to another preset first' });
+      expect(await fs.readFile(file, 'utf8')).to.include('calm:');
     });
 
     it('reads presets saved by hand since it started when reload is on', async () => {

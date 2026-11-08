@@ -544,14 +544,32 @@ export function fileLook(section = {}, { preset } = {}) {
 // GLava's own amplify for the modules backdrop does not default (bars: backdrop's 200)
 const AMPLIFY_DEFAULTS = { bars: 200, graph: 300, radial: 300, circle: 150, wave: 500 };
 
+// One instance's settings as written, before normalizing: the section's own instance keys, the instance's entry over
+// them, with the active preset and live changes laid over (the web page's Advanced box shows them)
+export function instanceRaw(section = {}, options = {}, name = 'main') {
+  const { raw } = effectiveRaw(section, options);
+  const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
+  return raw.instances === undefined ? defaults : deepMerge(defaults, (raw.instances ?? []).find(entry => entry?.name === name) ?? {});
+}
+
 // What the visualizer menu shows and steps for one instance: { module, opacity, anchor, palette: { source,
 // pick, min_contrast }, amplify, colors (the module's color option, as a list) }
 export function instanceLook(section = {}, options = {}, name = 'main') {
-  const { raw } = effectiveRaw(section, options);
-  const defaults = Object.fromEntries(Object.entries(raw).filter(([key]) => INSTANCE_KEYS.includes(key)));
-  const item = raw.instances === undefined ? defaults : deepMerge(defaults, (raw.instances ?? []).find(entry => entry?.name === name) ?? {});
-  const module = item.module ?? 'bars';
+  const item = instanceRaw(section, options, name);
   const engine = item.engine ?? 'glava';
+  // projectM draws its own presets: no module, amplify or colors, but a frame rate and how long each preset shows
+  if (engine === 'projectm') {
+    return {
+      engine, module: 'projectm',
+      projectm: { fps: item.projectm?.fps ?? 30, preset_duration: item.projectm?.preset_duration ?? 30 },
+      opacity: item.opacity ?? 1,
+      anchor: item.placement?.anchor ?? 'bottom',
+      palette: { source: 'config', pick: 'vivid', min_contrast: 3, ...item.palette },
+      colors: [],
+      colorOption: null
+    };
+  }
+  const module = item.module ?? 'bars';
   const { option, fallback } = PIPED_COLORS[module];
   const colors = item[module]?.[option] ?? fallback;
   return {

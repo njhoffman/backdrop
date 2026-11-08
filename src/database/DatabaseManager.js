@@ -8,6 +8,17 @@ export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupport
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
 
+// findMedia's orders; items with nothing to sort by (unrated, never sampled playing) come last, newest first
+export const MEDIA_ORDERS = {
+  id: 'm.id',
+  newest: 'm.id DESC',
+  oldest: 'm.id',
+  largest: 'COALESCE(m.width, 0) * COALESCE(m.height, 0) DESC, m.id DESC',
+  rating: '(SELECT rating FROM ratings WHERE media_id = m.id ORDER BY id DESC LIMIT 1) DESC NULLS LAST, m.id DESC',
+  played: '(SELECT updated_at FROM playback_stats WHERE media_id = m.id) DESC NULLS LAST, m.id DESC',
+  cost: '(SELECT cpu_seconds / seconds FROM playback_stats WHERE media_id = m.id AND seconds > 0) DESC NULLS LAST, m.id DESC'
+};
+
 // mpv accepts playback speeds in this range
 const MIN_SPEED = 0.01;
 const MAX_SPEED = 100;
@@ -339,7 +350,40 @@ export class DatabaseManager {
   // queries (a search with any of them returned the item, exact apart from case), keywords,
   // orientation (rated on a monitor of that orientation), downloaded, limit.
   // downloaded: false leaves out items whose download turned out to duplicate another item.
+  // Media matching filters (see mediaConditions), ordered by filters.order (MEDIA_ORDERS, id by default), at most
+  // filters.limit from filters.offset
   findMedia(filters = {}) {
+    const { conditions, params } = this.mediaConditions(filters);
+    let query = 'SELECT m.* FROM media m';
+    if (conditions.length) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    if (filters.order !== undefined && !Object.hasOwn(MEDIA_ORDERS, filters.order)) {
+      throw new Error(`Unknown media order: ${filters.order}`);
+    }
+    query += ` ORDER BY ${MEDIA_ORDERS[filters.order ?? 'id']}`;
+    if (filters.limit) {
+      query += ' LIMIT ?';
+      params.push(filters.limit);
+      if (filters.offset) {
+        query += ' OFFSET ?';
+        params.push(filters.offset);
+      }
+    }
+
+    return this.db.prepare(query).all(...params).map(parseMedia);
+  }
+
+  // How many media findMedia would give for filters, without limit
+  countMedia(filters = {}) {
+    const { conditions, params } = this.mediaConditions(filters);
+    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    return Number(this.db.prepare(`SELECT COUNT(*) AS count FROM media m${where}`).get(...params).count);
+  }
+
+  // The WHERE conditions for findMedia's filters: kind, status and source (a value or list), minWidth, minHeight,
+  // downloaded, excludeLocal, tags, queries, keywords, minRating and orientation
+  mediaConditions(filters) {
     const conditions = [];
     const params = [];
 
@@ -393,18 +437,7 @@ export class DatabaseManager {
       ratingConditions.push('r.id = (SELECT MAX(id) FROM ratings WHERE media_id = m.id)');
       conditions.push(`EXISTS (SELECT 1 FROM ratings r WHERE ${ratingConditions.join(' AND ')})`);
     }
-
-    let query = 'SELECT m.* FROM media m';
-    if (conditions.length) {
-      query += ` WHERE ${conditions.join(' AND ')}`;
-    }
-    query += ' ORDER BY m.id';
-    if (filters.limit) {
-      query += ' LIMIT ?';
-      params.push(filters.limit);
-    }
-
-    return this.db.prepare(query).all(...params).map(parseMedia);
+    return { conditions, params };
   }
 
   deleteMedia(id) {

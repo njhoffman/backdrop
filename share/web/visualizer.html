@@ -29,6 +29,11 @@
         <select id="preset" name="preset"></select>
       </label>
       <button type="button" id="reset" title="Drop the changes made here and in the menu">Reset changes</button>
+      <div class="field" id="delete-field">
+        <span class="label">Saved</span>
+        <select id="delete-preset" name="delete-preset" aria-label="A preset saved in the config"></select>
+        <button type="button" id="delete" class="danger" title="Remove it from the config file">Delete</button>
+      </div>
       <form id="save" class="field" autocomplete="off">
         <span class="label">Save look</span>
         <input name="name" size="12" placeholder="name" pattern="[A-Za-z0-9_\-]+" title="Letters, digits, - and _" required aria-label="Preset name">
@@ -50,6 +55,8 @@
       <div class="settings">
         <label class="glava-only">Module <select name="module" data-setting="module"></select></label>
         <label class="glava-only">Amplify <input type="number" name="amplify" min="10" step="10" data-setting="amplify"></label>
+        <label class="projectm-only">FPS <input type="number" name="fps" min="1" step="1" data-setting="fps"></label>
+        <label class="projectm-only">Seconds per preset <input type="number" name="preset_duration" min="2" step="1" data-setting="preset_duration"></label>
         <label class="sleeve-only">Now <select name="now" data-setting="now"></select></label>
         <label class="sleeve-only">Panel <select name="now_position" data-setting="now_position"></select></label>
         <label class="sleeve-only">Lyrics <select name="lyrics_align" data-setting="lyrics_align"></select></label>
@@ -67,6 +74,15 @@
         </div>
         <p class="sent muted"></p>
       </fieldset>
+      <details class="advanced">
+        <summary>Advanced: any setting, as YAML</summary>
+        <p class="muted small">Changes laid over this instance until the daemon restarts, checked like the config file; e.g.
+          <code>placement: { size: 0.3, margin: 20 }</code> or <code>palette: { min_contrast: 4.5 }</code>.</p>
+        <textarea class="yaml-changes" name="yaml" rows="5" spellcheck="false" aria-label="Changes as YAML"></textarea>
+        <div class="actions"><button type="button" class="apply-yaml primary">Apply</button></div>
+        <p class="muted small">Its settings now (section, preset and changes):</p>
+        <pre class="yaml-settings"></pre>
+      </details>
     </article>
   </template>
 

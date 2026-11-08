@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.60.0] - 2026-11-07
+
+### Added
+
+- The Library page sorts by rating, last played and playback cost too, and reads only the items of the page shown.
+- Saved visualizer presets can be deleted: Delete on the Visualizer page, and `x` in the menu's preset list. Built-in presets and the one in use are kept.
+- Each visualizer instance on the Visualizer page has an Advanced box that takes any setting as YAML (placement size and margin, contrast, shapes, sleeve's veil...), checked like the other controls, with its current settings shown beside it.
+- The Config page edits `screensaver.streams` as YAML.
+
+### Changed
+
+- The durations' Reset on the Now playing page goes back to the config's durations and keeps the filters next set.
+
+### Fixed
+
+- A projectM visualizer instance no longer gets GLava's module, amplify and color controls in the menu and on the Visualizer page; it gets its frame rate and how long each preset shows.
+
 ## [2.59.0] - 2026-11-07
 
 ### Added

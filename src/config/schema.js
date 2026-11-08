@@ -118,7 +118,7 @@ const SECTIONS = {
     on_enter: field(strings, { kind: 'strings', help: 'Command run on entering, one argument per line' }),
     on_leave: field(strings, { kind: 'strings', help: 'Command run on leaving, one argument per line' }),
     sources: field(strings, { kind: 'strings', help: 'Not read yet' }),
-    streams: field(list, { kind: 'list', help: 'Not read yet; edit in the file' })
+    streams: field(list, { kind: 'list', help: 'Not read yet; a YAML list, such as - { url: https://..., title: rain }' })
   },
   output: {
     symbols: field(oneOf(SYMBOL_MODES), { kind: 'choice', choices: SYMBOL_MODES, help: 'Symbols in the CLI\'s output: auto picks by terminal' }),

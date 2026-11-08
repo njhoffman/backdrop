@@ -61,8 +61,8 @@ describe('WebServer', () => {
     };
     visualizer = {
       describe: sinon.stub().resolves({ running: true, preset: null }),
-      setEnabled: sinon.stub().resolves(), change: sinon.stub().resolves(), reset: sinon.stub().resolves(),
-      setPreset: sinon.stub().resolves(),
+      setEnabled: sinon.stub().resolves(), change: sinon.stub().resolves(), changeYaml: sinon.stub().resolves(), reset: sinon.stub().resolves(),
+      setPreset: sinon.stub().resolves(), deletePreset: sinon.stub().resolves({ name: 'calm' }),
       savePreset: sinon.stub().callsFake(async (name, { replace }) => {
         if (!replace) throw Object.assign(new Error(`A preset named ${name} exists`), { status: 409 });
         return { name };
@@ -176,10 +176,12 @@ describe('WebServer', () => {
 
   it('sets the durations as next does, or drops them with clear', async () => {
     const body = await (await post('/api/durations', { image: '90s' })).json();
-    expect(display.setDurations.firstCall.args[0]).to.deep.equal({ clear: false, imageDuration: '90s' });
+    expect(display.setDurations.firstCall.args[0]).to.deep.equal({ clear: false, clearDurations: false, imageDuration: '90s' });
     expect(body.durations.image).to.deep.equal({ seconds: 90, set: true });
     await post('/api/durations', { clear: true });
-    expect(display.setDurations.secondCall.args[0]).to.deep.equal({ clear: true });
+    expect(display.setDurations.secondCall.args[0]).to.deep.equal({ clear: true, clearDurations: false });
+    await post('/api/durations', { reset: true });
+    expect(display.setDurations.thirdCall.args[0]).to.deep.equal({ clear: false, clearDurations: true });
   });
 
   it('undoes the last rating', async () => {
@@ -275,11 +277,13 @@ describe('WebServer', () => {
       await post('/api/visualizer/live', { instance: 'main', changes: { opacity: 0.5 } });
       expect(visualizer.change.firstCall.args).to.deep.equal(['main', { opacity: 0.5 }]);
       expect((await post('/api/visualizer/live', { instance: 'main', changes: {} })).status).to.equal(400);
+      await post('/api/visualizer/live', { instance: 'main', yaml: 'opacity: 0.4' });
+      expect(visualizer.changeYaml.firstCall.args).to.deep.equal(['main', 'opacity: 0.4']);
       expect((await post('/api/visualizer/live', { changes: { opacity: 1 } })).status).to.equal(400);
       const reset = await fetch(`${base}/api/visualizer/live`, { method: 'DELETE', headers: { cookie, 'x-backdrop-token': token } });
       expect(reset.status).to.equal(200);
       expect(visualizer.reset.calledOnce).to.equal(true);
-      expect(hub.changed.callCount).to.equal(3);
+      expect(hub.changed.callCount).to.equal(4);
     });
 
     it('switches presets, none included, and saves one, answering 409 for an existing name', async () => {
@@ -291,6 +295,9 @@ describe('WebServer', () => {
       expect(await taken.json()).to.deep.equal({ error: 'A preset named calm exists' });
       expect((await post('/api/visualizer/presets/calm', { replace: true })).status).to.equal(200);
       expect((await post('/api/visualizer/presets/bad%20name', {})).status).to.equal(404);
+      const deleted = await fetch(`${base}/api/visualizer/presets/calm`, { method: 'DELETE', headers: { cookie, 'x-backdrop-token': token } });
+      expect(deleted.status).to.equal(200);
+      expect(visualizer.deletePreset.firstCall.args).to.deep.equal(['calm']);
     });
   });
 
@@ -308,6 +315,8 @@ describe('WebServer', () => {
       const written = await send('PATCH', '/api/config', { changes: { 'display.order': 'shuffle' } });
       expect(await written.json()).to.deep.equal({ config: { fields: [{ key: 'display.order' }] } });
       expect(settings.update.firstCall.args[0]).to.deep.equal({ 'display.order': 'shuffle' });
+      await send('PATCH', '/api/config', { changes: {}, yaml: { 'screensaver.streams': '- a' } });
+      expect(settings.update.secondCall.args).to.deep.equal([{}, { 'screensaver.streams': '- a' }]);
       const refused = await send('PATCH', '/api/config', { changes: { 'display.order': 'sorted' } });
       expect(refused.status).to.equal(400);
       expect(await refused.json()).to.deep.equal({ error: 'display.order must be shuffle or random, not "sorted"' });

@@ -521,6 +521,28 @@ describe('MenuCommand', () => {
       expect(notifications.at(-1).at(-1)).to.include('A preset name is letters, digits, - and _, not "my look"');
     });
 
+    it('deletes a saved preset from the preset menu with x, after a confirmation', async () => {
+      await fs.appendFile(configFile, '  presets:\n    evening:\n      opacity: 0.5\n');
+      config.set('visualizer', { enabled: true, bars: { amplify: 300 }, presets: { evening: { opacity: 0.5 } } });
+      picks = ['preset ▸', { key: 'x' }, 'evening', 'keep it', 'preset ▸', { key: 'x' }, 'evening', 'delete', null];
+      await open().open({ page: 'visualizer' });
+      const presetMenu = shown.find(menu => menu.prompt === 'preset');
+      expect(presetMenu.keys).to.deep.equal(['q', 'x']);
+      expect(shown.find(menu => menu.prompt === 'delete preset').entries.map(entry => entry.label)).to.deep.equal(['evening']);
+      expect(await fs.readFile(configFile, 'utf8')).to.equal('visualizer:\n  enabled: true     # kept\n  bars: { amplify: 300 }\n');
+      expect(requests).to.deep.equal([{ reload_config: true }]);
+    });
+
+    it('offers projectM its frame rate and preset time instead of GLava\'s controls', async () => {
+      config.set('visualizer', { enabled: true, instances: [{ name: 'main', engine: 'projectm' }] });
+      picks = ['fps ▸', '24', null, null];
+      await open().open({ page: 'visualizer' });
+      expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
+        ['on', 'wallpaper', 'preset', 'fps 30', '30s each', 'opacity 1', 'bottom', 'reset', 'save']);
+      expect(shown[0].status).to.deep.equal(['preset  <b>none</b>']);
+      expect(requests[0]).to.deep.equal({ visualizer_set: { instance: 'main', changes: { projectm: { fps: 24 } } } });
+    });
+
     it('asks which instance to change when there are several, and i switches', async () => {
       vis.instances = ['low', 'ring'];
       config.set('visualizer.instances', [{ name: 'low' }, { name: 'ring', module: 'radial' }]);

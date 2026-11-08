@@ -1,3 +1,4 @@
+import YAML from 'yaml';
 import { configFields, validateConfig } from '../config/schema.js';
 import { LIVE_SETTINGS } from '../display/daemon/ConfigChanges.js';
 
@@ -66,8 +67,9 @@ export class ConfigService {
         const value = getIn(current, keys);
         const base = { ...field, inFile, applies: appliesWhen(field.key) };
         if (field.kind === 'secret') return { ...base, set: Boolean(value), fromEnvironment: Boolean(value) && !inFile };
-        // The file's own form (5m rather than 300) where it sets one
-        return { ...base, value: inFile ? getIn(fresh.userConfig, keys) : value, default: getIn(defaults, keys) };
+        // The file's own form (5m rather than 300) where it sets one; a list of mappings also as YAML, for editing
+        const shown = inFile ? getIn(fresh.userConfig, keys) : value;
+        return { ...base, value: shown, default: getIn(defaults, keys), ...(field.kind === 'list' ? { yaml: toYaml(shown) } : {}) };
       })
     };
   }
@@ -75,8 +77,17 @@ export class ConfigService {
   // Writes { key: value } changes, each as the file should hold it, after checking them with the rest of the config:
   // a value the checks refuse, or one that breaks a rule between settings (load.off_above above image_above), writes
   // nothing. Returns describe().
-  async update(changes) {
-    if (changes === null || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length) {
+  // yaml: { key: text } for values given as YAML (a list of mappings such as screensaver.streams), parsed into changes
+  async update(changes = {}, yaml = {}) {
+    changes = { ...(changes ?? {}) };
+    for (const [key, text] of Object.entries(yaml ?? {})) {
+      try {
+        changes[key] = YAML.parse(String(text)) ?? [];
+      } catch (error) {
+        throw new Error(`${key} is not YAML: ${error.message.split('\n')[0]}`);
+      }
+    }
+    if (typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length) {
       throw new Error('Give the changes as { "section.key": value }');
     }
     const fields = Object.keys(changes).map(key => this.field(key));
@@ -106,4 +117,8 @@ export class ConfigService {
   async refresh(fields) {
     for (const section of new Set(fields.map(field => field.keys[0]))) await this.config.reloadSection(section);
   }
+}
+
+function toYaml(value) {
+  return value === undefined || value === null || (Array.isArray(value) && !value.length) ? '' : YAML.stringify(value, { indent: 2, lineWidth: 0 });
 }

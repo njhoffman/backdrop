@@ -62,7 +62,11 @@ export async function resolveNextFilters(runtimeDir, options = {}, { persist = f
   const update = async () => {
     const before = await readNextFilters(runtimeDir);
     if (persist && options.clear) await clearNextFilters(runtimeDir);
-    const stored = persist && options.clear ? {} : before;
+    // clearDurations (the web page's Reset) drops only the stored durations, keeping the filters and order
+    const kept = persist && options.clearDurations
+      ? Object.fromEntries(Object.entries(before).filter(([key]) => !Object.hasOwn(DURATIONS, key)))
+      : before;
+    const stored = persist && options.clear ? {} : kept;
     const given = FILTER_KEYS.some(key => options[key]?.length);
     const resolved = {
       ...(given ? pick(options, FILTER_KEYS) : pick(stored, FILTER_KEYS)),
@@ -72,7 +76,7 @@ export async function resolveNextFilters(runtimeDir, options = {}, { persist = f
     };
     if (!persist) return { resolved };
     const state = await readState(runtimeDir);
-    if (state && (given || options.random !== undefined || Object.keys(durations).length)) {
+    if (state && (given || options.random !== undefined || Object.keys(durations).length || (persist && options.clearDurations))) {
       await writeNextFilters(runtimeDir, state.pid, resolved);
     }
     return { resolved, state, changed: Object.keys(DURATIONS).some(key => before[key] !== resolved[key]) };

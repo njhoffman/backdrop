@@ -74,10 +74,16 @@ describe('nextFilters', () => {
     expect(signals).to.have.length(2);
     expect(hasNextFilters({ image_duration: 45 })).to.be.true;
 
+    // clearDurations (the web page's Reset) drops only the durations, keeping the filters
+    await persist({ clearDurations: true });
+    expect(await readNextFilters(dir)).to.deep.equal({ tag: ['sky'] });
+    expect(signals).to.have.length(3);
+    await persist({ imageDuration: '45' });
+
     // --clear drops them too, and the daemon hears of it
     await persist({ clear: true });
     expect(await readNextFilters(dir)).to.deep.equal({});
-    expect(signals).to.have.length(3);
+    expect(signals).to.have.length(5);
     let caught;
     try { await persist({ imageDuration: 'later' }); } catch (error) { caught = error; }
     expect(caught.message).to.include('--image-duration must be a time');

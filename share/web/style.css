@@ -317,7 +317,8 @@ select {
   border-radius: 7px;
   background: var(--bg);
 }
-.instance.sleeve .glava-only, .instance.glava .sleeve-only { display: none; }
+.instance.sleeve .glava-only, .instance.glava .sleeve-only, .instance.projectm .glava-only, .instance.projectm .sleeve-only,
+.instance:not(.projectm) .projectm-only, .instance.projectm .colors { display: none; }
 
 .colors {
   display: flex;
@@ -434,4 +435,26 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   .check-ok { background: #173b26; color: #7fd6a0; }
   .check-warn { background: #3b3018; color: #e7c66b; }
   .check-fail { background: #4a1b17; color: #ff9a91; }
+}
+
+.advanced { border-top: 1px solid var(--line); padding-top: 8px; }
+.advanced summary { cursor: pointer; color: var(--muted); }
+.advanced textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: inherit;
+  font: 13px ui-monospace, "SFMono-Regular", Menlo, monospace;
+  resize: vertical;
+}
+.advanced pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--bg);
+  font-size: 12.5px;
 }

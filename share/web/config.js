@@ -19,7 +19,7 @@ function shown(field, value) {
     case 'strings': return value.join('\n');
     case 'monitors': return Array.isArray(value) ? value.join(', ') : String(value);
     case 'colors': return value.join(', ');
-    case 'list': return JSON.stringify(value);
+    case 'list': return field.yaml ?? '';
     default: return String(value);
   }
 }
@@ -52,9 +52,10 @@ function controlFor(field) {
   } else if (field.kind === 'choice') {
     control = document.createElement('select');
     control.append(...field.choices.map(choice => new Option(String(choice), String(choice))));
-  } else if (field.kind === 'strings') {
+  } else if (field.kind === 'strings' || field.kind === 'list') {
     control = document.createElement('textarea');
-    control.rows = 3;
+    control.rows = field.kind === 'list' ? 5 : 3;
+    if (field.kind === 'list') control.spellcheck = false;
   } else {
     control = document.createElement('input');
     if (field.kind === 'integer' || field.kind === 'number') {
@@ -68,7 +69,6 @@ function controlFor(field) {
     } else {
       control.type = 'text';
     }
-    if (field.kind === 'list') control.readOnly = true;
   }
   control.id = id;
   control.name = field.key;
@@ -142,6 +142,16 @@ function row(field) {
   return wrapper;
 }
 
+// YAML text for each list-of-mappings control changed from what the file gives, which the server parses
+function yamlChanges() {
+  const result = {};
+  for (const field of (view?.fields ?? []).filter(item => item.kind === 'list')) {
+    const control = document.querySelector(`[data-key="${field.key}"]`);
+    if (control && control.value.trim() !== (field.yaml ?? '').trim()) result[field.key] = control.value;
+  }
+  return result;
+}
+
 // { key: value } for every control whose value differs from what the file gives
 function changes() {
   const result = {};
@@ -157,7 +167,7 @@ function changes() {
 }
 
 function updateSavebar() {
-  const pending = Object.keys(changes());
+  const pending = [...Object.keys(changes()), ...Object.keys(yamlChanges())];
   $('#savebar').hidden = !pending.length;
   $('#pending').textContent = pending.length === 1 ? `1 change: ${pending[0]}` : `${pending.length} changes`;
   for (const control of document.querySelectorAll('[data-key]')) {
@@ -169,11 +179,12 @@ function bindPage() {
   $('#settings').addEventListener('submit', event => {
     event.preventDefault();
     const pending = changes();
-    if (!Object.keys(pending).length) return;
+    const yaml = yamlChanges();
+    if (!Object.keys(pending).length && !Object.keys(yaml).length) return;
     act(async () => {
-      const result = await request('PATCH', '/api/config', { changes: pending });
+      const result = await request('PATCH', '/api/config', { changes: pending, yaml });
       render(result.config);
-      const restart = Object.keys(pending).map(key => result.config.fields.find(field => field.key === key))
+      const restart = [...Object.keys(pending), ...Object.keys(yaml)].map(key => result.config.fields.find(field => field.key === key))
         .filter(field => field.applies === 'daemon' || field.applies === 'web');
       toast(restart.length ? `Saved; ${restart.map(field => field.key).join(', ')} ${APPLIES[restart[0].applies]}` : 'Saved');
     }, $('#savebar'));

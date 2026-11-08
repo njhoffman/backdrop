@@ -11,11 +11,8 @@ import { RatingService } from './RatingService.js';
 
 export const LIBRARY_KINDS = { all: undefined, video: MODE_KINDS.video, image: MODE_KINDS.image };
 export const LIBRARY_STATUSES = { shown: ['new', 'kept'], new: ['new'], kept: ['kept'], skipped: ['skipped'], all: undefined };
-const SORTS = {
-  newest: (a, b) => b.id - a.id,
-  oldest: (a, b) => a.id - b.id,
-  largest: (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0) || b.id - a.id
-};
+// The orders the page offers, findMedia's (MEDIA_ORDERS): the database sorts and pages, so a page reads only its rows
+const SORTS = { newest: 'newest', oldest: 'oldest', largest: 'largest', rating: 'rating', played: 'played', cost: 'cost' };
 export const LIBRARY_SORTS = Object.keys(SORTS);
 const PER_PAGE = 48;
 const MAX_PER_PAGE = 100;
@@ -32,7 +29,7 @@ export class LibraryService {
   // One page of downloaded items: { total, page, per_page, items } with items as mediaJson. kind is all, video (with
   // GIFs) or image; status is shown (new and kept, the default), new, kept, skipped or all; min_rating 1-3; query, tag
   // and keywords as the list commands take them (an unknown query is an error naming the closest); sort is newest
-  // (the default), oldest or largest.
+  // (the default), oldest, largest, rating (highest first), played (last played first) or cost (most CPU first).
   list({ kind = 'all', status = 'shown', min_rating: minRating, query, tag, keywords, sort = 'newest', page = 1, per_page: perPage = PER_PAGE } = {}) {
     const choose = (table, value, name) => {
       if (!Object.hasOwn(table, value)) throw new Error(`Unknown ${name}: ${value} (use ${Object.keys(table).join(', ')})`);
@@ -50,11 +47,11 @@ export class LibraryService {
     }
     const order = choose(SORTS, sort, 'sort');
     const size = Math.min(MAX_PER_PAGE, Math.max(1, Math.trunc(Number(perPage)) || PER_PAGE));
-    const items = this.database.findMedia(filters).sort(order);
-    const pages = Math.max(1, Math.ceil(items.length / size));
+    const total = this.database.countMedia(filters);
+    const pages = Math.max(1, Math.ceil(total / size));
     const current = Math.min(pages, Math.max(1, Math.trunc(Number(page)) || 1));
-    const shown = items.slice((current - 1) * size, current * size);
-    return { total: items.length, page: current, pages, per_page: size, items: shown.map(media => mediaJson(this.database, media)) };
+    const shown = this.database.findMedia({ ...filters, order, limit: size, offset: (current - 1) * size });
+    return { total, page: current, pages, per_page: size, items: shown.map(media => mediaJson(this.database, media)) };
   }
 
   // What the filters offer: the most common tags and every saved search's query

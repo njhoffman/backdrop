@@ -187,6 +187,26 @@ describe('DatabaseManager', () => {
     });
   });
 
+  describe('ordering and paging media', () => {
+    it('orders by rating, last played and playback cost, unrated and unplayed last, and pages with a count', () => {
+      const ids = [1, 2, 3, 4].map(n => db.addMedia({ kind: 'video', source: 'local', source_id: n, path: `/m/${n}.mp4`, width: n * 1000, height: 1000 }));
+      db.addRating(ids[0], 2);
+      db.addRating(ids[2], 3);
+      db.addPlaybackSample(ids[1], 100, 50);
+      db.addPlaybackSample(ids[3], 100, 5);
+      db.db.prepare("UPDATE playback_stats SET updated_at = '2026-01-01 00:00:00' WHERE media_id = ?").run(ids[1]);
+      const order = name => db.findMedia({ order: name }).map(item => item.id);
+      expect(order('rating')).to.deep.equal([ids[2], ids[0], ids[3], ids[1]]);
+      expect(order('played')).to.deep.equal([ids[3], ids[1], ids[2], ids[0]]);
+      expect(order('cost')).to.deep.equal([ids[1], ids[3], ids[2], ids[0]]);
+      expect(order('largest')).to.deep.equal([ids[3], ids[2], ids[1], ids[0]]);
+      expect(order(undefined)).to.deep.equal(ids);
+      expect(db.findMedia({ order: 'newest', limit: 2, offset: 1 }).map(item => item.id)).to.deep.equal([ids[2], ids[1]]);
+      expect(db.countMedia({ kind: 'video', minRating: 2 })).to.equal(2);
+      expect(() => db.findMedia({ order: 'name' })).to.throw('Unknown media order: name');
+    });
+  });
+
   describe('tag counts', () => {
     it('counts the tags of downloaded items, most common first', () => {
       db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'ocean night.mp4', path: '/m/1.mp4' });

@@ -123,7 +123,11 @@ export class WebServer {
       ['GET', /^\/api\/doctor$/, () => this.doctor.check()],
       ['GET', /^\/api\/config$/, () => this.settings.describe()],
       // { changes: { 'display.order': 'shuffle', ... } }, written together or not at all
-      ['PATCH', /^\/api\/config$/, async request => ({ ...changed, config: await this.settings.update((await this.body(request)).changes) })],
+      // yaml: { key: text } for values written as YAML, such as screensaver.streams
+      ['PATCH', /^\/api\/config$/, async request => {
+        const { changes, yaml } = await this.body(request);
+        return { ...changed, config: await this.settings.update(changes, yaml) };
+      }],
       ['DELETE', /^\/api\/config\/([\w.]+)$/, async (request, match) => ({ ...changed, config: await this.settings.reset(match[1]) })],
       ['GET', /^\/api\/visualizer$/, () => this.visualizer.describe()],
       ['POST', /^\/api\/visualizer\/enabled$/, async request => {
@@ -134,7 +138,12 @@ export class WebServer {
       }],
       // One instance's change until the daemon restarts: { instance, changes } with changes as visualizer settings
       ['POST', /^\/api\/visualizer\/live$/, async request => {
-        const { instance, changes } = await this.body(request);
+        const { instance, changes, yaml } = await this.body(request);
+        // The Advanced box sends YAML text, which the service parses
+        if (yaml !== undefined) {
+          await this.visualizer.changeYaml(this.text(instance, 'instance'), yaml);
+          return this.visualizerChanged();
+        }
         if (changes === null || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length) {
           throw new HttpError(400, 'Give changes as a mapping of visualizer settings');
         }
@@ -148,6 +157,10 @@ export class WebServer {
       ['POST', /^\/api\/visualizer\/preset$/, async request => {
         const { name } = await this.body(request);
         await this.visualizer.setPreset(name === null || name === '' ? null : this.text(name, 'name'));
+        return this.visualizerChanged();
+      }],
+      ['DELETE', /^\/api\/visualizer\/presets\/([\w-]+)$/, async (request, match) => {
+        await this.visualizer.deletePreset(match[1]);
         return this.visualizerChanged();
       }],
       ['POST', /^\/api\/visualizer\/presets\/([\w-]+)$/, async (request, match) => {
@@ -214,8 +227,9 @@ export class WebServer {
       }],
       ['POST', /^\/api\/parts$/, async request => ({ ...changed, ...await this.setParts(await this.body(request)) })],
       ['POST', /^\/api\/durations$/, async request => {
-        const { image, video, clear = false } = await this.body(request);
-        const options = { clear: Boolean(clear) };
+        // reset drops the durations only; clear also drops next's filters, as `next --clear`
+        const { image, video, clear = false, reset = false } = await this.body(request);
+        const options = { clear: Boolean(clear), clearDurations: Boolean(reset) };
         if (image !== undefined) options.imageDuration = this.text(image, 'image');
         if (video !== undefined) options.videoDuration = this.text(video, 'video');
         return { ...changed, durations: await this.display.setDurations(options) };

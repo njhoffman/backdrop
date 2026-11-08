@@ -247,6 +247,14 @@ describe('visualizer settings', () => {
       expect(instanceLook({ module: 'wave' })).to.include({ amplify: 500, colorOption: 'color' });
     });
 
+    it('gives projectM its frame rate and preset time, and no module or colors', () => {
+      const section = { instances: [{ name: 'milk', engine: 'projectm', projectm: { fps: 24 } }] };
+      expect(instanceLook(section, {}, 'milk')).to.deep.equal({
+        engine: 'projectm', module: 'projectm', projectm: { fps: 24, preset_duration: 30 }, opacity: 1, anchor: 'bottom',
+        palette: { source: 'config', pick: 'vivid', min_contrast: 3 }, colors: [], colorOption: null
+      });
+    });
+
     it('turns the active preset and the changes into one preset to save', () => {
       expect(lookAsPreset(section, { preset: 'faint', live: { main: { bars: { amplify: 100 } } } })).to.deep.equal({ opacity: 0.4, bars: { amplify: 100 } });
       expect(lookAsPreset(section, { live: {} })).to.deep.equal({});
