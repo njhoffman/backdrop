@@ -140,6 +140,18 @@ describe('DoctorCommand', () => {
     }
   });
 
+  it('checks RIFE and counts smoothed videos only with display.smooth on', async () => {
+    expect(byName(await doctor().run(), 'smoothing')).to.equal(undefined);
+    config.set('display.smooth', true);
+    config.set('display.smooth_rife', '/opt/rife/rife-ncnn-vulkan');
+    expect(byName(await doctor().run(), 'smoothing')).to.include({ status: 'fail', detail: 'RIFE not found: /opt/rife/rife-ncnn-vulkan' });
+    files.add('/opt/rife/rife-ncnn-vulkan');
+    expect(byName(await doctor().run(), 'smoothing').detail).to.include('no rife-v4.6 model');
+    files.add('/opt/rife/rife-v4.6');
+    db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/1.mp4', speed: 0.5, fps: 30, duration: 10 });
+    expect(byName(await doctor().run(), 'smoothing')).to.include({ status: 'ok', detail: '0 of 1 slowed videos smoothed; the daemon makes the rest' });
+  });
+
   it('runs the visualizer check with --visualizer, and prints JSON', async () => {
     const checkVisualizers = async () => [{ preset: null, instance: 'main', ok: true }, { preset: 'ring', instance: 'ring', ok: false, code: 1, output: ['syntax error'] }];
     const checks = await doctor({ checkVisualizers }).run({ visualizer: true, json: true });

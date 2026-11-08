@@ -133,6 +133,12 @@ piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` 
 every pass, so the order is random without repeats; automatic advances follow it too. Images change every
 `display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
+Slowed videos (`backdrop speed 0.5`) show fewer frames a second and can stutter. With `display.smooth: true` and
+[rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) installed (`display.smooth_rife`, its `rife-v4.6`
+model folder beside it), the daemon makes 60 fps copies of them in the background on the GPU; until a copy is ready,
+mpv blends frames. Each copy takes a while (about one frame a second on integrated graphics), so the first ones
+appear after minutes; `doctor` shows how many are done.
+
 With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video
 plays backwards to its start at its end and then forwards again. The daemon makes a reversed copy in
 `~/.cache/backdrop/bounce` in the background, with VAAPI where the GPU has it, the first time the video plays (and

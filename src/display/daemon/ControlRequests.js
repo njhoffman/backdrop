@@ -67,7 +67,11 @@ export class ControlRequests {
     if (typeof request.wallpaper === 'boolean') await this.setWallpaper(request.wallpaper);
     if (request.durations) await this.applyDurations();
     // `backdrop bounce` changed an item: its entries are swapped and it is reversed if it needs to be
-    if (Number.isInteger(request.bounce)) await this.daemon.bounce.changed(request.bounce);
+    // `item` (a speed changed): the same, and its smoothed copy follows the new speed
+    for (const id of [request.bounce, request.item].filter(Number.isInteger)) {
+      await this.daemon.bounce.changed(id);
+      await this.daemon.smoothing.changed(id);
+    }
     // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
     if (request.reload_config) await this.daemon.reloadConfig().catch(error => this.daemon.logger.error('Config reload failed', { error: error.message }));
     if (request.visualizer_reset) {

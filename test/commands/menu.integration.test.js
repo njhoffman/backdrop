@@ -238,8 +238,8 @@ async function startXvfb(attempts = 3) {
         display, rating, view, thumbnail: async () => null, workspace: async () => async () => {}
       });
       await command.open({});
-      // v (14) opens speed, Return picks 0.4, Escape goes back, Tab (22, after q and z) the monitors, Escape back, q (20) quits
-      expect(runs.map(run => run.code)).to.deep.equal([14, 0, 1, 22, 1, 20]);
+      // v (14) opens speed, Return picks 0.4, Escape goes back, Tab (23, after q, z and o) the monitors, Escape back, q (20) quits
+      expect(runs.map(run => run.code)).to.deep.equal([14, 0, 1, 23, 1, 20]);
       expect(display.speed.firstCall.args[0]).to.equal('0.4');
       cleanStderr();
     } finally {

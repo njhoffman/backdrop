@@ -3,7 +3,8 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { bounces, bounceUrl, entryPath, isBounceUrl, playUrl } from '../../src/display/bounce.js';
+import { bounces, bounceUrl, entryPath, forwardPath, isBounceUrl, isSmoothedUrl, playsBounce, playUrl } from '../../src/display/bounce.js';
+import { smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
 import { loadPlaylist, refreshEntries, syncPlaylist, queueMatching } from '../../src/display/Playlist.js';
 import { reversedPath } from '../../src/library/reverse.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -79,6 +80,44 @@ describe('bounce', () => {
       expect(playUrl(media, config.get())).to.equal(media.path);
       db.setBounce(media.id, true);
       expect(playUrl(db.getMedia(media.id), config.get())).to.not.equal(media.path);
+    });
+  });
+
+  describe('smoothed copies', () => {
+    it('carries the library path as a tag when the first file is a copy, and reads it back', () => {
+      const url = bounceUrl('/c/smooth/7@0.5.mp4', '/c/smooth/7@0.5.reversed.mp4', '/m/café.mp4');
+      expect(url).to.equal(`edl://!global_tags,backdrop_path=%${Buffer.byteLength('/m/café.mp4')}%/m/café.mp4;%19%/c/smooth/7@0.5.mp4;%28%/c/smooth/7@0.5.reversed.mp4`);
+      expect(entryPath(url)).to.equal('/m/café.mp4');
+      expect(forwardPath(url)).to.equal('/c/smooth/7@0.5.mp4');
+      expect(playsBounce(url)).to.equal(true);
+      expect(isSmoothedUrl(url)).to.equal(true);
+      const alone = bounceUrl('/c/smooth/7@0.5.mp4', null, '/m/v.mp4');
+      expect(playsBounce(alone)).to.equal(false);
+      expect(entryPath(alone)).to.equal('/m/v.mp4');
+      // A plain bounce carries no tag
+      const plain = bounceUrl('/m/v.mp4', '/c/bounce/7.mp4', '/m/v.mp4');
+      expect(plain).to.not.include('global_tags');
+      expect(isSmoothedUrl(plain)).to.equal(false);
+      expect(playsBounce(plain)).to.equal(true);
+    });
+
+    it('plays the smoothed copy once it is ready, and bounces it once its reversed copy is', async () => {
+      config.set('display.smooth', true);
+      config.set('paths.smooth', path.join(dir, 'smooth'));
+      const file = path.join(dir, 'media', '5.mp4');
+      await fs.outputFile(file, 'video');
+      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 5, path: file, duration: 10, fps: 30, speed: 0.5 }));
+      const smooth = config.get().paths.smooth;
+      await fs.outputFile(reversedPath(media, config.get().paths.bounce), 'reversed original');
+      expect(playUrl(media, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
+      await fs.outputFile(smoothedPath(media, smooth), 'smoothed');
+      expect(playUrl(media, config.get())).to.equal(bounceUrl(smoothedPath(media, smooth), null, file));
+      await fs.outputFile(smoothedReversedPath(media, smooth), 'reversed smoothed');
+      expect(playUrl(media, config.get())).to.equal(bounceUrl(smoothedPath(media, smooth), smoothedReversedPath(media, smooth), file));
+      // Another speed, or smoothing off: back to the plain bounce
+      expect(playUrl({ ...media, speed: 0.75 }, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
+      config.set('display.smooth', false);
+      expect(playUrl(media, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
     });
   });
 

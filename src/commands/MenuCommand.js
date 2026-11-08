@@ -17,6 +17,21 @@ import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
 import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, presetsOf } from '../visualizer/settings.js';
 import { readState } from '../display/Daemon.js';
+import { readWebInfo, webAddress } from '../web/info.js';
+
+// Opens an address in the desktop's browser, without waiting for it
+function openInBrowser(url) {
+  const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+  child.on('error', () => {});
+  child.unref();
+}
+
+// Starts `backdrop web --open` on its own, so it serves after the menu closes and opens the page when it listens
+function startWebServer() {
+  const child = spawn(process.execPath, [ENTRY_POINT, 'web', '--open'], { detached: true, stdio: 'ignore' });
+  child.on('error', () => {});
+  child.unref();
+}
 
 export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
@@ -29,7 +44,9 @@ const DIMS = ['0', '20', '40', '60', '+10', '-10'];
 // Unicode one: fonts without Nerd glyphs map U+F005 to something else entirely.
 const ICONS = {
   keep: '★', skip: '', undo: '', prev: '', next: '', random: '',
-  speed: '', dim: '', video: '', image: '', monitor: ''
+  speed: '', dim: '', video: '', image: '', monitor: '',
+  // Arrows both ways: forwards to the end, then backwards (U+F0EC, Font Awesome's exchange)
+  bounce: '\u{f0ec}'
 };
 
 // Keys every menu answers besides its buttons': q closes the menu from anywhere, Tab opens the monitor picker
@@ -39,6 +56,9 @@ const MONITOR_KEY = 'Tab';
 // w turns the wallpaper on while it is off
 const VISUALIZER_KEY = 'z';
 const WALLPAPER_KEY = 'w';
+// o opens the web interface's Now playing page: the running `backdrop web`'s, or a new one started for it
+const WEB_KEY = 'o';
+const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 const INSTANCE_KEY = 'i';
 // In the preset menu: delete a preset saved in the config
 const DELETE_KEY = 'x';
@@ -181,8 +201,12 @@ async function done(action) {
 // active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key } or null.
 export class MenuCommand {
   constructor(config, database, logger, {
-    display, rating, view, thumbnail = thumbnailFor, workspace = enterWorkspace, ask, control = sendControl
+    display, rating, view, thumbnail = thumbnailFor, workspace = enterWorkspace, ask, control = sendControl,
+    openUrl = openInBrowser, startWeb = startWebServer, webInfo = runtimeDir => readWebInfo(runtimeDir)
   } = {}) {
+    this.openUrl = openUrl;
+    this.startWeb = startWeb;
+    this.webInfo = webInfo;
     this.config = config;
     this.ask = ask ?? askText(config.get().menu?.rofi_args ?? []);
     this.sendControl = control;
@@ -320,6 +344,8 @@ export class MenuCommand {
     if (filters.image_duration !== undefined) lines.push(field('images', formatSetting(filters.image_duration)));
     if (filters.video_duration !== undefined) lines.push(field('videos', formatSetting(filters.video_duration)));
     lines.push(`${field('visualizer', 'menu')}  (${VISUALIZER_KEY})`);
+    const web = await this.webInfo(this.config.get().paths.runtime);
+    lines.push(`${field('web', web ? `port ${web.port}` : 'off')}  (${WEB_KEY} opens it)`);
     if (monitors.length > 1) lines.push(`${field('monitor', monitor)}  (Tab)`);
     if (monitors.find(item => item.name === monitor)?.socket === null) lines.unshift(`${field('wallpaper', 'off')}  (${WALLPAPER_KEY} turns it on)`);
     return lines;
@@ -327,6 +353,15 @@ export class MenuCommand {
 
   show(menu) {
     return this.current.show(menu);
+  }
+
+  // The web interface's Now playing page in the browser: the running server's address (with its token, which the page
+  // swaps for a cookie), or a server started for it. The menu closes, since the browser takes the focus.
+  async openWeb() {
+    const web = await this.webInfo(this.config.get().paths.runtime);
+    if (web) this.openUrl(webAddress(web.port, web.token));
+    else this.startWeb();
+    return { quit: true };
   }
 
   // Two fixed rows: next, keep 1-3, speed over prev, skip, undo, mode, dim, with keys n 1 2 3 v and
@@ -357,7 +392,7 @@ export class MenuCommand {
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
         disabled: !media, active: Boolean(media?.dim), run: () => this.stepMenu(monitor, 'dim', DIMS) }
     ];
-    const keys = [QUIT_KEY, VISUALIZER_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : []), ...(off ? [WALLPAPER_KEY] : [])];
+    const keys = [QUIT_KEY, VISUALIZER_KEY, WEB_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : []), ...(off ? [WALLPAPER_KEY] : [])];
 
     const picked = await this.show({ prompt: 'backdrop', title: item.title, message: item.message, preview: item.preview,
       status: await this.status(monitor, monitors), entries, keys, columns: MAIN_COLUMNS });
@@ -365,6 +400,7 @@ export class MenuCommand {
     if (picked.key === MONITOR_KEY) return this.attempt(() => this.monitorMenu(monitor));
     if (picked.key === VISUALIZER_KEY) return this.attempt(() => this.visualizerMenu(monitor));
     if (picked.key === WALLPAPER_KEY) return this.attempt(() => done(this.display.start({ wallpaper: true })));
+    if (picked.key === WEB_KEY) return this.attempt(() => this.openWeb());
     const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
     if (!entry || entry.disabled) return {};
     return this.attempt(entry.run);

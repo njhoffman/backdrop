@@ -8,6 +8,7 @@ import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
+import { rifeModel, smoothedReady, wantsSmoothing } from '../library/smooth.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
@@ -172,6 +173,7 @@ export class DoctorCommand {
     }
     await this.checkAnimatedWebp(add);
     await this.checkBounceCache(add);
+    await this.checkSmooth(add);
     const items = this.database.findMedia({ downloaded: true }).filter(item => item.path);
     const missing = [];
     for (const item of items) if (!await this.pathExists(item.path)) missing.push(item);
@@ -200,6 +202,26 @@ export class DoctorCommand {
     const encodes = `; ${today.count} encoded today (${minutes(today.seconds)}), ${yesterday.count} yesterday`;
     add('library', 'bounce cache', over ? 'warn' : 'ok', `${copies.length} reversed ${copies.length === 1 ? 'copy' : 'copies'}, ${formatBytes(used)}${of}${encodes}`,
       over ? `the daemon prunes it to display.bounce_cache_gb; delete ${displayPath(paths.bounce)} to clear it` : undefined);
+  }
+
+  // display.smooth: RIFE and its model where the config says, and how many slowed videos have their copies
+  async checkSmooth(add) {
+    const { display, paths } = this.config.get();
+    if (!display.smooth) return;
+    const binary = display.smooth_rife;
+    const found = binary.includes('/') ? await this.pathExists(binary) : await this.which(binary);
+    if (!found) {
+      add('library', 'smoothing', 'fail', `RIFE not found: ${binary}`, 'install rife-ncnn-vulkan and set display.smooth_rife to it');
+      return;
+    }
+    if (binary.includes('/') && !await this.pathExists(rifeModel(binary))) {
+      add('library', 'smoothing', 'fail', `no rife-v4.6 model beside ${binary}`, 'copy the release\'s rife-v4.6 folder next to the binary');
+      return;
+    }
+    const slowed = this.database.findMedia({ kind: ['video', 'gif'], status: ['new', 'kept'], downloaded: true })
+      .filter(media => wantsSmoothing(media, display.smooth_fps ?? 60));
+    const ready = slowed.filter(media => smoothedReady(media, paths.smooth)).length;
+    add('library', 'smoothing', 'ok', `${ready} of ${slowed.length} slowed videos smoothed${ready < slowed.length ? '; the daemon makes the rest' : ''}`);
   }
 
   // Animated WebP in the import folders that this FFmpeg could not decode, still there to convert

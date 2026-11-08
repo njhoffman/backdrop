@@ -119,6 +119,8 @@ export class LibraryService {
       }
     }
     if (changes.bounce !== undefined) await this.control.send(paths.runtime, state, { bounce: id }, { logfile: paths.logfile });
+    // A smoothed copy is made for a speed (display.smooth)
+    if (changes.speed !== undefined) await this.control.send(paths.runtime, state, { item: id }, { logfile: paths.logfile });
   }
 
   // Plays the item on a monitor now, when that monitor's playlist has it (the mode and size decide), and announces

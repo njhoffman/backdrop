@@ -72,8 +72,13 @@ export class LoadShedding {
     this.hold(level);
     daemon.logger.info('Load level changed', { from: previous, to: level, ...this.summary() });
     // Reversing videos for bounce waits for a normal load
-    if (level === 'normal') daemon.bounce?.kick();
-    else daemon.bounce?.pause();
+    if (level === 'normal') {
+      daemon.bounce?.kick();
+      daemon.smoothing?.kick();
+    } else {
+      daemon.bounce?.pause();
+      daemon.smoothing?.pause();
+    }
     await daemon.visualizers.setLightened(level !== 'normal');
 
     if (level === 'off') {

@@ -1,4 +1,4 @@
-import { bounces, entryPath, isBounceUrl, playUrl } from '../bounce.js';
+import { bounces, entryPath, playsBounce, playUrl, smoothedFor } from '../bounce.js';
 import { refreshEntries } from '../Playlist.js';
 import fs from 'fs-extra';
 import { listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
@@ -70,6 +70,8 @@ export class Bounce {
   want(media) {
     if (!media?.path || this.failed.has(media.id) || this.queue.has(media.id) || this.encoding === media.id) return;
     if (!bounces(media, this.settings.display) || reversedReady(media, this.settings.paths.bounce)) return;
+    // A smoothed copy gets its own reversed copy from the smoothing job (daemon/Smooth.js)
+    if (smoothedFor(media, this.settings)) return;
     this.queue.set(media.id, media);
     this.kick();
   }
@@ -180,7 +182,7 @@ export class Bounce {
     if (!Number.isFinite(position)) return;
     const speed = media.speed || 1;
     const untilEnd = Math.max(0, ((screen.bouncing ? 2 : 1) * media.duration - position) / speed);
-    const nextLength = (isBounceUrl(playUrl(media, this.settings)) ? 2 : 1) * media.duration / speed;
+    const nextLength = (playsBounce(playUrl(media, this.settings)) ? 2 : 1) * media.duration / speed;
     const timeout = this.daemon.videoDuration?.() ?? 0;
     const played = (this.daemon.now() - (screen.loadedAt ?? this.daemon.now())) / 1000 + untilEnd;
     if (timeout && timeout - played < nextLength) return;

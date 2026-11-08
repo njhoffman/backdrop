@@ -70,7 +70,7 @@ describe('MenuCommand', () => {
     // Nerd Font glyphs are private-use characters that editors can drop silently
     expect(shown[0].entries.every(entry => /[\u2605\uf000-\uf8ff]/.test(entry.icon))).to.be.true;
     expect(shown[0]).to.include({ title: 'ocean-waves.mp4', preview: '/cache/thumbnails/1.jpg', columns: 5 });
-    expect(shown[0].keys).to.deep.equal(['q', 'z', 'Tab']);
+    expect(shown[0].keys).to.deep.equal(['q', 'z', 'o', 'Tab']);
     expect(shown[0].message).to.equal(
       `#${playing.media.id}  video  <b>3840x2160</b>\n<b>0:18</b> · 25 fps · ★★☆ · DP-1\nocean, waves\n<b>speed 0.8</b>`);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2', 'speed ▸']);
@@ -117,10 +117,10 @@ describe('MenuCommand', () => {
     display.next.callsFake(async () => fs.writeJson(path.join(runtime, 'next-filters.json'), { pid: process.pid, tag: ['sky'] }));
     await command.open({ random: false, query: ['ocean waves'], tag: ['sunset', 'sea'] });
     expect(shown[0].status).to.deep.equal([
-      'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'visualizer  <b>menu</b>  (z)', 'monitor  <b>DP-1</b>  (Tab)'
+      'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)'
     ]);
     // display.order defaults to random
-    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'visualizer  <b>menu</b>  (z)', 'monitor  <b>DP-1</b>  (Tab)']);
+    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)']);
 
     // Opening without any keeps what is stored; a mistyped query fails before anything is stored
     await command.open();
@@ -162,6 +162,38 @@ describe('MenuCommand', () => {
     display.control.selected.resolves({ monitor: monitors[0], ...playing });
     await command.open();
     expect(workspace.lastCall.args[0]).to.be.null;
+  });
+
+  it('draws every button of the main menu and the speed panel with an icon', async () => {
+    picks = [{ key: 'v' }, null, { key: 'q' }];
+    await command.open();
+    for (const menu of shown.slice(0, 2)) {
+      const blank = menu.entries.filter(entry => typeof entry.icon !== 'string' || !entry.icon.trim()).map(entry => entry.label);
+      expect(blank, menu.prompt).to.deep.equal([]);
+    }
+    expect(shown[1].entries.find(entry => entry.label === 'bounce').icon).to.equal('\u{f0ec}');
+  });
+
+  it('opens the web interface\'s page with o: the running server\'s, else one started for it, and closes', async () => {
+    const opened = [];
+    let started = 0;
+    let web = { pid: 9, port: 7737, token: 'abc' };
+    const withWeb = new MenuCommand(config, db, silentLogger, {
+      display, rating, view: command.view, thumbnail, workspace,
+      webInfo: async () => web, openUrl: url => opened.push(url), startWeb: () => { started++; }
+    });
+    picks = [{ key: 'o' }];
+    await withWeb.open();
+    expect(opened).to.deep.equal(['http://127.0.0.1:7737/?token=abc']);
+    expect(shown[0].status).to.include('web  <b>port 7737</b>  (o opens it)');
+    // The menu closed: one menu shown, nothing after
+    expect(shown).to.have.length(1);
+
+    web = null;
+    picks = [{ key: 'o' }];
+    await withWeb.open();
+    expect(started).to.equal(1);
+    expect(opened).to.have.length(1);
   });
 
   it('turns the video\'s bounce on and off from the speed submenu', async () => {
@@ -208,7 +240,7 @@ describe('MenuCommand', () => {
     display.control.state.resolves({ monitors: [monitors[0]] });
     picks = [];
     await command.open({ stay: true });
-    expect(shown.at(-1).keys).to.deep.equal(['q', 'z']);
+    expect(shown.at(-1).keys).to.deep.equal(['q', 'z', 'o']);
     expect(shown.at(-1).status.some(line => line.includes('monitor'))).to.be.false;
   });
 

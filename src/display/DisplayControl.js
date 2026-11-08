@@ -198,6 +198,12 @@ export class DisplayControl {
     const speed = parseSpeed(spec, media.speed);
     this.database.setSpeed(media.id, speed);
     await this.withClient(monitor, client => client.setProperty('speed', speed));
+    // The daemon's smoothed copy is made for a speed (display.smooth): another speed needs another
+    const state = await this.state({ required: false });
+    if (state && speed !== media.speed) {
+      const { paths } = this.config.get();
+      await this.send(paths.runtime, state, { item: media.id }, { logfile: paths.logfile }).catch(() => {});
+    }
     return { monitor, media, speed };
   }
 

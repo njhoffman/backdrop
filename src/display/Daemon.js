@@ -13,8 +13,10 @@ import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { reverseVideo } from '../library/reverse.js';
-import { entryPath, isBounceUrl } from './bounce.js';
+import { smoothVideo } from '../library/smooth.js';
+import { entryPath, playsBounce } from './bounce.js';
 import { Bounce } from './daemon/Bounce.js';
+import { Smooth } from './daemon/Smooth.js';
 import { notifyMode, notifyPlaying } from '../utils/notify.js';
 import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
@@ -118,7 +120,9 @@ export class Daemon {
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     // A bouncing video's reversed copy (src/library/reverse.js); resolves to its path, or null
-    reverse = (media, { signal } = {}) => reverseVideo(media, config.get().paths.bounce, { logger, signal }),
+    reverse = (media, { signal, dir } = {}) => reverseVideo(media, dir ?? config.get().paths.bounce, { logger, signal }),
+    // A slowed video's smoothed copy (src/library/smooth.js); resolves to its path, or null
+    smoothVideo: smoothen = (media, { dir, size, target, rife, signal } = {}) => smoothVideo(media, dir, { rife, size, target, logger, signal }),
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
     // The whole config file loaded and checked again, for a saved change; throws on a mistake in it
     readConfig = async () => {
@@ -168,6 +172,7 @@ export class Daemon {
     this.purge = purge;
     this.thumbnail = thumbnail;
     this.reverse = reverse;
+    this.smoothVideo = smoothen;
     this.timers = [];
     // Active monitors by name; screens holds their wallpaper processes, empty while the wallpaper is off
     this.monitors = new Map();
@@ -187,6 +192,7 @@ export class Daemon {
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
     this.bounce = new Bounce(this);
+    this.smoothing = new Smooth(this);
     this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
@@ -245,6 +251,7 @@ export class Daemon {
     await this.screensaver.begin();
     await this.load.begin();
     await this.bounce.begin().catch(error => this.logger.warn('Failed to clear old bounce work', { error: error.message }));
+    await this.smoothing.begin().catch(error => this.logger.warn('Failed to start smoothing', { error: error.message }));
 
     try {
       // Before the wallpapers, since the look in use can do without them
@@ -605,7 +612,8 @@ export class Daemon {
     const media = this.database.getMediaByPath(filePath);
     screen.media = media;
     // A bouncing video plays as its file and the reversed copy together (src/display/bounce.js)
-    screen.bouncing = isBounceUrl(filename);
+    screen.bouncing = playsBounce(filename);
+    screen.filename = filename;
     // A switch to the bounce at the end of a pass (daemon/Bounce.js) goes on counting from the replaced entry's load
     const carried = this.bounce.carried(screen, media);
     screen.loadedAt = carried ?? this.now();
@@ -638,6 +646,7 @@ export class Daemon {
     if (this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) this.sampleScreen(screen.monitor.name);
     this.prefetchThumbnails(screen, media);
     await this.bounce.onLoaded(screen, media);
+    await this.smoothing.onLoaded(screen, media, filename);
   }
 
   // Makes the panel menu's previews ahead of time so opening it does not wait for ffmpeg: the item
@@ -840,6 +849,7 @@ export class Daemon {
 
     await this.screensaver.leave();
     await this.bounce.stop();
+    await this.smoothing.stop();
     await this.visualizers.stop();
     await Promise.all([...this.screens.values()].map(screen => this.stopScreen(screen)));
     this.screens.clear();

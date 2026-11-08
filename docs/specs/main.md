@@ -102,6 +102,18 @@ IPC socket) would break a wallpaper.
   the next item, stay. Deleted copies' entries go back to the plain file, since mpv would fail to load the URL and
   drop the entry. `doctor` shows the cache's size against the limit and the encodes today and yesterday (counted
   in the `bounce_encodes` setting).
+- **Smoothing:** with `display.smooth`, a slowed video (speed below 1, fewer than `smooth_fps` frames a second at
+  that speed) gets a copy with the frames in between made by RIFE (`rife-ncnn-vulkan` on the GPU through Vulkan,
+  `src/library/smooth.js`): the frame rate times the whole factor that reaches `smooth_fps` at the item's speed
+  (within 1%), at the size that covers the largest monitor, in `paths.smooth` as `<id>@<speed>.mp4`, so a speed
+  change leaves it stale. It is made in two-second chunks (ffmpeg to PNG, RIFE, encoded with VAAPI or libx264, the
+  frame shared across a join interpolated with the chunk before), then joined. The daemon (`daemon/Smooth.js`) makes
+  one at a time at the normal load level, the items playing and next first, then every other slowed video, highest
+  rated first; a bouncing item also gets the copy's reversed copy. It plays through an EDL URL that carries the
+  library path as a tag (`edl://!global_tags,backdrop_path=...`), which `entryPath` reads. Until its copy is ready,
+  a slowed video plays with mpv's frame blending (`smooth_blend`: `interpolation` with `video-sync=display-resample`),
+  which is off for everything else. Copies of items gone, skipped, at another speed or no longer slowed are deleted.
+  On the Iris Xe this was measured at about one interpolated 1080p frame a second, with no dropped wallpaper frames.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
   current layout; a configured monitor that is unplugged is picked up again when it returns.

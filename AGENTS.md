@@ -105,6 +105,10 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `media.bounce` (schema v10, `backdrop bounce`) plays a video and its reversed copy as one `edl://` entry; mpv
   reports that URL as the path, so compare mpv filenames with library paths through `entryPath`, and load items
   with `playUrl`. The daemon reverses an item on its first play and the next entry ahead, one at a time at the normal load level.
+- **Smoothing** (`src/library/smooth.js`, `daemon/Smooth.js`) - `display.smooth` makes RIFE copies of slowed videos
+  at `smooth_fps`, one at a time, playing them through an EDL URL tagged with the library path (`backdrop_path`,
+  read by `entryPath`; `forwardPath` gives the file mpv plays, `playsBounce` whether a reversed half follows). Mpv
+  blends frames for a slowed video meanwhile. A speed change sends an `item` control request so the copy follows.
 - **Screensaver** (`src/display/daemon/Screensaver.js`) - the daemon's mode, asked for through a control request by `ScreensaverCommand`; see `docs/specs/main.md`.
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are

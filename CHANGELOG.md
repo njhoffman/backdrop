@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.61.0] - 2026-11-08
+
+### Added
+
+- Smooth slowed videos: with `display.smooth: true` and rife-ncnn-vulkan installed (`display.smooth_rife`), the daemon makes copies of videos slowed below speed 1 with the frames in between made by RIFE, so they show `display.smooth_fps` (60) frames a second instead of stuttering. Copies are made one at a time in the background, the videos playing and next first, sized to the largest monitor, and a bouncing video gets a reversed copy of its smoothed one. Until a copy is ready, mpv blends frames (`display.smooth_blend`). A speed change makes a new copy. `doctor` checks RIFE and shows how many slowed videos are done.
+- `o` in the menu opens the web interface's Now playing page in the browser: the running `backdrop web`'s, or one started for it. The menu shows whether it runs.
+
+### Fixed
+
+- The bounce button in the menu's speed panel has an icon, two arrows going opposite ways; it had none since 2.52.0.
+
 ## [2.60.0] - 2026-11-07
 
 ### Added
