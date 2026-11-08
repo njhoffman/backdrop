@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.64.1] - 2026-11-08
+
+### Fixed
+
+- The browser test of the web pages no longer times out when the desktop's D-Bus is slow to answer: its Chrome is kept off the session and system buses, and a stuck step fails within 15 s, naming itself.
+
 ## [2.64.0] - 2026-11-08
 
 ### Changed

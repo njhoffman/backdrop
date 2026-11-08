@@ -31,7 +31,7 @@ and is skipped when mpv or ffmpeg is missing. `test/commands/menu.integration.te
 a real daemon there with a stand-in visualizer window (Daemon's `createVisualizer` option), since GLava opens no
 window under Xvfb. `test/web/pages.browser.test.js` loads every web page in headless Chrome through `playwright-core` (a devDependency
 that downloads no browser) against stand-in services, failing on any script error, failed request or content security
-policy violation; it is skipped without Chrome or Chromium installed. `test/sources/pexels.live.test.js` calls the real Pexels API only with `BACKDROP_LIVE_TESTS=1` and
+policy violation; it is skipped without Chrome or Chromium installed. Its Chrome gets a missing D-Bus address, since a desktop bus slow to answer stalls `newPage()`, which has no timeout. `test/sources/pexels.live.test.js` calls the real Pexels API only with `BACKDROP_LIVE_TESTS=1` and
 `PEXELS_API` set (three requests); routine runs skip it.
 
 Requires Node.js 22.13+ (built-in `node:sqlite`).

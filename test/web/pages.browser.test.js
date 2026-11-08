@@ -19,6 +19,22 @@ try {
   chromium = null;
 }
 
+// Each step's own deadline, well inside the test's, so a stuck one fails naming itself; Playwright's waits take it as
+// their timeout, and the calls without one (opening and closing pages) go through within
+const STEP_MS = 15000;
+
+function within(step, promise) {
+  let timer;
+  const deadline = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Chrome took over ${STEP_MS / 1000} s ${step}`)), STEP_MS);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+// Chrome talks to the session and system buses even headless, and waits on a call there (25 s each) before it opens a
+// page, so a desktop bus slow to answer failed both tests on their 60 s timeout. A missing socket is refused at once.
+const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
+
 (executablePath && chromium ? describe : describe.skip)('web pages in a browser', function () {
   this.timeout(60000);
   const token = 'browser-test-token-0123456789';
@@ -26,7 +42,9 @@ try {
   let dir, db, config, server, browser, base, display, id, errors;
 
   before(async () => {
-    browser = await chromium.launch({ executablePath, headless: true });
+    browser = await chromium.launch({
+      executablePath, headless: true, env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: NO_BUS, DBUS_SYSTEM_BUS_ADDRESS: NO_BUS }
+    });
   });
 
   after(async () => {
@@ -95,7 +113,8 @@ try {
 
   // A page signed in through the token address, recording console errors and failed requests
   async function open(pathname) {
-    const page = await browser.newPage();
+    const page = await within('opening a page', browser.newPage());
+    page.setDefaultTimeout(STEP_MS);
     errors = [];
     // Failed requests by URL; the stand-in has no thumbnails, so those 404s are expected
     page.on('response', response => {
@@ -122,25 +141,25 @@ try {
     await page.waitForFunction(() => !document.querySelector('.card.busy'));
     expect(display.next.firstCall.args[0]).to.deep.equal({ monitor: 'DP-1' });
     expect(errors).to.deep.equal([]);
-    await page.close();
+    await within('closing a page', page.close());
   });
 
   it('draws the Library, Visualizer, Config and Status pages', async () => {
     let page = await open('/library');
     await page.waitForSelector('.tile');
     expect(await page.textContent('#count')).to.equal('1-1 of 1 items');
-    await page.close();
+    await within('closing a page', page.close());
 
     page = await open('/visualizer');
     await page.waitForSelector('.instance .instance-name');
     expect(await page.textContent('.instance-name')).to.equal('main');
     expect(await page.$$eval('.swatch .dot', dots => dots.map(dot => dot.style.background))).to.have.length(2);
-    await page.close();
+    await within('closing a page', page.close());
 
     page = await open('/config');
     await page.waitForSelector('[data-key="display.order"]');
     expect(await page.getAttribute('[data-key="sources.pexels.api_key"]', 'placeholder')).to.equal('set (type to replace)');
-    await page.close();
+    await within('closing a page', page.close());
 
     page = await open('/status');
     await page.waitForSelector('#library tbody tr');
@@ -148,6 +167,6 @@ try {
     await page.waitForSelector('#checks tbody tr');
     expect(await page.textContent('#checks-summary')).to.equal('All passed');
     expect(errors).to.deep.equal([]);
-    await page.close();
+    await within('closing a page', page.close());
   });
 });
