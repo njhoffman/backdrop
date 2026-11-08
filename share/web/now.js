@@ -93,7 +93,10 @@ function renderCard(monitor) {
     card.querySelector('.dim-value').textContent = dim.value;
     bounce.value = item.bounce === null ? 'reset' : item.bounce ? 'on' : 'off';
     bounce.options[0].textContent = `Default (${snapshot.settings.video_loop === 'bounce' ? 'on' : 'off'})`;
-    bounce.title = bouncesNow(item) ? 'Bounces from its next play once reversed' : '';
+    bounce.title = bouncesNow(item) ? 'Bounces once its reversed copy is made' : '';
+    const state = card.querySelector('.bounce-state');
+    state.hidden = item.bounce_state !== 'reversing';
+    state.title = 'Its reversed copy is being made in the background; it bounces once that is done';
   }
 }
 

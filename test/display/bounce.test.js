@@ -3,7 +3,8 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { bounces, bounceUrl, entryPath, forwardPath, isBounceUrl, isSmoothedUrl, playsBounce, playUrl } from '../../src/display/bounce.js';
+import { bounceState, bounces, bounceUrl, entryPath, forwardPath, isBounceUrl, isSmoothedUrl, playsBounce, playUrl } from '../../src/display/bounce.js';
+import { mediaJson } from '../../src/utils/mediaView.js';
 import { smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
 import { loadPlaylist, refreshEntries, syncPlaylist, queueMatching } from '../../src/display/Playlist.js';
 import { reversedPath } from '../../src/library/reverse.js';
@@ -80,6 +81,20 @@ describe('bounce', () => {
       expect(playUrl(media, config.get())).to.equal(media.path);
       db.setBounce(media.id, true);
       expect(playUrl(db.getMedia(media.id), config.get())).to.not.equal(media.path);
+    });
+  });
+
+  describe('bounce state', () => {
+    it('is off, reversing until the copy is made, then ready, and shows in the item JSON given a config', async () => {
+      const media = await video(1);
+      expect(bounceState(media, config.get())).to.equal('reversing');
+      expect(mediaJson(db, media, undefined, { config: config.get() }).bounce_state).to.equal('reversing');
+      expect(mediaJson(db, media)).to.not.have.property('bounce_state');
+      await fs.outputFile(reversedPath(media, config.get().paths.bounce), 'reversed');
+      expect(bounceState(media, config.get())).to.equal('ready');
+      config.set('display.video_loop', 'loop');
+      expect(bounceState(media, config.get())).to.equal('off');
+      expect(bounceState(null, config.get())).to.equal('off');
     });
   });
 

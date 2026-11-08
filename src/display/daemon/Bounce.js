@@ -93,6 +93,14 @@ export class Bounce {
         return;
       }
       if (!target) {
+        // A rating moves the file (inbox to library, or to the trash) under a running encode: try again from where it is
+        const now = this.daemon.database.getMedia(id);
+        if (now?.path && now.path !== media.path) {
+          this.daemon.logger.info('Reversing again: the file moved while it was being reversed', { mediaId: id });
+          // Queued directly: want() turns away the item still counted as encoding; the finally below starts it
+          if (bounces(now, this.settings.display)) this.queue = new Map([[id, now], ...this.queue]);
+          return;
+        }
         this.failed.add(id);
         return;
       }

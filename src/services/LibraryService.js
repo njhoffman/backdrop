@@ -51,7 +51,7 @@ export class LibraryService {
     const pages = Math.max(1, Math.ceil(total / size));
     const current = Math.min(pages, Math.max(1, Math.trunc(Number(page)) || 1));
     const shown = this.database.findMedia({ ...filters, order, limit: size, offset: (current - 1) * size });
-    return { total, page: current, pages, per_page: size, items: shown.map(media => mediaJson(this.database, media)) };
+    return { total, page: current, pages, per_page: size, items: shown.map(media => mediaJson(this.database, media, undefined, { config: this.config.get() })) };
   }
 
   // What the filters offer: the most common tags and every saved search's query
@@ -60,7 +60,7 @@ export class LibraryService {
   }
 
   item(id) {
-    return mediaJson(this.database, this.require(id));
+    return mediaJson(this.database, this.require(id), undefined, { config: this.config.get() });
   }
 
   require(id) {
@@ -74,7 +74,7 @@ export class LibraryService {
     const value = Number(rating);
     if (![0, 1, 2, 3].includes(value)) throw new Error('Rating must be 0 (skip) or 1 to 3');
     const { media, warnings } = await this.rating.rate(this.require(id), value);
-    return { item: mediaJson(this.database, media), warnings };
+    return { item: mediaJson(this.database, media, undefined, { config: this.config.get() }), warnings };
   }
 
   // Changes an item's speed, dim and bounce ({ speed?, dim?, bounce? }, each as the commands take it) and stores
@@ -96,7 +96,7 @@ export class LibraryService {
     if (!Object.keys(changes).length) throw new Error('Give speed, dim or bounce');
     this.database.updateMedia(media.id, changes);
     await this.applyLive(media.id, changes);
-    return mediaJson(this.database, this.database.getMedia(media.id));
+    return mediaJson(this.database, this.database.getMedia(media.id), undefined, { config: this.config.get() });
   }
 
   // Applies a change on each monitor playing the item now; a display that does not answer keeps the stored change

@@ -3,6 +3,7 @@ import { readNextFilters } from '../display/nextFilters.js';
 import { getMode, getChosenMode, displayMode, eligibleMedia } from '../display/Playlist.js';
 import { DisplayService } from '../services/DisplayService.js';
 import { readWebInfo, webAddress } from '../web/info.js';
+import { bounceState } from '../display/bounce.js';
 import { out, fmt, icon, displayPath, describeMedia, formatResolution, formatCpu, formatDecoder, formatSetting, formatBytes } from '../utils/output.js';
 import {
   printMedia, printPlaying, formatMediaLine, formatMediaHeader, formatAdjustments, formatPlaybackCost, wantsJson, playingJson
@@ -175,7 +176,10 @@ export class DisplayCommand {
         out.detail(this.blankReason(mode, monitor, eligible, allowUpscale));
         continue;
       }
-      if (media) out.field(media.kind, `${fmt.bold(`#${media.id}`)}  ${describeMedia(media)}${this.adjustments(media)}`);
+      if (media) {
+        const reversing = bounceState(media, this.config.get()) === 'reversing' ? fmt.yellow('  reversing for bounce') : '';
+        out.field(media.kind, `${fmt.bold(`#${media.id}`)}  ${describeMedia(media)}${this.adjustments(media)}${reversing}`);
+      }
       out.field('path', displayPath(path));
     }
   }
@@ -244,6 +248,7 @@ export class DisplayCommand {
     printMedia(this.database, media, { rating, path: false, extra: [this.adjustments(media)] });
     const cost = formatPlaybackCost(this.database.getPlaybackStats(media.id));
     if (cost) out.field('cpu', fmt.dim(cost));
+    if (bounceState(media, this.config.get()) === 'reversing') out.field('info', fmt.yellow('bounces once its reversed copy is made'));
   }
 
   // --query, --tag and --keywords jump to a matching item instead; the playlist itself stays as it was
@@ -269,9 +274,12 @@ export class DisplayCommand {
   }
 
   async bounce(value, options) {
-    const { monitor, bounce, bouncing } = await this.service.bounce(value, options);
+    const { monitor, media, bounce, bouncing } = await this.service.bounce(value, options);
     const source = bounce === null ? fmt.dim(' (display.video_loop)') : '';
-    const when = bouncing ? fmt.dim(', from its next play once reversed') : '';
+    // The reversed copy is made in the background; once it is there the video switches at the end of a pass
+    const state = bouncing ? bounceState({ ...media, bounce }, this.config.get()) : 'off';
+    const when = state === 'reversing' ? fmt.yellow(', reversing in the background; it bounces once that is done')
+      : state === 'ready' ? fmt.dim(', from the end of this pass') : '';
     out.print(`${monitor.name}: bounce ${fmt.cyan(bouncing ? 'on' : 'off')}${source}${when}`);
   }
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.62.0] - 2026-11-08
+
+### Added
+
+- While a bouncing video's reversed copy is still being made, it says so: `backdrop bounce on` ("reversing in the background"), `current`, `status`, the menu's bounce button ("reversing") and the web pages. JSON items carry `bounce_state` (`off`, `ready` or `reversing`).
+
+### Fixed
+
+- A video rated while it was being reversed for bounce, or smoothed, is done again from where its file moved, instead of being given up on until the daemon restarts (it then never bounced).
+
 ## [2.61.0] - 2026-11-08
 
 ### Added

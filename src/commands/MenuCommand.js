@@ -6,7 +6,7 @@ import { DisplayService } from '../services/DisplayService.js';
 import { RatingService } from '../services/RatingService.js';
 import { PRESET_NAME, SWATCHES, VisualizerService } from '../services/VisualizerService.js';
 import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
-import { bounces } from '../display/bounce.js';
+import { bounceState, bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
 import { thumbnailFor } from '../library/thumbnail.js';
@@ -418,7 +418,9 @@ export class MenuCommand {
       }));
       // The speed panel also turns the video's bounce on and off (backwards at its end, then forwards)
       const bouncing = kind === 'speed' && bounces(item.media, this.config.get().display);
-      if (kind === 'speed') entries.push({ icon: ICONS.bounce, label: 'bounce', active: bouncing });
+      // While its reversed copy is made, the caption says so
+      const reversing = bouncing && bounceState(item.media, this.config.get()) === 'reversing';
+      if (kind === 'speed') entries.push({ icon: ICONS.bounce, label: 'bounce', caption: reversing ? 'reversing' : 'bounce', active: bouncing });
       const picked = await this.show({ prompt, title: `${item.title}  ·  ${prompt}`, message: item.message, preview: item.preview,
         entries, keys: [QUIT_KEY], columns: entries.length });
       if (picked === null) return {};

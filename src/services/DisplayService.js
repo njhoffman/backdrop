@@ -143,7 +143,7 @@ export class DisplayService {
         visualizer: monitor.visualizer ?? null,
         visualizers: monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : []),
         overlays: monitor.overlays ?? [],
-        playing: media ? mediaJson(this.database, media, rating) : null
+        playing: media ? mediaJson(this.database, media, rating, { config: this.config.get() }) : null
       });
     }
     const daemon = {

@@ -137,6 +137,18 @@ describe('Bounce (daemon)', () => {
     expect(encodes).to.have.length(2);
   });
 
+  it('reverses again from the new path when a rating moved the file during the encode', async () => {
+    const media = await video(1);
+    bounce.want(media);
+    const moved = path.join(dir, 'library', '1.mp4');
+    await fs.move(media.path, moved);
+    db.updateMedia(media.id, { path: moved });
+    await encodes[0].finish(false);
+    await encodesReach(2);
+    expect(encodes.map(encode => encode.media.path)).to.deep.equal([media.path, moved]);
+    expect(bounce.failed.size).to.equal(0);
+  });
+
   it('looks ahead only when something can bounce', async () => {
     config.set('display.video_loop', 'loop');
     const media = await video(1);

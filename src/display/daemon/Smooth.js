@@ -128,6 +128,12 @@ export class Smooth {
       const made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, signal });
       if (signal.aborted) return this.requeue(media);
       if (!made) {
+        // A rating moves the file under a running job: try again from where it is
+        const now = this.daemon.database.getMedia(media.id);
+        if (now?.path && now.path !== media.path) {
+          this.daemon.logger.info('Smoothing again: the file moved while it was being smoothed', { mediaId: media.id });
+          return this.requeue(now);
+        }
         this.failed.add(media.id);
         return;
       }

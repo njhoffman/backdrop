@@ -151,6 +151,26 @@ describe('Smooth (daemon)', () => {
     expect(await fs.pathExists(smoothedPath(media, config.get().paths.smooth))).to.equal(false);
   });
 
+  it('smooths again from the new path when a rating moved the file during the job', async () => {
+    const media = await video(1);
+    const moved = path.join(dir, 'library', '1.mp4');
+    const paths = [];
+    daemon.smoothVideo = async item => {
+      paths.push(item.path);
+      if (paths.length === 1) {
+        await fs.move(media.path, moved);
+        db.updateMedia(media.id, { path: moved });
+        return null;
+      }
+      return null;
+    };
+    smooth.want(media);
+    await settle();
+    expect(paths).to.deep.equal([media.path, moved]);
+    // The second failure, with the file where it is, is a real one
+    expect([...smooth.failed]).to.deep.equal([media.id]);
+  });
+
   it('marks an item failed when no copy could be made, and does not try it again', async () => {
     daemon.smoothVideo = sinon.stub().resolves(null);
     const media = await video(1);

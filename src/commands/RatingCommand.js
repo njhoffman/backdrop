@@ -38,7 +38,7 @@ export class RatingCommand {
   // with --json only one document is printed: the rated item, or with --next the item now playing
   printKept({ rated, warnings }, options, json) {
     this.printRating(rated, warnings);
-    if (json && !options.next) out.json({ item: mediaJson(this.database, rated) });
+    if (json && !options.next) out.json({ item: mediaJson(this.database, rated, undefined, { config: this.config.get() }) });
     else if (!json) this.printRated(rated, { line: options.line || options.next });
   }
 

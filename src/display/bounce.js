@@ -98,3 +98,10 @@ export function playUrl(media, config) {
   if (forward === media.path && !backward) return media.path;
   return bounceUrl(forward, backward, media.path);
 }
+
+// Where an item's bounce stands: 'off' (it does not bounce), 'ready' (what mpv loads plays the reversed half) or
+// 'reversing' (it bounces, but its reversed copy is still being made in the background)
+export function bounceState(media, config) {
+  if (!media || !bounces(media, config?.display)) return 'off';
+  return playsBounce(playUrl(media, config)) ? 'ready' : 'reversing';
+}

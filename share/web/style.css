@@ -458,3 +458,8 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   background: var(--bg);
   font-size: 12.5px;
 }
+
+.bounce-state { padding: 1px 8px; border-radius: 999px; font-size: 12px; background: #f6e7c1; color: #6b4e00; }
+@media (prefers-color-scheme: dark) {
+  .bounce-state { background: #3b3018; color: #e7c66b; }
+}

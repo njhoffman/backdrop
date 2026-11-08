@@ -186,11 +186,11 @@ export class WebServer {
       monitorAction('prev', async monitor => ({ ...changed, ...this.playing((await this.display.prev({ monitor })).playing) })),
       monitorAction('keep', async (monitor, { rating, next = false }) => {
         const result = await this.rating.keep(rating, { monitor, next: Boolean(next) });
-        return { ...changed, item: mediaJson(this.database, result.rated), warnings: result.warnings, ...(result.playing ? { playing: this.playing(result.playing) } : {}) };
+        return { ...changed, item: mediaJson(this.database, result.rated, undefined, { config: this.config.get() }), warnings: result.warnings, ...(result.playing ? { playing: this.playing(result.playing) } : {}) };
       }),
       monitorAction('skip', async monitor => {
         const result = await this.rating.skip({ monitor });
-        return { ...changed, item: mediaJson(this.database, result.rated), warnings: result.warnings, playing: this.playing(result.playing) };
+        return { ...changed, item: mediaJson(this.database, result.rated, undefined, { config: this.config.get() }), warnings: result.warnings, playing: this.playing(result.playing) };
       }),
       monitorAction('speed', async (monitor, { value }) => ({ ...changed, speed: (await this.display.speed(this.text(value, 'value'), { monitor })).speed })),
       monitorAction('dim', async (monitor, { value }) => {
@@ -212,7 +212,7 @@ export class WebServer {
       }],
       ['POST', /^\/api\/undo$/, async () => {
         const { action, media, warnings } = await this.rating.undo();
-        return { ...changed, action, item: media ? mediaJson(this.database, media) : null, warnings };
+        return { ...changed, action, item: media ? mediaJson(this.database, media, undefined, { config: this.config.get() }) : null, warnings };
       }],
       ['POST', /^\/api\/mode$/, async request => {
         const { mode, monitor } = await this.body(request);

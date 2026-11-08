@@ -38,7 +38,7 @@ export class ListCommand {
     if (json && options.interactive) throw new Error('--json cannot be combined with --interactive');
     const items = this.database.findMedia(filters);
     if (json) {
-      out.json(items.map(item => mediaJson(this.database, item)));
+      out.json(items.map(item => mediaJson(this.database, item, undefined, { config: this.config.get() })));
       await this.exportPlaylist(items, options);
       return items;
     }

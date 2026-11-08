@@ -125,6 +125,9 @@ function renderDetails(item) {
   const bounce = dialog.querySelector('[data-adjust="bounce"]');
   bounce.value = item.bounce === null ? 'reset' : item.bounce ? 'on' : 'off';
   bounce.options[0].textContent = `Default (${videoLoop === 'bounce' ? 'on' : 'off'})`;
+  const state = dialog.querySelector('.bounce-state');
+  state.hidden = item.bounce_state !== 'reversing';
+  state.title = 'Its reversed copy is being made in the background; it bounces once that is done';
   renderPlayButtons();
 }
 

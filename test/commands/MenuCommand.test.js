@@ -196,6 +196,14 @@ describe('MenuCommand', () => {
     expect(opened).to.have.length(1);
   });
 
+  it('captions the bounce button "reversing" while its reversed copy is made', async () => {
+    db.setBounce(playing.media.id, true);
+    playing.media = db.getMedia(playing.media.id);
+    picks = [{ key: 'v' }, null, { key: 'q' }];
+    await command.open();
+    expect(shown[1].entries.find(entry => entry.label === 'bounce')).to.include({ caption: 'reversing', active: true });
+  });
+
   it('turns the video\'s bounce on and off from the speed submenu', async () => {
     picks = [{ key: 'v' }, 'bounce', null, { key: 'q' }];
     await command.open();

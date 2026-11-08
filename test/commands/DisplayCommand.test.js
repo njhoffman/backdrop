@@ -455,6 +455,22 @@ describe('DisplayCommand', () => {
     });
   });
 
+  it('says a bounce waits for its reversed copy, or starts at the end of the pass once the copy is there', async () => {
+    const id = addVideo(1, 1920, 1080);
+    // A real file, since a copy counts as ready only when it is no older than the video
+    const file = path.join(dir, 'video.mp4');
+    await fs.outputFile(file, 'video');
+    db.updateMedia(id, { path: file });
+    const media = db.getMedia(id);
+    command.control = { bounce: sinon.stub().resolves({ monitor: { name: 'DP-2' }, media, bounce: true, bouncing: true }) };
+    await command.bounce('on', {});
+    expect(lines.at(-1)).to.equal('DP-2: bounce on, reversing in the background; it bounces once that is done');
+    await fs.outputFile(path.join(config.get().paths.bounce, `${id}.mp4`), 'reversed');
+    await fs.utimes(path.join(config.get().paths.bounce, `${id}.mp4`), new Date(Date.now() + 60000), new Date(Date.now() + 60000));
+    await command.bounce('on', {});
+    expect(lines.at(-1)).to.equal('DP-2: bounce on, from the end of this pass');
+  });
+
   it('prints the stored dim for the target monitor', async () => {
     command.control = { dim: sinon.stub().resolves({ monitor: { name: 'DP-2' }, dim: 30 }) };
 

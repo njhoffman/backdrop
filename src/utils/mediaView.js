@@ -1,4 +1,5 @@
 import { basename } from 'path';
+import { bounceState } from '../display/bounce.js';
 import {
   out, fmt, icon, mark, describeMedia, displayPath, formatQueries, formatRating, formatStars, formatResolution,
   formatClock, formatFps, formatCpu, formatDecoder, formatDuration, orientationName, padVisible, isInteractive
@@ -83,7 +84,8 @@ const round = (value, digits = 1) => (Number.isFinite(value) ? Math.round(value 
 
 // The --json form of a media item; fields are documented in docs/specs/json.md. Internal columns
 // (variants, hashes, duplicate links) stay out so scripts do not depend on the schema.
-export function mediaJson(database, media, rating = database.getLatestRating(media.id)) {
+// config, when given, adds bounce_state (src/display/bounce.js): off, ready, or reversing while its copy is made
+export function mediaJson(database, media, rating = database.getLatestRating(media.id), { config } = {}) {
   const stats = database.getPlaybackStats(media.id);
   return {
     id: media.id,
@@ -99,6 +101,7 @@ export function mediaJson(database, media, rating = database.getLatestRating(med
     speed: media.speed,
     dim: media.dim,
     bounce: media.kind === 'image' ? null : media.bounce ?? null,
+    ...(config ? { bounce_state: bounceState(media, config) } : {}),
     status: media.status,
     rating: rating ? { value: rating.rating, orientation: rating.orientation, at: rating.created_at } : null,
     tags: database.getTags(media.id),
