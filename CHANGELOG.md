@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.64.3] - 2026-11-08
+
+### Fixed
+
+- Two flaky tests: the web command's tests wait for its output instead of a fixed 20 ms, and the browser test's error for a stuck step lists what each Chrome process is doing, since the stall that remains shows only in full runs.
+
 ## [2.64.2] - 2026-11-08
 
 ### Fixed

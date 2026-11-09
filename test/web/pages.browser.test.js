@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { execSync } from 'child_process';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -23,10 +24,20 @@ try {
 // their timeout, and the calls without one (opening and closing pages) go through within
 const STEP_MS = 15000;
 
+// What each Chrome process is doing (state and kernel wait channel), for the failure message: a stall has shown
+// about once in three full runs and never alone, so the message has to carry the evidence
+function chromeProcesses() {
+  try {
+    return execSync("ps -eo pid=,ppid=,stat=,wchan:24=,pcpu=,args= | grep '[c]hrome' | cut -c1-160", { encoding: 'utf8' });
+  } catch {
+    return '(ps failed)';
+  }
+}
+
 function within(step, promise) {
   let timer;
   const deadline = new Promise((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`Chrome took over ${STEP_MS / 1000} s ${step}`)), STEP_MS);
+    timer = setTimeout(() => reject(new Error(`Chrome took over ${STEP_MS / 1000} s ${step}; its processes:\n${chromeProcesses()}`)), STEP_MS);
   });
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }

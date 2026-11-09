@@ -8,6 +8,16 @@ import { WebCommand, address } from '../../src/commands/WebCommand.js';
 import { webPath } from '../../src/display/runtimeFiles.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
+// Waits until check holds, as run() reaches the point the test looks at in its own time (a fixed 20 ms wait failed
+// under load)
+async function until(check, ms = 5000) {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for the web command');
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+}
+
 describe('WebCommand', () => {
   let dir, db, config, lines, servers, stop;
 
@@ -46,7 +56,7 @@ describe('WebCommand', () => {
 
   it('serves on web.port, records itself while it runs and removes the record on stop', async () => {
     const running = command().run();
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await until(() => lines.some(line => String(line).includes('token=')));
     const info = await fs.readJson(webPath(config.get().paths.runtime));
     expect(info).to.include({ pid: process.pid, port: 7737 });
     expect(info.token).to.equal(servers[0].options.token);
@@ -62,7 +72,7 @@ describe('WebCommand', () => {
 
   it('says when the port was taken and which one it uses', async () => {
     const running = command({ busy: 8000 }).run({ port: '8000' });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await until(() => lines.some(line => String(line).includes('token=')));
     expect(lines.join('\n')).to.include('Port 8000 is taken; serving on 40000 instead');
     stop();
     expect(await running).to.equal(40000);
@@ -78,7 +88,7 @@ describe('WebCommand', () => {
   it('opens the page with --open: its own, or the running server\'s', async () => {
     const opened = [];
     const running = command({ opened }).run({ open: true });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await until(() => opened.length > 0);
     const { token } = await fs.readJson(webPath(config.get().paths.runtime));
     expect(opened).to.deep.equal([address(7737, token)]);
     expect(servers[0].options).to.include.keys('stats', 'doctor', 'settings', 'library', 'visualizer');
