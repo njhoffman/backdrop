@@ -70,7 +70,7 @@ const SECTIONS = {
     bounce_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
       kind: 'number', min: 0, step: 1, help: 'Room for reversed copies of bouncing videos, in GB; 0 for no limit'
     }),
-    smooth: field(boolean, { kind: 'boolean', help: 'Make 60 fps copies of slowed videos with RIFE in the background, so they play without stutter' }),
+    smooth: field(boolean, { kind: 'boolean', help: 'Make smooth_fps copies of slowed videos with RIFE in the background, so they play without stutter' }),
     smooth_fps: field(integer(24, 240), { kind: 'integer', min: 24, max: 240, help: 'Frames a second a slowed video shows once smoothed' }),
     smooth_blend: field(boolean, { kind: 'boolean', help: 'Blend frames (mpv interpolation) while a slowed video has no smoothed copy yet' }),
     smooth_rife: field(text, { kind: 'text', help: 'The rife-ncnn-vulkan binary; its rife-v4.6 model folder sits beside it' }),

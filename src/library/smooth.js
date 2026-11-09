@@ -40,15 +40,19 @@ export function smoothedReversedReady(media, dir) {
   return Boolean(media?.path && dir && newer(smoothedReversedPath(media, dir), smoothedPath(media, dir)) && smoothedReady(media, dir));
 }
 
+// display.smooth_fps when unset: 30 a second is enough for a slowed video not to stutter, and costs half the GPU
+// time of 60
+export const SMOOTH_FPS = 30;
+
 // The whole factor of frames that brings a video of fps at speed to the target frames a second, or 1 when it already
 // shows that many. Within 1% counts: 29.97 fps at 0.5 takes 4 (59.94 a second), not 5.
-export function smoothFactor(fps, speed, target = 60) {
+export function smoothFactor(fps, speed, target = SMOOTH_FPS) {
   if (!(fps > 0) || !(speed > 0)) return 1;
   return Math.max(1, Math.ceil((target * 0.99) / (fps * speed)));
 }
 
 // Whether an item wants a smoothed copy: a downloaded video, slowed, that shows fewer than target frames a second
-export function wantsSmoothing(media, target = 60) {
+export function wantsSmoothing(media, target = SMOOTH_FPS) {
   return Boolean(media?.path && ['video', 'gif'].includes(media.kind) && media.speed < 1 && media.fps > 0
     && media.duration > 0 && smoothFactor(media.fps, media.speed, target) > 1);
 }
@@ -98,7 +102,7 @@ const partName = index => `p${String(index).padStart(5, '0')}.mp4`;
 // kept there, so a job stopped by the load or a daemon restart starts again at its first missing chunk, with the
 // encoder it was using. A finished copy, or a failure with every encoder, removes the folder.
 export async function smoothVideo(media, dir, {
-  rife, size, target = 60, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true
+  rife, size, target = SMOOTH_FPS, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true
 } = {}) {
   if (!wantsSmoothing(media, target) || !rife || !size) return null;
   const factor = smoothFactor(media.fps, media.speed, target);

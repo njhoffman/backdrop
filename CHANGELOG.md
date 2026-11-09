@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.65.0] - 2026-11-08
+
+### Changed
+
+- Smoothing makes 30 fps copies by default (`display.smooth_fps: 30`, was 60): enough for a slowed video not to stutter, in about half the GPU time. A video that already shows 30 frames a second when slowed (59.94 fps at 0.5) gets no copy. Copies already made at 60 fps are kept; set `smooth_fps: 60` to go on making them.
+
 ## [2.64.3] - 2026-11-08
 
 ### Fixed

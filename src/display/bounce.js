@@ -1,5 +1,5 @@
 import { reversedPath, reversedReady } from '../library/reverse.js';
-import { smoothedPath, smoothedReady, smoothedReversedPath, smoothedReversedReady, wantsSmoothing } from '../library/smooth.js';
+import { SMOOTH_FPS, smoothedPath, smoothedReady, smoothedReversedPath, smoothedReversedReady, wantsSmoothing } from '../library/smooth.js';
 
 // What mpv loads for a video: the file, or an EDL URL joining files into one timeline. A bouncing video plays to its
 // end, backwards to its start and forwards again: its file and its reversed copy (src/library/reverse.js), so
@@ -81,7 +81,7 @@ export function isSmoothedUrl(filename) {
 // Whether display.smooth applies to the item and its copy for its speed is ready
 export function smoothedFor(media, config) {
   const display = config?.display ?? {};
-  return Boolean(display.smooth && wantsSmoothing(media, display.smooth_fps ?? 60) && smoothedReady(media, config.paths?.smooth));
+  return Boolean(display.smooth && wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS) && smoothedReady(media, config.paths?.smooth));
 }
 
 // What mpv loads for an item: its smoothed copy when ready, and with bounce the reversed copy of what plays forward

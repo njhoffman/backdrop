@@ -20,15 +20,19 @@ describe('smooth', () => {
   });
 
   it('raises the frame rate by a whole factor until the speed shows the target', () => {
-    expect(smoothFactor(30, 0.5)).to.equal(4);
-    expect(smoothFactor(30, 0.75)).to.equal(3);
-    expect(smoothFactor(25, 0.5)).to.equal(5);
-    expect(smoothFactor(59.94, 0.5)).to.equal(2);
-    expect(smoothFactor(29.97, 0.5)).to.equal(4);
-    expect(smoothFactor(23.976, 0.5)).to.equal(5);
-    expect(smoothFactor(60, 0.5)).to.equal(2);
-    expect(smoothFactor(60, 1)).to.equal(1);
+    expect(smoothFactor(30, 0.5, 60)).to.equal(4);
+    expect(smoothFactor(30, 0.75, 60)).to.equal(3);
+    expect(smoothFactor(25, 0.5, 60)).to.equal(5);
+    expect(smoothFactor(59.94, 0.5, 60)).to.equal(2);
+    expect(smoothFactor(29.97, 0.5, 60)).to.equal(4);
+    expect(smoothFactor(23.976, 0.5, 60)).to.equal(5);
+    expect(smoothFactor(60, 0.5, 60)).to.equal(2);
+    expect(smoothFactor(60, 1, 60)).to.equal(1);
     expect(smoothFactor(30, 0.5, 30)).to.equal(2);
+    // The default target is 30: 0.5 doubles a 30 fps video, 0.75 too (45 a second), 59.94 at 0.5 already shows 30
+    expect(smoothFactor(30, 0.5)).to.equal(2);
+    expect(smoothFactor(30, 0.75)).to.equal(2);
+    expect(smoothFactor(59.94, 0.5)).to.equal(1);
     expect(smoothFactor(0, 0.5)).to.equal(1);
   });
 
@@ -40,6 +44,8 @@ describe('smooth', () => {
     expect(wantsSmoothing({ ...video, path: null })).to.equal(false);
     expect(wantsSmoothing({ ...video, fps: null })).to.equal(false);
     expect(wantsSmoothing({ ...video, fps: 240 })).to.equal(false);
+    expect(wantsSmoothing({ ...video, fps: 59.94 })).to.equal(false);
+    expect(wantsSmoothing({ ...video, fps: 59.94 }, 60)).to.equal(true);
   });
 
   it('makes the copy just large enough to cover the largest monitor, never larger than the video', () => {
@@ -107,7 +113,7 @@ describe('smooth', () => {
     it('interpolates each chunk with the next one\'s first frame, drops that frame and joins the chunks', async () => {
       const exec = fakeExec({ taken: count => (count === 21 ? 21 : 5) });
       const copy = await smoothVideo(media, dir, {
-        rife: '/opt/rife', size: { width: 640, height: 360 }, exec, nice: false, logger: silentLogger, encoders: ['x264']
+        rife: '/opt/rife', size: { width: 640, height: 360 }, exec, nice: false, logger: silentLogger, encoders: ['x264'], target: 60
       });
       expect(copy).to.equal(path.join(dir, '3@0.5.mp4'));
       const extracts = calls.filter(call => call[0] === 'ffmpeg' && call.some(arg => String(arg).endsWith('%06d.png')));

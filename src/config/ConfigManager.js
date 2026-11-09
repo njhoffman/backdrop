@@ -199,7 +199,7 @@ export class ConfigManager {
       thumbnails: path.join(cacheDir, 'thumbnails'),
       // Reversed copies of videos that bounce (display.video_loop, `backdrop bounce`)
       bounce: path.join(cacheDir, 'bounce'),
-      // 60 fps copies of slowed videos (display.smooth), and their reversed copies for bounce
+      // Smoothed (smooth_fps) copies of slowed videos (display.smooth), and their reversed copies for bounce
       smooth: path.join(cacheDir, 'smooth'),
       runtime: runtimeDir()
     };
@@ -230,7 +230,7 @@ export class ConfigManager {
         video_loop: 'loop',
         bounce_cache_gb: 10,
         smooth: false,
-        smooth_fps: 60,
+        smooth_fps: 30,
         smooth_blend: true,
         smooth_rife: 'rife-ncnn-vulkan',
         allow_upscale: false,

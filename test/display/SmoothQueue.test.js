@@ -112,7 +112,7 @@ describe('Smooth (daemon)', () => {
     smooth.want(media);
     await settle();
     expect(reversed).to.have.length(1);
-    expect(reversed[0]).to.include({ id: `${media.id}@0.5.reversed`, path: smoothedPath(media, config.get().paths.smooth), fps: 120, width: 1920 });
+    expect(reversed[0]).to.include({ id: `${media.id}@0.5.reversed`, path: smoothedPath(media, config.get().paths.smooth), fps: 60, width: 1920 });
     expect(await fs.pathExists(smoothedReversedPath(media, config.get().paths.smooth))).to.equal(true);
   });
 

@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl } from '../bounce.js';
 import { MODE_KINDS } from '../Playlist.js';
 import {
-  listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
+  SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
   smoothedReversedReady, smoothFactor, wantsSmoothing
 } from '../../library/smooth.js';
 
@@ -32,7 +32,7 @@ export class Smooth {
   }
 
   get target() {
-    return this.settings.display.smooth_fps ?? 60;
+    return this.settings.display.smooth_fps ?? SMOOTH_FPS;
   }
 
   async begin() {
