@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.66.0] - 2026-11-09
+
+### Added
+
+- `display.smooth_below` (20 by default): only slowed videos that show fewer frames a second than this get a smoothed copy, and frame blending until it is ready, so a mild slowdown such as 0.75 of a 30 fps video (22.5) plays as it is instead of costing a RIFE job. Copies already made stay.
+
 ## [2.65.0] - 2026-11-08
 
 ### Changed

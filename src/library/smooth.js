@@ -44,6 +44,16 @@ export function smoothedReversedReady(media, dir) {
 // time of 60
 export const SMOOTH_FPS = 30;
 
+// display.smooth_below when unset: a slowed video showing fewer frames a second than this stutters; 0.75 of 30 fps (22.5)
+// plays well enough as it is, 0.75 of 24 (18) and 0.5 of 30 (15) do not
+export const SMOOTH_BELOW = 20;
+
+// Whether a slowed video stutters at its speed: only those get a new copy, and frame blending while it has none. A copy
+// made before (another threshold) stays while wantsSmoothing holds, since it costs nothing more to keep
+export function stutters(media, below = SMOOTH_BELOW) {
+  return Boolean(media?.speed < 1 && media.fps > 0 && media.fps * media.speed < below);
+}
+
 // The whole factor of frames that brings a video of fps at speed to the target frames a second, or 1 when it already
 // shows that many. Within 1% counts: 29.97 fps at 0.5 takes 4 (59.94 a second), not 5.
 export function smoothFactor(fps, speed, target = SMOOTH_FPS) {

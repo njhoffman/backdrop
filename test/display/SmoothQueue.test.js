@@ -86,6 +86,33 @@ describe('Smooth (daemon)', () => {
     expect(made).to.deep.equal([{ id: media.id, size: { width: 1920, height: 1080 } }]);
   });
 
+  it('makes no copy of a video that plays smoothly enough, nor blends it, and keeps a copy made for it before', async () => {
+    // 0.75 of 30 shows 22.5 frames a second, above smooth_below (20)
+    const mild = await video(1, { speed: 0.75 });
+    const stuttering = await video(2, { speed: 0.75, fps: 24 });
+    smooth.want(mild);
+    smooth.want(stuttering);
+    await settle();
+    expect(made.map(item => item.id)).to.deep.equal([stuttering.id]);
+
+    const client = new FakeMpvClient();
+    const screen = { monitor: { name: 'DP-1' }, client };
+    await smooth.applyBlend(screen, mild, mild.path);
+    expect(client.commands).to.deep.equal([]);
+    await smooth.applyBlend(screen, stuttering, stuttering.path);
+    expect(client.properties).to.include({ interpolation: true });
+
+    // A copy from when the threshold was higher stays
+    await fs.outputFile(smoothedPath(mild, config.get().paths.smooth), 'copy');
+    expect(await smooth.prune()).to.deep.equal([]);
+    // and a lower threshold queues the mild one
+    config.set('display.smooth_below', 24);
+    await fs.remove(smoothedPath(mild, config.get().paths.smooth));
+    smooth.want(mild);
+    await settle();
+    expect(made.map(item => item.id)).to.deep.equal([stuttering.id, mild.id]);
+  });
+
   it('carries on with an item a stopped job left chunks for before the rest of the backlog', async () => {
     const high = await video(1);
     const started = await video(2);
@@ -179,7 +206,7 @@ describe('Smooth (daemon)', () => {
     const media = await video(2);
     await fs.outputFile(smoothedPath(media, config.get().paths.smooth), 'copy for 0.5');
     smooth.want(other, { start: false });
-    db.updateMedia(media.id, { speed: 0.75 });
+    db.updateMedia(media.id, { speed: 0.6 });
     daemon.load.level = 'images';
     await smooth.changed(media.id);
     expect([...smooth.queue.keys()]).to.deep.equal([media.id, other.id]);

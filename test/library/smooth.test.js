@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   listSmoothWork, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
-  smoothedReversedPath, wantsSmoothing
+  smoothedReversedPath, stutters, wantsSmoothing
 } from '../../src/library/smooth.js';
 import { silentLogger } from '../helpers/fakes.js';
 
@@ -34,6 +34,17 @@ describe('smooth', () => {
     expect(smoothFactor(30, 0.75)).to.equal(2);
     expect(smoothFactor(59.94, 0.5)).to.equal(1);
     expect(smoothFactor(0, 0.5)).to.equal(1);
+  });
+
+  it('counts a slowed video as stuttering below smooth_below frames a second, 20 by default', () => {
+    const video = { kind: 'video', speed: 0.5, fps: 30 };
+    expect(stutters(video)).to.equal(true);
+    // 0.75 of 30 shows 22.5, 0.75 of 24 shows 18
+    expect(stutters({ ...video, speed: 0.75 })).to.equal(false);
+    expect(stutters({ ...video, speed: 0.75, fps: 24 })).to.equal(true);
+    expect(stutters({ ...video, speed: 0.75 }, 24)).to.equal(true);
+    expect(stutters({ ...video, speed: 1, fps: 15 })).to.equal(false);
+    expect(stutters({ ...video, fps: null })).to.equal(false);
   });
 
   it('wants slowed, downloaded videos that show fewer frames than the target', () => {

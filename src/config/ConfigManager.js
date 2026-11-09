@@ -231,6 +231,7 @@ export class ConfigManager {
         bounce_cache_gb: 10,
         smooth: false,
         smooth_fps: 30,
+        smooth_below: 20,
         smooth_blend: true,
         smooth_rife: 'rife-ncnn-vulkan',
         allow_upscale: false,

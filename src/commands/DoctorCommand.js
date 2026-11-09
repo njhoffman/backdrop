@@ -8,7 +8,7 @@ import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
-import { SMOOTH_FPS, rifeModel, smoothedReady, wantsSmoothing } from '../library/smooth.js';
+import { SMOOTH_BELOW, SMOOTH_FPS, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
@@ -219,7 +219,8 @@ export class DoctorCommand {
       return;
     }
     const slowed = this.database.findMedia({ kind: ['video', 'gif'], status: ['new', 'kept'], downloaded: true })
-      .filter(media => wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS));
+      .filter(media => wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS)
+        && (stutters(media, display.smooth_below ?? SMOOTH_BELOW) || smoothedReady(media, paths.smooth)));
     const ready = slowed.filter(media => smoothedReady(media, paths.smooth)).length;
     add('library', 'smoothing', 'ok', `${ready} of ${slowed.length} slowed videos smoothed${ready < slowed.length ? '; the daemon makes the rest' : ''}`);
   }

@@ -2,8 +2,8 @@ import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl } from '../bounce.js';
 import { MODE_KINDS } from '../Playlist.js';
 import {
-  SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
-  smoothedReversedReady, smoothFactor, wantsSmoothing
+  SMOOTH_BELOW, SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
+  smoothedReversedReady, smoothFactor, stutters, wantsSmoothing
 } from '../../library/smooth.js';
 
 // Smoothed copies of slowed videos (display.smooth, src/library/smooth.js) for a Daemon (passed in), and mpv's frame
@@ -35,6 +35,10 @@ export class Smooth {
     return this.settings.display.smooth_fps ?? SMOOTH_FPS;
   }
 
+  get below() {
+    return this.settings.display.smooth_below ?? SMOOTH_BELOW;
+  }
+
   async begin() {
     if (!this.settings.paths.smooth) return;
     await removeStaleSmoothWork(this.settings.paths.smooth);
@@ -56,11 +60,11 @@ export class Smooth {
     this.kick();
   }
 
-  // Whether an item needs work: its smoothed copy, or the reversed copy of it when it bounces
+  // Whether an item needs work: its smoothed copy when it stutters, or the reversed copy of a copy it has when it bounces
   needs(media) {
     if (!this.enabled || !wantsSmoothing(media, this.target)) return false;
     const dir = this.settings.paths.smooth;
-    if (!smoothedReady(media, dir)) return true;
+    if (!smoothedReady(media, dir)) return stutters(media, this.below);
     return bounces(media, this.settings.display) && !smoothedReversedReady(media, dir);
   }
 
@@ -89,7 +93,7 @@ export class Smooth {
   // display.smooth_blend: mpv's interpolation, timed to the display, while a slowed video plays without a smoothed
   // copy; back to its defaults for anything else, since blending needs a steady display clock to help
   async applyBlend(screen, media, filename) {
-    const slowed = Boolean(media && MODE_KINDS.video.includes(media.kind) && media.speed < 1);
+    const slowed = Boolean(media && MODE_KINDS.video.includes(media.kind) && stutters(media, this.below));
     const blend = Boolean(this.settings.display.smooth_blend && slowed && !isSmoothedUrl(filename));
     if (blend === Boolean(screen.blending)) return;
     try {

@@ -56,6 +56,8 @@ display:
   smooth: false            # true: copies of slowed videos (speed below 1) with the frames in between made by RIFE,
                            #   so they still show smooth_fps frames a second; made in the background, one at a time
   smooth_fps: 30           # frames a second a slowed video shows once smoothed
+  smooth_below: 20         # only slowed videos showing fewer frames a second than this get a copy (and blending);
+                           #   0.75 of 30 fps (22.5) plays as it is. Copies made before stay
   smooth_blend: true       # mpv blends frames (interpolation, display-resample) while a slowed video has no copy yet
   smooth_rife: rife-ncnn-vulkan  # the RIFE binary (https://github.com/nihui/rife-ncnn-vulkan); rife-v4.6 beside it
   allow_upscale: false     # true allows media smaller than the monitor

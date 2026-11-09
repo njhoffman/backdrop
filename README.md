@@ -135,7 +135,7 @@ every pass, so the order is random without repeats; automatic advances follow it
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
 Slowed videos (`backdrop speed 0.5`) show fewer frames a second and can stutter. With `display.smooth: true` and
 [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) installed (`display.smooth_rife`, its `rife-v4.6`
-model folder beside it), the daemon makes 30 fps copies of them (`display.smooth_fps`) in the background on the GPU; until a copy is ready,
+model folder beside it), the daemon makes 30 fps copies (`display.smooth_fps`) of those that show fewer than 20 frames a second (`display.smooth_below`) in the background on the GPU; until a copy is ready,
 mpv blends frames. Each copy takes a while (about one frame a second on integrated graphics), so the first ones
 appear after minutes; `doctor` shows how many are done.
 
