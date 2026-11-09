@@ -152,6 +152,31 @@ describe('DoctorCommand', () => {
     expect(byName(await doctor().run(), 'smoothing')).to.include({ status: 'ok', detail: '0 of 1 slowed videos smoothed; the daemon makes the rest' });
   });
 
+  it('reports the smooth cache against its limit, and says when a full cache holds the backlog', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-doctor-smooth-'));
+    try {
+      config.set('paths.smooth', dir);
+      config.set('display.smooth', true);
+      config.set('display.smooth_rife', 'rife-ncnn-vulkan');
+      const video = path.join(dir, 'media', '1.mp4');
+      await fs.outputFile(video, 'video');
+      await fs.utimes(video, 1000, 1000);
+      const done = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: video, speed: 0.5, fps: 30, duration: 10 }));
+      db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/2.mp4', speed: 0.5, fps: 30, duration: 10 });
+      await fs.outputFile(path.join(dir, `${done.id}@0.5.mp4`), Buffer.alloc(2048));
+      config.set('display.smooth_cache_gb', 1);
+      expect(byName(await doctor({ which: async () => true }).run(), 'smoothing')).to.include({
+        status: 'ok', detail: '1 of 2 slowed videos smoothed, 2.0 KB of 1.0 GB; the daemon makes the rest'
+      });
+      config.set('display.smooth_cache_gb', 3 / 1024 ** 2);
+      expect(byName(await doctor({ which: async () => true }).run(), 'smoothing').detail).to.include('the cache is full');
+      config.set('display.smooth_cache_gb', 1 / 1024 ** 2);
+      expect(byName(await doctor({ which: async () => true }).run(), 'smoothing').status).to.equal('warn');
+    } finally {
+      await fs.remove(dir);
+    }
+  });
+
   it('runs the visualizer check with --visualizer, and prints JSON', async () => {
     const checkVisualizers = async () => [{ preset: null, instance: 'main', ok: true }, { preset: 'ring', instance: 'ring', ok: false, code: 1, output: ['syntax error'] }];
     const checks = await doctor({ checkVisualizers }).run({ visualizer: true, json: true });

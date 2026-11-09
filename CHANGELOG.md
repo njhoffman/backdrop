@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.68.0] - 2026-11-09
+
+### Added
+
+- `display.smooth_cache_gb` (10 by default, 0 for no limit) keeps smoothed copies in `~/.cache/backdrop/smooth` within a size, like `bounce_cache_gb`: over it, the copies of the lowest-rated videos go first, the newest of them first, a video's forward and reversed copies together. While the cache is full the background backlog stops, so no copy is made only to be deleted again; the videos playing now and next still get theirs. `doctor` shows the cache's size against the limit. A saved change applies without a restart.
+
 ## [2.67.0] - 2026-11-09
 
 ### Changed

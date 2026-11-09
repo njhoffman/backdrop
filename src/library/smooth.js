@@ -218,13 +218,18 @@ export async function smoothVideo(media, dir, {
   return null;
 }
 
-// Copies of items that no longer want them (another speed, gone, skipped, smoothing off) and stale work folders
+// The smoothed copies in dir (forward and reversed), with their size and modification time, oldest first
 export async function listSmoothed(dir) {
   const names = await fs.readdir(dir).catch(() => []);
-  return names.map(name => {
+  const copies = [];
+  for (const name of names) {
     const match = /^(\d+)@([\d.]+)(\.reversed)?\.mp4$/.exec(name);
-    return match ? { id: Number(match[1]), speed: Number(match[2]), reversed: Boolean(match[3]), file: path.join(dir, name) } : null;
-  }).filter(Boolean);
+    if (!match) continue;
+    const file = path.join(dir, name);
+    const stat = await fs.stat(file).catch(() => null);
+    if (stat?.isFile()) copies.push({ id: Number(match[1]), speed: Number(match[2]), reversed: Boolean(match[3]), file, size: stat.size, mtimeMs: stat.mtimeMs });
+  }
+  return copies.sort((a, b) => a.mtimeMs - b.mtimeMs);
 }
 
 // Work folders kept by stopped jobs, by item and speed

@@ -242,4 +242,70 @@ describe('Smooth (daemon)', () => {
     await settle();
     expect(daemon.smoothVideo.callCount).to.equal(1);
   });
+
+  describe('display.smooth_cache_gb', () => {
+    const KB = 1024 / 1024 ** 3;
+    const kilobytes = n => 'x'.repeat(1024 * n);
+
+    it('deletes the lowest-rated items\' copies over the limit, the newest first, forward and reversed together', async () => {
+      const dirSmooth = config.get().paths.smooth;
+      const high = await video(1, { bounce: true });
+      const lowOld = await video(2, { bounce: true });
+      const lowNew = await video(3, { bounce: true });
+      const playing = await video(4);
+      db.addRating(high.id, 3);
+      db.addRating(lowOld.id, 1);
+      db.addRating(lowNew.id, 1);
+      let mtime = 1000;
+      for (const media of [high, lowOld, lowNew, playing]) {
+        for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) {
+          if (media === playing && file.includes('reversed')) continue;
+          await fs.outputFile(file, kilobytes(1));
+          await fs.utimes(file, mtime, mtime++);
+        }
+      }
+      daemon.screens = new Map([['DP-1', { media: playing }]]);
+      // 7 KB of copies: room for 4, the playing item's counted but kept
+      config.set('display.smooth_cache_gb', 4 * KB);
+      expect((await smooth.prune()).sort()).to.deep.equal([lowOld.id, lowNew.id].sort());
+      expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${high.id}@0.5.mp4`, `${high.id}@0.5.reversed.mp4`, `${playing.id}@0.5.mp4`]);
+      expect(smooth.usage).to.deep.equal({ bytes: 3 * 1024, items: 2 });
+      expect(swapped).to.have.length(1);
+
+      // 0 is no limit
+      await fs.outputFile(smoothedPath(lowNew, dirSmooth), kilobytes(8));
+      config.set('display.smooth_cache_gb', 0);
+      expect(await smooth.prune()).to.deep.equal([]);
+    });
+
+    it('stops the backlog once the cache is full, and still makes copies for what plays now and next', async () => {
+      daemon.smoothVideo = async (media, { dir: out }) => {
+        made.push({ id: media.id });
+        await fs.outputFile(smoothedPath(media, out), kilobytes(2));
+        return smoothedPath(media, out);
+      };
+      config.set('display.smooth_cache_gb', 5 * KB);
+      const items = [];
+      for (let n = 1; n <= 4; n++) {
+        items.push(await video(n));
+        db.addRating(items.at(-1).id, 3);
+      }
+      await smooth.begin();
+      await settle();
+      // Two copies (4 KB) leave no room for a third of the same size
+      const first = made.map(item => item.id);
+      expect(first).to.have.length(2);
+      expect(smooth.queue.size).to.equal(0);
+
+      const next = await video(5);
+      smooth.want(next, { first: true });
+      await settle();
+      expect(made.map(item => item.id)).to.deep.equal([...first, next.id]);
+      // The new, unrated copy was protected while it was made: a backlog copy went instead, so the cache fits again
+      const dirSmooth = config.get().paths.smooth;
+      expect(await fs.pathExists(smoothedPath(next, dirSmooth))).to.equal(true);
+      expect(await fs.readdir(dirSmooth)).to.have.length(2);
+      expect(smooth.usage.bytes).to.be.at.most(5 * 1024);
+    });
+  });
 });

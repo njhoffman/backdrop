@@ -8,7 +8,7 @@ import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
-import { SMOOTH_BELOW, SMOOTH_FPS, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
+import { SMOOTH_BELOW, SMOOTH_FPS, listSmoothed, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
@@ -222,7 +222,17 @@ export class DoctorCommand {
       .filter(media => wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS)
         && (stutters(media, display.smooth_below ?? SMOOTH_BELOW) || smoothedReady(media, paths.smooth)));
     const ready = slowed.filter(media => smoothedReady(media, paths.smooth)).length;
-    add('library', 'smoothing', 'ok', `${ready} of ${slowed.length} slowed videos smoothed${ready < slowed.length ? '; the daemon makes the rest' : ''}`);
+    const copies = await listSmoothed(paths.smooth);
+    const used = copies.reduce((sum, copy) => sum + copy.size, 0);
+    const limit = (display.smooth_cache_gb ?? 0) * 1024 ** 3;
+    // The daemon stops the backlog at the limit, so the rest wait rather than come
+    const full = limit && used + (copies.length ? used / new Set(copies.map(copy => copy.id)).size : 0) > limit;
+    const rest = ready < slowed.length ? (full ? '; the cache is full, so only what plays now and next is made' : '; the daemon makes the rest') : '';
+    const cache = copies.length ? `, ${formatBytes(used)}${limit ? ` of ${formatBytes(limit)}` : ' (no limit)'}` : '';
+    // The daemon prunes after each copy, so being well over means it is not running or cannot delete
+    const over = limit && used > limit * 1.1;
+    add('library', 'smoothing', over ? 'warn' : 'ok', `${ready} of ${slowed.length} slowed videos smoothed${cache}${rest}`,
+      over ? `the daemon prunes it to display.smooth_cache_gb; delete ${displayPath(paths.smooth)} to clear it` : undefined);
   }
 
   // Animated WebP in the import folders that this FFmpeg could not decode, still there to convert

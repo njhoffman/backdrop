@@ -1,6 +1,8 @@
 import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl } from '../bounce.js';
 import { MODE_KINDS } from '../Playlist.js';
+
+const GIGABYTE = 1024 ** 3;
 import {
   SMOOTH_BELOW, SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
   smoothedReversedReady, smoothFactor, stutters, wantsSmoothing
@@ -11,12 +13,17 @@ import {
 // again later): the items playing and next first, then every other slowed video, the highest rated first. A bouncing
 // item's copy gets its own reversed copy after it. When an item's copies are ready its playlist entries are swapped
 // (the bounce queue's swap, which also switches a playing entry at the end of its pass). Copies of items no longer
-// slowed, at another speed, gone or skipped are deleted.
+// slowed, at another speed, gone or skipped are deleted, and the rest kept within display.smooth_cache_gb (prune).
+// Copies for the items playing and next are always made; the backlog only while the cache has room for another.
 export class Smooth {
   constructor(daemon) {
     this.daemon = daemon;
     // Items waiting, by id, in order
     this.queue = new Map();
+    // Queued items that play now or next, made even when the cache is full
+    this.urgent = new Set();
+    // What the copies take, from the last prune: { bytes, items }
+    this.usage = { bytes: 0, items: 0 };
     this.failed = new Set();
     this.running = null;
     this.controller = null;
@@ -71,7 +78,10 @@ export class Smooth {
   // first: ahead of the backlog (an item playing or next)
   want(media, { first = false, start = true } = {}) {
     if (!media || this.failed.has(media.id) || this.encoding === media.id || !this.needs(media)) return;
-    if (first) this.queue = new Map([[media.id, media], ...[...this.queue].filter(([id]) => id !== media.id)]);
+    if (first) {
+      this.queue = new Map([[media.id, media], ...[...this.queue].filter(([id]) => id !== media.id)]);
+      this.urgent.add(media.id);
+    }
     else if (!this.queue.has(media.id)) this.queue.set(media.id, media);
     if (start) this.kick();
   }
@@ -112,9 +122,11 @@ export class Smooth {
     if (!this.daemon.monitors.size) return;
     const [id, queued] = this.queue.entries().next().value;
     this.queue.delete(id);
+    const urgent = this.urgent.delete(id);
     // The item as it is now: its speed may have changed while it waited
     const media = this.daemon.database.getMedia(id) ?? queued;
-    if (!this.needs(media)) {
+    // A backlog copy made into a full cache would only be pruned again; it waits for the next backlog
+    if (!this.needs(media) || (!urgent && !this.hasRoom())) {
       this.kick();
       return;
     }
@@ -159,7 +171,17 @@ export class Smooth {
     await this.daemon.enqueue(async () => {
       this.daemon.bounce.pending.add(media.id);
       await this.daemon.bounce.swap(this.daemon.bounce.pending);
+      // The new copy is for an item playing, next, or high in the backlog
+      await this.prune(new Set([media.id]));
     });
+  }
+
+  // Whether the cache has room for one more copy of the average size so far (any size while it is empty)
+  hasRoom() {
+    const limit = (this.settings.display.smooth_cache_gb ?? 0) * GIGABYTE;
+    if (!limit) return true;
+    const { bytes, items } = this.usage;
+    return items ? bytes + bytes / items <= limit : bytes < limit;
   }
 
   requeue(media) {
@@ -172,6 +194,7 @@ export class Smooth {
 
   async stop() {
     this.queue.clear();
+    this.urgent.clear();
     this.controller?.abort();
     await this.running;
   }
@@ -198,22 +221,57 @@ export class Smooth {
   }
 
   // Deletes copies no longer wanted: smoothing off, the item gone, skipped, at another speed or no longer slowed, and a
-  // reversed copy of an item that no longer bounces, and the kept work of jobs for them. Copies of what plays now stay. Their entries go back to what the
-  // item loads now. Returns the ids whose copies were deleted.
-  async prune() {
+  // reversed copy of an item that no longer bounces, and the kept work of jobs for them. Then, while the rest do not fit
+  // in display.smooth_cache_gb (0 for no limit), an item's copies (forward and reversed together) of the lowest-rated
+  // items, the newest first, as display.bounce_cache_gb does. Copies of what plays now and of protect stay, counted
+  // toward the limit. Their entries go back to what the item loads now. Returns the ids whose copies were deleted.
+  async prune(protect = new Set()) {
     const { paths, display } = this.settings;
     if (!paths.smooth) return [];
     const playing = new Set([...this.daemon.screens.values()].map(screen => screen.media?.id).filter(Boolean));
+    for (const id of protect) playing.add(id);
     const removed = new Set();
+    const remove = async copy => {
+      try {
+        await fs.remove(copy.file);
+        removed.add(copy.id);
+        return true;
+      } catch (error) {
+        this.daemon.logger.warn('Failed to delete a smoothed copy', { file: copy.file, error: error.message });
+        return false;
+      }
+    };
+    const kept = new Map();
     for (const copy of await listSmoothed(paths.smooth)) {
-      if (playing.has(copy.id)) continue;
-      const media = this.daemon.database.getMedia(copy.id);
-      const wanted = display.smooth && media?.path && media.status !== 'skipped' && media.speed === copy.speed
-        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display));
-      if (wanted) continue;
-      await fs.remove(copy.file).catch(error => this.daemon.logger.warn('Failed to delete a smoothed copy', { file: copy.file, error: error.message }));
-      removed.add(copy.id);
+      const media = playing.has(copy.id) ? null : this.daemon.database.getMedia(copy.id);
+      const wanted = playing.has(copy.id) || (display.smooth && media?.path && media.status !== 'skipped' && media.speed === copy.speed
+        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)));
+      if (!wanted && await remove(copy)) continue;
+      const item = kept.get(copy.id) ?? { id: copy.id, copies: [], size: 0, mtimeMs: 0 };
+      item.copies.push(copy);
+      item.size += copy.size;
+      item.mtimeMs = Math.max(item.mtimeMs, copy.mtimeMs);
+      kept.set(copy.id, item);
     }
+    const limit = (display.smooth_cache_gb ?? 0) * GIGABYTE;
+    let total = [...kept.values()].reduce((sum, item) => sum + item.size, 0);
+    const rating = id => this.daemon.database.getLatestRating(id)?.rating ?? 0;
+    const order = [...kept.values()].filter(item => !playing.has(item.id))
+      .map(item => ({ ...item, rating: rating(item.id) }))
+      .sort((a, b) => a.rating - b.rating || b.mtimeMs - a.mtimeMs);
+    let evicted = 0;
+    for (const item of order) {
+      if (!limit || total <= limit) break;
+      let gone = 0;
+      for (const copy of item.copies) {
+        if (!await remove(copy)) continue;
+        total -= copy.size;
+        gone++;
+      }
+      if (gone === item.copies.length) kept.delete(item.id);
+      if (gone) evicted++;
+    }
+    this.usage = { bytes: total, items: kept.size };
     // A stopped job's chunks stay only while its item still wants that copy (the job running now keeps its own)
     for (const work of await listSmoothWork(paths.smooth)) {
       if (work.id === this.encoding) continue;
@@ -222,7 +280,7 @@ export class Smooth {
       if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     if (removed.size) {
-      this.daemon.logger.info('Pruned smoothed copies', { items: removed.size });
+      this.daemon.logger.info('Pruned smoothed copies', { items: removed.size, overLimit: evicted, bytesKept: total });
       await this.daemon.bounce.swap(removed);
     }
     return [...removed];

@@ -75,6 +75,9 @@ const SECTIONS = {
     smooth_below: field(integer(1, 240), { kind: 'integer', min: 1, max: 240, help: 'Smooth only slowed videos that show fewer frames a second than this; copies made before stay' }),
     smooth_blend: field(boolean, { kind: 'boolean', help: 'Blend frames (mpv interpolation) while a slowed video has no smoothed copy yet' }),
     smooth_rife: field(text, { kind: 'text', help: 'The rife-ncnn-vulkan binary; its rife-v4.6 model folder sits beside it' }),
+    smooth_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
+      kind: 'number', min: 0, step: 1, help: 'Room for smoothed copies of slowed videos, in GB; 0 for no limit'
+    }),
     allow_upscale: field(boolean, { kind: 'boolean', help: 'Show media smaller than the monitor' }),
     order: field(oneOf(ORDERS), { kind: 'choice', choices: ORDERS, help: 'How next with filters picks a match: random (any still ahead) or shuffle (the next in order)' }),
     notify: field(oneOf(NOTIFY_MODES), { kind: 'choice', choices: NOTIFY_MODES, help: 'Desktop notifications: on commands, on every load, or off' }),

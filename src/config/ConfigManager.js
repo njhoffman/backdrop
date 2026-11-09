@@ -241,6 +241,7 @@ export class ConfigManager {
         smooth_below: 20,
         smooth_blend: true,
         smooth_rife: 'rife-ncnn-vulkan',
+        smooth_cache_gb: 10,
         allow_upscale: false,
         order: 'random',
         notify: 'commands',

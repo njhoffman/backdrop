@@ -10,7 +10,7 @@ export const LIVE_SETTINGS = {
   'display.order': 'taken', 'display.notify': 'taken',
   'library.trash_days': 'taken', 'library.default_import_rating': 'taken',
   'display.image_duration': 'durations', 'display.video_duration': 'durations', 'display.video_loop': 'bounce', 'display.bounce_cache_gb': 'bounce',
-  'display.smooth': 'smooth', 'display.smooth_fps': 'smooth', 'display.smooth_below': 'smooth', 'display.smooth_blend': 'smooth', 'display.smooth_rife': 'smooth',
+  'display.smooth': 'smooth', 'display.smooth_fps': 'smooth', 'display.smooth_below': 'smooth', 'display.smooth_blend': 'smooth', 'display.smooth_rife': 'smooth', 'display.smooth_cache_gb': 'smooth',
   'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
   'display.monitors': 'monitors',
   // Read when used

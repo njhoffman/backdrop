@@ -116,7 +116,13 @@ IPC socket) would break a wallpaper.
   library path as a tag (`edl://!global_tags,backdrop_path=...`), which `entryPath` reads. Until its copy is ready,
   a slowed video plays with mpv's frame blending (`smooth_blend`: `interpolation` with `video-sync=display-resample`),
   which is off for everything else. A copy made before (under another `smooth_below`) stays while the video shows
-  fewer than `smooth_fps` frames a second. Copies of items gone, skipped, at another speed or no longer slowed are deleted.
+  fewer than `smooth_fps` frames a second. Copies of items gone, skipped, at another speed or no longer slowed are deleted;
+  then, after each copy, on start and when a smooth setting or an item's speed changes, until the rest fit in
+  `display.smooth_cache_gb`, an item's copies (forward and reversed together) of the lowest-rated items, the newest
+  first, as for the bounce cache. Copies playing now, and one just made, stay. Copies for the items playing and next
+  are always made, but the backlog starts a job only while the cache has room for another of the average size so
+  far: a copy made into a full cache would be deleted again, hours of GPU for nothing. What the backlog skips is
+  queued again at the next start or smooth setting change. `doctor` shows the cache's size against the limit.
   On the Iris Xe this was measured at about one interpolated 1080p frame a second, with no dropped wallpaper frames.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the

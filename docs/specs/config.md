@@ -17,7 +17,7 @@ file again, keeps every running setting on a mistake (with a notification), rest
 section changed (only `opacity`, `palette.pick` or `palette.min_contrast` apply to the running instances without
 one), and applies the rest by kind: `display.order`, `notify`, `library.trash_days` and
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
-`video_loop` swaps playlist entries for the next play and `bounce_cache_gb` prunes the copies;
+`video_loop` swaps playlist entries for the next play and `bounce_cache_gb` prunes the copies, the `smooth` settings (with `smooth_cache_gb`) prune and queue smoothed copies;
 `allow_upscale` and `library.min_width`/`min_height` reload each monitor's playlist; `display.monitors`
 reconciles the monitors; `library.import_dirs` and `watch_imports` import the folders and watch them again. `display.mpv_args`, `xwinwrap_args` and
 `paths` need a restart, which a notification names. The `load` section applies at once. `sources`, `menu` and `output` are read by the CLI on each
@@ -60,6 +60,9 @@ display:
                            #   0.75 of 30 fps (22.5) plays as it is. Copies made before stay
   smooth_blend: true       # mpv blends frames (interpolation, display-resample) while a slowed video has no copy yet
   smooth_rife: rife-ncnn-vulkan  # the RIFE binary (https://github.com/nihui/rife-ncnn-vulkan); rife-v4.6 beside it
+  smooth_cache_gb: 10      # room for smoothed copies in ~/.cache/backdrop/smooth; over it, copies of the
+                           #   lowest-rated videos go first, the newest of them first. The backlog stops while it is
+                           #   full; copies for what plays now and next are still made. 0 for no limit
   allow_upscale: false     # true allows media smaller than the monitor
   order: random            # how next with filters picks a match: random (any still ahead this pass) or shuffle
                            #   (the next in playlist order); --random / --no-random override it per command.

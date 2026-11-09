@@ -137,7 +137,9 @@ Slowed videos (`backdrop speed 0.5`) show fewer frames a second and can stutter.
 [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) installed (`display.smooth_rife`, its `rife-v4.6`
 model folder beside it), the daemon makes 30 fps copies (`display.smooth_fps`) of those that show fewer than 20 frames a second (`display.smooth_below`) in the background on the GPU; until a copy is ready,
 mpv blends frames. Each copy takes a while (about one frame a second on integrated graphics), so the first ones
-appear after minutes; `doctor` shows how many are done.
+appear after minutes; `doctor` shows how many are done. The copies are kept within `display.smooth_cache_gb`
+(10 by default), deleting those of the lowest-rated videos first; while the cache is full, only the videos playing
+and next get new copies.
 
 With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video
 plays backwards to its start at its end and then forwards again. The daemon makes a reversed copy in
