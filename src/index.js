@@ -3,9 +3,11 @@
 import { program, Argument, CommanderError, Option } from 'commander';
 import { createRequire } from 'module';
 import fs from 'fs-extra';
-import { ConfigManager } from './config/ConfigManager.js';
+import { ConfigManager, legacyInboxPath } from './config/ConfigManager.js';
 import { DatabaseManager } from './database/DatabaseManager.js';
 import { Logger } from './utils/Logger.js';
+import { readState } from './display/Daemon.js';
+import { moveLegacyInbox } from './library/inbox.js';
 import { DisplayCommand } from './commands/DisplayCommand.js';
 import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
@@ -54,11 +56,26 @@ class BackdropApp {
       await this.ensureDirectories();
       this.logger = new Logger(config.paths.logfile);
       this.database.initialize(config.paths.database);
+      await this.moveInbox(config.paths);
 
       this.logger.info('Application initialized successfully');
     } catch (error) {
       out.error(`Failed to initialize application: ${error.message}`);
       process.exit(1);
+    }
+  }
+
+  // Unrated downloads left in the inbox's old place in the cache move to the new one, while no daemon runs (its
+  // playlist holds their old paths; it moves them itself on its next start). A failure only warns.
+  async moveInbox(paths) {
+    try {
+      if (await readState(paths.runtime)) return;
+      const result = await moveLegacyInbox({ legacy: legacyInboxPath(), inbox: paths.inbox, database: this.database, logger: this.logger });
+      if (result?.moved) out.notice(`Moved ${result.moved} unrated downloads to ${paths.inbox}`);
+      if (result?.left) out.warn(`${result.left} files stay in ${legacyInboxPath()}; see the log`);
+    } catch (error) {
+      out.warn(`Could not move the inbox out of the cache: ${error.message}`);
+      this.logger.error('Inbox move failed', { error: error.message, stack: error.stack });
     }
   }
 

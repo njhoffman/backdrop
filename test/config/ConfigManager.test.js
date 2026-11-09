@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
-import { ConfigManager, removeYaml, spliceYaml } from '../../src/config/ConfigManager.js';
+import { ConfigManager, legacyInboxPath, removeYaml, spliceYaml } from '../../src/config/ConfigManager.js';
 
 const ENV_KEYS = ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'PEXELS_API'];
 
@@ -117,7 +117,9 @@ describe('ConfigManager', () => {
       expect(paths.database).to.equal(path.join(tempDir, 'data', 'backdrop', 'backdrop.db'));
       expect(paths.media).to.equal(path.join(tempDir, 'data', 'backdrop', 'media'));
       expect(paths.trash).to.equal(path.join(tempDir, 'data', 'backdrop', 'trash'));
-      expect(paths.inbox).to.equal(path.join(tempDir, 'cache', 'backdrop', 'inbox'));
+      // Data, not cache: a cache cleaner must not take unrated downloads; the old place is still known for the move
+      expect(paths.inbox).to.equal(path.join(tempDir, 'data', 'backdrop', 'inbox'));
+      expect(legacyInboxPath()).to.equal(path.join(tempDir, 'cache', 'backdrop', 'inbox'));
       expect(paths.runtime).to.equal(path.join(tempDir, 'run', 'backdrop'));
     });
 

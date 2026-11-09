@@ -514,6 +514,19 @@ export class DatabaseManager {
     this.db.prepare('UPDATE ratings SET final = 1 WHERE media_id = ?').run(mediaId);
   }
 
+  // Files moved from one folder to another (the inbox leaving the cache): recorded rating paths in it, where undo
+  // puts a file back, point at the new folder. Returns the number of ratings changed.
+  relocateRatingPaths(fromDir, toDir) {
+    const prefix = path.join(fromDir, path.sep);
+    let changed = 0;
+    for (const column of ['previous_path', 'rated_path']) {
+      changed += Number(this.db.prepare(
+        `UPDATE ratings SET ${column} = ? || substr(${column}, ?) WHERE substr(${column}, 1, ?) = ?`
+      ).run(path.join(toDir, path.sep), prefix.length + 1, prefix.length, prefix).changes);
+    }
+    return changed;
+  }
+
   // After a file is renamed (download --upgrade changing the extension), points recorded rating paths with
   // the old name at the new one, so undo still finds the file and restores it under its current name
   renameRatingPaths(mediaId, oldName, newName) {
@@ -556,6 +569,13 @@ export class DatabaseManager {
   }
 
   // Skipped items still holding a file whose status is older than the trash retention period
+  // Items whose file sits directly in a folder (not below it)
+  findMediaInFolder(folder) {
+    const prefix = path.join(folder, path.sep);
+    return this.db.prepare('SELECT * FROM media WHERE substr(path, 1, ?) = ? ORDER BY id').all(prefix.length, prefix)
+      .map(parseMedia).filter(media => path.dirname(media.path) === path.resolve(folder));
+  }
+
   getExpiredTrash(days) {
     return this.db.prepare(`
       SELECT * FROM media

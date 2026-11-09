@@ -12,6 +12,11 @@ function xdgDir(envVar, fallback) {
   return path.join(process.env[envVar] || path.join(os.homedir(), fallback), APP_NAME);
 }
 
+// Where the inbox was before 2.67.0; moveLegacyInbox (src/library/inbox.js) moves what is left there
+export function legacyInboxPath() {
+  return path.join(xdgDir('XDG_CACHE_HOME', '.cache'), 'inbox');
+}
+
 function runtimeDir() {
   if (process.env.XDG_RUNTIME_DIR) {
     return path.join(process.env.XDG_RUNTIME_DIR, APP_NAME);
@@ -195,7 +200,9 @@ export class ConfigManager {
       logfile: path.join(dataDir, 'backdrop.log'),
       media: path.join(dataDir, 'media'),
       trash: path.join(dataDir, 'trash'),
-      inbox: path.join(cacheDir, 'inbox'),
+      // Unrated downloads: data, not cache, since a cleaner that empties ~/.cache would lose them (once there, see
+      // legacyInboxPath)
+      inbox: path.join(dataDir, 'inbox'),
       thumbnails: path.join(cacheDir, 'thumbnails'),
       // Reversed copies of videos that bounce (display.video_loop, `backdrop bounce`)
       bounce: path.join(cacheDir, 'bounce'),

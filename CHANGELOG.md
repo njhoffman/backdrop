@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.67.0] - 2026-11-09
+
+### Changed
+
+- The inbox of unrated downloads moves from `~/.cache/backdrop/inbox` to `~/.local/share/backdrop/inbox`, so a cache cleaner can no longer delete them. The first backdrop command run while no daemon is running (`start` included) moves the files there and updates their paths and the paths `undo` returns kept items to; files it cannot move stay behind with a warning.
+
 ## [2.66.0] - 2026-11-09
 
 ### Added

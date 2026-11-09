@@ -53,7 +53,7 @@ The screensaver is to follow the same levels: images only at `image`, skipping s
 | Log | `$XDG_DATA_HOME/backdrop/backdrop.log` |
 | Library files | `$XDG_DATA_HOME/backdrop/media/` |
 | Trash | `$XDG_DATA_HOME/backdrop/trash/` |
-| Unreviewed downloads | `$XDG_CACHE_HOME/backdrop/inbox/` |
+| Unreviewed downloads | `$XDG_DATA_HOME/backdrop/inbox/` (before 2.67.0 in `$XDG_CACHE_HOME`; moved at the first start without a daemon running) |
 | mpv sockets, PID file | `$XDG_RUNTIME_DIR/backdrop/` (mode 0700) |
 
 ## Display
