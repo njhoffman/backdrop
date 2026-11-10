@@ -146,7 +146,7 @@ the window: `33%x100%+0+0` is the left third, `67%x100%+33%+0` the rest. The def
   `--art-animation: sleeve-art-flow` and its `--flow-*` included. backdrop has no options for those; they are the user's.
 - Without `--background`, the window is transparent under `--managed`, so nothing changes for an existing instance.
 - backdrop's `background: auto` stays on backdrop's side: it works out a veil from the wallpaper (`veilBackground` in `palette.js`) and only ever sends
-  `#rrggbbaa`, with `#0a0f1a99` until it knows the wallpaper. sleeve gets a new one over `sleeve ctl display` for most new wallpapers, so changing it has to stay cheap.
+  `#rrggbbaa`, with `#0a0f1a99` until it knows the wallpaper. `auto@0.5` is that veil with its alpha times 0.5 (any factor up to 1), for a look with no text to read over it. sleeve gets a new one over `sleeve ctl display` for most new wallpapers, so changing it has to stay cheap.
 
 ### Size
 

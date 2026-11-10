@@ -211,6 +211,12 @@ Reviewed: 2026-11-07
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
       (`src/display/LoadGovernor.js`, `config.example.yaml`, `docs/specs/config.md`). `screensaver.max_load` reads the same value.
+- [ ] **mpv died on a hotplug and the wallpaper stayed black.** (p2) [bug] On 2026-11-10 at 14:45:34 (local) a 1920x1080 monitor
+      replaced the 2560x1440 one on DP-3; mpv exited with code 1, `handleExit` restarted it, and the next `Visualizer colors` read
+      `{}`: no frame, so the screen behind the visualizers stayed black until a reboot. The log has no reason for the exit, since
+      mpv's own output is not kept. Fix: give each screen an mpv log (`--log-file` under the runtime dir, last lines copied into the
+      warning on exit), find why a geometry change kills it (playlist built for 1440p? the `smooth`/`bounce` work files?), and
+      check after a restart that a frame arrives, retrying or notifying when none does (`src/display/Daemon.js` `handleExit`).
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -309,7 +315,17 @@ Reviewed: 2026-11-07
 - [ ] **Show the screensaver in `status`.** (p3) [feature] `state.json` has `screensaver`, but `backdrop status`, `--json` (`docs/specs/json.md`) and the docs do not mention it, so the only way to ask is `backdrop screensaver status`.
 - [ ] **`doctor` does not know the screensaver's needs.** (p3) [feature] Nothing checks for the i3 `screensaver` mode (without it Escape cannot end the mode; `i3-msg -t get_binding_modes` tells), `polybar-msg`, `xprintidle` with `screensaver.idle` on, or `projectMSDL` with a preset using it.
 - [ ] **Empty ring when the music is elsewhere.** (p3) [feature] With sound on a phone, sleeve follows Spotify but nothing reaches the desktop's sink, so the bars are empty and the ring is a bare circle. Hide it in silence with the bars, or leave it. Decided so far: leave it, no fake motion.
-- [ ] **Hide the pointer in the screensaver.** (p3) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
+- [ ] **Hide the pointer in the screensaver.** (p2) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
+      Raised from p3 after 2026-11-10: with the wallpaper black (see the mpv hotplug item), a lone moving pointer over a black
+      screen that ignores every key looked exactly like a frozen desktop, and the machine was hard-reset.
+- [ ] **A second `$mod+Delete` turns the screensaver back on.** (p2) [bug] Inside the mode `$mod+Delete` runs `screensaver off`;
+      outside it runs `screensaver toggle`. On 2026-11-10 an exit at 14:46:21 was followed by `$mod+Delete` at 14:46:34 (the
+      desktop still looked black, so it seemed nothing had happened), which entered it again (`trigger: key`). Fix: ignore an
+      `on`/`toggle` from the key for a few seconds after leaving, or bind the outside key to `on` and keep `off` for the mode only
+      (`src/display/daemon/Screensaver.js` `apply`, `~/.config/i3/conf.d/70-menus.conf`).
+- [ ] **Nothing on screen says the screensaver is on.** (p2) [feature] When the wallpaper and visualizers are not drawing, the
+      screensaver is an empty workspace under a key grab with no clue how to leave. Show a short hint ("Esc to leave") for a few
+      seconds on enter and on any swallowed key, or notify through the notification daemon when a key is pressed in the mode.
 - [ ] **Follow the load levels.** (p2) [feature] Partly there: the screensaver's preset uses the daemon's visualizers, so they stop at `off` and projectM stops at `image`, and `max_load` holds back an idle start. Missing: skipping
       `screensaver.streams` once playlists exist, and deciding whether the empty workspace should stay up at `off`, when nothing is left to show. A `screensaver.load` override can wait until there is a need.
 - [ ] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports

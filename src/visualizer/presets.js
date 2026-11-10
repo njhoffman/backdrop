@@ -82,10 +82,11 @@ export const BUILTIN_PRESETS = {
   // The screensaver's look for a song without lyrics (screensaver.preset_without_lyrics): the same veil and
   // now-playing panel as the screensaver's own, its lyrics area empty, under bars across the whole width and a ring
   // over each half, the left one following the left speaker and the right one the right, below the panel's strip,
-  // turning colors with the bars as the screensaver's own preset does
+  // turning colors with the bars as the screensaver's own preset does. With no text to read, the veil is half as
+  // strong, darkening the wallpaper somewhat
   'screensaver-instrumental': {
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { ...VEIL_LYRICS, background: 'auto@0.5' } },
       { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
       { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } },
       { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }

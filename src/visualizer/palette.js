@@ -219,6 +219,20 @@ const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).to
 
 // A sleeve background of `auto`: its color and strength when nothing is known of the wallpaper yet
 export const DEFAULT_VEIL = '#0a0f1a99';
+
+// A sleeve background's veil strength: 1 for `auto`, the factor for `auto@0.5`, null for one that is not a veil
+export function veilStrength(background) {
+  if (background === 'auto') return 1;
+  const strength = typeof background === 'string' ? /^auto@(\d*\.?\d+)$/.exec(background) : null;
+  return strength ? Number(strength[1]) : null;
+}
+
+// A veil (#rrggbbaa) with its alpha times strength, the color as it was
+export function scaleVeil(veil, strength = 1) {
+  if (strength === 1) return veil;
+  const alpha = Math.round(parseInt(veil.slice(7, 9), 16) * strength);
+  return `${veil.slice(0, 7)}${Math.max(0, Math.min(255, alpha)).toString(16).padStart(2, '0')}`;
+}
 // How far a picture's mean color must lean toward a hue (0-1) for a veil to take it; below this it is close enough
 // to gray that its hue means nothing, and the veil keeps the default's navy
 const VEIL_MIN_COLOR = 0.05;

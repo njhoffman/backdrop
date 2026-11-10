@@ -2,7 +2,7 @@ import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { ChannelSources, channelSource } from './channels.js';
 import { createVisualizer } from './index.js';
-import { DEFAULT_VEIL, turnHue } from './palette.js';
+import { DEFAULT_VEIL, scaleVeil, turnHue, veilStrength } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
 import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
@@ -247,7 +247,8 @@ export class VisualizerManager {
 
   // An instance's sleeve settings as they should show now
   shownLook(sleeve, entry) {
-    if (sleeve.background === 'auto') return { ...sleeve, background: entry.veil ?? DEFAULT_VEIL };
+    const strength = veilStrength(sleeve.background);
+    if (strength !== null) return { ...sleeve, background: scaleVeil(entry.veil ?? DEFAULT_VEIL, strength) };
     return this.lightened ? { ...sleeve, background: stillBackground(sleeve.background) } : sleeve;
   }
 
@@ -285,7 +286,7 @@ export class VisualizerManager {
       if (!instance) continue;
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
       if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) {
-        if (instance.sleeve.background === 'auto') entry.veil ??= this.veilFor(entry.monitor, entry.geometry, instance.sleeve.lyricsArea);
+        if (veilStrength(instance.sleeve.background) !== null) entry.veil ??= this.veilFor(entry.monitor, entry.geometry, instance.sleeve.lyricsArea);
         this.display(entry, { look: this.shownLook(instance.sleeve, entry) });
       }
       entry.instance = instance;
@@ -444,7 +445,7 @@ export class VisualizerManager {
 
   start(monitor, instance, geometry, restarts = []) {
     const adapter = this.adapters.get(instance.name);
-    const veil = instance.sleeve?.background === 'auto' ? this.veilFor(monitor, geometry, instance.sleeve.lyricsArea) : null;
+    const veil = veilStrength(instance.sleeve?.background) !== null ? this.veilFor(monitor, geometry, instance.sleeve.lyricsArea) : null;
     // Only sleeve takes a veil; GLava's third argument is its environment
     const { file, args, env } = veil ? adapter.command(monitor, geometry, veil) : adapter.command(monitor, geometry);
     const child = this.spawn(file, args, { detached: true, stdio: [instance.pipe ? 'pipe' : 'ignore', 'pipe', 'pipe'], env });
@@ -559,12 +560,13 @@ export class VisualizerManager {
 
   // Works out a sleeve `auto` background again; a list of what to wait for, empty when it stays as it is
   reveil(entry) {
-    if (entry.instance.sleeve?.background !== 'auto') return [];
+    const strength = veilStrength(entry.instance.sleeve?.background);
+    if (strength === null) return [];
     const veil = this.veilFor(entry.monitor, entry.geometry, entry.instance.sleeve.lyricsArea);
     if (!veil || veil === entry.veil) return [];
     entry.veil = veil;
     this.logger.info('Visualizer veil', { monitor: entry.monitor.name, instance: entry.instance.name, veil });
-    return [this.display(entry, { look: { background: veil } })];
+    return [this.display(entry, { look: { background: scaleVeil(veil, strength) } })];
   }
 
   // Whether an instance or an overlay on the monitor takes its colors from the wallpaper (overlays always do)

@@ -641,6 +641,21 @@ describe('VisualizerManager', () => {
       });
     });
 
+    it('halves an auto@0.5 veil, from the default on and through each new wallpaper', async () => {
+      config.set('visualizer.sleeve', { background: 'auto@0.5' });
+      let veil = null;
+      const manager = sleeveManager({ veilFor: () => veil });
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].args[spawned[0].args.indexOf('--background') + 1]).to.equal('#0a0f1a4d');
+      veil = '#20100a80';
+      await manager.recolor('DP-3');
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-main', '--background', '#20100a40']);
+      const entry = manager.entries.values().next().value;
+      expect(manager.shownLook(entry.instance.sleeve, entry).background).to.equal('#20100a40');
+      await manager.stop();
+    });
+
     it('starts an auto background with what is known', async () => {
       config.set('visualizer.sleeve', { background: 'auto' });
       const manager = sleeveManager({ veilFor: () => '#30201080' });

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.73.0] - 2026-11-10
+
+### Added
+- A sleeve `background` of `auto@0.5` is the wallpaper veil at that fraction of its strength (any factor up to 1).
+
+### Changed
+- The screensaver's look for songs without lyrics darkens the wallpaper half as much as the lyrics look, since there
+  is no text to read over it.
+
 ## [2.72.0] - 2026-11-10
 
 ### Added

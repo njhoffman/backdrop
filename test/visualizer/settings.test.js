@@ -359,6 +359,9 @@ describe('visualizer settings', () => {
         for (const name of ['lyrics-veil', 'screensaver', 'screensaver-instrumental']) {
           expect(lyrics(name).sleeve.sleeve, name).to.include({ now: 'full', nowArea: '33%x11%+0+0', lyricsArea: '33%x89%+0+11%' });
         }
+        // With no text to read over it, the instrumental look's veil is half as strong
+        expect(lyrics('screensaver').sleeve.sleeve.background).to.equal('auto');
+        expect(lyrics('screensaver-instrumental').sleeve.sleeve.background).to.equal('auto@0.5');
         const beside = { name: 'DP-3', x: 0, y: 0, width: 3000, height: 1000 };
         for (const name of sides) {
           const { instances } = lyrics(name);
@@ -396,7 +399,7 @@ describe('visualizer settings', () => {
 
     it('takes areas in pixels or percent, and every background', () => {
       expect(sleeve({ lyrics_area: '33%x100%+0+0', now_area: '800x600+10+20' })).to.include({ lyricsArea: '33%x100%+0+0', nowArea: '800x600+10+20', mapBelow: null, background: null });
-      for (const background of ['transparent', 'auto', '#102030', '#10203099', 'cover', 'cover@0.6', 'cover@1']) expect(sleeve({ background }).background).to.equal(background);
+      for (const background of ['transparent', 'auto', '#102030', '#10203099', 'cover', 'cover@0.6', 'cover@1', 'auto@0.5', 'auto@1']) expect(sleeve({ background }).background).to.equal(background);
       expect(sleeve({ map_below: false }).mapBelow).to.equal(false);
     });
 
@@ -408,7 +411,7 @@ describe('visualizer settings', () => {
     });
 
     it('rejects a background sleeve would refuse', () => {
-      for (const value of ['red', '#123', '#1020304', 'cover@2', 'cover@', 7]) {
+      for (const value of ['red', '#123', '#1020304', 'cover@2', 'cover@', 'auto@1.5', 'auto@', 7]) {
         expect(() => sleeve({ background: value }), String(value)).to.throw('visualizer.sleeve.background must be');
       }
     });

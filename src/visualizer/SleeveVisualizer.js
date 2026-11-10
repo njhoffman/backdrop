@@ -1,5 +1,5 @@
 import { run } from '../display/Monitors.js';
-import { DEFAULT_VEIL } from './palette.js';
+import { DEFAULT_VEIL, scaleVeil, veilStrength } from './palette.js';
 
 // The first sleeve with --lyrics-area, --now-area, --background and --map-below
 const LAYER_VERSION = [0, 36];
@@ -51,10 +51,11 @@ export class SleeveVisualizer {
   }
 
   // geometry is absolute in the root window: { x, y, width, height }
-  // veil: what an `auto` background is now, when known
+  // veil: what an `auto` background is now at full strength, when known
   command(monitor, { x, y, width, height }, veil = null) {
     const { now, nowPosition, lyricsAlign, lyricsArea, nowArea, noSandbox } = this.instance.sleeve;
-    const background = this.instance.sleeve.background === 'auto' ? veil ?? DEFAULT_VEIL : this.instance.sleeve.background;
+    const strength = veilStrength(this.instance.sleeve.background);
+    const background = strength === null ? this.instance.sleeve.background : scaleVeil(veil ?? DEFAULT_VEIL, strength);
     return {
       file: this.file,
       args: [

@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  visibleRegion, sampleMedia, stripPixels, mainColors, pickColors, ensureContrast, contrastRatio, shownAverage, veilBackground, DEFAULT_VEIL,
+  visibleRegion, sampleMedia, stripPixels, mainColors, pickColors, ensureContrast, contrastRatio, shownAverage, veilBackground, veilStrength, scaleVeil, DEFAULT_VEIL,
   paletteColors, toHsl, fromHsl, turnHue
 } from '../../src/visualizer/palette.js';
 
@@ -204,6 +204,20 @@ describe('visualizer palette', () => {
       const colors = paletteColors(sample, monitor, geometry, instance({ fg: '#ffffffff' }, { minContrast: 4.5 }));
       const rgb = [1, 3, 5].map(index => parseInt(colors.fg.slice(index, index + 2), 16));
       expect(contrastRatio(rgb, [40, 60, 120])).to.be.at.least(4.5);
+    });
+  });
+
+  describe('veilStrength and scaleVeil', () => {
+    it('reads the strength of an auto background, and nothing from any other', () => {
+      expect(veilStrength('auto')).to.equal(1);
+      expect(veilStrength('auto@0.5')).to.equal(0.5);
+      for (const other of ['cover', 'cover@0.6', 'transparent', '#10203099', null, undefined]) expect(veilStrength(other), String(other)).to.equal(null);
+    });
+
+    it('scales only the alpha', () => {
+      expect(scaleVeil('#0a0f1a99', 0.5)).to.equal('#0a0f1a4d');
+      expect(scaleVeil('#0a0f1a99', 1)).to.equal('#0a0f1a99');
+      expect(scaleVeil('#0a0f1aff', 0)).to.equal('#0a0f1a00');
     });
   });
 
