@@ -145,7 +145,10 @@ IPC socket) would break a wallpaper.
   from all running playlists before deleting its file and database row. Removing a playing entry advances
   mpv; an empty playlist becomes idle. Import records and original source files remain, so unchanged
   originals are not imported again. Removal by ID also works without a running daemon.
-- **Supervision:** an mpv that exits is relaunched after 1s, at most 5 times a minute per monitor. `stop` sends
+- **Supervision:** an mpv that exits is relaunched after 1s, at most 5 times a minute per monitor; giving up
+  notifies. One with media to show that opens no file within 15s of starting is killed and relaunched the same way.
+  xwinwrap's and mpv's output (mpv at `--msg-level=all=warn`) is piped to the daemon, which keeps the last 20 lines
+  in memory (`src/display/outputTail.js`) and logs them with an exit. `stop` sends
   `quit`, then SIGTERM to each xwinwrap process group, SIGKILL after 2s, and removes sockets, playlists and state.
 
 ## Architecture

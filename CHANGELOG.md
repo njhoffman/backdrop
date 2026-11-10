@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.74.0] - 2026-11-10
+
+### Added
+- When a wallpaper's mpv exits, the log now says why: the last lines xwinwrap and mpv printed (X errors, mpv's
+  warnings and errors) are kept and logged with the exit. A restart that works is logged too.
+- A wallpaper that starts with media to show but opens no file within 15 seconds is restarted, instead of staying
+  black. After a monitor change on 2026-11-10 the restarted wallpaper never showed a picture.
+- A desktop notification when backdrop gives up on a monitor's wallpaper after repeated failures.
+
 ## [2.73.0] - 2026-11-10
 
 ### Added

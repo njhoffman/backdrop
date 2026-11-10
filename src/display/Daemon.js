@@ -17,7 +17,8 @@ import { smoothVideo } from '../library/smooth.js';
 import { entryPath, playsBounce } from './bounce.js';
 import { Bounce } from './daemon/Bounce.js';
 import { Smooth } from './daemon/Smooth.js';
-import { notifyMode, notifyPlaying } from '../utils/notify.js';
+import { notifyMode, notifyPlaying, notifyError } from '../utils/notify.js';
+import { outputTail } from './outputTail.js';
 import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
 import { ChildRegistry, processStart, reapOrphans } from './children.js';
@@ -35,6 +36,9 @@ import { LoadShedding } from './daemon/LoadShedding.js';
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
 const RESTART_DELAY_MS = 1000;
+// A started mpv with media to show that has not opened a file by then is killed, so the restart path tries again;
+// after a hotplug one once came up with no picture and never left that state
+const FIRST_FILE_TIMEOUT_MS = 15_000;
 // mpv answers nothing while it sets up video, which a slow GPU or decoder probe can stretch to several seconds
 const MPV_COMMAND_TIMEOUT_MS = 15_000;
 const STOP_GRACE_MS = 2000;
@@ -99,7 +103,9 @@ export function buildCommand(monitor, socketPath, display) {
       '--no-osd-bar',
       '--no-input-default-bindings',
       '--no-stop-screensaver',
-      '--really-quiet',
+      // Warnings and errors reach the daemon's pipe (outputTail), so an exit can say why; --quiet drops the status line
+      '--quiet',
+      '--msg-level=all=warn',
       '--framedrop=vo',
       '--panscan=1.0',
       // VAAPI first: auto-safe tries NVIDIA's CUDA before it, which can stall mpv for 6 s on a machine without the card
@@ -113,7 +119,7 @@ export class Daemon {
   constructor({
     config, database, logger,
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
-    restartDelay = RESTART_DELAY_MS, stopGrace = STOP_GRACE_MS,
+    restartDelay = RESTART_DELAY_MS, firstFileTimeout = FIRST_FILE_TIMEOUT_MS, stopGrace = STOP_GRACE_MS,
     healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
     monitorInterval = MONITOR_POLL_MS, now = Date.now, readFile,
     importer = new Importer({ config, database, logger }),
@@ -156,6 +162,7 @@ export class Daemon {
     this.connect = connect;
     this.kill = kill;
     this.restartDelay = restartDelay;
+    this.firstFileTimeout = firstFileTimeout;
     this.stopGrace = stopGrace;
     this.importer = importer;
     this.importing = Promise.resolve();
@@ -510,10 +517,14 @@ export class Daemon {
     await fs.remove(socketPath);
 
     const { file, args } = buildCommand(monitor, socketPath, this.config.get().display);
-    const child = this.spawn(file, args, { detached: true, stdio: 'ignore' });
+    // Piped rather than ignored: xwinwrap's X errors and mpv's warnings are the only record of why one exits
+    const child = this.spawn(file, args, { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const output = outputTail([child.stdout, child.stderr]);
 
     const previous = this.screens.get(monitor.name);
-    const screen = { monitor, socketPath, child, client: null, restarts: previous?.restarts ?? [], failing: Promise.resolve() };
+    const screen = {
+      monitor, socketPath, child, output, client: null, restarts: previous?.restarts ?? [], failing: Promise.resolve()
+    };
     this.screens.set(monitor.name, screen);
 
     child.on('error', error => this.logger.error('Failed to launch xwinwrap', { monitor: monitor.name, error: error.message }));
@@ -543,7 +554,27 @@ export class Daemon {
     await screen.client.observeProperty(3, 'contrast');
     await screen.client.observeProperty(4, 'speed');
 
-    await this.loadScreenPlaylist(screen);
+    const count = await this.loadScreenPlaylist(screen);
+    if (count) this.watchFirstFile(screen);
+  }
+
+  // Kills a screen's mpv when it has media but opens no file in time (no `path` from mpv), so handleExit
+  // restarts it within the usual budget instead of leaving the monitor black
+  watchFirstFile(screen) {
+    if (!this.firstFileTimeout) return;
+    clearTimeout(screen.firstFileTimer);
+    screen.firstFileTimer = setTimeout(() => {
+      const { child } = screen;
+      if (this.stopping || screen.filename || this.screens.get(screen.monitor.name) !== screen ||
+          child.exitCode !== null || child.signalCode !== null) {
+        return;
+      }
+      this.logger.error('mpv opened no file, restarting it', {
+        monitor: screen.monitor.name, seconds: this.firstFileTimeout / 1000, output: screen.output?.lines()
+      });
+      this.killGroup(child, 'SIGKILL');
+    }, this.firstFileTimeout);
+    screen.firstFileTimer.unref?.();
   }
 
   // The monitor's eligible items as mpv's playlist, resuming the last one shown when it is still eligible
@@ -559,6 +590,7 @@ export class Daemon {
     if (!count) {
       this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
     }
+    return count;
   }
 
   // After an eligibility change: the playlist follows what is eligible now, keeping the item on screen
@@ -745,6 +777,7 @@ export class Daemon {
 
   async handleExit(screen, code, signal) {
     screen.client?.close();
+    clearTimeout(screen.firstFileTimer);
     if (this.stopping || this.screens.get(screen.monitor.name) !== screen) {
       return;
     }
@@ -752,12 +785,15 @@ export class Daemon {
     const now = Date.now();
     screen.restarts = screen.restarts.filter(time => now - time < RESTART_WINDOW_MS);
     if (screen.restarts.length >= MAX_RESTARTS) {
-      this.logger.error('mpv keeps exiting, giving up on monitor', { monitor: screen.monitor.name, code, signal });
+      this.logger.error('mpv keeps exiting, giving up on monitor', {
+        monitor: screen.monitor.name, code, signal, output: screen.output?.lines()
+      });
+      await notifyError(`The wallpaper on ${screen.monitor.name} keeps failing and was given up; restart it with backdrop stop and backdrop start`, { logger: this.logger });
       return;
     }
     screen.restarts.push(now);
 
-    this.logger.warn('mpv exited, restarting', { monitor: screen.monitor.name, code, signal });
+    this.logger.warn('mpv exited, restarting', { monitor: screen.monitor.name, code, signal, output: screen.output?.lines() });
     await sleep(this.restartDelay);
     // Hotplug may have removed or replaced the monitor during the delay
     if (this.stopping || this.screens.get(screen.monitor.name) !== screen) {
@@ -765,6 +801,7 @@ export class Daemon {
     }
     try {
       await this.startScreen(screen.monitor);
+      this.logger.info('mpv restarted', { monitor: screen.monitor.name });
       // Keeps the visualizer above the new wallpaper window
       this.visualizers.restack(screen.monitor.name);
       await this.writeState();
@@ -872,7 +909,8 @@ export class Daemon {
     this.resolveStopped?.();
   }
 
-  async stopScreen({ child, client, socketPath, monitor }) {
+  async stopScreen({ child, client, socketPath, monitor, firstFileTimer }) {
+    clearTimeout(firstFileTimer);
     const exited = child.exitCode !== null || child.signalCode !== null
       ? Promise.resolve()
       : new Promise(resolve => child.once('exit', resolve));

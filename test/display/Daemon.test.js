@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
+import { PassThrough } from 'stream';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
@@ -526,6 +527,88 @@ describe('Daemon', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(spawned).to.have.length(2 + 5);
       await daemon.stop();
+    });
+
+    it('notifies when it gives up on a monitor', async () => {
+      notifications.length = 0;
+      const daemon = makeDaemon();
+      await daemon.start();
+      for (let i = 0; i < 6; i++) {
+        const launched = spawned.length;
+        spawned[launched - 1].child.exit(1);
+        for (let waited = 0; spawned.length === launched && waited < 200; waited += 5) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+      }
+      expect(notifications).to.have.length(1);
+      expect(notifications[0].at(-1)).to.include('given up');
+      await daemon.stop();
+    });
+
+    it('pipes the wallpaper process output and puts its last lines in the exit warning', async () => {
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push({ message, meta }) };
+      const daemon = makeDaemon({
+        logger,
+        spawn: (file, args, options) => {
+          const child = new FakeChild(1000 + spawned.length);
+          child.stdout = new PassThrough();
+          child.stderr = new PassThrough();
+          spawned.push({ file, args, options, child });
+          return child;
+        }
+      });
+      await daemon.start();
+      expect(spawned[0].options.stdio).to.deep.equal(['ignore', 'pipe', 'pipe']);
+
+      spawned[0].child.stderr.write('X Error of failed request:  BadMatch\n');
+      await tick();
+      spawned[0].child.exit(1);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const exited = warnings.find(w => w.message === 'mpv exited, restarting');
+      expect(exited.meta.output).to.deep.equal(['X Error of failed request:  BadMatch']);
+      await daemon.stop();
+    });
+
+    describe('when mpv opens no file', () => {
+      const mpvKills = index => kills.filter(([pid, signal]) => signal === 'SIGKILL' && Math.abs(pid) === spawned[index].child.pid);
+
+      beforeEach(() => {
+        db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/1.mp4', width: 2560, height: 1920 });
+      });
+
+      it('kills it once the wait is over, so the restart path tries again', async () => {
+        const daemon = makeDaemon({ firstFileTimeout: 20 });
+        await daemon.start();
+        // The second monitor opens its file in time
+        clients[1].client.emit('property-change', { name: 'path', data: '/m/1.mp4' });
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        expect(mpvKills(0)).to.have.length(1);
+        expect(mpvKills(1)).to.have.length(0);
+        await daemon.stop();
+      });
+
+      it('waits for nothing without media to show', async () => {
+        db.close();
+        db = new DatabaseManager();
+        db.initialize(':memory:');
+        const daemon = makeDaemon({ firstFileTimeout: 10 });
+        await daemon.start();
+        await new Promise(resolve => setTimeout(resolve, 40));
+        expect(kills.filter(([, signal]) => signal === 'SIGKILL')).to.have.length(0);
+        await daemon.stop();
+      });
+
+      it('stops waiting when the daemon stops', async () => {
+        const daemon = makeDaemon({ firstFileTimeout: 30 });
+        await daemon.start();
+        await daemon.stop();
+        const before = kills.length;
+        await new Promise(resolve => setTimeout(resolve, 60));
+        expect(kills).to.have.length(before);
+      });
     });
   });
 

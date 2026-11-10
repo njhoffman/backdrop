@@ -217,6 +217,12 @@ Reviewed: 2026-11-07
       mpv's own output is not kept. Fix: give each screen an mpv log (`--log-file` under the runtime dir, last lines copied into the
       warning on exit), find why a geometry change kills it (playlist built for 1440p? the `smooth`/`bounce` work files?), and
       check after a restart that a frame arrives, retrying or notifying when none does (`src/display/Daemon.js` `handleExit`).
+      Partly done (2.74.0): the log now carries the last 20 lines of xwinwrap's and mpv's output on an exit; an mpv that
+      opens no file within 15 s is killed and restarted; giving up notifies. The cause is still unknown: the same exit
+      (code 1, about 3 s after the start on a new output) also hit eDP-1 on 2026-11-09 23:48, when the restart worked. A
+      resizing Xephyr did not reproduce it (16 starts mid-`xrandr -s`, all fine; no DRI3 there, and no output swap).
+      Left: read the `output` of the next `mpv exited` warning after a monitor swap, and fix what it names (an X error
+      suggests waiting for the layout to settle before starting, step 3 of the plan).
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
