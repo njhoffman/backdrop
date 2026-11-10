@@ -29,7 +29,7 @@ describe('DoctorCommand', () => {
     db = new DatabaseManager();
     db.initialize(':memory:');
     config = makeConfig({ 'visualizer.enabled': true, 'sources.pexels.api_key': 'key' });
-    installed = new Set(['mpv', 'xwinwrap', 'ffmpeg', 'ffprobe', 'xrandr', 'xdotool', 'rofi', 'glava', 'notify-send', 'pactl', 'i3-msg', 'polybar-msg']);
+    installed = new Set(['mpv', 'xwinwrap', 'ffmpeg', 'ffprobe', 'xrandr', 'xdotool', 'rofi', 'glava', 'notify-send', 'pactl', 'i3-msg', 'polybar-msg', 'xprintidle']);
     modes = ['default', 'screensaver'];
     files = new Set();
     lines = []; errors = [];
@@ -86,6 +86,7 @@ describe('DoctorCommand', () => {
     expect(byName(checks, 'i3 mode').status).to.equal('ok');
     modes = ['default'];
     installed.delete('polybar-msg');
+    installed.delete('xprintidle');
     config.set('screensaver.idle', true);
     config.set('screensaver.on_enter', ['FOO=1 polybar-msg cmd hide', 'notify-send hi']);
     config.set('visualizer.presets', { night: { instances: [{ name: 'p', engine: 'projectm' }] } });

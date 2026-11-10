@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { configureOutput } from '../../src/utils/output.js';
 import { configureNotify } from '../../src/utils/notify.js';
+import { configurePointer } from '../../src/display/x11.js';
 
 // Every XDG location points into one directory for the run, so a test that leaves a path at its default
 // writes there rather than into the user's config, library, cache or a running daemon's runtime dir.
@@ -22,6 +23,10 @@ export const mochaHooks = {
 
 // Plain output for every test, even when mocha runs in a terminal; output tests opt back in
 configureOutput({ interactive: false });
+
+// No test hides the desktop's pointer; hides and releases are counted here
+export const pointer = { hidden: 0, released: 0 };
+configurePointer({ hide: async () => { pointer.hidden++; return { release: async () => { pointer.released++; } }; } });
 
 // notify-send never runs in tests; notifications sent are recorded here
 export const notifications = [];

@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import { notifyMode, notifyLoad } from '../../utils/notify.js';
+import { hidePointer as hideX11Pointer } from '../x11.js';
 import { screensaverPath } from '../runtimeFiles.js';
 import { enterWorkspaces, DEFAULT_WORKSPACE } from '../../utils/workspace.js';
 import { run as defaultRun } from '../Monitors.js';
@@ -10,6 +11,10 @@ import { SleevedWatcher, hasLyrics } from '../../visualizer/sleeved.js';
 // can catch Escape with no window focused
 export const I3_MODE = 'screensaver';
 export const IDLE_CHECK_MS = 15_000;
+// While it runs: how often input is looked for (xprintidle), and the least time between two hints
+export const INPUT_CHECK_MS = 1000;
+export const HINT_GAP_MS = 20_000;
+export const HINT = 'Screensaver on: Escape to leave';
 // How long entering waits for sleeved to say whether the song has lyrics, so the first look is the right one
 export const LYRICS_WAIT_MS = 500;
 
@@ -53,8 +58,15 @@ export async function restoreDesktop(runtimeDir, { run = defaultRun, logger } = 
 // crashed daemon's next start, or `backdrop screensaver off` without one, can put the desktop back. While it runs,
 // a media player starting another song moves every monitor to its next item (screensaver.next_on_song).
 export class Screensaver {
-  constructor(daemon, { watchTracks = options => new TrackWatcher(options), followLyrics = options => new SleevedWatcher(options), lyricsWait = LYRICS_WAIT_MS } = {}) {
+  constructor(daemon, {
+    watchTracks = options => new TrackWatcher(options), followLyrics = options => new SleevedWatcher(options), lyricsWait = LYRICS_WAIT_MS,
+    hidePointer = hideX11Pointer, inputCheck = INPUT_CHECK_MS
+  } = {}) {
     this.daemon = daemon;
+    this.hidePointer = hidePointer;
+    this.inputCheck = inputCheck;
+    this.pointer = null;
+    this.inputTimer = null;
     this.active = null;
     this.saved = null;
     this.watchTracks = watchTracks;
@@ -143,13 +155,69 @@ export class Screensaver {
   }
 
   async announceLeave() {
+    await this.say('Screensaver off');
+  }
+
+  // A notification, unless display.notify is off
+  async say(message) {
     let mode;
     try {
       mode = notifyMode(this.daemon.config.get().display);
     } catch {
       mode = 'commands';
     }
-    if (mode !== 'off') await notifyLoad('Screensaver off', { logger: this.daemon.logger });
+    if (mode !== 'off') await notifyLoad(message, { logger: this.daemon.logger });
+  }
+
+  // screensaver.hide_pointer: a lone pointer over a screen that ignores the keys looked like a frozen desktop
+  async hide() {
+    if (this.settings.hide_pointer === false) return;
+    try {
+      this.pointer = await this.hidePointer();
+    } catch (error) {
+      this.daemon.logger.warn('Cannot hide the pointer', { error: error.message });
+    }
+  }
+
+  async show() {
+    const pointer = this.pointer;
+    this.pointer = null;
+    await pointer?.release().catch(error => this.daemon.logger.warn('Cannot show the pointer again', { error: error.message }));
+  }
+
+  // screensaver.hint: says how to leave on entering, and again when a key or the mouse is used (the idle time
+  // xprintidle reports falls), at most once every HINT_GAP_MS. i3 cannot bind every key in a mode, hence the polling.
+  async startHints() {
+    if (this.settings.hint === false) return;
+    this.lastHint = this.daemon.now();
+    this.lastIdle = null;
+    await this.say(HINT);
+    this.inputTimer = setInterval(() => { this.checkInput(); }, this.inputCheck);
+    this.inputTimer.unref?.();
+  }
+
+  stopHints() {
+    clearInterval(this.inputTimer);
+    this.inputTimer = null;
+  }
+
+  async checkInput() {
+    if (!this.active || this.checkingInput) return;
+    this.checkingInput = true;
+    try {
+      const idleMs = Number(await this.daemon.exec('xprintidle', []));
+      const used = this.lastIdle !== null && idleMs < this.lastIdle;
+      this.lastIdle = idleMs;
+      if (used && this.active && this.daemon.now() - this.lastHint >= HINT_GAP_MS) {
+        this.lastHint = this.daemon.now();
+        await this.say(HINT);
+      }
+    } catch (error) {
+      if (!this.inputWarned) this.daemon.logger.debug('Cannot read input for the screensaver hint', { error: error.message });
+      this.inputWarned = true;
+    } finally {
+      this.checkingInput = false;
+    }
   }
 
   async enter(trigger) {
@@ -163,6 +231,8 @@ export class Screensaver {
     logger.info('Screensaver on', { trigger, preset });
     await run('i3-msg', ['mode', I3_MODE]).catch(error => logger.warn('No i3 mode for the screensaver, so Escape will not end it', { error: error.message }));
     await runHooks(onEnter, run, logger);
+    await this.hide();
+    await this.startHints();
     this.followSongs();
     // The first look is the one for the song playing, when sleeved says in time
     if (preset && this.settings.preset_without_lyrics) await this.startLyrics();
@@ -190,6 +260,8 @@ export class Screensaver {
     this.lyrics = null;
     this.shown = null;
     logger.info('Screensaver off');
+    this.stopHints();
+    await this.show();
     await restoreDesktop(runtimeDir, { run, logger });
     // A daemon on its way out stops them anyway
     if (stopping) return;

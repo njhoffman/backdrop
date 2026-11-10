@@ -138,6 +138,44 @@ export class X11 {
 }
 
 // Runs fn with a connection that is closed afterwards
+const pointerSettings = { hide: null };
+
+// Tests swap the real hide for a fake (test/helpers/setup.js), so no test hides the desktop's pointer
+export function configurePointer({ hide } = {}) {
+  pointerSettings.hide = hide ?? null;
+}
+
+// Hides the pointer on every screen until release() (XFixes HideCursor). The hide belongs to this X connection, so
+// the server shows the pointer again by itself if the process dies without releasing it.
+export async function hidePointer() {
+  if (pointerSettings.hide) return pointerSettings.hide();
+  return hideX11Pointer();
+}
+
+async function hideX11Pointer() {
+  const display = await new Promise((resolve, reject) => {
+    x11.createClient((error, result) => (error ? reject(error) : resolve(result)));
+  });
+  const { client } = display;
+  const close = () => new Promise(resolve => client.close(() => resolve()));
+  try {
+    const fixes = await new Promise((resolve, reject) => client.require('fixes', (error, ext) => (error ? reject(error) : resolve(ext))));
+    const roots = display.screen.map(screen => screen.root);
+    const x = new X11(client, roots[0]);
+    for (const root of roots) fixes.HideCursor(root);
+    await x.check('hiding the pointer');
+    return {
+      release: async () => {
+        for (const root of roots) fixes.ShowCursor(root);
+        await close();
+      }
+    };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
 export async function withX11(fn) {
   const display = await new Promise((resolve, reject) => {
     x11.createClient((error, result) => (error ? reject(error) : resolve(result)));

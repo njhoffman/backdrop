@@ -275,8 +275,9 @@ export class DoctorCommand {
     for (const tool of hookTools) {
       if (!await this.which(tool)) add('screensaver', tool, 'warn', 'not installed; run by screensaver.on_enter or on_leave', `install ${tool} or change the hook`);
     }
-    if (saver.idle && !await this.which('xprintidle')) {
-      add('screensaver', 'xprintidle', 'warn', 'not installed; screensaver.idle needs it to see idle time', 'install xprintidle');
+    const idleUses = [saver.idle && 'screensaver.idle', saver.hint !== false && 'screensaver.hint'].filter(Boolean);
+    if (idleUses.length && !await this.which('xprintidle')) {
+      add('screensaver', 'xprintidle', 'warn', `not installed; ${idleUses.join(' and ')} need${idleUses.length > 1 ? '' : 's'} it to see input`, 'install xprintidle');
     }
     const looks = [saver.preset, saver.preset_without_lyrics].filter(Boolean);
     const projectm = settings.visualizer?.projectm?.command ?? 'projectMSDL';

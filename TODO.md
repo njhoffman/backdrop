@@ -178,6 +178,8 @@ Reviewed: 2026-11-07
 - [x] **Browser page test times out in full runs.** (p2) [test] On 2026-11-08 both tests in `test/web/pages.browser.test.js` hit the 60 s timeout late in a full run (load average around 8 with the daemon's RIFE job), yet passed in 11 s run alone.
       Done (2.64.1): not the load (15 runs under a load of 8 all passed, in 24-34 s), but D-Bus: `browser.newPage()`, which has no timeout, waits on Chrome's calls to the session bus, and a bus that accepts but does not answer reproduced both failures exactly. The test's Chrome gets a missing bus address (refused at once), and each step a 15 s deadline that names it.
 - [ ] **The browser test still stalls opening a page.** (p2) [test] The D-Bus fix (2.64.1) was not the whole cause: a later full run failed both tests with "Chrome took over 15 s opening a page", with Chrome off the buses. It shows in about one full run in three and never alone; 3 runs with Chrome's stderr logged (`DEBUG=pw:browser`) did not catch it. The deadline error now carries every Chrome process's state and kernel wait channel; read them on the next failure (the GPU, which the daemon's RIFE keeps busy, is the next suspect: `--disable-gpu` would test it).
+      2.77.0 launches Chrome with `--disable-gpu`; it had not shown in 7 full runs on 2026-11-10 before that. Close after a
+      few weeks of runs without it. Five full runs right after: no stall, two of them at a load average near 24.
 - [x] **WebCommand's port test failed under load.** (p3) [test] It waited a fixed 20 ms for `run()` to print, and once found nothing.
       Done (2.64.3): the WebCommand tests wait for the line or the opened page itself, up to 5 s.
 - [ ] **Resume stopped reversals too.** (p3) [perf] `reverseVideo` still starts over when stopped; it is fast with VAAPI, but a long video under libx264 loses minutes. The same kept-chunks scheme would fit its chunked reverse.
@@ -340,9 +342,11 @@ Reviewed: 2026-11-07
 - [x] **`doctor` does not know the screensaver's needs.** (p3) [feature] Nothing checks for the i3 `screensaver` mode (without it Escape cannot end the mode; `i3-msg -t get_binding_modes` tells), `polybar-msg`, `xprintidle` with `screensaver.idle` on, or `projectMSDL` with a preset using it.
       Done (2.76.0): a `screensaver` group: the i3 mode, hook tools (first word of each), xprintidle with idle, projectMSDL for a projectM look.
 - [ ] **Empty ring when the music is elsewhere.** (p3) [feature] With sound on a phone, sleeve follows Spotify but nothing reaches the desktop's sink, so the bars are empty and the ring is a bare circle. Hide it in silence with the bars, or leave it. Decided so far: leave it, no fake motion.
-- [ ] **Hide the pointer in the screensaver.** (p2) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
+- [x] **Hide the pointer in the screensaver.** (p2) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
       Raised from p3 after 2026-11-10: with the wallpaper black (see the mpv hotplug item), a lone moving pointer over a black
       screen that ignores every key looked exactly like a frozen desktop, and the machine was hard-reset.
+      Done (2.77.0): XFixes HideCursor on a connection the daemon holds (`hidePointer`, `src/display/x11.js`),
+      so a crash shows it again; `screensaver.hide_pointer`.
 - [x] **A second `$mod+Delete` turns the screensaver back on.** (p2) [bug] Inside the mode `$mod+Delete` runs `screensaver off`;
       outside it runs `screensaver toggle`. On 2026-11-10 an exit at 14:46:21 was followed by `$mod+Delete` at 14:46:34 (the
       desktop still looked black, so it seemed nothing had happened), which entered it again (`trigger: key`). Fix: ignore an
@@ -350,9 +354,11 @@ Reviewed: 2026-11-07
       (`src/display/daemon/Screensaver.js` `apply`, `~/.config/i3/conf.d/70-menus.conf`).
       Done (2.76.0): leaving on request notifies "Screensaver off". Binding the outer key to `on` would not have helped: outside the
       mode toggle already means on. No re-entry guard: the 13 s gap would have needed one long enough to block a deliberate return.
-- [ ] **Nothing on screen says the screensaver is on.** (p2) [feature] When the wallpaper and visualizers are not drawing, the
+- [x] **Nothing on screen says the screensaver is on.** (p2) [feature] When the wallpaper and visualizers are not drawing, the
       screensaver is an empty workspace under a key grab with no clue how to leave. Show a short hint ("Esc to leave") for a few
       seconds on enter and on any swallowed key, or notify through the notification daemon when a key is pressed in the mode.
+      Done (2.77.0): a notification on entering and on input while it runs (xprintidle polled every second, the
+      idle time falling), at most every 20 s; `screensaver.hint`. i3 cannot bind every key in a mode, hence the polling.
 - [ ] **Follow the load levels.** (p2) [feature] Partly there: the screensaver's preset uses the daemon's visualizers, so they stop at `off` and projectM stops at `image`, and `max_load` holds back an idle start. Missing: skipping
       `screensaver.streams` once playlists exist, and deciding whether the empty workspace should stay up at `off`, when nothing is left to show. A `screensaver.load` override can wait until there is a need.
 - [ ] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports

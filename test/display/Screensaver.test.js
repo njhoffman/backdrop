@@ -2,9 +2,9 @@ import { expect } from 'chai';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { Screensaver, restoreDesktop, I3_MODE } from '../../src/display/daemon/Screensaver.js';
+import { Screensaver, restoreDesktop, I3_MODE, HINT, HINT_GAP_MS } from '../../src/display/daemon/Screensaver.js';
 import { screensaverPath } from '../../src/display/runtimeFiles.js';
-import { notifications } from '../helpers/setup.js';
+import { notifications, pointer } from '../helpers/setup.js';
 
 describe('Screensaver', () => {
   let runtimeDir, calls, daemon, saver, settings, idleMs, loadValue, failing, watchers;
@@ -81,12 +81,69 @@ describe('Screensaver', () => {
     await saver.apply('on');
     await saver.apply('toggle');
     await saver.apply('off');
-    expect(notifications.map(args => args.at(-1))).to.deep.equal(['Screensaver off']);
+    expect(notifications.map(args => args.at(-1))).to.deep.equal([HINT, 'Screensaver off']);
 
     daemon.config = { get: () => ({ screensaver: settings, display: { notify: 'off' } }) };
     await saver.apply('on');
     await saver.apply('off');
-    expect(notifications).to.have.length(1);
+    expect(notifications).to.have.length(2);
+  });
+
+  it('hides the pointer while it runs, unless hide_pointer is off', async () => {
+    pointer.hidden = 0;
+    pointer.released = 0;
+    await saver.apply('on');
+    expect(pointer).to.deep.equal({ hidden: 1, released: 0 });
+    await saver.apply('off');
+    expect(pointer).to.deep.equal({ hidden: 1, released: 1 });
+
+    settings.hide_pointer = false;
+    await saver.apply('on');
+    await saver.apply('off');
+    expect(pointer.hidden).to.equal(1);
+  });
+
+  it('keeps going when the pointer cannot be hidden', async () => {
+    saver = new Screensaver(daemon, { watchTracks: () => ({ start() {}, stop() {} }), hidePointer: async () => { throw new Error('no XFIXES'); } });
+    await saver.apply('on');
+    expect(saver.summary().active).to.equal(true);
+    await saver.apply('off');
+  });
+
+  it('says how to leave on entering, and again on input at most once per gap', async () => {
+    notifications.length = 0;
+    let now = 1000;
+    daemon.now = () => now;
+    await saver.apply('on');
+    const hints = () => notifications.filter(args => args.at(-1) === HINT).length;
+    expect(hints()).to.equal(1);
+
+    idleMs = 5000;
+    await saver.checkInput();
+    // Input: the idle time fell, but the entering hint was just now
+    idleMs = 10;
+    await saver.checkInput();
+    expect(hints()).to.equal(1);
+
+    now += HINT_GAP_MS;
+    idleMs = 20;
+    await saver.checkInput();
+    // The idle time grew: nobody touched anything
+    expect(hints()).to.equal(1);
+    idleMs = 5;
+    await saver.checkInput();
+    expect(hints()).to.equal(2);
+    await saver.apply('off');
+    expect(saver.inputTimer).to.equal(null);
+  });
+
+  it('gives no hints with hint off', async () => {
+    notifications.length = 0;
+    settings.hint = false;
+    await saver.apply('on');
+    expect(saver.inputTimer).to.equal(null);
+    await saver.apply('off');
+    expect(notifications.map(args => args.at(-1))).to.deep.equal(['Screensaver off']);
   });
 
   it('on twice and off twice change nothing more', async () => {

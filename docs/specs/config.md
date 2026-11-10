@@ -131,6 +131,8 @@ screensaver:
   preset: screensaver      # visualizer preset while on; screensaver-projectm adds projectM, null keeps the running one
   preset_without_lyrics: screensaver-instrumental  # the look while the song has no lyrics (sleeve says); null keeps preset
   next_on_song: true       # a media player starting another song (playerctl) changes the wallpaper on every monitor
+  hide_pointer: true       # hide the mouse pointer while it runs (XFixes; back by itself if the daemon dies)
+  hint: true               # notify "Escape to leave" on entering and when a key or the mouse is used (xprintidle)
   workspace: backdrop      # the empty i3 workspace to show; other outputs get backdrop-<output>
   on_enter: ['polybar-msg cmd hide']  # shell commands run on entering and leaving
   on_leave: ['polybar-msg cmd show']

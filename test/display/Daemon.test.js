@@ -15,6 +15,12 @@ import { notifications } from '../helpers/setup.js';
 const DEAD_PID = 4194305;
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
+// Waits for a relaunch (or any number of launches) rather than a fixed time, which a busy machine outlasts
+async function launches(spawned, count, timeout = 2000) {
+  for (let waited = 0; spawned.length < count && waited < timeout; waited += 5) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+}
 
 describe('Daemon', () => {
   let tempDir;
@@ -500,7 +506,7 @@ describe('Daemon', () => {
       await daemon.start();
 
       spawned[0].child.exit(1);
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await launches(spawned, 3);
 
       expect(spawned).to.have.length(3);
       expect(spawned[2].args).to.include('2560x1440+0+0');
@@ -715,7 +721,8 @@ describe('Daemon', () => {
 
       // The kill makes mpv exit, and the normal restart path takes over
       spawned[0].child.exit(null, 'SIGKILL');
-      await new Promise(resolve => setTimeout(resolve, 20));
+      // The relaunch itself: a fixed 20 ms missed it once on a busy machine
+      await launches(spawned, 3);
       expect(spawned).to.have.length(3);
       await daemon.stop();
     });
@@ -1545,7 +1552,7 @@ describe('Daemon', () => {
 
       // A child that exits is dropped; its replacement is recorded
       spawned[0].child.exit(1);
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await launches(spawned, 3);
       const pids = (await fs.readJson(childrenPath(tempDir))).children.map(child => child.pid);
       expect(pids).to.not.include(1000);
       expect(pids).to.include(1001);

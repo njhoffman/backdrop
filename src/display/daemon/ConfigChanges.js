@@ -16,7 +16,7 @@ export const LIVE_SETTINGS = {
   'display.allow_upscale': 'eligibility', 'library.min_width': 'eligibility', 'library.min_height': 'eligibility',
   'display.monitors': 'monitors',
   // Read when used
-  'screensaver.idle': 'taken', 'screensaver.idle_minutes': 'taken', 'screensaver.max_load': 'taken', 'screensaver.preset': 'taken', 'screensaver.next_on_song': 'taken', 'screensaver.preset_without_lyrics': 'taken',
+  'screensaver.idle': 'taken', 'screensaver.idle_minutes': 'taken', 'screensaver.max_load': 'taken', 'screensaver.preset': 'taken', 'screensaver.next_on_song': 'taken', 'screensaver.hide_pointer': 'taken', 'screensaver.hint': 'taken', 'screensaver.preset_without_lyrics': 'taken',
   'screensaver.workspace': 'taken', 'screensaver.on_enter': 'taken', 'screensaver.on_leave': 'taken',
   'library.import_dirs': 'imports', 'library.watch_imports': 'imports'
 };

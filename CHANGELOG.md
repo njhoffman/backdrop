@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.77.0] - 2026-11-10
+
+### Added
+- The screensaver hides the mouse pointer while it runs (`screensaver.hide_pointer`, on by default). If the daemon
+  dies, the pointer comes back by itself.
+- The screensaver says how to leave: "Screensaver on: Escape to leave" on entering, and again when a key or the mouse
+  is used while it runs, at most every 20 seconds (`screensaver.hint`, on by default; needs `xprintidle`).
+
 ## [2.76.0] - 2026-11-10
 
 ### Added

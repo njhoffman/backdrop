@@ -54,6 +54,9 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
 
   before(async () => {
     browser = await chromium.launch({
+      // No GPU: these checks draw nothing that needs one, and a GPU kept busy (the daemon's RIFE smoothing) was the
+      // next suspect for the page that took over 15 s to open
+      args: ['--disable-gpu'],
       executablePath, headless: true, env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: NO_BUS, DBUS_SYSTEM_BUS_ADDRESS: NO_BUS }
     });
   });
