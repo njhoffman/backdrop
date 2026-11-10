@@ -99,6 +99,12 @@ export async function reverseVideo(media, dir, { exec = run, logger, nice = true
       return target;
     } catch (error) {
       if (signal?.aborted) return null;
+      // A rating moved the file (inbox to library, or to the trash): no encoder can read it there, and the bounce
+      // job tries again from its new path
+      if (!await fs.pathExists(media.path)) {
+        logger?.info('Reverse stopped: the file moved', { mediaId: media.id });
+        return null;
+      }
       logger?.warn('Reverse encode failed', { mediaId: media.id, encoder: name, error: error.message.split('\n')[0] });
     } finally {
       await fs.remove(work).catch(() => {});

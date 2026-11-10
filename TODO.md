@@ -207,11 +207,13 @@ Reviewed: 2026-11-07
       Done (2.69.1): counted against the monitors in `state.json`; copies too small are named; without a daemon sizes stay unchecked.
 - [ ] **npm audit flags mocha's glob and minimatch.** (p3) [chore] Three moderate advisories (GHSA-g3hv-75wg-m249 and others) in `glob` 13 and `minimatch` 10 under `mocha` 12, dev dependencies only; `npm audit fix --force` would move mocha across a major version. Check for a mocha release that takes the fixed versions, or pin them with `overrides`, and run the suite.
 - [ ] **Why CUDA's probe became slow.** (p3) [test] Split from the decoder order item: mpv's CUDA probe stalled its start past the IPC timeout on the NVIDIA desktop on 2026-11-05, having been fine earlier that day, so 2.50.7 put VAAPI first. Unexplained, and VAAPI first is untried on another NVIDIA machine; time `mpv --hwdec=cuda` starts there and check the driver's state (`nvidia-smi`) when it is slow.
-- [ ] **A reversal fails when its item is rated mid-job.** (p3) [bug] On 2026-11-10 at 15:46 item 299 was skipped (moved
+- [x] **A reversal fails when its item is rated mid-job.** (p3) [bug] On 2026-11-10 at 15:46 item 299 was skipped (moved
       to `trash/`) while `reverseVideo` (`src/library/reverse.js`, run by `daemon/Bounce.js`) worked on it; ffmpeg failed
       on the missing file with VAAPI and again with x264, logging two `Reverse encode failed` warnings. Harmless, but
       noise and a wasted fallback. Fix: abort the job (its `signal`) when the item is rated or its path changes, or treat
       a missing input as a cancel, not an encoder failure.
+      Done (2.75.2): `reverseVideo` and `smoothVideo` check for the input after a failure and stop quietly when it is gone;
+      the daemon's jobs already queue the item again from its new path, and smoothing keeps its chunks to resume.
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults

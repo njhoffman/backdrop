@@ -240,6 +240,13 @@ export async function smoothVideo(media, dir, {
         keepWork = true;
         return null;
       }
+      // A rating moved the file: the chunks stay (a rename keeps the size and time the job is matched by), and
+      // the smoothing job tries again from its new path, resuming them
+      if (!await fs.pathExists(media.path)) {
+        keepWork = true;
+        logger?.info('Smoothing stopped: the file moved', { mediaId: media.id });
+        return null;
+      }
       logger?.warn('Smoothing failed', { mediaId: media.id, encoder: name, error: error.message.split('\n')[0] });
     } finally {
       // A stopped job keeps its chunks; a finished or failed one leaves nothing

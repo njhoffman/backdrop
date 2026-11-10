@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.75.2] - 2026-11-10
+
+### Fixed
+- Rating a video while its reversed (bounce) or smoothed copy is being made no longer logs it as an encoder failure
+  and retries with the next encoder on a file that is gone; the job starts again from the file's new place, and
+  smoothing keeps the chunks it had finished.
+
 ## [2.75.1] - 2026-11-10
 
 ### Fixed

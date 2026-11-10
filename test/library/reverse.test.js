@@ -101,6 +101,21 @@ describe('reverse', () => {
       expect(await fs.pathExists(target)).to.equal(false);
     });
 
+    it('stops quietly, trying no other encoder, when a rating moves the file mid-encode', async () => {
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) };
+      const exec = async (file, args) => {
+        calls.push([file, ...args]);
+        // The rating moves the file while the first chunk encodes; ffmpeg then fails to open it
+        await fs.move(media.path, path.join(dir, 'trash', 'clip.mp4'));
+        throw new Error('ffmpeg failed: No such file or directory');
+      };
+      expect(await reverseVideo(media, dir, { exec, logger })).to.equal(null);
+      expect(calls).to.have.length(1);
+      expect(warnings).to.deep.equal([]);
+      expect((await fs.readdir(dir)).filter(name => name.endsWith('.tmp'))).to.deep.equal([]);
+    });
+
     it('stops without a copy when aborted', async () => {
       const controller = new AbortController();
       const exec = async (file, args) => {

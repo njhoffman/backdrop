@@ -213,6 +213,30 @@ describe('smooth', () => {
       expect(extractions()).to.deep.equal(['1.95']);
     });
 
+    it('keeps its chunks and tries no other encoder when a rating moves the file mid-job', async () => {
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) };
+      const inner = fakeExec();
+      let encodes = 0;
+      const moved = path.join(dir, 'library', 'v.mp4');
+      const exec = async (file, args, ...rest) => {
+        // The first chunk encodes, then the rating moves the file and the second chunk cannot read it
+        if (file === 'ffmpeg' && args.includes('-framerate') && ++encodes === 2) {
+          await fs.move(media.path, moved);
+          throw new Error('No such file or directory');
+        }
+        await inner(file, args, ...rest);
+      };
+      expect(await smoothVideo(media, dir, options(exec, { logger, encoders: ['vaapi', 'x264'] }))).to.equal(null);
+      expect(warnings).to.deep.equal([]);
+      expect(calls.some(call => call.includes('libx264'))).to.equal(false);
+      // The retry from the new path carries on from the kept chunk
+      media.path = moved;
+      calls = [];
+      expect(await smoothVideo(media, dir, options(fakeExec(), { encoders: ['vaapi', 'x264'] }))).to.equal(smoothedPath(media, dir));
+      expect(extractions()).to.deep.equal(['1.95']);
+    });
+
     it('starts afresh when the kept chunks were made another way, and resumes with the encoder they used', async () => {
       await stopAfterFirstChunk();
       calls = [];
