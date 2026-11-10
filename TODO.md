@@ -217,6 +217,16 @@ Reviewed: 2026-11-07
       mpv's own output is not kept. Fix: give each screen an mpv log (`--log-file` under the runtime dir, last lines copied into the
       warning on exit), find why a geometry change kills it (playlist built for 1440p? the `smooth`/`bounce` work files?), and
       check after a restart that a frame arrives, retrying or notifying when none does (`src/display/Daemon.js` `handleExit`).
+- [x] **The monitor poll makes X re-read every monitor's EDID every 5 s.** (p2) [perf] `reconcileMonitors` runs
+      `xrandr --listactivemonitors` every `MONITOR_POLL_MS` (5000); without `--current` xrandr asks the server to re-probe
+      every connector, a DDC read of each EDID that blocks the X server (about 140 ms a call here, 2 reads with a laptop
+      panel and one external; 96,000 reads over a 2.8-day session filled a 172 MB Xorg.0.log). `--current` halves it
+      (the modesetting driver still re-reads the external's EDID on RRGetMonitors) and takes about 80 ms.
+      Fix: react to RandR changes instead of polling (`i3-msg -t subscribe -m '["output"]'`, as polybar's output watcher
+      does, or `xev -root -event randr`), keep a slow fallback poll (60 s) with `--current`, and use `--current` in the
+      completion scripts too (`src/display/Monitors.js` `listMonitors`, `src/commands/CompletionCommand.js`).
+      Done (2.75.0): `src/display/outputWatcher.js` follows i3's output events (live from the tick i3 sends each new
+      subscriber, since `i3-msg -m` prints no reply); the 5 s timer reads the layout only without them or once a minute.
       Partly done (2.74.0): the log now carries the last 20 lines of xwinwrap's and mpv's output on an exit; an mpv that
       opens no file within 15 s is killed and restarted; giving up notifies. The cause is still unknown: the same exit
       (code 1, about 3 s after the start on a new output) also hit eDP-1 on 2026-11-09 23:48, when the restart worked. A
@@ -342,6 +352,9 @@ Reviewed: 2026-11-07
 - [ ] **Screensaver playlists.** (p2) [feature] `screensaver.sources` and `streams` are in the config and example but nothing reads them yet, so setting them does nothing. Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
       Decide with the idle screensaver above: on 2026-11-04 there is no locker or idle tool running here and DPMS is off, so there is nothing to coexist with yet.
+- [ ] **`ScreensaverCommand` has no tests.** (p3) [test] `src/commands/ScreensaverCommand.js` (on, off, toggle,
+      status through a control request) is only exercised by hand; the daemon side is covered in `Screensaver.test.js`.
+      Add a command test with a fake runtime dir like `DisplayCommand`'s, including no daemon running.
 
 ## 8. CLI experience and packaging
 
@@ -446,6 +459,11 @@ Reviewed: 2026-11-07
 - [x] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
+- [ ] **Two waiters can both take over a stale lock.** (p3) [bug] In `FileLock.tryAcquire` (`src/utils/fileLock.js`)
+      two processes that both find a stale lock both `rmSync` it; if one removes the file the other has just written,
+      both hold the lock. Rare (it needs a crashed holder and two waiters, e.g. `next` from the menu and a CLI call
+      at once). Fix: take over by renaming the stale file to a unique name first (only one rename succeeds), check
+      it was the stale content, then create with `wx` as now.
 
 ## 9. Music visualizer
 
@@ -686,6 +704,19 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done: dropped outright, with 0.39.2 noted in `docs/specs/sleeve.md`.
 - [ ] **Try it on the real desktop.** (p2) [test] Veil, lyrics, ring and bars have now been seen together on the laptop panel (2026-11-05): stacking order, polybar hidden, ring scale and the veil's color.
       Still unseen there: colors following the wallpaper over several wallpapers, a wallpaper restart under sleeve, `lyrics-stage` and `lyrics-now` (the opaque layouts, whose seam 0.39.2 should have removed), and all of it with audio on the desktop's sink, since the music was on a phone.
+- [ ] **One-speaker sources stay on the old output.** (p2) [bug] `ChannelSources.sync` (`src/visualizer/channels.js`)
+      resolves `auto` to the default sink's monitor only when the visualizers start or sync, and nothing syncs again
+      when the default output changes (headphones, Bluetooth, HDMI). The `channel: left`/`right` rings then read the
+      old sink's monitor and lie flat; if that sink goes away, PulseAudio unloads the remap module and the instance
+      reads a source that no longer exists. Fix: `audio.js` already follows `pactl subscribe` server changes; on a
+      changed `get-default-sink`, call `syncChannels` again and restart the instances whose master moved.
+- [ ] **Remap sources outlive a crashed daemon.** (p3) [bug] `syncChannels` (`src/visualizer/VisualizerManager.js`)
+      returns early when no instance wants a channel and `channelsMade` is unset, which it always is on a fresh start,
+      so `backdrop_left`/`backdrop_right` modules a killed daemon left loaded stay until the sound server restarts.
+      Fix: run one `sync([])` on start when `pactl` is there (cheap: one `list short modules`).
+- [ ] **`doctor` does not mention `channel` for pactl.** (p3) [docs] Its `pactl` check (`src/commands/DoctorCommand.js`)
+      asks for it only for `only_while_playing` or `wallpaper_dim`; an instance with `channel: left`/`right` needs
+      it too (without it, the instance quietly shows both speakers).
 
 ## 10. Web interface
 

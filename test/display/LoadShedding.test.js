@@ -37,7 +37,7 @@ describe('Load shedding', () => {
       healthInterval: 0, monitorInterval: 0, purgeInterval: 0, loadInterval: 0,
       readFile: async () => { throw new Error('no /proc in tests'); },
       gpuMemory: async () => null,
-      watch: null,
+      watch: null, watchOutputs: null,
       readStart: pid => `t${pid}`,
       reap: async () => [],
       now: () => time,

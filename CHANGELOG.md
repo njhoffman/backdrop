@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.75.0] - 2026-11-10
+
+### Changed
+- The daemon notices monitor changes from i3's output events instead of asking xrandr every 5 seconds. Each of those
+  questions made X re-read every monitor's EDID, a short stall for the whole desktop, about 17,000 times a day per
+  monitor (and a 172 MB `Xorg.0.log` over three days). Now the layout is read when i3 reports a change, which also
+  picks it up at once rather than within 5 seconds, plus once a minute as a fallback. Without i3, or while it
+  restarts, the 5-second check stays.
+- Every monitor query, the shell completions' included, asks for the current layout (`xrandr --current`), which
+  halves the EDID reads of each.
+
 ## [2.74.0] - 2026-11-10
 
 ### Added

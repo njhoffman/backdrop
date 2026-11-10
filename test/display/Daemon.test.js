@@ -58,7 +58,7 @@ describe('Daemon', () => {
       gpuMemory: async () => null,
       monitorInterval: 0,
       // Tests that watch the config file pass their own
-      watch: null,
+      watch: null, watchOutputs: null,
       purgeInterval: 0,
       // Fake pids may belong to real processes, so their start times come from here, never /proc
       readStart: pid => `t${pid}`,
@@ -916,6 +916,72 @@ describe('Daemon', () => {
       layout = LISTMONITORS_TWO.replace('Monitors: 2', 'Monitors: 4') + ' 2: +DP-2 3840/600x2160/340+3640+0  DP-2\n 3: +DP-3 1920/1x1080/1+7480+0  DP-3\n';
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(spawned).to.have.length(4);
+      await daemon.stop();
+    });
+
+    // A watcher stand-in: connected says whether i3's output events are live; options is what the daemon gave it
+    const fakeWatcher = connected => {
+      const watcher = { connected, started: 0, stopped: 0, options: null };
+      watcher.start = () => { watcher.started++; };
+      watcher.stop = () => { watcher.stopped++; };
+      return watcher;
+    };
+
+    it('reads the layout on each output event, and while events are live polls only once the fallback has passed', async () => {
+      let reads = 0;
+      let time = 0;
+      const watcher = fakeWatcher(true);
+      const daemon = makeDaemon({
+        monitorInterval: 5, monitorFallback: 1000, now: () => time,
+        exec: async file => { if (file === 'xrandr') reads++; return layout; },
+        watchOutputs: options => { watcher.options = options; return watcher; }
+      });
+      await daemon.start();
+      expect(watcher.started).to.equal(1);
+      expect(watcher.options.spawn).to.equal(daemon.spawn);
+      const atStart = reads;
+
+      // Ticks find live events and a recent enough check: no xrandr
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(reads).to.equal(atStart);
+
+      layout = THREE;
+      await watcher.options.onChange();
+      expect(reads).to.equal(atStart + 1);
+      expect(spawned).to.have.length(3);
+
+      // Once the fallback has passed since that read, one tick reads again, and the next ones wait another fallback
+      time = 1000;
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(reads).to.equal(atStart + 2);
+
+      await daemon.stop();
+      expect(watcher.stopped).to.equal(1);
+    });
+
+    it('polls on every tick while no output events are live', async () => {
+      let reads = 0;
+      const daemon = makeDaemon({
+        monitorInterval: 5, monitorFallback: 60_000,
+        exec: async file => { if (file === 'xrandr') reads++; return layout; },
+        watchOutputs: () => fakeWatcher(false)
+      });
+      await daemon.start();
+      const atStart = reads;
+      layout = THREE;
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(reads).to.be.at.least(atStart + 3);
+      expect(spawned).to.have.length(3);
+      await daemon.stop();
+    });
+
+    it('asks xrandr for the current layout, without a probe', async () => {
+      const calls = [];
+      const daemon = makeDaemon({ exec: async (file, args) => { calls.push([file, ...args]); return layout; } });
+      await daemon.start();
+      await daemon.checkMonitors();
+      expect(calls.filter(([file]) => file === 'xrandr')).to.deep.include(['xrandr', '--current', '--listactivemonitors']);
+      expect(calls.some(call => call[0] === 'xrandr' && !call.includes('--current'))).to.equal(false);
       await daemon.stop();
     });
   });

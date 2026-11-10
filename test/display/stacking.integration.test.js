@@ -121,7 +121,7 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
       importer: { importDirs: async () => ({ imported: [] }) }, purge: async () => {}, thumbnail: async () => null,
       // No health checks: mpv's restarts here come from killing it, and a check every 0.5 s with its 5 s wait killed a
       // healthy mpv during a slow load on a busy machine, whose new wallpaper then went below the other window
-      healthInterval: 0, monitorInterval: 0, purgeInterval: 0, watch: null
+      healthInterval: 0, monitorInterval: 0, purgeInterval: 0, watch: null, watchOutputs: null
     });
     await daemon.start();
   });

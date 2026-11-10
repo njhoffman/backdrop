@@ -32,6 +32,7 @@ import { WallpaperColors } from './daemon/WallpaperColors.js';
 import { Health } from './daemon/Health.js';
 import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
 import { LoadShedding } from './daemon/LoadShedding.js';
+import { OutputWatcher } from './outputWatcher.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -45,8 +46,12 @@ const STOP_GRACE_MS = 2000;
 // An mpv that misses this many IPC health checks in a row is killed and restarted
 const HEALTH_INTERVAL_MS = 30_000;
 const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-// Monitor layout changes (hotplug, xrandr) are picked up this often
+// Monitor layout changes (hotplug, xrandr) are picked up this often while no i3 output events arrive (another
+// window manager, i3 restarting)
 const MONITOR_POLL_MS = 5000;
+// With i3's output events live, the layout is read on each event, and otherwise only this often as a fallback:
+// each read has X re-read monitor EDIDs over DDC, which blocks it for a moment
+const MONITOR_FALLBACK_MS = 60_000;
 // The load average is read this often when the load section is on
 const LOAD_INTERVAL_MS = 15_000;
 // Files the daemon's imports hash and probe at once, fewer than the CLI so playback keeps its CPU
@@ -145,8 +150,16 @@ export class Daemon {
     loadavg,
     loadInterval = LOAD_INTERVAL_MS,
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
-    createVisualizer
+    createVisualizer,
+    // i3's output events (src/display/outputWatcher.js); null leaves the timer alone to find layout changes
+    watchOutputs = options => new OutputWatcher(options),
+    monitorFallback = MONITOR_FALLBACK_MS
   }) {
+    this.watchOutputs = watchOutputs;
+    this.monitorFallback = monitorFallback;
+    this.outputWatcher = null;
+    // When the layout was last read (this.now), for the fallback while output events are live
+    this.lastMonitorCheck = 0;
     this.config = config;
     this.database = database;
     this.logger = logger;
@@ -292,7 +305,9 @@ export class Daemon {
     this.runPurge();
     this.every(this.purgeInterval, () => this.runPurge());
     this.every(this.healthInterval, () => this.checkHealth());
-    this.every(this.monitorInterval, () => this.checkMonitors());
+    this.outputWatcher = this.watchOutputs?.({ spawn: this.spawn, logger: this.logger, onChange: () => this.checkMonitors() }) ?? null;
+    this.outputWatcher?.start();
+    this.every(this.monitorInterval, () => this.pollMonitors());
     this.every(this.loadInterval, () => this.enqueue(() => this.load.check()));
     this.every(IDLE_CHECK_MS, () => this.enqueue(() => this.screensaver.checkIdle()));
   }
@@ -331,7 +346,14 @@ export class Daemon {
     return this.reconciling;
   }
 
+  // The timer's check: every tick without live i3 output events, else only once monitorFallback has passed
+  pollMonitors() {
+    if (this.outputWatcher?.connected && this.now() - this.lastMonitorCheck < this.monitorFallback) return Promise.resolve();
+    return this.checkMonitors();
+  }
+
   async reconcileMonitors() {
+    this.lastMonitorCheck = this.now();
     let reported;
     try {
       reported = await listMonitors(this.exec);
@@ -885,6 +907,8 @@ export class Daemon {
     clearTimeout(this.configTimer);
     this.configWatcher?.close();
     this.importWatcher.stop();
+    this.outputWatcher?.stop();
+    this.outputWatcher = null;
     await this.reconciling;
 
     await this.screensaver.leave();

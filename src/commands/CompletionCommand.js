@@ -159,7 +159,7 @@ _backdrop_monitors() {
     monitors=(\${(f)"$(grep -o '"name": *"[^"]*"' $state 2>/dev/null | sed 's/.*"\\([^"]*\\)"$/\\1/')"})
   fi
   if (( ! \${#monitors} )) && (( \${+commands[xrandr]} )); then
-    monitors=(\${(f)"$(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }')"})
+    monitors=(\${(f)"$(xrandr --current --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }')"})
   fi
   _wanted monitors expl monitor compadd -a monitors
 }
@@ -168,7 +168,7 @@ _backdrop_monitors() {
 _backdrop_resolutions() {
   local -a sizes
   if (( \${+commands[xrandr]} )); then
-    sizes=(\${(f)"$(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { split($3, g, /[x+]/); split(g[1], w, "/"); split(g[2], h, "/"); print w[1] "x" h[1] }' | sort -u)"})
+    sizes=(\${(f)"$(xrandr --current --listactivemonitors 2>/dev/null | awk 'NR > 1 { split($3, g, /[x+]/); split(g[1], w, "/"); split(g[2], h, "/"); print w[1] "x" h[1] }' | sort -u)"})
   fi
   _wanted resolutions expl 'resolution (WIDTHxHEIGHT)' compadd -a sizes
 }
@@ -284,7 +284,7 @@ _backdrop_monitors() {
   local state=${quote(state)} names=
   [[ -r $state ]] && names=$(grep -o '"name": *"[^"]*"' "$state" 2>/dev/null | sed 's/.*"\\([^"]*\\)"$/\\1/')
   if [[ -z $names ]] && command -v xrandr >/dev/null; then
-    names=$(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }')
+    names=$(xrandr --current --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }')
   fi
   printf '%s\\n' "$names"
 }
@@ -292,7 +292,7 @@ _backdrop_monitors() {
 # WIDTHxHEIGHT of the active X monitors
 _backdrop_resolutions() {
   command -v xrandr >/dev/null || return
-  xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { split($3, g, /[x+]/); split(g[1], w, "/"); split(g[2], h, "/"); print w[1] "x" h[1] }' | sort -u
+  xrandr --current --listactivemonitors 2>/dev/null | awk 'NR > 1 { split($3, g, /[x+]/); split(g[1], w, "/"); split(g[2], h, "/"); print w[1] "x" h[1] }' | sort -u
 }
 
 # Saved search queries or library tags (_backdrop_library_values queries|tags), from the database

@@ -75,7 +75,7 @@ async function waitFor(check, timeout = 15000, what = 'condition') {
     daemon = new Daemon({
       config, database: db, logger: silentLogger,
       importer: { importDirs: async () => ({ imported: [] }) }, purge: async () => {}, thumbnail: async () => null,
-      healthInterval: 0, monitorInterval: 200, purgeInterval: 0, watch: null
+      healthInterval: 0, monitorInterval: 200, purgeInterval: 0, watch: null, watchOutputs: null
     });
     await daemon.start();
   });

@@ -60,7 +60,7 @@ The screensaver is to follow the same levels: images only at `image`, skipping s
 
 `backdrop daemon` (foreground) or `backdrop start` (background) launches one
 `xwinwrap -g <geometry> -- mpv -wid WID --no-config --input-ipc-server=<runtime>/<output>.sock ...` per active
-monitor (`xrandr --listactivemonitors`, filtered by `display.monitors`) and writes `state.json` (pid, monitors,
+monitor (`xrandr --current --listactivemonitors`, filtered by `display.monitors`) and writes `state.json` (pid, monitors,
 sockets) to the runtime dir. mpv runs with `--no-config` because a personal mpv.conf (ontop, fullscreen, its own
 IPC socket) would break a wallpaper.
 
@@ -132,7 +132,10 @@ IPC socket) would break a wallpaper.
   (`src/library/copies.js`), and `--sync` sends `{ copies: true }`: Bounce's `resync` prunes and reverses the
   removed items that still bounce, Smooth's records missing sizes and reconfigures.
   On the Iris Xe this was measured at about one interpolated 1080p frame a second, with no dropped wallpaper frames.
-- **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
+- **Hotplug:** the daemon reads the layout (`xrandr --current --listactivemonitors`) on each of i3's output events
+  (`i3-msg -t subscribe -m '["output","tick"]'`, `src/display/outputWatcher.js`), and otherwise once a minute; without
+  live events (another window manager, i3 restarting) it polls every 5 seconds instead. Every read has X re-read the
+  monitors' EDIDs, which blocks it for a moment, so it is kept rare. It starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the
   current layout; a configured monitor that is unplugged is picked up again when it returns.
 - **Rating:** `keep [1-3]` and `skip` use the same monitor targeting. Keep moves inbox files into `media/`

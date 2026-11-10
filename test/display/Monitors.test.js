@@ -52,7 +52,7 @@ describe('Monitors', () => {
       return LISTMONITORS_ONE;
     });
 
-    expect(calls).to.deep.equal([['xrandr', '--listactivemonitors']]);
+    expect(calls).to.deep.equal([['xrandr', '--current', '--listactivemonitors']]);
     expect(monitors.map(m => m.name)).to.deep.equal(['DP-3']);
   });
 

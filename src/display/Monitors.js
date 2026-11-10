@@ -43,7 +43,7 @@ export function missingMonitors(monitors, setting) {
 }
 
 export async function listMonitors(exec = run) {
-  return parseMonitors(await exec('xrandr', ['--listactivemonitors']));
+  return parseMonitors(await exec('xrandr', ['--current', '--listactivemonitors']));
 }
 
 export function geometry(monitor) {
