@@ -14,7 +14,7 @@ Durations (`display.image_duration`, `display.video_duration`) take the times th
 
 The daemon applies a saved file without a restart (`Daemon.applyConfigChange`): it loads and checks the whole
 file again, keeps every running setting on a mistake (with a notification), restarts the visualizer when its
-section changed (only `opacity`, `palette.pick` or `palette.min_contrast` apply to the running instances without
+section changed (only `opacity`, `palette.pick`, `palette.min_contrast` or `palette.cycle` apply to the running instances without
 one), and applies the rest by kind: `display.order`, `notify`, `library.trash_days`, `min_duration` and
 `default_import_rating` are read where used; `image_duration` and `video_duration` also change what plays now;
 `video_loop` swaps playlist entries for the next play and `bounce_cache_gb` prunes the copies, the `smooth` settings (with `smooth_cache_gb`) prune and queue smoothed copies;

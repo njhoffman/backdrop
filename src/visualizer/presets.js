@@ -1,6 +1,8 @@
 // Presets backdrop ships. A preset is laid over the visualizer section (objects merge, lists replace), so it
 // can change any setting, including the instance list. visualizer.presets can override these by name.
 const WALLPAPER_COLORS = { source: 'wallpaper' };
+// The hue of the configured colors turning once every 90 seconds, a few times a song, the same for every instance with it
+const CYCLE_COLORS = { source: 'cycle', cycle: '90s' };
 const RING = { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] };
 
 export const BUILTIN_PRESETS = {
@@ -55,7 +57,7 @@ export const BUILTIN_PRESETS = {
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
-      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 600 } }
+      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
     ]
   },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
@@ -65,12 +67,13 @@ export const BUILTIN_PRESETS = {
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
     ]
   },
-  // The screensaver's own (screensaver.preset): the wallpaper under a veil, lyrics, a ring and bars
+  // The screensaver's own (screensaver.preset): the wallpaper under a veil, lyrics, a ring and bars, the ring and
+  // bars blue to start with and turning through the hues together
   screensaver: {
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
-      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
-      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 600 } }
+      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: '33%', y: '75%', width: '67%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
+      { name: 'ring', module: 'radial', palette: CYCLE_COLORS, rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
     ]
   },
   // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it

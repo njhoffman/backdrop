@@ -147,9 +147,29 @@ describe('visualizer settings', () => {
   });
 
   describe('palette', () => {
+    it('pipes the configured colors with source: cycle, turning them every cycle (5 minutes unless set)', () => {
+      const cycling = main({ palette: { source: 'cycle', cycle: '2m' }, bars: { colors: ['#000000', '#33aacc'] } });
+      expect(cycling.palette).to.include({ source: 'cycle', cycle: 120 });
+      expect(cycling.pipe).to.deep.equal({ fg: '#000000ff', fg2: '#33aaccff' });
+      expect(main({ palette: { source: 'cycle' } }).palette.cycle).to.equal(300);
+      expect(() => main({ palette: { source: 'cycle', cycle: 'soon' } })).to.throw('visualizer.palette.cycle must be a time such as 90s, 5m or 1h');
+      // A raw define of the color wins: the instance keeps it and does not cycle, rather than failing a preset
+      const raw = main({ palette: { source: 'cycle' }, module: 'radial', defines: { COLOR: '#ff0000' } });
+      expect(raw.pipe).to.equal(null);
+      expect(raw.defines.COLOR).to.equal('#ff0000');
+    });
+
+    it('turns the screensaver preset\'s ring and bars together, starting from blue', () => {
+      const { instances } = visualizerSettings({}, { preset: 'screensaver' });
+      const [bars, ring] = ['bars', 'ring'].map(name => instances.find(instance => instance.name === name));
+      expect([bars.palette, ring.palette].map(({ source, cycle }) => ({ source, cycle }))).to.deep.equal([{ source: 'cycle', cycle: 90 }, { source: 'cycle', cycle: 90 }]);
+      expect(bars.pipe).to.deep.equal({ fg: '#000000ff', fg2: '#33aaccff' });
+      expect(ring.pipe).to.deep.equal({ fg: '#33aaccff', fg2: '#a0e0ffff' });
+    });
+
     it('pipes colors that are set, so they change with no restart', () => {
       const instance = main({});
-      expect(instance.palette).to.deep.equal({ source: 'config', pick: 'vivid', minContrast: 3 });
+      expect(instance.palette).to.deep.equal({ source: 'config', pick: 'vivid', minContrast: 3, cycle: 300 });
       expect(instance).to.deep.include({ pipe: { fg: '#33aaccff' }, pipeDefine: 'COLOR' });
       expect(instance.defines.COLOR).to.equal('@fg:#33aacc');
       expect(main({ module: 'wave', wave: { color: '#123456' } })).to.deep.include({ pipe: { fg: '#123456ff' }, pipeDefine: 'BASE_COLOR' });
@@ -169,7 +189,7 @@ describe('visualizer settings', () => {
 
     it('pipes the foreground color with source: wallpaper, sending the configured colors first', () => {
       const gradient = main({ palette: { source: 'wallpaper', pick: 'complement', min_contrast: 4.5 }, bars: { colors: ['#000000', '#33aacc80'] } });
-      expect(gradient.palette).to.deep.equal({ source: 'wallpaper', pick: 'complement', minContrast: 4.5 });
+      expect(gradient.palette).to.deep.equal({ source: 'wallpaper', pick: 'complement', minContrast: 4.5, cycle: 300 });
       // A space before each comma: GLava reads a default up to whitespace
       expect(gradient.defines.COLOR).to.equal('mix(@fg:#000000 , @fg2:#33aacc80 , clamp(d / GRADIENT, 0, 1))');
       expect(gradient.pipe).to.deep.equal({ fg: '#000000ff', fg2: '#33aacc80' });
@@ -200,7 +220,7 @@ describe('visualizer settings', () => {
     });
 
     it('rejects bad values, and a raw define of the color it pipes', () => {
-      expect(() => main({ palette: { source: 'album' } })).to.throw('visualizer.palette.source must be config, wallpaper, not "album"');
+      expect(() => main({ palette: { source: 'album' } })).to.throw('visualizer.palette.source must be config, wallpaper, cycle, not "album"');
       expect(() => main({ palette: { pick: 'loud' } })).to.throw('visualizer.palette.pick must be vivid, dominant, complement');
       expect(() => main({ palette: { min_contrast: 30 } })).to.throw('visualizer.palette.min_contrast must be a contrast ratio from 1 to 21');
       expect(() => main({ palette: { colour: 1 } })).to.throw('visualizer.palette.colour must be one of the palette settings');

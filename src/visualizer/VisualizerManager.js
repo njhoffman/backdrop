@@ -1,7 +1,7 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
 import { createVisualizer } from './index.js';
-import { DEFAULT_VEIL } from './palette.js';
+import { DEFAULT_VEIL, turnHue } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
 import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
@@ -21,6 +21,9 @@ const SETTLE_MS = 500;
 // GLava takes one line from stdin per read and drops the rest of what arrived together, so piped colors are
 // written one line at a time this far apart (several frames)
 const PIPE_GAP_MS = 100;
+// How often palette.source: cycle sends the turned colors: a 90-second turn moves 1 degree a step, too little to
+// see, and GLava's two lines (PIPE_GAP_MS apart) are written well within it
+const CYCLE_STEP_MS = 250;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -86,12 +89,17 @@ export class VisualizerManager {
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
     colorsFor = () => null, veilFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
-    sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}
+    sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}, cycleStep = CYCLE_STEP_MS
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
-      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, veilFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper
+      restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, veilFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper,
+      cycleStep
     });
+    // Sends the turned colors of palette.source: cycle while an instance with it runs, turning from when the first
+    // of them started, so a look that cycles starts at its configured colors
+    this.cycleTimer = null;
+    this.cycleStart = null;
     // Windows marked _BACKDROP_OVERLAY by other programs, by monitor, as found at its last placement
     this.overlays = new Map();
     // The music dim last reported to onMusicDim
@@ -430,7 +438,8 @@ export class VisualizerManager {
     if (instance.pipe) {
       // A piped value that never arrives stays unset: the wallpaper's colors when known, else the configured ones
       child.stdin?.on('error', () => {});
-      this.sendColors(entry, this.colorsFor(monitor, instance, geometry) ?? instance.pipe);
+      this.sendColors(entry, this.pipedColors(entry));
+      if (instance.palette?.source === 'cycle') this.startCycle();
     }
     for (const stream of [child.stdout, child.stderr]) {
       stream?.on('data', chunk => {
@@ -471,14 +480,49 @@ export class VisualizerManager {
     return entry.writing;
   }
 
+  // What an instance's pipe gets now: the wallpaper's colors when known, else the configured ones; with
+  // palette.source: cycle, the configured ones with the hue turned. Every cycling instance turns from the same
+  // start, so they show the same hue.
+  pipedColors(entry) {
+    const { instance } = entry;
+    if (instance.palette?.source !== 'cycle') return this.colorsFor(entry.monitor, instance, entry.geometry) ?? instance.pipe;
+    this.cycleStart ??= this.now();
+    const period = instance.palette.cycle * 1000;
+    return turnHue(instance.pipe, (((this.now() - this.cycleStart) % period) / period) * 360);
+  }
+
+  startCycle() {
+    if (this.cycleTimer) return;
+    this.cycleTimer = setInterval(() => this.cycleColors(), this.cycleStep);
+    this.cycleTimer.unref?.();
+  }
+
+  // The next instance that cycles starts again from its configured colors
+  stopCycle() {
+    clearInterval(this.cycleTimer);
+    this.cycleTimer = null;
+    this.cycleStart = null;
+  }
+
+  // One step of palette.source: cycle for every instance with it; stops once none runs
+  cycleColors() {
+    const cycling = [...this.entries.values()].filter(entry => entry.instance.pipe && entry.instance.palette?.source === 'cycle');
+    if (!cycling.length) {
+      this.stopCycle();
+      return Promise.resolve();
+    }
+    return Promise.all(cycling.map(entry => this.sendColors(entry, this.pipedColors(entry))));
+  }
+
   // Asks colorsFor again for the instances on a monitor that take their colors from the wallpaper, and any
   // `auto` backgrounds there, after the
   // daemon loads a new item there or samples it; resolves once the new colors are written
   recolor(name) {
     const changed = this.monitorEntries(name).flatMap(entry => {
       const veil = this.reveil(entry);
-      if (!entry.instance.pipe) return veil;
-      const colors = this.colorsFor(entry.monitor, entry.instance, entry.geometry) ?? entry.instance.pipe;
+      // A cycling instance changes with every step anyway
+      if (!entry.instance.pipe || entry.instance.palette?.source === 'cycle') return veil;
+      const colors = this.pipedColors(entry);
       if (JSON.stringify(colors) === JSON.stringify(entry.colors)) return veil;
       this.logger.info('Visualizer colors', { monitor: name, instance: entry.instance.name, colors });
       return [...veil, this.sendColors(entry, colors)];
@@ -741,6 +785,7 @@ export class VisualizerManager {
   async stopAll() {
     // sync starts it again if an instance is still wanted
     this.sleeved?.stop();
+    this.stopCycle();
     const entries = [...this.entries.values()];
     this.entries.clear();
     await Promise.all(entries.map(entry => this.stopEntry(entry)));
@@ -769,8 +814,8 @@ export class VisualizerManager {
       return [{
         instance: instance.name, engine: instance.engine ?? this.settings.engine, module: instance.module, pid: entry.child.pid,
         running: !entry.failed, geometry: formatGeometry(entry.geometry),
-        // The colors last sent from the wallpaper or the config, with palette.source: wallpaper
-        ...(instance.palette?.source === 'wallpaper' ? { colors: entry.colors } : {})
+        // The colors last sent from the wallpaper or the config, with palette.source: wallpaper, or the turned ones with cycle
+        ...(['wallpaper', 'cycle'].includes(instance.palette?.source) ? { colors: entry.colors } : {})
       }];
     });
   }

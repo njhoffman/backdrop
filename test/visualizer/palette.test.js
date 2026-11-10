@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import {
   visibleRegion, sampleMedia, stripPixels, mainColors, pickColors, ensureContrast, contrastRatio, shownAverage, veilBackground, DEFAULT_VEIL,
-  paletteColors, toHsl, fromHsl
+  paletteColors, toHsl, fromHsl, turnHue
 } from '../../src/visualizer/palette.js';
 
 const hasFfmpeg = (() => {
@@ -30,6 +30,16 @@ function bandedSample(width, height, bands) {
 const instance = (pipe, palette = {}) => ({ name: 'main', pipe, palette: { source: 'wallpaper', pick: 'vivid', minContrast: 3, ...palette } });
 
 describe('visualizer palette', () => {
+  describe('turnHue', () => {
+    it('turns each color around the wheel, keeping grays, black, alpha and a full turn as they were', () => {
+      expect(turnHue({ fg: '#000000ff', fg2: '#33aaccff' }, 180)).to.deep.equal({ fg: '#000000ff', fg2: '#cc5533ff' });
+      expect(turnHue({ fg: '#33aacc' }, 120)).to.deep.equal({ fg: '#cc33aa' });
+      expect(turnHue({ fg: '#33aacc80' }, 360)).to.deep.equal({ fg: '#33aacc80' });
+      expect(turnHue({ fg: '#33aacc' }, -240)).to.deep.equal({ fg: '#cc33aa' });
+      expect(turnHue({ fg: '#808080' }, 90)).to.deep.equal({ fg: '#808080' });
+    });
+  });
+
   describe('visibleRegion', () => {
     it('crops what overflows the monitor, centered, as mpv does with --panscan=1.0', () => {
       // 4:3 on 16:9: full width, middle rows

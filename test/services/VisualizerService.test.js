@@ -97,6 +97,19 @@ describe('VisualizerService', () => {
     expect(sent).to.deep.equal([{ preset: 'ring' }, { visualizer_reset: true }, { visualizer: false }]);
   });
 
+  it('keeps the screensaver\'s preset for the screensaver: left out of the list and refused while it is off', async () => {
+    const service = make();
+    expect((await service.describe()).presets.map(preset => preset.name)).to.not.include('screensaver');
+    const caught = await service.setPreset('screensaver').catch(error => error);
+    expect(caught.message).to.include('shows only in it');
+    expect(sent).to.deep.equal([]);
+
+    state.screensaver = { active: true };
+    expect((await service.describe()).presets.map(preset => preset.name)).to.include('screensaver');
+    await service.setPreset('screensaver');
+    expect(sent).to.deep.equal([{ preset: 'screensaver' }]);
+  });
+
   describe('saving presets', () => {
     let file, config;
 

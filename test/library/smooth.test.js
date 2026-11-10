@@ -102,7 +102,8 @@ describe('smooth', () => {
     expect(covers(null, hd)).to.equal(false);
     // The video replaced after the copy (download --upgrade)
     expect(staleCopy(smoothedPath(media, dir), media)).to.equal(false);
-    await fs.utimes(media.path, new Date(), new Date());
+    // A day after the copy, not moments: written moments apart they can share a timestamp
+    await fs.utimes(media.path, new Date(Date.now() + 86_400_000), new Date(Date.now() + 86_400_000));
     expect(staleCopy(smoothedPath(media, dir), media)).to.equal(true);
     expect(smoothedReady(media, dir)).to.equal(false);
   });

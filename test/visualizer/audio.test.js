@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
+import sinon from 'sinon';
 import { AudioWatcher } from '../../src/visualizer/audio.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -40,35 +41,42 @@ describe('AudioWatcher', () => {
   });
 
   it('reads the default output at start and follows it, reporting silence only after the grace period', async () => {
-    const audio = watcher();
-    expect(await audio.start()).to.be.true;
-    expect(children[0]).to.deep.include({ file: 'pactl', args: ['subscribe'] });
-    const { child } = children[0];
+    // Fake time: real pauses race the 30 ms grace on a loaded machine
+    const clock = sinon.useFakeTimers();
+    const pause = ms => clock.tickAsync(ms);
+    try {
+      const audio = watcher();
+      expect(await audio.start()).to.be.true;
+      expect(children[0]).to.deep.include({ file: 'pactl', args: ['subscribe'] });
+      const { child } = children[0];
 
-    state = 'IDLE';
-    event(child, "Event 'change' on sink #128");
-    await pause(10);
-    expect(changes).to.deep.equal([]);
-    // Sound again within the grace period: no change at all
-    state = 'RUNNING';
-    event(child, "Event 'change' on sink-input #150");
-    await pause(40);
-    expect(changes).to.deep.equal([]);
+      state = 'IDLE';
+      event(child, "Event 'change' on sink #128");
+      await pause(10);
+      expect(changes).to.deep.equal([]);
+      // Sound again within the grace period: no change at all
+      state = 'RUNNING';
+      event(child, "Event 'change' on sink-input #150");
+      await pause(40);
+      expect(changes).to.deep.equal([]);
 
-    state = 'SUSPENDED';
-    event(child, "Event 'change' on sink #128");
-    await pause(50);
-    expect(changes).to.deep.equal([false]);
-    // Events about other things are ignored
-    state = 'RUNNING';
-    event(child, "Event 'new' on client #77");
-    await pause(10);
-    expect(changes).to.deep.equal([false]);
-    event(child, "Event 'change' on server #-1");
-    await pause(10);
-    expect(changes).to.deep.equal([false, true]);
-    audio.stop();
-    expect(child.killed).to.be.true;
+      state = 'SUSPENDED';
+      event(child, "Event 'change' on sink #128");
+      await pause(50);
+      expect(changes).to.deep.equal([false]);
+      // Events about other things are ignored
+      state = 'RUNNING';
+      event(child, "Event 'new' on client #77");
+      await pause(10);
+      expect(changes).to.deep.equal([false]);
+      event(child, "Event 'change' on server #-1");
+      await pause(10);
+      expect(changes).to.deep.equal([false, true]);
+      audio.stop();
+      expect(child.killed).to.be.true;
+    } finally {
+      clock.restore();
+    }
   });
 
   it('checks a named sink through its monitor source, or a source by name', async () => {

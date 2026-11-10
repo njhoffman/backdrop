@@ -223,11 +223,12 @@ describe('MenuCommand', () => {
     playing.media = db.getMedia(playing.media.id);
     picks = [{ key: 'v' }, '0.65', '+0.1', null, 'dim ▸', { key: 'q' }];
     await command.open();
-    expect(labels(shown[1])).to.deep.equal(['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1', 'bounce']);
-    // The fake leaves the speed at 1, where +0.1 stops
-    expect(display.speed.args).to.deep.equal([['0.65', { monitor: 'DP-1' }], ['1', { monitor: 'DP-1' }]]);
+    expect(labels(shown[1])).to.deep.equal(['0.4', '0.5', '0.65', '0.75', '0.85', '1', '1.25', '1.5', '2', '-0.1', '+0.1', 'bounce']);
+    // The fake leaves the speed at 1, where +0.1 goes on above it
+    expect(display.speed.args).to.deep.equal([['0.65', { monitor: 'DP-1' }], ['+0.1', { monitor: 'DP-1' }]]);
     expect(shown.map(menu => menu.prompt)).to.deep.equal(['backdrop', 'speed (now 1)', 'speed (now 1)', 'speed (now 1)', 'backdrop', 'dim (now 0)']);
-    expect(shown[1]).to.include({ columns: 9 });
+    // Two rows of six
+    expect(shown[1]).to.include({ columns: 6 });
     expect(flagged(shown[1], 'active')).to.deep.equal(['1']);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2']);
 
@@ -236,6 +237,13 @@ describe('MenuCommand', () => {
     picks = [{ key: 'v' }, '+0.1', null];
     await command.open();
     expect(display.speed.lastCall.args[0]).to.equal('+0.1');
+
+    // +0.1 stops at 2, the fastest button
+    db.setSpeed(playing.media.id, 1.95);
+    playing.media = db.getMedia(playing.media.id);
+    picks = [{ key: 'v' }, '1.5', '+0.1', null];
+    await command.open();
+    expect(display.speed.args.slice(-2).map(args => args[0])).to.deep.equal(['1.5', '2']);
   });
 
   it('retargets another monitor with Tab, and offers no Tab with one monitor', async () => {

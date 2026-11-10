@@ -1,3 +1,4 @@
+import { seconds } from '../config/schema.js';
 import { BUILTIN_PRESETS } from './presets.js';
 
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
@@ -11,7 +12,9 @@ export const MODULES = ['bars', 'graph', 'radial', 'circle', 'wave'];
 export const AUDIO_BACKENDS = ['pulseaudio', 'fifo'];
 export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
 const DIRECTIONS = { inward: 0, outward: 1 };
-export const PALETTE_SOURCES = ['config', 'wallpaper'];
+export const PALETTE_SOURCES = ['config', 'wallpaper', 'cycle'];
+// palette.cycle when unset: one full turn of the hue with palette.source: cycle
+export const DEFAULT_CYCLE_SECONDS = 300;
 export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -232,17 +235,24 @@ const PIPED_COLORS = {
 
 function paletteSettings(value, prefix) {
   const key = name => `${prefix}palette.${name}`;
-  knownKeys(`${prefix}palette`, value, ['source', 'pick', 'min_contrast'], 'palette settings');
+  knownKeys(`${prefix}palette`, value, ['source', 'pick', 'min_contrast', 'cycle'], 'palette settings');
   const minContrast = value.min_contrast ?? 3;
   if (typeof minContrast !== 'number' || !(minContrast >= 1 && minContrast <= 21)) fail(key('min_contrast'), 'a contrast ratio from 1 to 21', minContrast);
+  let cycle;
+  try {
+    cycle = seconds(value.cycle ?? DEFAULT_CYCLE_SECONDS);
+  } catch {
+    fail(key('cycle'), 'a time such as 90s, 5m or 1h', value.cycle);
+  }
   return {
     source: oneOf(key('source'), value.source ?? 'config', PALETTE_SOURCES),
     pick: oneOf(key('pick'), value.pick ?? 'vivid', PALETTE_PICKS),
-    minContrast
+    minContrast,
+    cycle
   };
 }
 
-// With palette.source: wallpaper, the module's foreground #define reads its colors from GLava's stdin
+// With palette.source: wallpaper or cycle, the module's foreground #define reads its colors from GLava's stdin
 // (--pipe): `@fg:` for one color, `mix(@fg:, @fg2:, ...)` for a gradient, so each end can change. Returns
 // that #define and the configured colors as #rrggbbaa, which the visualizer sends as soon as it starts:
 // A piped value that never arrives stays unset, so a gradient fades to nothing (the manager sends them again once the window is up).
@@ -253,10 +263,10 @@ function pipesFixedColors(module, raw) {
   return raw.defines?.[define] === undefined && (module === 'bars' || raw[module]?.[option] !== undefined);
 }
 
-function pipedColors(module, raw, prefix) {
+function pipedColors(module, raw, prefix, source) {
   const { define, option, fallback, position } = PIPED_COLORS[module];
   if (raw.defines?.[define] !== undefined) {
-    fail(`${prefix}defines.${define}`, `left out with palette.source: wallpaper (set ${module}.${option} instead)`, raw.defines[define]);
+    fail(`${prefix}defines.${define}`, `left out with palette.source: ${source} (set ${module}.${option} instead)`, raw.defines[define]);
   }
   const value = raw[module]?.[option] ?? fallback;
   const colors = (Array.isArray(value) ? value : [value]).map((item, index) => color(`${prefix}${module}.${option}[${index}]`, item));
@@ -424,8 +434,11 @@ function instance(raw, prefix) {
   const allDefines = { ...typedDefines(module, raw, prefix), ...defines(raw.defines ?? {}, prefix) };
   let pipe = null;
   let pipeDefine = null;
-  if (palette.source === 'wallpaper' || pipesFixedColors(module, raw)) {
-    const piped = pipedColors(module, raw, prefix);
+  // cycle turns the hue of the configured colors, which are piped like the wallpaper's; a raw #define of the color
+  // wins over it, so a preset that cycles never makes the user's own define an error
+  const cycles = palette.source === 'cycle' && raw.defines?.[PIPED_COLORS[module].define] === undefined;
+  if (palette.source === 'wallpaper' || cycles || pipesFixedColors(module, raw)) {
+    const piped = pipedColors(module, raw, prefix, palette.source);
     allDefines[piped.define[0]] = piped.define[1];
     pipe = piped.pipe;
     pipeDefine = piped.define[0];

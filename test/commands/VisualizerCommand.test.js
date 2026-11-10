@@ -89,7 +89,7 @@ describe('VisualizerCommand', () => {
       await running({ preset: 'ring' });
       await command().run('preset');
       expect(lines.slice(0, 14)).to.deep.equal([
-        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver', '  screensaver-projectm', '  lyrics-stage', '  lyrics-now', '  calm'
+        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-now', '  calm'
       ]);
     });
 
@@ -114,6 +114,21 @@ describe('VisualizerCommand', () => {
       answer = answering();
       await command().run('preset', undefined, { next: true });
       expect((await fs.readJson(controlPath(dir))).preset).to.equal('subtle');
+    });
+
+    it('keeps the screensaver\'s preset for the screensaver: refused by name and skipped by --next while it is off', async () => {
+      await running({ preset: 'lyrics-blend' });
+      expect(await command().run('preset', 'screensaver').catch(error => error.message))
+        .to.equal('screensaver is the screensaver\'s look and shows only in it (backdrop screensaver on)');
+      expect(signals).to.deep.equal([]);
+      answer = answering();
+      await command().run('preset', undefined, { next: true });
+      expect((await fs.readJson(controlPath(dir))).preset).to.equal('screensaver-projectm');
+
+      // While the screensaver is on it is a preset like the others
+      await state({ enabled: true, error: null, generation: 1, preset: null }, { control: signals.length, screensaver: { active: true }, monitors: [] });
+      await command().run('preset', 'screensaver');
+      expect((await fs.readJson(controlPath(dir))).preset).to.equal('screensaver');
     });
 
     it('rejects an unknown preset before signalling, and only advises when the daemon is stopped', async () => {

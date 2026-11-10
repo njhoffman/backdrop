@@ -138,6 +138,17 @@ export function fromHsl([h, s, l]) {
   return [channel(hue + 1 / 3), channel(hue), channel(hue - 1 / 3)].map(value => Math.round(value * 255));
 }
 
+// Piped colors ({ fg, fg2 } as #rrggbb or #rrggbbaa) with the hue turned by degrees, for palette.source: cycle.
+// Saturation, lightness and alpha stay, so a gray (black included) stays as it is.
+export function turnHue(colors, degrees) {
+  return Object.fromEntries(Object.entries(colors).map(([name, value]) => {
+    const rgb = [1, 3, 5].map(at => parseInt(value.slice(at, at + 2), 16));
+    const [h, s, l] = toHsl(rgb);
+    const turned = fromHsl([(((h + degrees) % 360) + 360) % 360, s, l]);
+    return [name, `#${turned.map(channel => channel.toString(16).padStart(2, '0')).join('')}${value.slice(7)}`];
+  }));
+}
+
 // WCAG relative luminance and contrast ratio (1 to 21)
 function relativeLuminance(color) {
   const [r, g, b] = color.map(value => {

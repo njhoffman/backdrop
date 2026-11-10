@@ -1,6 +1,7 @@
 import YAML from 'yaml';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
+import { reservedMessage, reservedPreset } from '../display/daemon/Screensaver.js';
 import { BUILTIN_PRESETS } from '../visualizer/presets.js';
 import {
   ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetsOf, visualizerSettings
@@ -67,7 +68,8 @@ export class VisualizerService {
       error: state?.visualizer?.error ?? null,
       wallpaper: state ? state.wallpaper !== false : null,
       preset: options.preset,
-      presets: Object.keys(presetsOf(section)).map(name => ({
+      // The screensaver's own look only while it is on (or still in force)
+      presets: Object.keys(presetsOf(section)).filter(name => name !== this.reserved(state) || name === options.preset).map(name => ({
         name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in'
       })),
       changed: Object.keys(options.live).length > 0,
@@ -128,10 +130,17 @@ export class VisualizerService {
     return this.change(instance, changes);
   }
 
-  // Switches to a preset (null for none), checked before the daemon sees it; live changes stay
+  // The preset kept for the screensaver while it is off, else null
+  reserved(state) {
+    return reservedPreset(this.config.get(), Boolean(state?.screensaver?.active));
+  }
+
+  // Switches to a preset (null for none), checked before the daemon sees it; live changes stay. The screensaver's
+  // own preset only while the screensaver is on.
   async setPreset(name) {
     await this.refresh();
     const state = await this.state();
+    if (name && name === this.reserved(state)) throw new Error(reservedMessage(name));
     visualizerSettings(this.section, { preset: name, live: state.visualizer?.live ?? {} });
     return this.send(state, { preset: name });
   }

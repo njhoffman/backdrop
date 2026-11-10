@@ -1,4 +1,5 @@
 import { readState } from '../display/Daemon.js';
+import { reservedMessage, reservedPreset } from '../display/daemon/Screensaver.js';
 import { sendControl } from '../display/control.js';
 import { presetsOf, visualizerSettings } from '../visualizer/settings.js';
 import { checkVisualizer, compositorRuns } from '../visualizer/check.js';
@@ -95,12 +96,19 @@ export class VisualizerCommand {
     const names = Object.keys(presetsOf(section));
     const state = await readState(this.runtimeDir);
     const active = state?.visualizer?.preset ?? section?.preset ?? null;
+    // The screensaver's own look, unless it is on
+    const reserved = reservedPreset(this.config.get(), Boolean(state?.screensaver?.active));
     if (!name && !next && !clear) {
-      for (const preset of names) out.print(`${preset === active ? fmt.bold(`* ${preset}`) : `  ${preset}`}`);
+      for (const preset of names) {
+        const note = preset === reserved ? fmt.dim('  (screensaver only)') : '';
+        out.print(`${preset === active ? fmt.bold(`* ${preset}`) : `  ${preset}`}${note}`);
+      }
       out.detail('Switch with `backdrop visualizer preset <name>`, `--next`, or `--clear` for visualizer.preset');
       return;
     }
-    const target = clear ? null : name ?? names[(names.indexOf(active) + 1) % names.length];
+    const choices = names.filter(preset => preset !== reserved);
+    const target = clear ? null : name ?? choices[(choices.indexOf(active) + 1) % choices.length];
+    if (target && target === reserved) throw new Error(reservedMessage(target));
     // Checks the name and the preset before the daemon sees them
     visualizerSettings(section, { preset: target });
     if (!state) {

@@ -1015,6 +1015,20 @@ describe('Daemon', () => {
       expect(calls.at(-1)).to.equal('stop');
     });
 
+    it('refuses the screensaver\'s preset on request while the screensaver is off, and takes it while on', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start();
+      await control(daemon, { preset: 'screensaver' });
+      expect(calls.filter(call => call[0] === 'preset')).to.deep.equal([]);
+      // The request is still answered, so its CLI does not wait
+      expect((await readState(tempDir)).control).to.equal(1);
+      daemon.screensaver.active = { trigger: 'key', since: 0 };
+      await control(daemon, { preset: 'screensaver' });
+      expect(calls.filter(call => call[0] === 'preset')).to.deep.equal([['preset', 'screensaver']]);
+      daemon.screensaver.active = null;
+      await daemon.stop();
+    });
+
     it('switches the preset on request, and back to the configured one with null', async () => {
       const daemon = makeDaemon({ visualizers });
       await daemon.start();

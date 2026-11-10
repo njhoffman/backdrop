@@ -169,6 +169,21 @@ of what arrived together, so lines go out 100 ms apart. Lines written before GLa
 unset and the bars fading to nothing, so the manager writes the colors again once the window is up. A raw `defines` entry for the piped
 color is rejected. `status` shows each instance's current colors.
 
+## Turning colors
+
+With `palette.source: cycle`, an instance's configured colors (`bars.colors`, `radial.colors` and the like) turn
+around the color wheel once every `palette.cycle` (a time such as `90s` or `5m`; 5 minutes unless set), keeping
+their saturation, lightness and alpha, so black and grays stay as they are (`turnHue` in `palette.js`). The
+manager sends the turned colors over the same pipe as the wallpaper's every 250 ms, 1 degree a step at 90
+seconds, with no restart. Every cycling instance turns from when the first of them started, so instances with
+the same colors and cycle show the same hue, and a look that cycles starts at its configured colors (again after
+a reload or a preset change). A raw `#define` of the color wins over it: that instance keeps the define and
+does not cycle, so a preset that cycles never makes a section's define an error. The `screensaver` preset turns
+its bars (`#000000` to `#33aacc`) and ring (`#33aacc` to `#a0e0ff`) this way together, once every 90 seconds, a
+few times a song. It is the screensaver's own look (`screensaver.preset`): while the screensaver is off, no preset switch
+picks it (`backdrop visualizer preset`, `--next`, the menu and the web page refuse or leave it out, and the daemon
+refuses the request), so the plain desktop shows only what the section or its own preset sets.
+
 ## Menu
 
 `backdrop menu visualizer`, or `z` in the main menu, changes one instance live (`MenuCommand.visualizerMenu`):

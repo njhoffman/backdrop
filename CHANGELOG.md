@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.71.0] - 2026-11-09
+
+### Added
+- `visualizer.palette.source: cycle` turns an instance's configured colors around the color wheel once every
+  `palette.cycle` (5 minutes unless set); instances that cycle keep the same hue and start at their colors.
+- The `screensaver` preset starts its ring and bars blue and turns them through the hues together, once every
+  90 seconds.
+  Its bars bring their own blue rather than taking the section's `bars.colors`.
+- The menu's speed panel has 1.25, 1.5 and 2 again, in two rows of six: the slow speeds and 1, then the fast
+  ones, -0.1, +0.1 and bounce.
+
+### Changed
+- The screensaver's preset (`screensaver.preset`) shows only in the screensaver: while it is off,
+  `backdrop visualizer preset` refuses it, `--next` and the menu skip it, the web page leaves it out, and
+  `visualizer preset` lists it as "screensaver only". The plain desktop keeps its own visualizer look.
+- `+0.1` in the menu's speed panel goes up to 2 (it stopped at 1).
+- The ring in the `screensaver` and `lyrics-veil` visualizer presets is less amplified (amplify 450, was 600),
+  so its bars no longer come close to the edges of its window on loud songs.
+
+### Fixed
+- The audio watcher's timing test and the smoothing stale-copy test no longer fail on a loaded machine.
+
 ## [2.70.0] - 2026-11-09
 
 ### Added

@@ -37,7 +37,11 @@ export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
 
 // Wallpaper videos only ever play slowed down, so +0.1 stops at 1 (see stepMenu)
-const SPEEDS = ['0.4', '0.5', '0.65', '0.75', '0.85', '1', '-0.1', '+0.1'];
+const SPEEDS = ['0.4', '0.5', '0.65', '0.75', '0.85', '1', '1.25', '1.5', '2', '-0.1', '+0.1'];
+// Two rows of six: the slow speeds and 1, then the fast ones, the steps and bounce
+const SPEED_COLUMNS = 6;
+// +0.1 stops at the fastest button
+const MAX_STEP_SPEED = 2;
 const DIMS = ['0', '20', '40', '60', '+10', '-10'];
 
 // Nerd Font glyphs (Font Awesome code points), as in the CLI's nerd symbol set. The star is the plain
@@ -422,7 +426,7 @@ export class MenuCommand {
       const reversing = bouncing && bounceState(item.media, this.config.get()) === 'reversing';
       if (kind === 'speed') entries.push({ icon: ICONS.bounce, label: 'bounce', caption: reversing ? 'reversing' : 'bounce', active: bouncing });
       const picked = await this.show({ prompt, title: `${item.title}  ·  ${prompt}`, message: item.message, preview: item.preview,
-        entries, keys: [QUIT_KEY], columns: entries.length });
+        entries, keys: [QUIT_KEY], columns: kind === 'speed' ? SPEED_COLUMNS : entries.length });
       if (picked === null) return {};
       if (picked.key === QUIT_KEY) return { quit: true };
       if (picked === values.length) {
@@ -433,10 +437,10 @@ export class MenuCommand {
     }
   }
 
-  // +0.1 on speed stops at 1
+  // +0.1 on speed stops at the fastest button
   step(kind, value, current) {
     if (kind !== 'speed' || value !== '+0.1') return value;
-    return Math.round(current * 100) + 10 > 100 ? '1' : value;
+    return Math.round(current * 100) + 10 > MAX_STEP_SPEED * 100 ? String(MAX_STEP_SPEED) : value;
   }
 
   async monitorMenu(current) {
@@ -509,7 +513,7 @@ export class MenuCommand {
         { icon: VISUALIZER_ICONS.position, label: 'position ▸', caption: look.anchor, key: 'l',
           run: () => this.pickMenu(state, instance, 'position', ANCHORS, look.anchor, anchor => ({ placement: { anchor } })) },
         ...(look.engine === 'projectm' ? [] : [
-          { icon: VISUALIZER_ICONS.colors, label: 'colors ▸', caption: look.palette.source === 'wallpaper' ? `wall ${look.palette.pick}` : 'fixed colors',
+          { icon: VISUALIZER_ICONS.colors, label: 'colors ▸', caption: look.palette.source === 'wallpaper' ? `wall ${look.palette.pick}` : look.palette.source === 'cycle' ? 'cycling' : 'fixed colors',
             key: 'c', active: look.palette.source === 'wallpaper', run: () => this.colorsMenu(instance) }
         ]),
         { icon: VISUALIZER_ICONS.reset, label: 'reset', key: 'r', disabled: !Object.keys(options.live).length,
@@ -630,7 +634,9 @@ export class MenuCommand {
 
   // x lists the presets saved in the config to delete one, when there is one besides the active
   async presetMenu(state, section, active) {
-    const names = Object.keys(presetsOf(section));
+    // The screensaver's own look only while it is on
+    const reserved = this.visualizer.reserved(state);
+    const names = Object.keys(presetsOf(section)).filter(name => name !== reserved || name === active);
     const values = [null, ...names];
     const deletable = Object.keys(section.presets ?? {}).filter(name => name !== active && name !== section.preset);
     const picked = await this.show({ prompt: 'preset', title: 'visualizer  ·  preset',

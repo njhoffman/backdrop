@@ -296,7 +296,12 @@ describe('Smooth (daemon)', () => {
       const dirSmooth = config.get().paths.smooth;
       const media = await video(1, { bounce: true });
       config.set('display.video_loop', 'bounce');
-      for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) await fs.outputFile(file, 'old');
+      // The copies a day before the video, not moments: written moments apart they can share its timestamp
+      const before = new Date(Date.now() - 86_400_000);
+      for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) {
+        await fs.outputFile(file, 'old');
+        await fs.utimes(file, before, before);
+      }
       await fs.writeJson(smoothedSizePath(media, dirSmooth), hd);
       await fs.utimes(media.path, new Date(), new Date());
       expect((await smooth.prune())).to.deep.equal([media.id]);

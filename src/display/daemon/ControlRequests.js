@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import { validVideoDuration } from '../Playlist.js';
+import { reservedMessage, reservedPreset } from './Screensaver.js';
 import { controlPath, controlRequestPath, CONTROL_REQUEST, nextFiltersPath } from '../runtimeFiles.js';
 
 // How many handled request ids state.json lists: more than can be waiting at once
@@ -91,7 +92,11 @@ export class ControlRequests {
         this.daemon.logger.error('Visualizer change refused', { error: error.message });
       }
     }
-    if (request.preset !== undefined) {
+    // The screensaver switches to its own preset directly; a request cannot while it is off
+    if (request.preset !== undefined && request.preset !== null
+      && request.preset === reservedPreset(this.daemon.config.get(), Boolean(this.daemon.screensaver.active))) {
+      this.daemon.logger.warn('Visualizer preset refused', { preset: request.preset, reason: reservedMessage(request.preset) });
+    } else if (request.preset !== undefined) {
       await this.daemon.visualizers.setPreset(request.preset);
       this.daemon.logger.info('Visualizer preset', this.daemon.visualizers.summary());
     }

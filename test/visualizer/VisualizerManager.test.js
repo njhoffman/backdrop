@@ -989,6 +989,43 @@ describe('VisualizerManager', () => {
       expect(writes.slice(0, 2).map(([, line]) => line)).to.deep.equal(['fg = #555555ff\n', 'fg2 = #666666ff\n']);
     });
 
+    it('turns the hue of the configured colors by the clock with palette.source: cycle, and stops turning with the instances', async () => {
+      config.set('visualizer.palette', { source: 'cycle', cycle: '100s' });
+      manager = makeManager({
+        pipeGap: 0, cycleStep: 60_000, colorsFor: () => ({ fg: '#ffffffff' }),
+        spawn: (file, args, options) => {
+          const child = new FakeChild(2000 + spawned.length);
+          child.stderr = new EventEmitter();
+          child.stdin = Object.assign(new EventEmitter(), { destroyed: false, write: line => { writes.push([Date.now(), line]); } });
+          spawned.push({ file, args, options, child });
+          return child;
+        }
+      });
+      // The turn counts from the first cycling instance's start, not the clock
+      time = 1_234_567;
+      await manager.configure();
+      await manager.sync();
+      await settled();
+      // The configured colors at the start of a turn; the wallpaper's are not asked for
+      expect(writes.slice(0, 2).map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #33aaccff\n']);
+      expect(manager.cycleTimer).to.not.equal(null);
+      writes.length = 0;
+
+      // Half a turn later the blue is orange, black stays black
+      time = 1_234_567 + 50_000;
+      await manager.cycleColors();
+      expect(writes.map(([, line]) => line)).to.deep.equal(['fg = #000000ff\n', 'fg2 = #cc5533ff\n']);
+      expect(manager.describe('DP-3')[0].colors).to.deep.equal({ fg: '#000000ff', fg2: '#cc5533ff' });
+      // recolor (a new wallpaper) leaves a cycling instance to its steps
+      writes.length = 0;
+      await manager.recolor('DP-3');
+      expect(writes).to.have.length(0);
+
+      await manager.stop();
+      expect(manager.cycleTimer).to.equal(null);
+      expect(manager.cycleStart).to.equal(null);
+    });
+
     it('sends set colors at the start and takes a new one with no restart, sampling nothing with palette.source: config', async () => {
       config.set('visualizer.palette', { source: 'config' });
       await manager.configure();

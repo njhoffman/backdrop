@@ -9,6 +9,15 @@ import { TrackWatcher } from '../trackWatcher.js';
 export const I3_MODE = 'screensaver';
 export const IDLE_CHECK_MS = 15_000;
 
+// The screensaver's own look (screensaver.preset), kept for it: no preset switch picks it while the screensaver is
+// off, so the plain desktop never shows it. settings is the whole config; active whether the screensaver is on.
+export function reservedPreset(settings, active) {
+  const name = settings.screensaver?.preset ?? null;
+  return name && !active ? name : null;
+}
+
+export const reservedMessage = name => `${name} is the screensaver's look and shows only in it (backdrop screensaver on)`;
+
 const runHooks = async (commands, run, logger) => {
   for (const command of commands ?? []) {
     try {
