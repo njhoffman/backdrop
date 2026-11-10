@@ -42,6 +42,16 @@ cd backdrop
 npm install
 npm link
 backdrop --help   # creates ~/.config/backdrop/config.yaml on first run
+man backdrop      # every command; man backdrop-config for every config key
+```
+
+`npm link` puts the man pages where `man` looks. With the binary linked by hand instead (say
+`~/.local/bin/backdrop` to `src/index.js`), link them too:
+
+```bash
+mkdir -p ~/.local/share/man/man1 ~/.local/share/man/man5
+ln -s "$PWD/share/man/man1/backdrop.1" ~/.local/share/man/man1/
+ln -s "$PWD/share/man/man5/backdrop-config.5" ~/.local/share/man/man5/
 ```
 
 ## Usage
@@ -209,13 +219,15 @@ bindsym $mod+b exec --no-startup-id backdrop menu  # rofi: rate, navigate, speed
 ## Configuration
 
 `~/.config/backdrop/config.yaml`; see [config.example.yaml](config.example.yaml) and
-[docs/specs/config.md](docs/specs/config.md). Data lives under `~/.local/share/backdrop`, unreviewed
-downloads under `~/.cache/backdrop/inbox`, and mpv sockets under `$XDG_RUNTIME_DIR/backdrop`.
+[docs/specs/config.md](docs/specs/config.md), or `man backdrop-config`. Data lives under `~/.local/share/backdrop`
+(unreviewed downloads in its `inbox`), copies and thumbnails under `~/.cache/backdrop`, and mpv sockets under
+`$XDG_RUNTIME_DIR/backdrop`.
 
 ## Development
 
 ```bash
 npm test
+npm run man   # after adding a command, option or config key: the tests check share/man is current
 ```
 
 ## License

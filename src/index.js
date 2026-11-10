@@ -27,6 +27,7 @@ import { VisualizerCommand, VISUALIZER_ACTIONS } from './commands/VisualizerComm
 import { ScreensaverCommand, SCREENSAVER_ACTIONS } from './commands/ScreensaverCommand.js';
 import { WebCommand } from './commands/WebCommand.js';
 import { configureOutput, ignoreClosedPipes, out, printVersion, setJsonOutput } from './utils/output.js';
+import { printManPage } from './utils/manpage.js';
 
 const { version, description } = createRequire(import.meta.url)('../package.json');
 
@@ -352,6 +353,9 @@ class BackdropApp {
       .argument('<shell>', SHELLS.join(' or '))
       .action(this.action(shell => completion.print(shell, program, version)));
     // Values for the completion scripts when sqlite3 is not installed; not listed in help or completion
+    // man pages, made from this program and the config schema (src/utils/manpage.js); `npm run man` writes share/man
+    program.command('man', { hidden: true }).argument('[section]', '1 for backdrop(1), 5 for backdrop-config(5)', '1')
+      .action(this.action(section => printManPage(section, program, version)));
     program.command('complete-values', { hidden: true }).argument('<kind>', 'queries or tags')
       .action(this.action(kind => completion.printValues(kind)));
     program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), or try every instance and preset briefly (check)')
@@ -374,11 +378,17 @@ class BackdropApp {
   }
 
   async run() {
-    await this.initialize({ tolerant: process.argv[2] === 'doctor' });
+    // The man pages come from the command tree alone: built on the defaults in memory, so no config file, database
+    // or startup notice reaches them, and the page is the same on every machine
+    if (process.argv[2] === 'man') {
+      this.config.config = this.config.getDefaultConfig();
+      this.config.userConfig = {};
+      this.logger = { error() {}, warn() {}, info() {}, debug() {} };
+    } else await this.initialize({ tolerant: process.argv[2] === 'doctor' });
     this.setupCommands();
     // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);
-    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'complete-values', 'systemd'].includes(arg))) printVersion(version);
+    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'complete-values', 'systemd', 'man'].includes(arg))) printVersion(version);
     try {
       // Bare `backdrop` shows the status
       await program.parseAsync(args.length ? process.argv : [...process.argv, 'status']);

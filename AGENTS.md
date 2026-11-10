@@ -17,6 +17,7 @@ npm test                 # Mocha, test/**/*.test.js (spec reporter, ~840 lines)
 npm run test:brief       # same run with the dot reporter (~30 lines); agents use this
 npx mocha test/display/Playlist.test.js  # one file while iterating
 node src/index.js --help # run the CLI
+npm run man              # write share/man again after changing commands, options or config keys
 npm link                 # install the `backdrop` binary globally
 ```
 
@@ -39,6 +40,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
 ## Workflow
 
 - Run the tests before every commit; routine tests stay offline and never touch the user's XDG data.
+- The man pages (`share/man`) are generated from the command tree and the config schema by `src/utils/manpage.js`
+  (`backdrop man 1|5`, hidden); `test/utils/manpage.test.js` fails until `npm run man` writes them again after a
+  change to a command, option, config key or the version. Prose that the code cannot give lives in that file.
 - Keep tool output small, it all lands in the context: run `npm run test:brief` (failures still print in
   full) or one file with `npx mocha <file>`, never the spec run; pipe long commands through `tail`/`grep`;
   read `TODO.md` (60 KB), `CHANGELOG.md` (30 KB) and large sources such as `test/display/Daemon.test.js` with

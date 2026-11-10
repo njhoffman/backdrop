@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.78.0] - 2026-11-10
+
+### Added
+- Man pages: `man backdrop` for every command and its options, and `man backdrop-config` for every config key with
+  its type, default and meaning. Both are generated from the CLI and the config schema, so they stay in step with
+  them; `npm run man` writes them again and installing the package (`npm link`, a global install) puts them where
+  `man` finds them.
+
+### Fixed
+- The README said unrated downloads live in `~/.cache/backdrop/inbox`; since 2.67.0 they are in
+  `~/.local/share/backdrop/inbox`.
+
 ## [2.77.0] - 2026-11-10
 
 ### Added

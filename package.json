@@ -1,6 +1,6 @@
 {
   "name": "backdrop",
-  "version": "2.77.0",
+  "version": "2.78.0",
   "description": "Wallpaper and screensaver manager: curate images and videos from free sources and display them with mpv",
   "type": "module",
   "main": "src/index.js",
@@ -10,7 +10,8 @@
   "scripts": {
     "test": "mocha 'test/**/*.test.js'",
     "test:brief": "mocha --reporter dot 'test/**/*.test.js'",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "man": "node src/index.js man 1 > share/man/man1/backdrop.1 && node src/index.js man 5 > share/man/man5/backdrop-config.5"
   },
   "keywords": [
     "wallpaper",
@@ -38,5 +39,9 @@
   },
   "engines": {
     "node": ">=22.13.0"
-  }
+  },
+  "man": [
+    "./share/man/man1/backdrop.1",
+    "./share/man/man5/backdrop-config.5"
+  ]
 }
