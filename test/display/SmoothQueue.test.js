@@ -6,10 +6,12 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Smooth } from '../../src/display/daemon/Smooth.js';
 import { bounceUrl } from '../../src/display/bounce.js';
-import { smoothWorkPath, smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
+import { smoothWorkPath, smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+const OLD = new Date('2020-01-01');
 
 describe('Smooth (daemon)', () => {
   let dir, db, config, daemon, smooth, made, reversed, swapped;
@@ -26,11 +28,12 @@ describe('Smooth (daemon)', () => {
       config, database: db, logger: silentLogger, stopping: false, screens: new Map(), monitors: new Map([['DP-1', { name: 'DP-1', width: 1920, height: 1080 }]]),
       load: { level: 'normal' }, now: () => Date.now(),
       enqueue: task => task(),
-      bounce: { pending: new Set(), swap: async ids => { swapped.push([...ids]); } },
+      bounce: { pending: new Set(), swap: async ids => { if (ids) swapped.push([...ids]); } },
       smoothVideo: async (media, { dir: out, size, signal }) => {
         made.push({ id: media.id, size });
         if (signal.aborted) return null;
         await fs.outputFile(smoothedPath(media, out), 'smoothed');
+        await fs.writeJson(smoothedSizePath(media, out), size);
         return smoothedPath(media, out);
       },
       reverse: async (copy, { dir: out }) => {
@@ -52,6 +55,8 @@ describe('Smooth (daemon)', () => {
   async function video(n, { speed = 0.5, fps = 30, bounce = false } = {}) {
     const file = path.join(dir, 'media', `${n}.mp4`);
     await fs.outputFile(file, 'video');
+    // Older than any copy the tests make, which would otherwise count as stale (older than their video)
+    await fs.utimes(file, OLD, OLD);
     return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: n, path: file, width: 2560, height: 1440, duration: 10, fps, speed, bounce }));
   }
 
@@ -243,6 +248,66 @@ describe('Smooth (daemon)', () => {
     expect(daemon.smoothVideo.callCount).to.equal(1);
   });
 
+  describe('copy size', () => {
+    const hd = { width: 1920, height: 1080 };
+
+    it('makes a copy again when the monitors need it larger, and keeps the one that covers them', async () => {
+      const dirSmooth = config.get().paths.smooth;
+      const media = await video(1);
+      await fs.outputFile(smoothedPath(media, dirSmooth), 'copy at 1080p');
+      await fs.writeJson(smoothedSizePath(media, dirSmooth), hd);
+      expect(smooth.needs(media)).to.equal(false);
+      // A 1440p monitor appears: the 2560x1440 source is made again at its full size
+      daemon.monitors.set('DP-2', { name: 'DP-2', width: 2560, height: 1440 });
+      expect(smooth.needs(media)).to.equal(true);
+      smooth.want(media);
+      await settle();
+      expect(made).to.deep.equal([{ id: media.id, size: { width: 2560, height: 1440 } }]);
+      expect(await fs.readJson(smoothedSizePath(media, dirSmooth))).to.deep.equal({ width: 2560, height: 1440 });
+      expect(smooth.needs(media)).to.equal(false);
+    });
+
+    it('also remakes a too-small copy of a video that no longer stutters, since that copy would play', async () => {
+      const dirSmooth = config.get().paths.smooth;
+      const media = await video(1, { speed: 0.75 });
+      config.set('display.smooth_below', 20);
+      await fs.outputFile(smoothedPath(media, dirSmooth), 'copy');
+      await fs.writeJson(smoothedSizePath(media, dirSmooth), { width: 1280, height: 720 });
+      expect(smooth.needs(media)).to.equal(true);
+      await fs.writeJson(smoothedSizePath(media, dirSmooth), hd);
+      expect(smooth.needs(media)).to.equal(false);
+    });
+
+    it('probes copies with no recorded size on start, and swaps every entry after', async () => {
+      const dirSmooth = config.get().paths.smooth;
+      const media = await video(1);
+      await fs.outputFile(smoothedPath(media, dirSmooth), 'copy from before');
+      await fs.outputFile(smoothedReversedPath(media, dirSmooth), 'its reversed copy');
+      const probed = [];
+      daemon.probe = async file => { probed.push(path.basename(file)); return { width: 1920, height: 1080 }; };
+      await smooth.begin();
+      await settle();
+      expect(probed).to.deep.equal([`${media.id}@0.5.mp4`]);
+      expect(await fs.readJson(smoothedSizePath(media, dirSmooth))).to.deep.equal(hd);
+      expect(made).to.deep.equal([]);
+    });
+
+    it('deletes copies older than their video (download --upgrade), with their size, and makes them again', async () => {
+      const dirSmooth = config.get().paths.smooth;
+      const media = await video(1, { bounce: true });
+      config.set('display.video_loop', 'bounce');
+      for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) await fs.outputFile(file, 'old');
+      await fs.writeJson(smoothedSizePath(media, dirSmooth), hd);
+      await fs.utimes(media.path, new Date(), new Date());
+      expect((await smooth.prune())).to.deep.equal([media.id]);
+      expect(await fs.readdir(dirSmooth)).to.deep.equal([]);
+      await smooth.changed(media.id);
+      await settle();
+      expect(made.map(item => item.id)).to.deep.equal([media.id]);
+      expect(reversed).to.have.length(1);
+    });
+  });
+
   describe('display.smooth_cache_gb', () => {
     const KB = 1024 / 1024 ** 3;
     const kilobytes = n => 'x'.repeat(1024 * n);
@@ -256,7 +321,7 @@ describe('Smooth (daemon)', () => {
       db.addRating(high.id, 3);
       db.addRating(lowOld.id, 1);
       db.addRating(lowNew.id, 1);
-      let mtime = 1000;
+      let mtime = Date.now() / 1000;
       for (const media of [high, lowOld, lowNew, playing]) {
         for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) {
           if (media === playing && file.includes('reversed')) continue;

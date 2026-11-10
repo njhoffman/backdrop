@@ -68,6 +68,14 @@ describe('SearchCommand', () => {
     expect(source.search.firstCall.args[0].orientation).to.equal('portrait');
   });
 
+  it('saves no video shorter than library.min_duration, keeping those of unknown length and images', async () => {
+    const video = (id, duration) => item(id, { kind: 'video', duration });
+    source.search.resolves({ items: [video(1, 4), video(2, 5), video(3, null), item(4, { duration: 1 })], nextPage: null });
+    const result = await command.searchVideos('ocean', { source: 'fake', perPage: 4 });
+    expect(result).to.include({ filtered: 1, added: 3 });
+    expect(db.getMediaBySource('fake', '1')).to.equal(null);
+  });
+
   it('retains completed pages on a rate limit and propagates other failures', async () => {
     source.search.onFirstCall().resolves({ items: [item(1)], nextPage: 2 });
     source.search.onSecondCall().rejects(Object.assign(new Error('limited'), { status: 429 }));

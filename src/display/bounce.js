@@ -1,5 +1,5 @@
 import { reversedPath, reversedReady } from '../library/reverse.js';
-import { SMOOTH_FPS, smoothedPath, smoothedReady, smoothedReversedPath, smoothedReversedReady, wantsSmoothing } from '../library/smooth.js';
+import { SMOOTH_FPS, smoothSize, smoothedPath, smoothedReady, smoothedReversedPath, smoothedReversedReady, wantsSmoothing } from '../library/smooth.js';
 
 // What mpv loads for a video: the file, or an EDL URL joining files into one timeline. A bouncing video plays to its
 // end, backwards to its start and forwards again: its file and its reversed copy (src/library/reverse.js), so
@@ -78,17 +78,25 @@ export function isSmoothedUrl(filename) {
   return isBounceUrl(filename) && forwardPath(filename) !== entryPath(filename);
 }
 
-// Whether display.smooth applies to the item and its copy for its speed is ready
-export function smoothedFor(media, config) {
-  const display = config?.display ?? {};
-  return Boolean(display.smooth && wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS) && smoothedReady(media, config.paths?.smooth));
+// The size a smoothed copy must have for the monitors (smoothSize), or null to leave its size unchecked (no monitor
+// given, or none known)
+export function neededSize(media, monitors) {
+  return monitors?.length ? smoothSize(media, monitors) : null;
 }
 
-// What mpv loads for an item: its smoothed copy when ready, and with bounce the reversed copy of what plays forward
-// once that is ready too; the plain file otherwise
-export function playUrl(media, config) {
+// Whether display.smooth applies to the item and its copy for its speed is ready; with monitors, made large enough
+// for them, so a lower-resolution copy never plays in place of the original
+export function smoothedFor(media, config, monitors = null) {
+  const display = config?.display ?? {};
+  return Boolean(display.smooth && wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS)
+    && smoothedReady(media, config.paths?.smooth, neededSize(media, monitors)));
+}
+
+// What mpv loads for an item: its smoothed copy when ready (and, given the monitors it plays on, large enough for
+// them), and with bounce the reversed copy of what plays forward once that is ready too; the plain file otherwise
+export function playUrl(media, config, monitors = null) {
   if (!config || !media?.path) return media?.path;
-  const smooth = smoothedFor(media, config);
+  const smooth = smoothedFor(media, config, monitors);
   const forward = smooth ? smoothedPath(media, config.paths.smooth) : media.path;
   let backward = null;
   if (bounces(media, config.display)) {

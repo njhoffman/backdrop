@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.69.0] - 2026-11-09
+
+### Added
+
+- `library.min_duration` (5 s by default, 0 for any length): searches no longer save videos shorter than this, and `download` skips them (counted as "shorter than library.min_duration"), checking the downloaded file's own length too. Local imports are not checked.
+- `backdrop copies` checks every reversed and smoothed copy against its video and the monitors, listing those no longer wanted, older than their video, smaller than the monitors need or with no size recorded; `--sync` has the daemon delete them and make the wanted ones again, and `--json` prints them.
+
+### Changed
+
+- A smoothed copy never plays below the original's resolution: each copy's size is recorded beside it, and a copy plays on a monitor only when it covers it; elsewhere the original plays (blended) while the daemon makes a larger copy. A larger monitor appearing queues larger copies. Copies made before this version are measured once when the daemon starts.
+- `download --upgrade` has the daemon make the upgraded video's reversed and smoothed copies again at the new resolution, first in line, and the daemon deletes copies older than their video instead of keeping them in the caches.
+
+### Fixed
+
+- The stacking integration tests no longer time out on a busy machine: a window that a stand-in's late lowering had pushed off the bottom is lowered again.
+
 ## [2.68.0] - 2026-11-09
 
 ### Added

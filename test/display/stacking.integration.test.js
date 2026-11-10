@@ -29,6 +29,7 @@ function hasCommand(name) {
 
 const available = ['Xvfb', 'xwinwrap', 'mpv', 'ffmpeg', 'xdotool', 'xrandr'].every(hasCommand);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const STACK_BELOW = 1;
 
 function startXvfb() {
   return new Promise((resolve, reject) => {
@@ -75,15 +76,28 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
   // Another window at the bottom of the stack, like a desktop-icons or conky window. A restarted wallpaper
   // (xwinwrap -b) goes below it, so only the daemon's restack can leave the visualizer directly above the
   // wallpaper again; without it, these scenarios would pass by accident.
+  // Every stand-in lowers itself when any window maps, at once and 200 ms later, so when this one maps the visualizer
+  // and earlier ones lower themselves too; under load one of their late lowerings could land after this window's
+  // last, and nothing mapped again to undo it, so waiting alone timed out. The check lowers it again until it stays.
   async function lowWindow() {
-    const child = spawn(process.execPath, [STANDIN, `other-${others.length}`, 0, 0, 50, 50], { stdio: 'ignore' });
+    const title = `other-${others.length}`;
+    const child = spawn(process.execPath, [STANDIN, title, 0, 0, 50, 50], { stdio: 'ignore' });
     others.push(child);
+    let held = 0;
     await waitFor(async () => {
       const { children } = await layout();
-      const id = Number(execFileSync('xdotool', ['search', '--name', `^other-${others.length - 1}$`], { encoding: 'utf8' }).trim().split('\n')[0]);
-      return children[0] === id;
+      const id = Number(execFileSync('xdotool', ['search', '--name', `^${title}$`], { encoding: 'utf8' }).trim().split('\n')[0]);
+      if (children[0] === id) return ++held >= 3;
+      held = 0;
+      await withX11(async x => x.client.ConfigureWindow(id, { stackMode: STACK_BELOW }));
+      return false;
     }, 20000, 'the other window at the bottom');
   }
+
+  const control = async change => {
+    await fs.writeJson(controlPath(daemon.runtimeDir), { pid: process.pid, ...change });
+    await daemon.applyControl();
+  };
 
   before(async () => {
     xvfb = await startXvfb();
@@ -175,23 +189,21 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
   });
 
   it('keeps the visualizer through stop --wallpaper and puts it back above on start --wallpaper', async () => {
-    const control = async change => {
-      await fs.writeJson(controlPath(daemon.runtimeDir), { pid: process.pid, ...change });
-      await daemon.applyControl();
-    };
     await control({ wallpaper: false });
-    const off = await layout();
-    expect(off.wallpaper).to.equal(null);
-    expect(off.visualizer).to.be.a('number');
-    await lowWindow();
-    await control({ wallpaper: true });
+    try {
+      const off = await layout();
+      expect(off.wallpaper).to.equal(null);
+      expect(off.visualizer).to.be.a('number');
+      await lowWindow();
+    } finally {
+      // Back on even when a step above failed, so the next test does not start without a wallpaper
+      await control({ wallpaper: true });
+    }
     await expectStaysAbove('after start --wallpaper');
   });
   it('stacks marked overlays below and above the visualizer on a restack request, and follows a change of mark', async () => {
-    const control = async change => {
-      await fs.writeJson(controlPath(daemon.runtimeDir), { pid: process.pid, ...change });
-      await daemon.applyControl();
-    };
+    if (!daemon.wallpaper) await control({ wallpaper: true });
+    await waitFor(async () => Boolean((await layout()).wallpaper), 30000, 'the wallpaper window');
     const overlay = (title, position) => {
       const child = spawn(process.execPath, [OVERLAY, title, position, 100, 100, 600, 300], { stdio: ['pipe', 'pipe', 'ignore'] });
       others.push(child);

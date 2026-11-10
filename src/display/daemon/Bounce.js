@@ -147,6 +147,14 @@ export class Bounce {
     this.want(media);
   }
 
+  // `backdrop copies --sync`: unwanted and stale copies go, and the items still bouncing are reversed again, not
+  // waiting for their next play
+  async resync() {
+    const removed = await this.prune();
+    for (const id of removed) this.want(this.daemon.database.getMedia(id));
+    return removed;
+  }
+
   // display.video_loop changed: every entry is checked, and what plays now is queued
   async reconfigure() {
     await this.prune();
@@ -161,7 +169,7 @@ export class Bounce {
     for (const screen of [...this.daemon.screens.values()]) {
       if (!screen.client) continue;
       try {
-        const result = await refreshEntries(screen.client, { database: this.daemon.database, config: this.settings, mediaIds: checked ?? undefined });
+        const result = await refreshEntries(screen.client, { database: this.daemon.database, config: this.settings, mediaIds: checked ?? undefined, monitor: screen.monitor });
         result.held.forEach(id => held.add(id));
         for (const id of result.held) await this.planSwitch(screen, id);
       } catch (error) {
@@ -190,7 +198,7 @@ export class Bounce {
     if (!Number.isFinite(position)) return;
     const speed = media.speed || 1;
     const untilEnd = Math.max(0, ((screen.bouncing ? 2 : 1) * media.duration - position) / speed);
-    const nextLength = (playsBounce(playUrl(media, this.settings)) ? 2 : 1) * media.duration / speed;
+    const nextLength = (playsBounce(playUrl(media, this.settings, [screen.monitor])) ? 2 : 1) * media.duration / speed;
     const timeout = this.daemon.videoDuration?.() ?? 0;
     const played = (this.daemon.now() - (screen.loadedAt ?? this.daemon.now())) / 1000 + untilEnd;
     if (timeout && timeout - played < nextLength) return;
@@ -210,7 +218,7 @@ export class Bounce {
     this.switches.delete(screen);
     if (this.daemon.stopping || this.daemon.screens.get(screen.monitor.name) !== screen || screen.media?.id !== mediaId) return;
     const media = this.daemon.database.getMedia(mediaId);
-    const url = media && playUrl(media, this.settings);
+    const url = media && playUrl(media, this.settings, [screen.monitor]);
     try {
       const position = await screen.client.getProperty('time-pos');
       const untilEnd = ((screen.bouncing ? 2 : 1) * media.duration - position) / (media.speed || 1);
@@ -255,7 +263,8 @@ export class Bounce {
     const copies = all.filter(copy => !playing.has(copy.id));
     const unwanted = copies.filter(copy => {
       const media = this.daemon.database.getMedia(copy.id);
-      return !media?.path || media.status === 'skipped' || !bounces(media, display);
+      // A copy older than its video (download --upgrade replaced it) reverses what the item no longer is
+      return !media?.path || media.status === 'skipped' || !bounces(media, display) || !reversedReady(media, paths.bounce);
     });
     const rating = id => this.daemon.database.getLatestRating(id)?.rating ?? 0;
     const kept = copies.filter(copy => !unwanted.includes(copy))

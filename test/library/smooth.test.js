@@ -3,7 +3,8 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  listSmoothWork, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
+  covers, listSmoothWork, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
+  smoothedSize, smoothedSizePath, staleCopy,
   smoothedReversedPath, stutters, wantsSmoothing
 } from '../../src/library/smooth.js';
 import { silentLogger } from '../helpers/fakes.js';
@@ -84,6 +85,28 @@ describe('smooth', () => {
       .to.deep.equal([{ id: 7, speed: 0.5, reversed: false }, { id: 7, speed: 0.5, reversed: true }]);
   });
 
+  it('counts a copy ready for monitors only when its recorded size covers what they need, and a copy older than its video stale', async () => {
+    const media = { id: 7, speed: 0.5, path: path.join(dir, 'v.mp4') };
+    await fs.outputFile(media.path, 'video');
+    await fs.utimes(media.path, 1000, 1000);
+    await fs.outputFile(smoothedPath(media, dir), 'copy');
+    const hd = { width: 1920, height: 1080 };
+    // No size recorded: ready without a need, not for one
+    expect(smoothedReady(media, dir)).to.equal(true);
+    expect(smoothedReady(media, dir, hd)).to.equal(false);
+    await fs.writeJson(smoothedSizePath(media, dir), hd);
+    expect(smoothedSize(media, dir)).to.deep.equal(hd);
+    expect(smoothedReady(media, dir, hd)).to.equal(true);
+    expect(smoothedReady(media, dir, { width: 2560, height: 1440 })).to.equal(false);
+    expect(covers(hd, { width: 1920, height: 1082 })).to.equal(false);
+    expect(covers(null, hd)).to.equal(false);
+    // The video replaced after the copy (download --upgrade)
+    expect(staleCopy(smoothedPath(media, dir), media)).to.equal(false);
+    await fs.utimes(media.path, new Date(), new Date());
+    expect(staleCopy(smoothedPath(media, dir), media)).to.equal(true);
+    expect(smoothedReady(media, dir)).to.equal(false);
+  });
+
   it('lists kept work folders, and clears only temporary leftovers', async () => {
     await fs.ensureDir(path.join(dir, '7@0.5.smooth.work'));
     await fs.ensureDir(path.join(dir, '8.1234.smooth.tmp'));
@@ -127,6 +150,7 @@ describe('smooth', () => {
         rife: '/opt/rife', size: { width: 640, height: 360 }, exec, nice: false, logger: silentLogger, encoders: ['x264'], target: 60
       });
       expect(copy).to.equal(path.join(dir, '3@0.5.mp4'));
+      expect(await fs.readJson(path.join(dir, '3@0.5.json'))).to.deep.equal({ width: 640, height: 360 });
       const extracts = calls.filter(call => call[0] === 'ffmpeg' && call.some(arg => String(arg).endsWith('%06d.png')));
       // Chunk starts half a frame early so the seek lands on frames 0 and 20
       expect(extracts.map(call => [call[call.indexOf('-ss') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['0', '21'], ['1.95', '20']]);

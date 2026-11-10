@@ -213,8 +213,8 @@ export async function loadPlaylist(client, { database, config, mode, monitor, ra
   // One loadfile per item rather than a loadlist, so each oversized image carries its own prescale (prescale.js).
   // The appends are sent together: mpv handles one connection's commands in order.
   const [first, ...rest] = media;
-  await loadMedia(client, first, 'replace', monitor, { url: playUrl(first, config) });
-  await Promise.all(rest.map(item => loadMedia(client, item, 'append', monitor, { url: playUrl(item, config) })));
+  await loadMedia(client, first, 'replace', monitor, { url: playUrl(first, config, [monitor]) });
+  await Promise.all(rest.map(item => loadMedia(client, item, 'append', monitor, { url: playUrl(item, config, [monitor]) })));
   return media.length;
 }
 
@@ -238,7 +238,7 @@ export async function appendToPlaylist(client, { database, config, mode, monitor
     .filter(item => wanted.has(item.id) && !existing.has(item.path));
 
   for (const item of shuffle(media)) {
-    await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config) });
+    await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config, [monitor]) });
   }
   return media.length;
 }
@@ -267,7 +267,7 @@ export async function syncPlaylist(client, { database, config, mode, monitor }) 
 
   const present = new Set(playlist.map(entry => entryPath(entry.filename)));
   const added = shuffle(eligible.filter(item => !present.has(item.path)));
-  for (const item of added) await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config) });
+  for (const item of added) await loadMedia(client, item, 'append-play', monitor, { url: playUrl(item, config, [monitor]) });
 
   let removed = stale.length;
   if (current !== -1 && !wanted.has(entryPath(playlist[current].filename))) {
@@ -281,14 +281,14 @@ export async function syncPlaylist(client, { database, config, mode, monitor }) 
 // was turned on or off) for the right one, in place. mediaIds limits it to those items; without it every
 // entry is checked. The playing entry is left until it plays again, since reloading it would restart it.
 // Returns { swapped, held }: how many were swapped and the ids of the playing entries left as they are.
-export async function refreshEntries(client, { database, config, mediaIds }) {
+export async function refreshEntries(client, { database, config, mediaIds, monitor = null }) {
   const playlist = await client.getProperty('playlist');
   const held = new Set();
   let swapped = 0;
   for (const [index, entry] of playlist.entries()) {
     const media = database.getMediaByPath(entryPath(entry.filename));
     if (!media || (mediaIds && !mediaIds.has(media.id))) continue;
-    const url = playUrl(media, config);
+    const url = playUrl(media, config, monitor ? [monitor] : null);
     if (url === entry.filename) continue;
     if (entry.current || entry.playing) {
       held.add(media.id);

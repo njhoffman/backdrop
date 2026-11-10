@@ -7,7 +7,7 @@ import { SourceRegistry } from '../sources/SourceRegistry.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { hashFile } from '../library/Importer.js';
 import { probeMedia } from '../library/probe.js';
-import { targetResolution, positiveInteger, selectVariant, fits } from '../library/quality.js';
+import { targetResolution, positiveInteger, selectVariant, fits, tooShort } from '../library/quality.js';
 import { out, fmt, icon, mark, ProgressBar, formatBytes, formatDuration, formatResolution, formatQueries, displayPath } from '../utils/output.js';
 import { printMedia } from '../utils/mediaView.js';
 import { matchFilters, hasMatchFilters } from '../library/match.js';
@@ -128,12 +128,14 @@ export class DownloadCommand {
     if (options.upgrade) return this.upgrade(options);
     const { total, kind, target, match } = await this.filters(options);
     const items = this.pendingItems(kind, options.source, match);
-    const summary = { downloaded: [], duplicates: [], skipped: 0, failed: 0, bytes: 0 };
+    const summary = { downloaded: [], duplicates: [], skipped: 0, short: 0, failed: 0, bytes: 0 };
     const started = Date.now();
     const bar = new ProgressBar({ label: 'Downloading', total: Math.min(total, items.length) });
     try {
       for (const media of items) {
         if (summary.downloaded.length >= total) break;
+        // Saved before library.min_duration, or by a search without it
+        if (tooShort(media, this.config)) { summary.short++; continue; }
         try {
           const source = this.sources.get(media.source);
           const variant = selectVariant(await source.downloadVariants(media), target, this.config);
@@ -176,6 +178,7 @@ export class DownloadCommand {
       `${fmt.bold(`Downloaded ${summary.downloaded.length}`)} ${fmt.dim(`(${formatBytes(summary.bytes)} in ${formatDuration(elapsed)})`)}`,
       `duplicates ${summary.duplicates.length}`,
       `no suitable variant ${summary.skipped}`,
+      ...(summary.short ? [`shorter than library.min_duration ${summary.short}`] : []),
       summary.failed ? fmt.red(`failed ${summary.failed}`) : 'failed 0',
       `pending ${remaining}${overall}`
     ];
@@ -196,6 +199,8 @@ export class DownloadCommand {
       await this.transfer(variant.url, partial, onBytes);
       const info = await this.probe(partial);
       if (!info || !fits(info, target, this.config)) throw new Error('Downloaded file does not meet the required dimensions');
+      // The source's duration can be rounded or missing; the file's is the one that plays
+      if (tooShort(info, this.config)) throw new Error(`Downloaded video is ${info.duration.toFixed(1)} s, shorter than library.min_duration`);
       const sha256 = await hashFile(partial);
       const duplicate = this.database.getMediaBySha256(sha256);
       if (duplicate) {
@@ -247,6 +252,7 @@ export class DownloadCommand {
           try {
             await this.control.refreshMedia(media);
             await this.control.appendMedia([media.id]);
+            await this.control.mediaReplaced(media);
           } catch (error) {
             out.warn(`#${media.id} upgraded; playlist update failed: ${error.message}`);
           }

@@ -5,7 +5,7 @@ import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { bounceState, bounces, bounceUrl, entryPath, forwardPath, isBounceUrl, isSmoothedUrl, playsBounce, playUrl } from '../../src/display/bounce.js';
 import { mediaJson } from '../../src/utils/mediaView.js';
-import { smoothedPath, smoothedReversedPath } from '../../src/library/smooth.js';
+import { smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
 import { loadPlaylist, refreshEntries, syncPlaylist, queueMatching } from '../../src/display/Playlist.js';
 import { reversedPath } from '../../src/library/reverse.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -133,6 +133,26 @@ describe('bounce', () => {
       expect(playUrl({ ...media, speed: 0.75 }, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
       config.set('display.smooth', false);
       expect(playUrl(media, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
+    });
+
+    it('plays a smoothed copy on a monitor only when it was made at least as large as the monitor needs', async () => {
+      config.set('display.smooth', true);
+      config.set('paths.smooth', path.join(dir, 'smooth'));
+      const file = path.join(dir, 'media', '6.mp4');
+      await fs.outputFile(file, 'video');
+      await fs.utimes(file, 1000, 1000);
+      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 6, path: file, width: 3840, height: 2160, duration: 10, fps: 30, speed: 0.5 }));
+      const smooth = config.get().paths.smooth;
+      await fs.outputFile(smoothedPath(media, smooth), 'smoothed at 1080p');
+      await fs.writeJson(smoothedSizePath(media, smooth), { width: 1920, height: 1080 });
+      const hd = { name: 'DP-1', width: 1920, height: 1080 };
+      const qhd = { name: 'DP-2', width: 2560, height: 1440 };
+      expect(playUrl(media, config.get(), [hd])).to.equal(bounceUrl(smoothedPath(media, smooth), null, file));
+      // A larger monitor shows the original, never the smaller copy
+      expect(playUrl(media, config.get(), [qhd])).to.equal(file);
+      // No size recorded yet (a copy from before 2.69.0): the original, until the daemon probes it
+      await fs.remove(smoothedSizePath(media, smooth));
+      expect(playUrl(media, config.get(), [hd])).to.equal(file);
     });
   });
 

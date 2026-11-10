@@ -23,6 +23,27 @@ export function smoothedReversedPath(media, dir) {
   return path.join(dir, `${media.id}@${media.speed}.reversed.mp4`);
 }
 
+// The size a smoothed copy was made at, beside it: { width, height }. Its reversed copy, made from it, has the same.
+export function smoothedSizePath(media, dir) {
+  return path.join(dir, `${media.id}@${media.speed}.json`);
+}
+
+// The recorded size of the item's smoothed copy, or null when none is recorded (a copy from before 2.69.0, until the
+// daemon probes it)
+export function smoothedSize(media, dir) {
+  try {
+    const size = JSON.parse(fs.readFileSync(smoothedSizePath(media, dir), 'utf8'));
+    return size?.width > 0 && size?.height > 0 ? { width: size.width, height: size.height } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Whether a copy of size shows at least need's pixels each way (need from smoothSize for the monitors)
+export function covers(size, need) {
+  return Boolean(size && need && size.width >= need.width && size.height >= need.height);
+}
+
 function newer(file, than) {
   try {
     return fs.statSync(file).mtimeMs >= fs.statSync(than).mtimeMs;
@@ -31,13 +52,21 @@ function newer(file, than) {
   }
 }
 
-// Whether the item's copy for its speed exists and is no older than the video
-export function smoothedReady(media, dir) {
-  return Boolean(media?.path && dir && newer(smoothedPath(media, dir), media.path));
+// Whether the item's copy for its speed exists and is no older than the video; with need (smoothSize for the
+// monitors it would show on), also that it was made at least that large, so a copy never plays below the original's
+// resolution on a monitor
+export function smoothedReady(media, dir, need = null) {
+  if (!(media?.path && dir && newer(smoothedPath(media, dir), media.path))) return false;
+  return !need || covers(smoothedSize(media, dir), need);
 }
 
-export function smoothedReversedReady(media, dir) {
-  return Boolean(media?.path && dir && newer(smoothedReversedPath(media, dir), smoothedPath(media, dir)) && smoothedReady(media, dir));
+export function smoothedReversedReady(media, dir, need = null) {
+  return Boolean(media?.path && dir && newer(smoothedReversedPath(media, dir), smoothedPath(media, dir)) && smoothedReady(media, dir, need));
+}
+
+// Whether a copy file is older than the item's video (download --upgrade replaced it), so it no longer shows it
+export function staleCopy(file, media) {
+  return Boolean(media?.path && !newer(file, media.path));
 }
 
 // display.smooth_fps when unset: 30 a second is enough for a slowed video not to stutter, and costs half the GPU
@@ -199,6 +228,8 @@ export async function smoothVideo(media, dir, {
         '-c', 'copy', '-movflags', '+faststart', joined]);
       const copy = smoothedPath(media, dir);
       await fs.rename(joined, copy);
+      // After the copy, so a crash between leaves a copy without a size (probed again), never an old copy with the new size
+      await fs.writeJson(smoothedSizePath(media, dir), { width: size.width, height: size.height });
       logger?.info('Smoothed video', {
         mediaId: media.id, speed: media.speed, factor, fps, size: `${size.width}x${size.height}`, encoder: name,
         resumed: done.size, seconds: Math.round((now() - started) / 100) / 10

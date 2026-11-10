@@ -1,5 +1,5 @@
 import { SourceRegistry } from '../sources/SourceRegistry.js';
-import { targetResolution, positiveInteger, selectVariant } from '../library/quality.js';
+import { targetResolution, positiveInteger, selectVariant, tooShort } from '../library/quality.js';
 import { out, fmt, icon, formatResolution } from '../utils/output.js';
 import { ask, input } from '../utils/prompts.js';
 
@@ -52,7 +52,7 @@ export class SearchCommand {
         for (const [index, media] of result.items.entries()) {
           summary.fetched++;
           const rank = (page - 1) * perPage + index + 1;
-          if ((options.portrait && media.height <= media.width) || !selectVariant(media.variants, target, this.config)) {
+          if ((options.portrait && media.height <= media.width) || tooShort(media, this.config) || !selectVariant(media.variants, target, this.config)) {
             summary.filtered++;
             continue;
           }

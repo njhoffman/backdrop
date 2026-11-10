@@ -10,6 +10,8 @@ import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+const OLD = new Date('2020-01-01');
+
 describe('Bounce (daemon)', () => {
   let dir, db, config, daemon, encodes, bounce;
 
@@ -47,6 +49,8 @@ describe('Bounce (daemon)', () => {
   async function video(id) {
     const file = path.join(dir, 'media', `${id}.mp4`);
     await fs.outputFile(file, 'video');
+    // Older than any copy the tests make, which would otherwise count as stale (older than their video)
+    await fs.utimes(file, OLD, OLD);
     return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: id, duration: 10, path: file }));
   }
 
@@ -211,6 +215,28 @@ describe('Bounce (daemon)', () => {
       expect((await bounce.prune()).sort()).to.deep.equal([1, 2, 99]);
       expect(await left()).to.deep.equal(['3.mp4']);
       expect(shown.client.commands).to.deep.include(['loadfile', off.path, 'insert-at', 1]);
+    });
+
+    it('deletes a copy older than its video (download --upgrade replaced it), and reverses it again when told', async () => {
+      const media = await video(1);
+      await copy(media, MB, 10);
+      expect(encodes).to.have.length(0);
+      await fs.utimes(media.path, new Date(), new Date());
+      expect(await bounce.prune()).to.deep.equal([media.id]);
+      expect(await left()).to.deep.equal([]);
+      await bounce.changed(media.id);
+      expect(encodes).to.have.length(1);
+    });
+
+    it('on a copies sync, deletes stale and unwanted copies and reverses again only the items still bouncing', async () => {
+      const [stale, off] = await videos(2);
+      await copy(stale, MB, 10);
+      await copy(off, MB, 10);
+      await fs.utimes(stale.path, new Date(), new Date());
+      db.setBounce(off.id, false);
+      expect((await bounce.resync()).sort()).to.deep.equal([stale.id, off.id]);
+      expect(await left()).to.deep.equal([]);
+      expect(encodes).to.have.length(1);
     });
 
     it('counts each encode for doctor', async () => {

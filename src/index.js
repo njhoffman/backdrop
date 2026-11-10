@@ -12,6 +12,7 @@ import { DisplayCommand } from './commands/DisplayCommand.js';
 import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
 import { PurgeCommand } from './commands/PurgeCommand.js';
+import { CopiesCommand } from './commands/CopiesCommand.js';
 import { RescanCommand } from './commands/RescanCommand.js';
 import { MenuCommand } from './commands/MenuCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
@@ -107,6 +108,7 @@ class BackdropApp {
     const importer = new ImportCommand(this.config, this.database, this.logger);
     const remover = new RemoveCommand(this.config, this.database, this.logger);
     const purger = new PurgeCommand(this.config, this.database, this.logger);
+    const copies = new CopiesCommand(this.config, this.database, this.logger);
     const rescanner = new RescanCommand(this.config, this.database, this.logger);
     const rating = new RatingCommand(this.config, this.database, this.logger);
     const menu = new MenuCommand(this.config, this.database, this.logger, { display, rating });
@@ -230,6 +232,13 @@ class BackdropApp {
       .argument('<value>', 'on, off, toggle, or reset to follow display.video_loop')
       .option(...monitorOption)
       .action(this.action((value, options) => display.bounce(value, options)));
+
+    program
+      .command('copies')
+      .description('Check the reversed and smoothed copies against their videos and the monitors; --sync has the daemon make them again')
+      .option('-s, --sync', 'Have the daemon delete stale, unwanted and too-small copies and make the wanted ones again')
+      .option('--json', 'Print the copies as JSON')
+      .action(this.action(options => copies.run(options)));
 
     program
       .command('import')

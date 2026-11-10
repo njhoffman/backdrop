@@ -90,7 +90,10 @@ const SECTIONS = {
     default_import_rating: field(integer(1, 3), { kind: 'integer', min: 1, max: 3, help: 'Rating imported files are kept at' }),
     min_width: field(integer(0), { kind: 'integer', min: 0, help: 'Narrowest media kept, in pixels (either orientation)' }),
     min_height: field(integer(0), { kind: 'integer', min: 0, help: 'Lowest media kept, in pixels (either orientation)' }),
-    trash_days: field(integer(0), { kind: 'integer', min: 0, help: 'Days skipped files stay in the trash; 0 keeps them' })
+    trash_days: field(integer(0), { kind: 'integer', min: 0, help: 'Days skipped files stay in the trash; 0 keeps them' }),
+    min_duration: field(value => seconds(value, { allowZero: true }), {
+      kind: 'duration', allowZero: true, help: 'Shortest video searches save and downloads fetch; 0 for any length. Imports are not checked'
+    })
   },
   menu: {
     style: field(oneOf(MENU_STYLES), { kind: 'choice', choices: MENU_STYLES, help: 'panel (preview, details, buttons) or minimal' }),

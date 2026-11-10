@@ -1,11 +1,12 @@
 import fs from 'fs-extra';
-import { bounces, entryPath, isSmoothedUrl } from '../bounce.js';
+import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
+import { probeMedia } from '../../library/probe.js';
 import { MODE_KINDS } from '../Playlist.js';
 
 const GIGABYTE = 1024 ** 3;
 import {
   SMOOTH_BELOW, SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
-  smoothedReversedReady, smoothFactor, stutters, wantsSmoothing
+  smoothedReversedReady, smoothedSize, smoothedSizePath, smoothFactor, staleCopy, stutters, wantsSmoothing
 } from '../../library/smooth.js';
 
 // Smoothed copies of slowed videos (display.smooth, src/library/smooth.js) for a Daemon (passed in), and mpv's frame
@@ -49,8 +50,32 @@ export class Smooth {
   async begin() {
     if (!this.settings.paths.smooth) return;
     await removeStaleSmoothWork(this.settings.paths.smooth);
+    await this.recordSizes();
     await this.prune();
+    await this.daemon.bounce.swap(null);
     this.backlog();
+  }
+
+  // The size every monitor now needs a copy of the item at (null while none is known)
+  need(media) {
+    return neededSize(media, [...this.daemon.monitors.values()]);
+  }
+
+  // Copies made before their size was recorded (before 2.69.0, or a crash after the copy) are probed once, so the
+  // size check can tell whether they cover the monitors; one that cannot be probed is deleted by the next prune
+  async recordSizes() {
+    const dir = this.settings.paths.smooth;
+    const probe = this.daemon.probe ?? probeMedia;
+    for (const copy of await listSmoothed(dir)) {
+      const media = { id: copy.id, speed: copy.speed };
+      if (copy.reversed || smoothedSize(media, dir)) continue;
+      try {
+        const { width, height } = await probe(copy.file);
+        if (width > 0 && height > 0) await fs.writeJson(smoothedSizePath(media, dir), { width, height });
+      } catch (error) {
+        this.daemon.logger.warn('Failed to probe a smoothed copy', { file: copy.file, error: error.message });
+      }
+    }
   }
 
   // Every slowed video without its copy, after whatever waits already: those a stopped job left chunks for first, so
@@ -71,8 +96,10 @@ export class Smooth {
   needs(media) {
     if (!this.enabled || !wantsSmoothing(media, this.target)) return false;
     const dir = this.settings.paths.smooth;
-    if (!smoothedReady(media, dir)) return stutters(media, this.below);
-    return bounces(media, this.settings.display) && !smoothedReversedReady(media, dir);
+    const need = this.need(media);
+    // A copy smaller than the monitors need is made again at their size (a larger monitor, or download --upgrade)
+    if (!smoothedReady(media, dir, need)) return stutters(media, this.below) || smoothedReady(media, dir);
+    return bounces(media, this.settings.display) && !smoothedReversedReady(media, dir, need);
   }
 
   // first: ahead of the backlog (an item playing or next)
@@ -147,7 +174,7 @@ export class Smooth {
     const { paths, display } = this.settings;
     const dir = paths.smooth;
     const size = smoothSize(media, [...this.daemon.monitors.values()]);
-    if (!smoothedReady(media, dir)) {
+    if (!smoothedReady(media, dir, size)) {
       const made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, signal });
       if (signal.aborted) return this.requeue(media);
       if (!made) {
@@ -161,7 +188,7 @@ export class Smooth {
         return;
       }
     }
-    if (bounces(media, display) && !smoothedReversedReady(media, dir)) {
+    if (bounces(media, display) && !smoothedReversedReady(media, dir, size)) {
       const fps = media.fps * smoothFactor(media.fps, media.speed, this.target);
       const copy = { id: `${media.id}@${media.speed}.reversed`, kind: media.kind, path: smoothedPath(media, dir), duration: media.duration, fps, ...size };
       const reversed = await this.daemon.reverse(copy, { signal, dir });
@@ -208,6 +235,13 @@ export class Smooth {
     this.want(media, { first: true });
   }
 
+  // `backdrop copies --sync`: sizes recorded for copies without one, then as for a settings change (which also
+  // queues copies smaller than the monitors need)
+  async resync() {
+    if (this.settings.paths.smooth) await this.recordSizes();
+    await this.reconfigure();
+  }
+
   // display.smooth* changed: copies are pruned, every entry checked, and the backlog queued again
   async reconfigure() {
     if (!this.enabled) {
@@ -234,6 +268,7 @@ export class Smooth {
     const remove = async copy => {
       try {
         await fs.remove(copy.file);
+        if (!copy.reversed) await fs.remove(smoothedSizePath(copy, paths.smooth));
         removed.add(copy.id);
         return true;
       } catch (error) {
@@ -244,8 +279,9 @@ export class Smooth {
     const kept = new Map();
     for (const copy of await listSmoothed(paths.smooth)) {
       const media = playing.has(copy.id) ? null : this.daemon.database.getMedia(copy.id);
+      // A copy older than its video (download --upgrade replaced it) shows what the item no longer is
       const wanted = playing.has(copy.id) || (display.smooth && media?.path && media.status !== 'skipped' && media.speed === copy.speed
-        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)));
+        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)) && !staleCopy(copy.file, media));
       if (!wanted && await remove(copy)) continue;
       const item = kept.get(copy.id) ?? { id: copy.id, copies: [], size: 0, mtimeMs: 0 };
       item.copies.push(copy);

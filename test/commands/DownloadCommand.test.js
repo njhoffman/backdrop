@@ -53,6 +53,29 @@ describe('DownloadCommand', () => {
     expect(command.transfer.callCount).to.equal(1);
   });
 
+  it('skips videos shorter than library.min_duration, by the stored and then the measured duration', async () => {
+    const short = add(1);
+    db.updateMedia(short, { duration: 4 });
+    const unknown = add(2);
+    const result = await command.download();
+    expect(result).to.include({ short: 1, failed: 0 });
+    expect(result.downloaded).to.deep.equal([unknown]);
+    expect(command.transfer.callCount).to.equal(1);
+
+    // The file turns out shorter than the source said
+    const measured = add(3);
+    command.probe = async () => ({ kind: 'video', width: 1920, height: 1080, duration: 3.2 });
+    expect((await command.download()).failed).to.equal(1);
+    expect(db.getMedia(measured).path).to.be.null;
+    expect(await fs.readdir(config.get().paths.inbox)).to.deep.equal([`remote-${unknown}.mp4`]);
+
+    // 0 is any length; distinct contents, so they are not duplicates of the first
+    config.set('library.min_duration', 0);
+    command.transfer = async (url, file) => fs.writeFile(file, file);
+    command.probe = async () => ({ kind: 'video', width: 1920, height: 1080, duration: 3.2 });
+    expect((await command.download()).downloaded.sort()).to.deep.equal([short, measured].sort());
+  });
+
   it('rejects measured undersized files and cleans temporary data without marking downloaded', async () => {
     const id = add();
     command.probe = async () => ({ kind: 'video', width: 640, height: 480 });
@@ -251,6 +274,7 @@ describe('DownloadCommand', () => {
       db.addRating(id, 3, '1920x1080');
       media = db.getMedia(id);
       control.refreshMedia = sinon.stub().resolves();
+      control.mediaReplaced = sinon.stub().resolves();
     });
 
     it('upgrades only items matching the filters', async () => {
@@ -270,6 +294,8 @@ describe('DownloadCommand', () => {
       expect(db.getLatestRating(media.id).rating).to.equal(3);
       expect(control.refreshMedia.calledOnceWith(sinon.match({ id: media.id, path: file }))).to.be.true;
       expect(control.appendMedia.calledOnceWithExactly([media.id])).to.be.true;
+      // So the daemon makes the reversed and smoothed copies again at the new size
+      expect(control.mediaReplaced.calledOnceWith(sinon.match({ id: media.id }))).to.be.true;
       expect((await fs.readdir(path.dirname(file))).sort()).to.deep.equal(['remote-1.mp4']);
     });
 

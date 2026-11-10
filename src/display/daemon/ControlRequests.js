@@ -72,6 +72,11 @@ export class ControlRequests {
       await this.daemon.bounce.changed(id);
       await this.daemon.smoothing.changed(id);
     }
+    // `backdrop copies --sync`: copies that are stale, unwanted or too small go, and the wanted ones are made again
+    if (request.copies) {
+      await this.daemon.bounce.resync();
+      await this.daemon.smoothing.resync();
+    }
     // From the visualizer menu: re-read the section (a preset it just saved), drop its changes, or apply one
     if (request.reload_config) await this.daemon.reloadConfig().catch(error => this.daemon.logger.error('Config reload failed', { error: error.message }));
     if (request.visualizer_reset) {

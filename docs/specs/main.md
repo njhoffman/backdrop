@@ -123,6 +123,14 @@ IPC socket) would break a wallpaper.
   are always made, but the backlog starts a job only while the cache has room for another of the average size so
   far: a copy made into a full cache would be deleted again, hours of GPU for nothing. What the backlog skips is
   queued again at the next start or smooth setting change. `doctor` shows the cache's size against the limit.
+  Each copy's size is recorded beside it (`<id>@<speed>.json`, written after the copy; copies without one are
+  probed on start). `playUrl` takes the monitors an item loads on and plays the copy only when it covers what they
+  need (`smoothSize`), so a copy never shows below the original's resolution; the queue counts a copy done only when
+  it covers every monitor, so a larger monitor (hotplug queues the backlog again) gets a larger copy. Copies older
+  than their video (`download --upgrade`) are deleted by both prunes; the upgrade sends an `item` control request so
+  both copies are made again first. `backdrop copies` lists copies that are unwanted, stale, too small or unsized
+  (`src/library/copies.js`), and `--sync` sends `{ copies: true }`: Bounce's `resync` prunes and reverses the
+  removed items that still bounce, Smooth's records missing sizes and reconfigures.
   On the Iris Xe this was measured at about one interpolated 1080p frame a second, with no dropped wallpaper frames.
 - **Hotplug:** the daemon polls `xrandr --listactivemonitors` every 5 seconds and starts, stops or respawns
   per-monitor instances when outputs appear, disappear or change geometry. An empty or failed read keeps the

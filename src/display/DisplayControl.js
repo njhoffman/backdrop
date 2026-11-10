@@ -275,6 +275,16 @@ export class DisplayControl {
   }
 
   // Rebuild affected playlists after a file move, keeping the same item selected where possible.
+  // An item's file was replaced (download --upgrade): the daemon deletes its reversed and smoothed copies, now older
+  // than the file, and makes them again first, at the new resolution. Nothing to do while no daemon runs, which
+  // prunes them on start.
+  async mediaReplaced(media) {
+    const state = await this.state({ required: false });
+    if (!state) return;
+    const { paths } = this.config.get();
+    await this.send(paths.runtime, state, { item: media.id }, { logfile: paths.logfile });
+  }
+
   async refreshMedia(previous) {
     const state = await this.state({ required: false });
     for (const monitor of wallpaperMonitors(state)) {

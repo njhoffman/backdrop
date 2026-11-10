@@ -370,6 +370,8 @@ export class Daemon {
     if (changed && !this.stopping) {
       await this.visualizers.sync();
       await this.writeState();
+      // A larger monitor needs larger smoothed copies; until they are made, the originals play there
+      this.smoothing.backlog();
     }
   }
 

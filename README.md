@@ -79,6 +79,7 @@ backdrop pending             # media saved by searches, with its queries and the
 backdrop download --total 10 --type videos
 backdrop download --query 'ocean waves' --tag sunset  # only media one of your searches found, with every tag
 backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
+backdrop copies --sync      # have the daemon remake reversed/smoothed copies that are stale or too small
 backdrop list-videos --rated landscape
 backdrop list-videos --tag ocean waves  # items tagged with every word
 backdrop list-images --interactive  # browse and rate downloaded images
@@ -139,7 +140,13 @@ model folder beside it), the daemon makes 30 fps copies (`display.smooth_fps`) o
 mpv blends frames. Each copy takes a while (about one frame a second on integrated graphics), so the first ones
 appear after minutes; `doctor` shows how many are done. The copies are kept within `display.smooth_cache_gb`
 (10 by default), deleting those of the lowest-rated videos first; while the cache is full, only the videos playing
-and next get new copies.
+and next get new copies. A copy never plays below the original's resolution: one made for a smaller monitor plays
+only where it covers the screen, and the daemon makes a larger one when a larger monitor appears.
+
+`download --upgrade` has the daemon make an upgraded video's reversed and smoothed copies again at the new size,
+first in line. `backdrop copies` checks every copy against its video and the monitors (stale after a replaced file,
+no longer wanted, too small, or with no size recorded yet) and `backdrop copies --sync` has the daemon delete those
+and make the wanted ones again; the daemon does the same on start.
 
 With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video
 plays backwards to its start at its end and then forwards again. The daemon makes a reversed copy in
@@ -183,6 +190,8 @@ downloads before adding them to playback. A download identical to one you alread
 duplicate, never fetched again, and its search queries are added to the original. After attaching a larger monitor, `download --upgrade` replaces
 kept or new downloads that are now too small, keeping their ratings, speed and dim. For use without X, pass `--resolution 1920x1080`. Lists are plain
 text by default; `--rated [orientation]`, `--no-local`, `--query`, `--keywords`, `--tag`, `--source` and `--number` filter them.
+Searches save no video shorter than `library.min_duration` (5 s by default, 0 for any length) and downloads skip
+them, checking the downloaded file's length too; imports are not checked.
 See [the source contract and Pexels behavior](docs/specs/sources.md) for adapter details.
 
 i3 example:

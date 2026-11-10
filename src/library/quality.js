@@ -31,6 +31,13 @@ export async function targetResolution(config, explicit, monitors = listMonitors
   return { width: Math.max(...selected.map(m => m.width)), height: Math.max(...selected.map(m => m.height)) };
 }
 
+// Whether a video is shorter than library.min_duration (seconds, 0 for no minimum): searches do not save it and
+// downloads skip it. A duration not known yet does not count as short; images never do.
+export function tooShort(media, config) {
+  const min = config.get().library.min_duration ?? 0;
+  return Boolean(min > 0 && ['video', 'gif'].includes(media?.kind) && Number.isFinite(media.duration) && media.duration < min);
+}
+
 export function fits(media, target, config) {
   const { library, display } = config.get();
   return meetsMinimum(media, library.min_width, library.min_height)
