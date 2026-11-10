@@ -216,4 +216,56 @@ describe('Screensaver', () => {
       expect(nexts()[1]).to.have.length(1);
     });
   });
+
+  describe('a song without lyrics', () => {
+    let followers;
+    const follower = options => {
+      const made = { options, running: false, start() { this.running = true; }, stop() { this.running = false; } };
+      followers.push(made);
+      return made;
+    };
+    const lyricsMessage = (lines, loading = false) => ({ type: 'lyrics', key: 'spotify:1', loading, result: lines === null ? null : { best: lines.length ? { lyrics: { lines } } : null } });
+
+    beforeEach(() => {
+      followers = [];
+      settings.preset_without_lyrics = 'screensaver-instrumental';
+      saver = new Screensaver(daemon, { watchTracks: () => ({ start() {}, stop() {} }), followLyrics: follower, lyricsWait: 30 });
+    });
+
+    it('starts with the look for the song playing when sleeved says in time, and switches as lyrics come and go', async () => {
+      const entering = saver.apply('on');
+      while (!followers.length) await new Promise(resolve => setImmediate(resolve));
+      followers[0].options.onMessage(lyricsMessage([]));
+      await entering;
+      expect(daemon.visualizers.changes).to.deep.equal([['preset', 'screensaver-instrumental']]);
+
+      // A lookup still out changes nothing; lyrics found switch to the lyrics look
+      await followers[0].options.onMessage(lyricsMessage(null, true));
+      await followers[0].options.onMessage(lyricsMessage([{ time: 0, text: 'la' }]));
+      expect(daemon.visualizers.changes.at(-1)).to.deep.equal(['preset', 'screensaver']);
+      // The same again changes nothing
+      const count = daemon.visualizers.changes.length;
+      await followers[0].options.onMessage(lyricsMessage([{ time: 0, text: 'la' }]));
+      expect(daemon.visualizers.changes).to.have.length(count);
+
+      // sleeved going away counts as no lyrics
+      await followers[0].options.onClose();
+      expect(daemon.visualizers.changes.at(-1)).to.deep.equal(['preset', 'screensaver-instrumental']);
+
+      await saver.apply('off');
+      expect(followers[0].running).to.equal(false);
+      expect(daemon.visualizers.changes.at(-1)).to.deep.equal(['preset', undefined]);
+    });
+
+    it('starts with preset when sleeved says nothing in time, and follows nothing without preset_without_lyrics', async () => {
+      await saver.apply('on');
+      expect(daemon.visualizers.changes).to.deep.equal([['preset', 'screensaver']]);
+      await saver.apply('off');
+
+      settings.preset_without_lyrics = null;
+      followers.length = 0;
+      await saver.apply('on');
+      expect(followers).to.have.length(0);
+    });
+  });
 });

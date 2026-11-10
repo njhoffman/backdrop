@@ -3,17 +3,22 @@ import { screensaverPath } from '../runtimeFiles.js';
 import { enterWorkspaces, DEFAULT_WORKSPACE } from '../../utils/workspace.js';
 import { run as defaultRun } from '../Monitors.js';
 import { TrackWatcher } from '../trackWatcher.js';
+import { SleevedWatcher, hasLyrics } from '../../visualizer/sleeved.js';
 
 // The i3 binding mode the config defines for this, holding Escape and the keys that still work: only a binding
 // can catch Escape with no window focused
 export const I3_MODE = 'screensaver';
 export const IDLE_CHECK_MS = 15_000;
+// How long entering waits for sleeved to say whether the song has lyrics, so the first look is the right one
+export const LYRICS_WAIT_MS = 500;
 
-// The screensaver's own look (screensaver.preset), kept for it: no preset switch picks it while the screensaver is
-// off, so the plain desktop never shows it. settings is the whole config; active whether the screensaver is on.
-export function reservedPreset(settings, active) {
-  const name = settings.screensaver?.preset ?? null;
-  return name && !active ? name : null;
+// The screensaver's own looks (screensaver.preset and preset_without_lyrics), kept for it: no preset switch picks
+// them while the screensaver is off, so the plain desktop never shows them. settings is the whole config; active
+// whether the screensaver is on.
+export function reservedPresets(settings, active) {
+  if (active) return [];
+  const { preset = null, preset_without_lyrics: withoutLyrics = null } = settings.screensaver ?? {};
+  return [preset, withoutLyrics].filter(Boolean);
 }
 
 export const reservedMessage = name => `${name} is the screensaver's look and shows only in it (backdrop screensaver on)`;
@@ -47,12 +52,73 @@ export async function restoreDesktop(runtimeDir, { run = defaultRun, logger } = 
 // crashed daemon's next start, or `backdrop screensaver off` without one, can put the desktop back. While it runs,
 // a media player starting another song moves every monitor to its next item (screensaver.next_on_song).
 export class Screensaver {
-  constructor(daemon, { watchTracks = options => new TrackWatcher(options) } = {}) {
+  constructor(daemon, { watchTracks = options => new TrackWatcher(options), followLyrics = options => new SleevedWatcher(options), lyricsWait = LYRICS_WAIT_MS } = {}) {
     this.daemon = daemon;
     this.active = null;
     this.saved = null;
     this.watchTracks = watchTracks;
     this.tracks = null;
+    this.followLyrics = followLyrics;
+    this.lyricsWait = lyricsWait;
+    this.lyricsWatcher = null;
+    // Whether the song has lyrics, from sleeved: null until it says
+    this.lyrics = null;
+    // The preset it shows, preset or preset_without_lyrics
+    this.shown = null;
+  }
+
+  // The look for what sleeved last said: preset_without_lyrics for a song without lyrics (sleeved not running
+  // included), else preset
+  lookFor(lyrics) {
+    const { preset, preset_without_lyrics: withoutLyrics } = this.settings;
+    return lyrics === false && withoutLyrics ? withoutLyrics : preset;
+  }
+
+  // Follows sleeved while on; resolves once it has said whether the song has lyrics, or after lyricsWait
+  startLyrics() {
+    this.lyrics = null;
+    return new Promise(resolve => {
+      let entering = true;
+      const entered = () => {
+        entering = false;
+        resolve();
+      };
+      const timer = setTimeout(entered, this.lyricsWait);
+      // While entering, the answer only picks the first look, which enter shows
+      const decided = lyrics => {
+        if (entering) {
+          this.lyrics = lyrics;
+          clearTimeout(timer);
+          entered();
+          return undefined;
+        }
+        return this.daemon.enqueue(() => this.lyricsChanged(lyrics));
+      };
+      this.lyricsWatcher = this.followLyrics({
+        logger: this.daemon.logger,
+        onMessage: message => {
+          const lyrics = hasLyrics(message);
+          if (lyrics === true || lyrics === false) decided(lyrics);
+        },
+        onClose: () => decided(false)
+      });
+      this.lyricsWatcher.start();
+    });
+  }
+
+  // Switches between the two looks as the song's lyrics come and go; a lookup still out changes nothing
+  async lyricsChanged(lyrics) {
+    if (!this.active || this.daemon.stopping) return;
+    this.lyrics = lyrics;
+    const look = this.lookFor(lyrics);
+    if (!look || look === this.shown) return;
+    this.daemon.logger.info('Screensaver look', { preset: look, lyrics });
+    this.shown = look;
+    try {
+      await this.daemon.visualizers.setPreset(look);
+    } catch (error) {
+      this.daemon.logger.error('Screensaver visualizer failed', { preset: look, error: error.message });
+    }
   }
 
   get settings() {
@@ -84,11 +150,16 @@ export class Screensaver {
     await run('i3-msg', ['mode', I3_MODE]).catch(error => logger.warn('No i3 mode for the screensaver, so Escape will not end it', { error: error.message }));
     await runHooks(onEnter, run, logger);
     this.followSongs();
+    // The first look is the one for the song playing, when sleeved says in time
+    if (preset && this.settings.preset_without_lyrics) await this.startLyrics();
+    this.shown = preset ? this.lookFor(this.lyrics) : null;
     try {
       if (!visualizers.active) await visualizers.setEnabled(true);
-      if (preset) await visualizers.setPreset(preset);
+      // Each screensaver starts at the looks' own colors
+      visualizers.resetCycle?.();
+      if (this.shown) await visualizers.setPreset(this.shown);
     } catch (error) {
-      logger.error('Screensaver visualizer failed', { preset, error: error.message });
+      logger.error('Screensaver visualizer failed', { preset: this.shown, error: error.message });
     }
   }
 
@@ -100,6 +171,10 @@ export class Screensaver {
     this.saved = null;
     this.tracks?.stop();
     this.tracks = null;
+    this.lyricsWatcher?.stop();
+    this.lyricsWatcher = null;
+    this.lyrics = null;
+    this.shown = null;
     logger.info('Screensaver off');
     await restoreDesktop(runtimeDir, { run, logger });
     // A daemon on its way out stops them anyway

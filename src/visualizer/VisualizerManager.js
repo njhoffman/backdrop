@@ -1,5 +1,6 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
+import { ChannelSources, channelSource } from './channels.js';
 import { createVisualizer } from './index.js';
 import { DEFAULT_VEIL, turnHue } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
@@ -89,13 +90,17 @@ export class VisualizerManager {
     restartDelay = 1000, stopGrace = 2000, windowAttempts = WINDOW_ATTEMPTS, windowDelay = WINDOW_DELAY_MS,
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
     colorsFor = () => null, veilFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
-    sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}, cycleStep = CYCLE_STEP_MS
+    sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}, cycleStep = CYCLE_STEP_MS,
+    channelSources = options => new ChannelSources(options)
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
       restartDelay, stopGrace, windowAttempts, windowDelay, settleDelay, now, create, colorsFor, veilFor, pipeGap, onMusicDim, onOverlays, sleevedWatcher, onWallpaper,
       cycleStep
     });
+    // The one-speaker remap sources for instances with channel: left or right, and whether any were made
+    this.channelSources = channelSources({ exec, logger });
+    this.channelsMade = false;
     // Sends the turned colors of palette.source: cycle while an instance with it runs, turning from when the first
     // of them started, so a look that cycles starts at its configured colors
     this.cycleTimer = null;
@@ -405,6 +410,7 @@ export class VisualizerManager {
       this.entries.delete(key);
       await this.stopEntry(entry);
     }
+    await this.syncChannels(instances);
     for (const monitor of [...this.monitors.values()]) {
       for (const instance of instances) {
         if (this.stopping || this.entries.has(entryKey(monitor.name, instance.name))) continue;
@@ -416,6 +422,23 @@ export class VisualizerManager {
           this.logger.error('Failed to start visualizer', { monitor: monitor.name, instance: instance.name, error: error.message });
         }
       }
+    }
+  }
+
+  // Makes the remap sources the wanted one-speaker instances read, before they start, and drops the rest; an
+  // instance whose source could not be made reads the section's source, both speakers
+  async syncChannels(instances) {
+    const audio = this.settings?.audio;
+    const channels = audio === 'pulseaudio' && !this.stopping
+      ? instances.filter(instance => instance.channel && instance.channel !== 'both' && [...this.monitors.values()].some(monitor => this.wanted(instance, monitor)))
+        .map(instance => instance.channel)
+      : [];
+    if (!channels.length && !this.channelsMade) return;
+    const ready = await this.channelSources.sync(channels, this.settings?.source ?? 'auto');
+    this.channelsMade = ready.size > 0;
+    for (const instance of instances) {
+      const adapter = this.adapters.get(instance.name);
+      if (adapter && instance.channel && instance.channel !== 'both') adapter.channelSource = ready.has(instance.channel) ? channelSource(instance.channel) : null;
     }
   }
 
@@ -497,10 +520,14 @@ export class VisualizerManager {
     this.cycleTimer.unref?.();
   }
 
-  // The next instance that cycles starts again from its configured colors
+  // The turn's start stays, so a preset switch between looks that cycle (the screensaver's two) keeps the hue going
   stopCycle() {
     clearInterval(this.cycleTimer);
     this.cycleTimer = null;
+  }
+
+  // The next instance that cycles starts again from its configured colors (the screensaver on entering)
+  resetCycle() {
     this.cycleStart = null;
   }
 
@@ -804,6 +831,11 @@ export class VisualizerManager {
     this.audio.watcher?.stop();
     this.noteMusicDim();
     await this.stopAll();
+    this.resetCycle();
+    if (this.channelsMade) {
+      await this.channelSources.release(this.settings?.source ?? 'auto');
+      this.channelsMade = false;
+    }
   }
 
   // For state.json: the instances on a monitor, in the section's order

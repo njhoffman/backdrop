@@ -129,6 +129,7 @@ screensaver:
   idle_minutes: 10
   max_load: null           # with idle, only under this load average (load.window); null for no limit
   preset: screensaver      # visualizer preset while on; screensaver-projectm adds projectM, null keeps the running one
+  preset_without_lyrics: screensaver-instrumental  # the look while the song has no lyrics (sleeve says); null keeps preset
   next_on_song: true       # a media player starting another song (playerctl) changes the wallpaper on every monitor
   workspace: backdrop      # the empty i3 workspace to show; other outputs get backdrop-<output>
   on_enter: ['polybar-msg cmd hide']  # shell commands run on entering and leaving

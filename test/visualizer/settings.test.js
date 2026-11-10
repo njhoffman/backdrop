@@ -105,7 +105,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -113,7 +113,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-projectm, lyrics-stage, lyrics-now, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-now, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -354,7 +354,11 @@ describe('visualizer settings', () => {
 
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
         const sides = ['lyrics-veil', 'screensaver', 'lyrics-stage'];
-        for (const name of sides) expect(lyrics(name).sleeve.sleeve.lyricsArea, name).to.equal('33%x100%+0+0');
+        expect(lyrics('lyrics-stage').sleeve.sleeve.lyricsArea).to.equal('33%x100%+0+0');
+        // The veil looks hold a now-playing strip above their lyrics, in the same third
+        for (const name of ['lyrics-veil', 'screensaver', 'screensaver-instrumental']) {
+          expect(lyrics(name).sleeve.sleeve, name).to.include({ now: 'full', nowArea: '33%x11%+0+0', lyricsArea: '33%x89%+0+11%' });
+        }
         const beside = { name: 'DP-3', x: 0, y: 0, width: 3000, height: 1000 };
         for (const name of sides) {
           const { instances } = lyrics(name);

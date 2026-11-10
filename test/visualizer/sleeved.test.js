@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import net from 'net';
 import os from 'os';
 import path from 'path';
-import { SleevedWatcher, sleevedSocket } from '../../src/visualizer/sleeved.js';
+import { SleevedWatcher, hasLyrics, sleevedSocket } from '../../src/visualizer/sleeved.js';
 
 describe('SleevedWatcher', () => {
   let dir, socket, server, watcher, hellos;
@@ -32,6 +32,32 @@ describe('SleevedWatcher', () => {
     await server?.closeAll();
     server = null;
     await fs.remove(dir);
+  });
+
+  it('reads whether a lyrics message has lyrics to show, undecided while a lookup is out with none yet', () => {
+    const lines = [{ time: 1000, text: 'la' }];
+    expect(hasLyrics({ type: 'lyrics', key: 'spotify:1', loading: false, result: { best: { lyrics: { lines } } } })).to.equal(true);
+    // A pick or refresh reloading keeps what shows
+    expect(hasLyrics({ type: 'lyrics', key: 'spotify:1', loading: true, result: { best: { lyrics: { lines } } } })).to.equal(true);
+    expect(hasLyrics({ type: 'lyrics', key: 'spotify:1', loading: true, result: null })).to.equal(null);
+    // Nothing found, or marked instrumental, or nothing playing
+    expect(hasLyrics({ type: 'lyrics', key: 'spotify:1', loading: false, result: { best: null, candidates: [] } })).to.equal(false);
+    expect(hasLyrics({ type: 'lyrics', key: 'spotify:1', loading: false, result: null, error: 'offline' })).to.equal(false);
+    expect(hasLyrics({ type: 'lyrics', key: null, loading: false, result: null })).to.equal(false);
+    expect(hasLyrics({ type: 'playback', playback: null })).to.equal(undefined);
+  });
+
+  it('passes every later message to onMessage, lines split across chunks included, and says when it loses sleeved', async () => {
+    const messages = [];
+    let closes = 0;
+    watcher = new SleevedWatcher({ onMessage: message => messages.push(message.type), onClose: () => closes++, socket, retry: 10 });
+    server = await listen(`${HELLO}{"type":"lyr`);
+    watcher.start();
+    await until(() => messages.length === 1);
+    expect(messages).to.deep.equal(['playback']);
+    await server.closeAll();
+    server = null;
+    await until(() => closes > 0);
   });
 
   it('finds the socket where sleeve looks for it', () => {

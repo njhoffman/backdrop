@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
-import { reservedMessage, reservedPreset } from '../display/daemon/Screensaver.js';
+import { reservedMessage, reservedPresets } from '../display/daemon/Screensaver.js';
 import { BUILTIN_PRESETS } from '../visualizer/presets.js';
 import {
   ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetsOf, visualizerSettings
@@ -69,7 +69,7 @@ export class VisualizerService {
       wallpaper: state ? state.wallpaper !== false : null,
       preset: options.preset,
       // The screensaver's own look only while it is on (or still in force)
-      presets: Object.keys(presetsOf(section)).filter(name => name !== this.reserved(state) || name === options.preset).map(name => ({
+      presets: Object.keys(presetsOf(section)).filter(name => !this.reserved(state).includes(name) || name === options.preset).map(name => ({
         name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in'
       })),
       changed: Object.keys(options.live).length > 0,
@@ -130,9 +130,9 @@ export class VisualizerService {
     return this.change(instance, changes);
   }
 
-  // The preset kept for the screensaver while it is off, else null
+  // The presets kept for the screensaver while it is off
   reserved(state) {
-    return reservedPreset(this.config.get(), Boolean(state?.screensaver?.active));
+    return reservedPresets(this.config.get(), Boolean(state?.screensaver?.active));
   }
 
   // Switches to a preset (null for none), checked before the daemon sees it; live changes stay. The screensaver's
@@ -140,7 +140,7 @@ export class VisualizerService {
   async setPreset(name) {
     await this.refresh();
     const state = await this.state();
-    if (name && name === this.reserved(state)) throw new Error(reservedMessage(name));
+    if (name && this.reserved(state).includes(name)) throw new Error(reservedMessage(name));
     visualizerSettings(this.section, { preset: name, live: state.visualizer?.live ?? {} });
     return this.send(state, { preset: name });
   }

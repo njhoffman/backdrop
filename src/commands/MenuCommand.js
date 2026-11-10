@@ -636,7 +636,7 @@ export class MenuCommand {
   async presetMenu(state, section, active) {
     // The screensaver's own look only while it is on
     const reserved = this.visualizer.reserved(state);
-    const names = Object.keys(presetsOf(section)).filter(name => name !== reserved || name === active);
+    const names = Object.keys(presetsOf(section)).filter(name => !reserved.includes(name) || name === active);
     const values = [null, ...names];
     const deletable = Object.keys(section.presets ?? {}).filter(name => name !== active && name !== section.preset);
     const picked = await this.show({ prompt: 'preset', title: 'visualizer  ·  preset',

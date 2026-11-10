@@ -79,7 +79,8 @@ export class GlavaVisualizer {
       ...BASE_REQUESTS,
       `setgeometry ${geometry.x} ${geometry.y} ${geometry.width} ${geometry.height}`,
       `settitle "${this.title(monitor)}"`,
-      `setsource "${source}"`,
+      // A one-speaker instance reads its remap source (channels.js) once the manager has made it
+      `setsource "${this.channelSource ?? source}"`,
       ...requests
     ];
     return {

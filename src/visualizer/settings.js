@@ -1,4 +1,5 @@
 import { seconds } from '../config/schema.js';
+import { CHANNELS } from './channels.js';
 import { BUILTIN_PRESETS } from './presets.js';
 
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
@@ -22,7 +23,7 @@ const isObject = value => value !== null && typeof value === 'object' && !Array.
 // Settings shared by every instance, which an instance cannot set for itself
 const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
-const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'defines', 'requests', ...MODULES];
+const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
 const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
 
@@ -456,6 +457,8 @@ function instance(raw, prefix) {
     pipe,
     // The #define the piped colors replace; its text holds only their defaults, so changing them needs no restart
     pipeDefine,
+    // The speakers it follows: both, or one through a remap source (channels.js) with audio: pulseaudio
+    channel: oneOf(`${prefix}channel`, raw.channel ?? 'both', CHANNELS),
     defines: allDefines,
     // Raw defines are the user's exact word
     scaled: (SCALED_DEFINES[module] ?? []).filter(name => allDefines[name] !== undefined && raw.defines?.[name] === undefined),

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.72.0] - 2026-11-10
+
+### Added
+- The screensaver has a second look for songs without lyrics, `screensaver-instrumental`: the same veil and
+  now-playing panel as the lyrics look, under bars across the whole width and two rings above them, the left one
+  following the left speaker and the right one the right.
+  It follows sleeve and switches between the two looks as lyrics come and go (`screensaver.preset_without_lyrics`;
+  null keeps one look). The colors keep turning across a switch.
+- The `lyrics-veil` look and the screensaver's lyrics look show a small now-playing panel above the lyrics:
+  the cover, title, artist and album, and a seek bar, in a strip of their own so the lyrics stay clear.
+- Visualizer instances take `channel: left` or `right` to follow one speaker, through a one-channel PulseAudio
+  remap source backdrop makes and removes itself.
+
+### Fixed
+- The import watcher's tests no longer fail on a loaded machine.
+
 ## [2.71.0] - 2026-11-09
 
 ### Added

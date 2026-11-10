@@ -66,6 +66,10 @@ describe('GlavaVisualizer', () => {
     ]);
     // User requests come after backdrop's, so they win
     expect(requests.at(-1)).to.equal('setframerate 60');
+    // A one-speaker instance reads the remap source the manager made
+    visualizer.channelSource = 'backdrop_left';
+    const own = visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 10, height: 10 }, {}).args;
+    expect(own).to.include('setsource "backdrop_left"');
     expect(args.at(-1)).to.equal('-v');
     expect(env).to.deep.equal({ PATH: '/bin', XDG_CONFIG_HOME: '/run/bd/visualizer', PULSE_COOKIE: '/home/u/.config/pulse/cookie' });
     expect(visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, { PULSE_COOKIE: '/c' }).env.PULSE_COOKIE).to.equal('/c');

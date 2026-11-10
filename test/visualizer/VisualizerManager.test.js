@@ -99,7 +99,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);
@@ -229,6 +229,37 @@ describe('VisualizerManager', () => {
     await slow.placed;
     expect(xcalls.filter(call => call[0] === 'stackAbove')).to.deep.equal([['stackAbove', 0x3400002, 0x1200001], ['stackAbove', 0x3400003, 0x3400002]]);
     await manager.stop();
+  });
+
+  it('makes the one-speaker sources before starting instances that follow one, and removes them on stop', async () => {
+    const asked = [];
+    const channelSources = () => ({
+      sync: async (channels, source) => { asked.push([channels, source]); return new Set(channels.filter(channel => channel === 'left')); },
+      release: async source => { asked.push(['release', source]); return new Set(); }
+    });
+    manager = makeManager({ channelSources });
+    config.set('visualizer.instances', [
+      { name: 'main', module: 'bars' }, { name: 'l', module: 'radial', channel: 'left' }, { name: 'r', module: 'radial', channel: 'right' }
+    ]);
+    await manager.configure();
+    await manager.sync();
+    expect(asked[0]).to.deep.equal([['left', 'right'], 'auto']);
+    // The right one could not be made: that instance reads the section's source
+    expect(manager.adapters.get('l').channelSource).to.equal('backdrop_left');
+    expect(manager.adapters.get('r').channelSource).to.equal(null);
+    expect(manager.adapters.get('main').channelSource).to.equal(undefined);
+    expect(spawned).to.have.length(3);
+    await manager.stop();
+    expect(asked.at(-1)).to.deep.equal(['release', 'auto']);
+  });
+
+  it('asks for no one-speaker sources when no instance follows one', async () => {
+    let asked = 0;
+    manager = makeManager({ channelSources: () => ({ sync: async () => { asked++; return new Set(); }, release: async () => { asked++; } }) });
+    await manager.configure();
+    await manager.sync();
+    await manager.stop();
+    expect(asked).to.equal(0);
   });
 
   describe('a saved change with the menu\'s changes on top', () => {

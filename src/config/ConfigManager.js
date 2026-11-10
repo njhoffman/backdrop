@@ -286,6 +286,7 @@ export class ConfigManager {
         idle_minutes: 10,
         max_load: null,
         preset: 'screensaver',
+        preset_without_lyrics: 'screensaver-instrumental',
         next_on_song: true,
         workspace: 'backdrop',
         on_enter: ['polybar-msg cmd hide'],

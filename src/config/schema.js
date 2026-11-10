@@ -125,6 +125,9 @@ const SECTIONS = {
     preset: field(value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep the running one')), {
       kind: 'text', nullable: true, help: 'Visualizer preset while it runs; empty keeps the running one'
     }),
+    preset_without_lyrics: field(value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep preset')), {
+      kind: 'text', nullable: true, help: 'Visualizer preset while the song has no lyrics (from sleeve); empty keeps preset'
+    }),
     next_on_song: field(boolean, { kind: 'boolean', help: 'A media player starting another song changes the wallpaper on every monitor' }),
     workspace: field(value => (typeof value === 'string' && value.trim() ? value : fail('a workspace name')), { kind: 'text', help: 'i3 workspace it shows on' }),
     on_enter: field(strings, { kind: 'strings', help: 'Command run on entering, one argument per line' }),

@@ -3,6 +3,9 @@
 const WALLPAPER_COLORS = { source: 'wallpaper' };
 // The hue of the configured colors turning once every 90 seconds, a few times a song, the same for every instance with it
 const CYCLE_COLORS = { source: 'cycle', cycle: '90s' };
+// The veil looks' lyrics, in the left third under a strip holding a small now-playing panel (cover, title, artist,
+// album, seek bar), so the two never overlap
+const VEIL_LYRICS = { now: 'full', now_position: 'top-left', now_area: '33%x11%+0+0', lyrics_area: '33%x89%+0+11%', background: 'auto' };
 const RING = { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] };
 
 export const BUILTIN_PRESETS = {
@@ -55,7 +58,7 @@ export const BUILTIN_PRESETS = {
   // The wallpaper darkened under a see-through layer tinted from it, solid lyrics on it, a ring beside them with bars below it
   'lyrics-veil': {
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
       { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
       { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
     ]
@@ -71,9 +74,21 @@ export const BUILTIN_PRESETS = {
   // bars blue to start with and turning through the hues together
   screensaver: {
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'auto' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
       { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: '33%', y: '75%', width: '67%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
       { name: 'ring', module: 'radial', palette: CYCLE_COLORS, rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
+    ]
+  },
+  // The screensaver's look for a song without lyrics (screensaver.preset_without_lyrics): the same veil and
+  // now-playing panel as the screensaver's own, its lyrics area empty, under bars across the whole width and a ring
+  // over each half, the left one following the left speaker and the right one the right, below the panel's strip,
+  // turning colors with the bars as the screensaver's own preset does
+  'screensaver-instrumental': {
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
+      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
+      { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } },
+      { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
     ]
   },
   // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it

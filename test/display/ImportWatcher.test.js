@@ -4,10 +4,10 @@ import { watch as watchFiles } from 'fs';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
+import sinon from 'sinon';
 import { ImportWatcher } from '../../src/display/daemon/ImportWatcher.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('ImportWatcher', () => {
   let tempDir;
@@ -17,6 +17,9 @@ describe('ImportWatcher', () => {
   let results;
   let daemon;
   let warnings;
+  // Fake timers: the watcher waits 10 and 30 ms, which real waits race on a loaded machine
+  let clock;
+  const sleep = ms => clock.tickAsync(ms);
 
   const fakeWatch = (dir, options, listener) => {
     const watcher = new EventEmitter();
@@ -55,8 +58,12 @@ describe('ImportWatcher', () => {
     runs = [];
     results = [];
     warnings = [];
+    clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   });
-  afterEach(async () => { await fs.remove(tempDir); });
+  afterEach(async () => {
+    clock.restore();
+    await fs.remove(tempDir);
+  });
 
   it('watches each existing import folder recursively', () => {
     const watcher = makeWatcher();
