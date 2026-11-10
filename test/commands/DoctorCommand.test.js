@@ -161,13 +161,20 @@ describe('DoctorCommand', () => {
       const video = path.join(dir, 'media', '1.mp4');
       await fs.outputFile(video, 'video');
       await fs.utimes(video, 1000, 1000);
-      const done = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: video, speed: 0.5, fps: 30, duration: 10 }));
+      const done = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: video, width: 2560, height: 1440, speed: 0.5, fps: 30, duration: 10 }));
       db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/2.mp4', speed: 0.5, fps: 30, duration: 10 });
       await fs.outputFile(path.join(dir, `${done.id}@0.5.mp4`), Buffer.alloc(2048));
       config.set('display.smooth_cache_gb', 1);
       expect(byName(await doctor({ which: async () => true }).run(), 'smoothing')).to.include({
         status: 'ok', detail: '1 of 2 slowed videos smoothed, 2.0 KB of 1.0 GB; the daemon makes the rest'
       });
+      // A copy smaller than the daemon's monitors need does not count (sizes unchecked without a daemon, as above)
+      await fs.writeJson(path.join(dir, `${done.id}@0.5.json`), { width: 1280, height: 720 });
+      const withDaemon = { which: async () => true, readStateFile: async () => ({ pid: 1, monitors: [{ name: 'DP-1', width: 1920, height: 1080 }] }) };
+      expect(byName(await doctor(withDaemon).run(), 'smoothing').detail).to.equal('0 of 2 slowed videos smoothed, 2.0 KB of 1.0 GB; '
+        + '1 copy is smaller than the monitors need, the original plays until a larger one is made; the daemon makes the rest');
+      await fs.writeJson(path.join(dir, `${done.id}@0.5.json`), { width: 1920, height: 1080 });
+      expect(byName(await doctor(withDaemon).run(), 'smoothing').detail).to.include('1 of 2 slowed videos smoothed');
       config.set('display.smooth_cache_gb', 3 / 1024 ** 2);
       expect(byName(await doctor({ which: async () => true }).run(), 'smoothing').detail).to.include('the cache is full');
       config.set('display.smooth_cache_gb', 1 / 1024 ** 2);

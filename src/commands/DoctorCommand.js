@@ -8,6 +8,7 @@ import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
+import { neededSize } from '../display/bounce.js';
 import { SMOOTH_BELOW, SMOOTH_FPS, listSmoothed, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
@@ -221,13 +222,18 @@ export class DoctorCommand {
     const slowed = this.database.findMedia({ kind: ['video', 'gif'], status: ['new', 'kept'], downloaded: true })
       .filter(media => wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS)
         && (stutters(media, display.smooth_below ?? SMOOTH_BELOW) || smoothedReady(media, paths.smooth)));
-    const ready = slowed.filter(media => smoothedReady(media, paths.smooth)).length;
+    // A copy counts only when it covers the daemon's monitors, as when it plays; without a daemon sizes go unchecked
+    const state = await this.readStateFile(paths.runtime).catch(() => null);
+    const monitors = state?.monitors ?? [];
+    const ready = slowed.filter(media => smoothedReady(media, paths.smooth, neededSize(media, monitors))).length;
+    const small = slowed.filter(media => smoothedReady(media, paths.smooth) && !smoothedReady(media, paths.smooth, neededSize(media, monitors))).length;
     const copies = await listSmoothed(paths.smooth);
     const used = copies.reduce((sum, copy) => sum + copy.size, 0);
     const limit = (display.smooth_cache_gb ?? 0) * 1024 ** 3;
     // The daemon stops the backlog at the limit, so the rest wait rather than come
     const full = limit && used + (copies.length ? used / new Set(copies.map(copy => copy.id)).size : 0) > limit;
-    const rest = ready < slowed.length ? (full ? '; the cache is full, so only what plays now and next is made' : '; the daemon makes the rest') : '';
+    const larger = small ? `; ${small} ${small === 1 ? 'copy is' : 'copies are'} smaller than the monitors need, the original plays until a larger one is made` : '';
+    const rest = ready < slowed.length ? `${larger}${full ? '; the cache is full, so only what plays now and next is made' : '; the daemon makes the rest'}` : '';
     const cache = copies.length ? `, ${formatBytes(used)}${limit ? ` of ${formatBytes(limit)}` : ' (no limit)'}` : '';
     // The daemon prunes after each copy, so being well over means it is not running or cannot delete
     const over = limit && used > limit * 1.1;

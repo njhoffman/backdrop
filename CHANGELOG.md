@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.69.1] - 2026-11-09
+
+### Fixed
+
+- `doctor` no longer counts a smoothed copy smaller than the running daemon's monitors as done, and says how many wait for a larger copy, matching what plays and `backdrop copies`.
+
 ## [2.69.0] - 2026-11-09
 
 ### Added
