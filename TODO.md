@@ -335,17 +335,21 @@ Reviewed: 2026-11-07
 - [ ] **Polybar once came back in the screensaver.** (p2) [bug] A capture on 2026-11-05, about 27 s into a real entry at load 20, showed polybar on screen and no ring or bars, with the veil up.
       A later entry logging the stacking and polybar's map state every 0.5 s for 22 s stayed correct throughout, as did a run without the workspace switch, so polybar's return is unexplained. The missing ring and bars are probably silence: the music was playing on a phone, so nothing reached the desktop's sink, and the ring's thin circle is easy to miss under the veil.
 - [ ] **Screensaver on two monitors.** (p2) [test] Only tried on one output. `enterWorkspaces` names the others `backdrop-<output>` and restores each, tested on i3 under Xvfb with one output and with fakes for two; real multi-monitor focus and restore are unseen.
-- [ ] **Show the screensaver in `status`.** (p3) [feature] `state.json` has `screensaver`, but `backdrop status`, `--json` (`docs/specs/json.md`) and the docs do not mention it, so the only way to ask is `backdrop screensaver status`.
-- [ ] **`doctor` does not know the screensaver's needs.** (p3) [feature] Nothing checks for the i3 `screensaver` mode (without it Escape cannot end the mode; `i3-msg -t get_binding_modes` tells), `polybar-msg`, `xprintidle` with `screensaver.idle` on, or `projectMSDL` with a preset using it.
+- [x] **Show the screensaver in `status`.** (p3) [feature] `state.json` has `screensaver`, but `backdrop status`, `--json` (`docs/specs/json.md`) and the docs do not mention it, so the only way to ask is `backdrop screensaver status`.
+      Done (2.76.0): a `Screensaver` row in plain `status`; `--json` already had `screensaver`.
+- [x] **`doctor` does not know the screensaver's needs.** (p3) [feature] Nothing checks for the i3 `screensaver` mode (without it Escape cannot end the mode; `i3-msg -t get_binding_modes` tells), `polybar-msg`, `xprintidle` with `screensaver.idle` on, or `projectMSDL` with a preset using it.
+      Done (2.76.0): a `screensaver` group: the i3 mode, hook tools (first word of each), xprintidle with idle, projectMSDL for a projectM look.
 - [ ] **Empty ring when the music is elsewhere.** (p3) [feature] With sound on a phone, sleeve follows Spotify but nothing reaches the desktop's sink, so the bars are empty and the ring is a bare circle. Hide it in silence with the bars, or leave it. Decided so far: leave it, no fake motion.
 - [ ] **Hide the pointer in the screensaver.** (p2) [feature] Nothing hides it yet; `on_enter` could run `unclutter`, or backdrop could do it itself.
       Raised from p3 after 2026-11-10: with the wallpaper black (see the mpv hotplug item), a lone moving pointer over a black
       screen that ignores every key looked exactly like a frozen desktop, and the machine was hard-reset.
-- [ ] **A second `$mod+Delete` turns the screensaver back on.** (p2) [bug] Inside the mode `$mod+Delete` runs `screensaver off`;
+- [x] **A second `$mod+Delete` turns the screensaver back on.** (p2) [bug] Inside the mode `$mod+Delete` runs `screensaver off`;
       outside it runs `screensaver toggle`. On 2026-11-10 an exit at 14:46:21 was followed by `$mod+Delete` at 14:46:34 (the
       desktop still looked black, so it seemed nothing had happened), which entered it again (`trigger: key`). Fix: ignore an
       `on`/`toggle` from the key for a few seconds after leaving, or bind the outside key to `on` and keep `off` for the mode only
       (`src/display/daemon/Screensaver.js` `apply`, `~/.config/i3/conf.d/70-menus.conf`).
+      Done (2.76.0): leaving on request notifies "Screensaver off". Binding the outer key to `on` would not have helped: outside the
+      mode toggle already means on. No re-entry guard: the 13 s gap would have needed one long enough to block a deliberate return.
 - [ ] **Nothing on screen says the screensaver is on.** (p2) [feature] When the wallpaper and visualizers are not drawing, the
       screensaver is an empty workspace under a key grab with no clue how to leave. Show a short hint ("Esc to leave") for a few
       seconds on enter and on any swallowed key, or notify through the notification daemon when a key is pressed in the mode.

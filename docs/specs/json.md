@@ -29,7 +29,7 @@ A library item, as printed by every command below.
 | `bounce_state` | string | `off`, `ready` (the reversed half plays) or `reversing` (its copy is still being made); given where the config is known (the CLI's `--json`, the web interface) |
 | `status` | `"new"`, `"kept"` or `"skipped"` | |
 | `stats` | `{ library: { kinds: [{ kind, total, new, kept, skipped, pending, duration }], total }, ratings: { byRating: [skipped, 1, 2, 3], rated, orientations, changes, last }, resolutions: [{ bucket, count }], sources, queries, recent: { days, added, ratings, searches, searches_all_time, duplicates }, storage: { dirs: [{ name, path, files, bytes }], bytes, trashDays }, monitors, playback: { groups, expensive, software }, quota }`, where `monitors` is null while the daemon is stopped, else `[{ name, width, height, eligible: { video, image } }]`, and `quota` the last Pexels rate limit seen (`{ source, remaining, limit, reset }`) or null |
-| `doctor` | `{ ok, failed, warned, checks: [{ group, name, status, detail, hint }] }`, where `group` is tools, display, config, daemon, library or visualizer, `status` is ok, warn or fail, and `hint` (on some) names the fix |
+| `doctor` | `{ ok, failed, warned, checks: [{ group, name, status, detail, hint }] }`, where `group` is tools, display, screensaver, config, daemon, library or visualizer, `status` is ok, warn or fail, and `hint` (on some) names the fix |
 | `rating` | object or null | `{ value, orientation, at }`: 0 (skip) to 3, the orientation of the monitor it was given on, UTC time |
 | `tags` | string[] | derived from the file name, page and description |
 | `queries` | string[] | searches that found the item |

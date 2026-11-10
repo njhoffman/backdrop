@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { readState, statePath } from '../display/Daemon.js';
 import { findOrphans } from '../display/children.js';
+import { I3_MODE } from '../display/daemon/Screensaver.js';
 import { withX11 } from '../display/x11.js';
 import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
@@ -100,6 +101,7 @@ export class DoctorCommand {
 
     await this.checkDisplay(settings, add);
     await this.checkSleeve(settings, add);
+    await this.checkScreensaver(settings, add);
     this.checkConfig(settings, add);
     await this.checkDaemon(settings, add);
     await this.checkLibrary(add);
@@ -254,6 +256,35 @@ export class DoctorCommand {
   }
 
   // What the sleeve engine needs that shows without starting it; a shell not installed or a blocked sandbox only
+  // What `backdrop screensaver` relies on: the i3 mode that holds Escape, the tools its hooks run, xprintidle for
+  // the idle start and projectMSDL for a screensaver look that uses projectM. Only warnings: the mode still works
+  // without any of them, less well.
+  async checkScreensaver(settings, add) {
+    const saver = settings.screensaver ?? {};
+    if (await this.which('i3-msg')) {
+      // Not running i3 (or an answer that is not the list): nothing to say
+      const modes = await this.exec('i3-msg', ['-t', 'get_binding_modes']).then(text => JSON.parse(text)).catch(() => null);
+      if (Array.isArray(modes)) {
+        if (modes.includes(I3_MODE)) add('screensaver', 'i3 mode', 'ok', `"${I3_MODE}" is defined`);
+        else add('screensaver', 'i3 mode', 'warn', `no "${I3_MODE}" mode, so Escape cannot end the screensaver`, `add mode "${I3_MODE}" with Escape bound to backdrop screensaver off (docs/specs/main.md)`);
+      }
+    }
+    const hookTools = new Set([...(saver.on_enter ?? []), ...(saver.on_leave ?? [])]
+      .map(command => String(command).trim().split(/\s+/).find(word => !word.includes('=')))
+      .filter(Boolean));
+    for (const tool of hookTools) {
+      if (!await this.which(tool)) add('screensaver', tool, 'warn', 'not installed; run by screensaver.on_enter or on_leave', `install ${tool} or change the hook`);
+    }
+    if (saver.idle && !await this.which('xprintidle')) {
+      add('screensaver', 'xprintidle', 'warn', 'not installed; screensaver.idle needs it to see idle time', 'install xprintidle');
+    }
+    const looks = [saver.preset, saver.preset_without_lyrics].filter(Boolean);
+    const projectm = settings.visualizer?.projectm?.command ?? 'projectMSDL';
+    if (looks.some(name => enginesOf({ ...settings.visualizer, preset: name }).has('projectm')) && !await this.which(projectm)) {
+      add('screensaver', projectm, 'warn', 'not installed; a screensaver look uses projectM', `install ${projectm}`);
+    }
+  }
+
   // shows by starting one, which `--visualizer` does (status 2 with sleeve's advice)
   async checkSleeve(settings, add) {
     if (!settings.visualizer?.enabled || !enginesOf(settings.visualizer).has('sleeve') || !await this.which('sleeve')) return;

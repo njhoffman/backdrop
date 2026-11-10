@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import { notifyMode, notifyLoad } from '../../utils/notify.js';
 import { screensaverPath } from '../runtimeFiles.js';
 import { enterWorkspaces, DEFAULT_WORKSPACE } from '../../utils/workspace.js';
 import { run as defaultRun } from '../Monitors.js';
@@ -135,7 +136,20 @@ export class Screensaver {
 
   async apply(action) {
     if (action === 'on' || (action === 'toggle' && !this.active)) return this.enter('key');
-    return this.leave();
+    const wasActive = Boolean(this.active);
+    await this.leave();
+    // Said on screen: a desktop that looks no different (a black wallpaper) once made a second press enter it again
+    if (wasActive) await this.announceLeave();
+  }
+
+  async announceLeave() {
+    let mode;
+    try {
+      mode = notifyMode(this.daemon.config.get().display);
+    } catch {
+      mode = 'commands';
+    }
+    if (mode !== 'off') await notifyLoad('Screensaver off', { logger: this.daemon.logger });
   }
 
   async enter(trigger) {

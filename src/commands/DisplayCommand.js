@@ -139,6 +139,7 @@ export class DisplayCommand {
 
     out.row('Daemon', `${fmt.green('running')} ${fmt.dim(`(pid ${state.pid}; ${this.describeParts(state)})`)}`);
     if (state.load) out.row('Load', this.describeLoad(state.load));
+    if (state.screensaver) out.row('Screensaver', this.describeScreensaver(state.screensaver));
     if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
     if (state.visualizer?.enabled && state.visualizer.compositor === false) {
       out.row('Visualizer', fmt.yellow('no compositor runs: the area around the bars shows black (start picom or another compositor)'));
@@ -182,6 +183,14 @@ export class DisplayCommand {
       }
       out.field('path', displayPath(path));
     }
+  }
+
+  // The daemon's screensaver state for status: what started it and since when, or off
+  describeScreensaver({ active, trigger, since }) {
+    if (!active) return fmt.dim('off');
+    const how = { key: 'by key', idle: 'after idle' }[trigger] ?? trigger;
+    const at = Number.isFinite(since) ? `, since ${new Date(since).toTimeString().slice(0, 5)}` : '';
+    return `${fmt.green('on')} ${fmt.dim(`(${how}${at}; backdrop screensaver off)`)}`;
   }
 
   // status --json (DisplayService.status)

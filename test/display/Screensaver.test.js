@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { Screensaver, restoreDesktop, I3_MODE } from '../../src/display/daemon/Screensaver.js';
 import { screensaverPath } from '../../src/display/runtimeFiles.js';
+import { notifications } from '../helpers/setup.js';
 
 describe('Screensaver', () => {
   let runtimeDir, calls, daemon, saver, settings, idleMs, loadValue, failing, watchers;
@@ -73,6 +74,19 @@ describe('Screensaver', () => {
     expect(daemon.visualizers.changes.at(-1)).to.deep.equal(['preset', 'party']);
     expect(saver.summary()).to.deep.equal({ active: false });
     expect(await fs.pathExists(screensaverPath(runtimeDir))).to.equal(false);
+  });
+
+  it('says on screen that it turned off, once, and not with display.notify: off', async () => {
+    notifications.length = 0;
+    await saver.apply('on');
+    await saver.apply('toggle');
+    await saver.apply('off');
+    expect(notifications.map(args => args.at(-1))).to.deep.equal(['Screensaver off']);
+
+    daemon.config = { get: () => ({ screensaver: settings, display: { notify: 'off' } }) };
+    await saver.apply('on');
+    await saver.apply('off');
+    expect(notifications).to.have.length(1);
   });
 
   it('on twice and off twice change nothing more', async () => {

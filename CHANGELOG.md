@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.76.0] - 2026-11-10
+
+### Added
+- `backdrop status` shows whether the screensaver is on, what started it (a key or idle time) and since when.
+- `backdrop doctor` checks what the screensaver relies on: the i3 `screensaver` mode (without it Escape cannot end
+  it), the tools `on_enter` and `on_leave` run, `xprintidle` with `screensaver.idle` on, and `projectMSDL` when a
+  screensaver look uses projectM.
+
+### Changed
+- Turning the screensaver off shows a short "Screensaver off" notification, so a desktop that looks unchanged no
+  longer invites a second press that turns it back on (`display.notify: off` keeps it quiet).
+
 ## [2.75.2] - 2026-11-10
 
 ### Fixed

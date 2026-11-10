@@ -9,7 +9,7 @@ import { ANIMATED_WEBP } from '../../src/library/probe.js';
 import { makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('DoctorCommand', () => {
-  let db, config, lines, errors, installed, files, savedDisplay;
+  let db, config, lines, errors, installed, files, savedDisplay, modes;
   const doctor = (overrides = {}) => new DoctorCommand(config, db, silentLogger, {
     version: '2.32.0',
     which: async name => installed.has(name),
@@ -17,6 +17,10 @@ describe('DoctorCommand', () => {
     readStateFile: async () => null,
     orphans: () => null,
     pathExists: async file => files.has(file),
+    exec: async (file, args) => {
+      if (file === 'i3-msg' && args.includes('get_binding_modes')) return JSON.stringify(modes);
+      throw new Error(`unexpected ${file} ${args.join(' ')}`);
+    },
     ...overrides
   });
   const byName = (checks, name) => checks.find(check => check.name === name);
@@ -25,7 +29,8 @@ describe('DoctorCommand', () => {
     db = new DatabaseManager();
     db.initialize(':memory:');
     config = makeConfig({ 'visualizer.enabled': true, 'sources.pexels.api_key': 'key' });
-    installed = new Set(['mpv', 'xwinwrap', 'ffmpeg', 'ffprobe', 'xrandr', 'xdotool', 'rofi', 'glava', 'notify-send', 'pactl', 'i3-msg']);
+    installed = new Set(['mpv', 'xwinwrap', 'ffmpeg', 'ffprobe', 'xrandr', 'xdotool', 'rofi', 'glava', 'notify-send', 'pactl', 'i3-msg', 'polybar-msg']);
+    modes = ['default', 'screensaver'];
     files = new Set();
     lines = []; errors = [];
     sinon.stub(console, 'log').callsFake(line => lines.push(line));
@@ -74,6 +79,22 @@ describe('DoctorCommand', () => {
     config.set('visualizer.instances', [{ name: 'l', module: 'radial', channel: 'left' }]);
     const checks = await doctor().run();
     expect(byName(checks, 'pactl').status).to.equal('warn');
+  });
+
+  it('warns about what the screensaver relies on', async () => {
+    let checks = await doctor().run();
+    expect(byName(checks, 'i3 mode').status).to.equal('ok');
+    modes = ['default'];
+    installed.delete('polybar-msg');
+    config.set('screensaver.idle', true);
+    config.set('screensaver.on_enter', ['FOO=1 polybar-msg cmd hide', 'notify-send hi']);
+    config.set('visualizer.presets', { night: { instances: [{ name: 'p', engine: 'projectm' }] } });
+    config.set('screensaver.preset', 'night');
+    checks = (await doctor().run()).filter(check => check.group === 'screensaver');
+    expect(checks.map(check => [check.name, check.status])).to.deep.equal([
+      ['i3 mode', 'warn'], ['polybar-msg', 'warn'], ['xprintidle', 'warn'], ['projectMSDL', 'warn']
+    ]);
+    expect(byName(checks, 'i3 mode').hint).to.include('mode "screensaver"');
   });
 
   it('checks the display and the compositor', async () => {

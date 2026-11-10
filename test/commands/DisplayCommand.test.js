@@ -66,6 +66,19 @@ describe('DisplayCommand', () => {
       expect(text).to.include('No videos at least 3840x2160').and.include('display.allow_upscale');
     });
 
+    it('shows whether the screensaver is on, what started it and since when', async () => {
+      const since = new Date(2026, 10, 10, 14, 46).getTime();
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, screensaver: { active: true, trigger: 'idle', since } });
+      command.control = { current: async () => ({ path: null }) };
+      await command.status();
+      expect(lines.join('\n')).to.include('Screensaver: on (after idle, since 14:46; backdrop screensaver off)');
+
+      lines.length = 0;
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, screensaver: { active: false } });
+      await command.status();
+      expect(lines.join('\n')).to.include('Screensaver: off');
+    });
+
     it('shows the load and the mode it holds back', async () => {
       setMode(db, 'video');
       setModeHold(db, 'image');
