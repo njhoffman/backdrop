@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.69.2] - 2026-11-09
+
+### Fixed
+
+- `backdrop copies --sync` says there was nothing to remake when every copy already plays, instead of saying the daemon is deleting copies.
+
 ## [2.69.1] - 2026-11-09
 
 ### Fixed

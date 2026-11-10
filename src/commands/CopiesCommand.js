@@ -58,7 +58,8 @@ export class CopiesCommand {
     const counts = Object.keys(PROBLEMS).map(problem => [problem, problems.filter(copy => copy.problem === problem).length]).filter(([, count]) => count);
     const summary = counts.length ? counts.map(([problem, count]) => `${count} ${PROBLEMS[problem]}`).join(', ') : 'all play';
     out.print(`${copies.length} copies, ${formatBytes(bytes)}${checkedAgainst}: ${summary}`);
-    if (synced) out.success('The daemon is deleting those and making the wanted ones again, playing the originals meanwhile');
+    if (synced && problems.length) out.success('The daemon is deleting those and making the wanted ones again, playing the originals meanwhile');
+    else if (synced) out.success('Nothing to remake; the daemon checked the copies again');
     else if (options.sync) out.info('No daemon is running; `backdrop start` checks the copies the same way');
     else if (problems.length) out.info('backdrop copies --sync has the daemon delete them and make the wanted ones again');
     return { copies, synced };

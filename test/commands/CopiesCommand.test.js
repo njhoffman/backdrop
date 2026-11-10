@@ -106,6 +106,14 @@ describe('CopiesCommand', () => {
     expect(result.synced).to.equal(true);
     expect(send.firstCall.args[2]).to.deep.equal({ copies: true });
     expect(result.copies.every(copy => !copy.problem)).to.equal(true);
+    // With every copy playing, it says there was nothing to remake rather than that copies are being deleted
+    expect(lines.join('\n')).to.include('Nothing to remake');
+    expect(lines.join('\n')).to.not.include('deleting those');
+
+    lines.length = 0;
+    const tooSmall = { pid: 1, monitors: [HD] };
+    await command({ state: tooSmall }).run({ sync: true });
+    expect(lines.join('\n')).to.include('deleting those');
   });
 
   it('prints JSON', async () => {
