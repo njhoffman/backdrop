@@ -5,7 +5,7 @@ import { findOrphans } from '../display/children.js';
 import { withX11 } from '../display/x11.js';
 import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
-import { enginesOf, visualizerSettings } from '../visualizer/settings.js';
+import { enginesOf, followsOneSpeaker, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
 import { neededSize } from '../display/bounce.js';
@@ -31,7 +31,7 @@ const TOOLS = [
   { name: 'glava', need: 'the visualizer', wanted: config => Boolean(config.visualizer?.enabled) && enginesOf(config.visualizer).has('glava') },
   { name: 'sleeve', need: 'the sleeve visualizer instances (docs/specs/sleeve.md)', wanted: config => Boolean(config.visualizer?.enabled) && enginesOf(config.visualizer).has('sleeve') },
   { name: 'notify-send', need: 'desktop notifications', wanted: config => config.display?.notify !== 'off' },
-  { name: 'pactl', need: 'visualizer.only_while_playing or wallpaper_dim', wanted: config => Boolean(config.visualizer?.only_while_playing || config.visualizer?.wallpaper_dim) },
+  { name: 'pactl', need: 'visualizer.only_while_playing, wallpaper_dim or an instance with channel: left/right', wanted: config => Boolean(config.visualizer?.only_while_playing || config.visualizer?.wallpaper_dim || (config.visualizer?.enabled && followsOneSpeaker(config.visualizer, [config.screensaver?.preset, config.screensaver?.preset_without_lyrics]))) },
   { name: 'i3-msg', need: 'menu.workspace', wanted: config => config.menu?.workspace !== false }
 ];
 

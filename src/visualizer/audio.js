@@ -8,9 +8,14 @@ const RESTART_DELAY_MS = 2000;
 // every sink, source or server change: RUNNING means sound. Sound is reported at once; silence only after
 // grace milliseconds of it, so a pause between tracks does not stop the visualizer. When the state cannot be
 // read, sound is assumed, so a missing pactl leaves the visualizer running rather than gone.
+// With source auto, onSink(name) is called when the default output changes after the first check.
 export class AudioWatcher {
-  constructor({ source = 'auto', grace = 10_000, spawn, exec, logger, onChange, restartDelay = RESTART_DELAY_MS, recheckDelay = RECHECK_DELAY_MS }) {
-    Object.assign(this, { source, grace, spawn, exec, logger, onChange, restartDelay, recheckDelay });
+  constructor({
+    source = 'auto', grace = 10_000, spawn, exec, logger, onChange, onSink = () => {},
+    restartDelay = RESTART_DELAY_MS, recheckDelay = RECHECK_DELAY_MS
+  }) {
+    Object.assign(this, { source, grace, spawn, exec, logger, onChange, onSink, restartDelay, recheckDelay });
+    this.sink = null;
     this.playing = null;
     this.child = null;
     this.stopped = false;
@@ -80,7 +85,7 @@ export class AudioWatcher {
   async check() {
     try {
       const name = this.source === 'auto'
-        ? (await this.exec('pactl', ['get-default-sink'])).trim()
+        ? this.noteSink((await this.exec('pactl', ['get-default-sink'])).trim())
         : this.source.replace(/\.monitor$/, '');
       for (const kind of ['sinks', 'sources']) {
         const row = (await this.exec('pactl', ['list', 'short', kind])).split('\n')
@@ -94,6 +99,14 @@ export class AudioWatcher {
       this.warn('Cannot read the audio state, assuming it plays', error);
       return true;
     }
+  }
+
+  // Records the default output, telling onSink when it differs from the one seen before
+  noteSink(name) {
+    const previous = this.sink;
+    this.sink = name;
+    if (previous !== null && name && previous !== name && !this.stopped) this.onSink(name);
+    return name;
   }
 
   warn(message, error) {

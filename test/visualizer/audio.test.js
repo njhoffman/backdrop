@@ -106,4 +106,23 @@ describe('AudioWatcher', () => {
     await pause(10);
     expect(children).to.have.length(2);
   });
+
+  it('reports a change of the default output, not the first one it reads', async () => {
+    const sinks = [];
+    let sink = 'bluez_output.AC_BF.1';
+    const audio = watcher({
+      exec: async (file, args) => (args[0] === 'get-default-sink' ? `${sink}\n` : exec(file, args)),
+      onSink: name => sinks.push(name)
+    });
+    await audio.start();
+    event(children[0].child, "Event 'change' on server #0");
+    await pause(10);
+    expect(sinks).to.deep.equal([]);
+
+    sink = 'alsa_output.hdmi';
+    event(children[0].child, "Event 'change' on server #0");
+    await pause(10);
+    expect(sinks).to.deep.equal(['alsa_output.hdmi']);
+    audio.stop();
+  });
 });

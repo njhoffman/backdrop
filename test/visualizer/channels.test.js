@@ -60,4 +60,15 @@ describe('ChannelSources', () => {
     expect([...await made.sync(['left'], 'auto')]).to.deep.equal([]);
     expect(warnings).to.have.length(1);
   });
+
+  it('clears remap sources left from before and says nothing without a sound server', async () => {
+    modules.push(['41', 'module-remap-source', `master=${MASTER} source_name=backdrop_left channels=1`]);
+    await sources().clear();
+    expect(calls).to.include('unload-module 41');
+    expect(modules.map(([id]) => id)).to.deep.equal(['7']);
+
+    failing = true;
+    await sources().clear();
+    expect(warnings).to.deep.equal([]);
+  });
 });

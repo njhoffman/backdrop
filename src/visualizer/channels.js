@@ -70,4 +70,15 @@ export class ChannelSources {
   release(source = 'auto') {
     return this.sync([], source);
   }
+
+  // Removes remap sources a previous daemon left, saying nothing when pactl or the sound server is missing
+  async clear() {
+    try {
+      const existing = ownModules(await this.exec('pactl', ['list', 'short', 'modules']));
+      for (const module of existing) await this.exec('pactl', ['unload-module', module.id]);
+      if (existing.length) this.logger.info('Removed one-speaker sources left from before', { count: existing.length });
+    } catch (error) {
+      this.logger.debug?.('No one-speaker sources to clear', { error: error.message });
+    }
+  }
 }

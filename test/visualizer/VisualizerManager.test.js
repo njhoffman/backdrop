@@ -253,13 +253,47 @@ describe('VisualizerManager', () => {
     expect(asked.at(-1)).to.deep.equal(['release', 'auto']);
   });
 
-  it('asks for no one-speaker sources when no instance follows one', async () => {
+  it('asks for no one-speaker sources when no instance follows one, and clears leftovers once per start', async () => {
     let asked = 0;
-    manager = makeManager({ channelSources: () => ({ sync: async () => { asked++; return new Set(); }, release: async () => { asked++; } }) });
+    let cleared = 0;
+    manager = makeManager({
+      channelSources: () => ({
+        sync: async () => { asked++; return new Set(); }, release: async () => { asked++; }, clear: async () => { cleared++; }
+      })
+    });
     await manager.configure();
+    await manager.sync();
     await manager.sync();
     await manager.stop();
     expect(asked).to.equal(0);
+    expect(cleared).to.equal(1);
+  });
+
+  it('makes the one-speaker sources again and restarts their instances when the default output changes', async () => {
+    const asked = [];
+    let onSink;
+    const audioWatcher = options => {
+      onSink = options.onSink;
+      return { source: options.source, grace: options.grace, start: async () => true, stop: () => {} };
+    };
+    const channelSources = () => ({
+      sync: async channels => { asked.push(channels); return new Set(channels); },
+      release: async () => new Set(),
+      clear: async () => {}
+    });
+    manager = makeManager({ channelSources, audioWatcher });
+    config.set('visualizer.instances', [{ name: 'main', module: 'bars' }, { name: 'l', module: 'radial', channel: 'left' }]);
+    await manager.configure();
+    await manager.sync();
+    expect(onSink, 'the output is watched for a one-speaker instance alone').to.be.a('function');
+    const before = spawned.length;
+
+    await onSink('bluez_output.headphones');
+    // Only the one-speaker instance restarts, after its source was made again
+    expect(spawned.length - before).to.equal(1);
+    expect(asked).to.have.length(2);
+    expect(asked[1]).to.deep.equal(['left']);
+    await manager.stop();
   });
 
   describe('a saved change with the menu\'s changes on top', () => {

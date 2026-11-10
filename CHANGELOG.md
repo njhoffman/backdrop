@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.75.1] - 2026-11-10
+
+### Fixed
+- Rings that follow one speaker (`channel: left`/`right`) move to the new output when the default output changes
+  (headphones, Bluetooth, HDMI) instead of lying flat on the old one.
+- Remap sources a killed daemon left loaded (`backdrop_left`, `backdrop_right`) are removed on the next start.
+- `backdrop doctor` asks for `pactl` when a visualizer instance, including the screensaver's look without lyrics,
+  follows one speaker.
+
 ## [2.75.0] - 2026-11-10
 
 ### Changed

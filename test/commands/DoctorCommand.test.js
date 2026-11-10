@@ -57,6 +57,8 @@ describe('DoctorCommand', () => {
     installed.delete('xwinwrap');
     installed.delete('glava');
     installed.delete('pactl');
+    // The default screensaver look without lyrics has one-speaker rings, which need pactl; leave it out here
+    config.set('screensaver.preset_without_lyrics', null);
     const checks = await doctor().run();
     expect(byName(checks, 'xwinwrap')).to.include({ status: 'fail', hint: 'install xwinwrap' });
     expect(byName(checks, 'glava').status).to.equal('warn');
@@ -64,6 +66,14 @@ describe('DoctorCommand', () => {
     expect(byName(checks, 'pactl')).to.equal(undefined);
     expect(process.exitCode).to.equal(1);
     expect(errors.at(-1)).to.equal('1 failed, 1 warning');
+  });
+
+  it('wants pactl for an instance that follows one speaker', async () => {
+    installed.delete('pactl');
+    config.set('screensaver.preset_without_lyrics', null);
+    config.set('visualizer.instances', [{ name: 'l', module: 'radial', channel: 'left' }]);
+    const checks = await doctor().run();
+    expect(byName(checks, 'pactl').status).to.equal('warn');
   });
 
   it('checks the display and the compositor', async () => {

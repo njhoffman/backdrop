@@ -177,9 +177,13 @@ for it before it starts (`src/visualizer/channels.js`): `backdrop_left` or `back
 channel of the section's `source` (the default output's monitor for `auto`), which the sound server gives GLava's
 stereo read on both sides. A stereo remap that copies one channel to both sides leaves the other silent through
 PipeWire's pulse server, hence mono. The sources are made with `pactl load-module module-remap-source` once an
-instance needs one, reused when still loaded (after a crash), replaced when the output they came from changed at a
-start, and unloaded when no instance needs them and when the daemon stops. Without pactl or a sound server the
-instance reads the section's `source`, both speakers, with one warning. `audio: fifo` has no channels to pick.
+instance needs one, reused when still loaded (after a crash), and unloaded when no instance needs them and when the
+daemon stops; a start that needs none unloads any a killed daemon left, saying nothing without pactl. With `source:
+auto` the audio watcher (`audio.js`) runs while such an instance exists and follows the default output: when it
+changes (headphones, Bluetooth, HDMI), the one-speaker instances stop, their sources are made again from the new
+output's monitor and the instances start again. Without pactl or a sound server the instance reads the section's
+`source`, both speakers, with one warning. `audio: fifo` has no channels to pick. `backdrop doctor` asks for pactl
+when an instance of the section, its preset or the screensaver's presets follows one speaker.
 
 The `screensaver-instrumental` preset uses it: the `screensaver` preset's veil and now-playing panel with an empty
 lyrics area, under bars across the whole width and a ring over each half of the monitor below the panel's strip, the

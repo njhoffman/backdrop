@@ -644,6 +644,16 @@ export function enginesOf(section = {}) {
   return new Set(instances.map(item => item?.engine ?? raw.engine ?? 'glava'));
 }
 
+// Whether an instance follows one speaker (`channel: left` or `right`) in the section as written, its chosen
+// preset, or any of the other presets named (the screensaver's). Tolerant, for `backdrop doctor`.
+export function followsOneSpeaker(section = {}, presetNames = []) {
+  if (!isObject(section)) return false;
+  const presets = presetsOf(section);
+  const instancesOf = raw => (isObject(raw) && Array.isArray(raw.instances) ? raw.instances : [raw]);
+  const layers = [section, ...[section.preset, ...presetNames].filter(Boolean).map(name => presets[name])];
+  return layers.some(layer => instancesOf(layer).some(item => item?.channel === 'left' || item?.channel === 'right'));
+}
+
 // An instance's layout on a monitor, or null when it does not run there
 export function layoutFor(instanceSettings, name) {
   if (instanceSettings.monitors.overrides[name]) return instanceSettings.monitors.overrides[name];

@@ -339,9 +339,12 @@ export class VisualizerManager {
     await this.reload();
   }
 
-  // Watches the audio source while only_while_playing or wallpaper_dim applies, and stops watching otherwise
+  // Watches the audio source while only_while_playing or wallpaper_dim applies, or while an instance follows one
+  // speaker of the default output (its source has to move with that output), and stops watching otherwise
   async watchAudio() {
-    const wanted = Boolean(this.settings?.onlyWhilePlaying || this.settings?.wallpaperDim) && this.active && !this.stopping;
+    const followsOutput = this.settings?.audio === 'pulseaudio' && (this.settings?.source ?? 'auto') === 'auto' &&
+      this.oneSpeakerInstances(this.settings?.instances ?? []).length > 0;
+    const wanted = Boolean(this.settings?.onlyWhilePlaying || this.settings?.wallpaperDim || followsOutput) && this.active && !this.stopping;
     const { source, silenceGrace } = this.settings ?? {};
     const current = this.audio.watcher;
     if (current && wanted && current.source === source && current.grace === silenceGrace * 1000) {
@@ -356,7 +359,8 @@ export class VisualizerManager {
     }
     const watcher = this.audioWatcher({
       source, grace: silenceGrace * 1000, spawn: this.spawn, exec: this.exec, logger: this.logger,
-      onChange: playing => this.onAudio(watcher, playing)
+      onChange: playing => this.onAudio(watcher, playing),
+      onSink: sink => this.onSink(watcher, sink)
     });
     this.audio.watcher = watcher;
     this.audio.playing = await watcher.start();
@@ -376,6 +380,28 @@ export class VisualizerManager {
     } catch (error) {
       this.logger.error('Visualizer failed to follow the audio', { error: error.message });
     }
+  }
+
+  // The default output changed: the one-speaker sources are made again from its monitor, and the instances reading
+  // them restart, stopped first so their streams close before the old sources go
+  async onSink(watcher, sink) {
+    if (this.audio.watcher !== watcher || this.stopping) return;
+    const following = [...this.entries].filter(([, entry]) => this.oneSpeakerInstances([entry.instance]).length);
+    if (!following.length && !this.channelsMade) return;
+    this.logger.info('Default output changed, one-speaker sources follow it', { sink });
+    try {
+      for (const [key, entry] of following) {
+        this.entries.delete(key);
+        await this.stopEntry(entry);
+      }
+      await this.sync();
+    } catch (error) {
+      this.logger.error('Visualizer failed to follow the default output', { error: error.message });
+    }
+  }
+
+  oneSpeakerInstances(instances) {
+    return instances.filter(instance => instance.channel && instance.channel !== 'both');
   }
 
   // Watches sleeved while a sleeve instance can run: when it restarts it has forgotten what it was told
@@ -431,10 +457,16 @@ export class VisualizerManager {
   async syncChannels(instances) {
     const audio = this.settings?.audio;
     const channels = audio === 'pulseaudio' && !this.stopping
-      ? instances.filter(instance => instance.channel && instance.channel !== 'both' && [...this.monitors.values()].some(monitor => this.wanted(instance, monitor)))
+      ? this.oneSpeakerInstances(instances).filter(instance => [...this.monitors.values()].some(monitor => this.wanted(instance, monitor)))
         .map(instance => instance.channel)
       : [];
-    if (!channels.length && !this.channelsMade) return;
+    const firstCheck = audio === 'pulseaudio' && !this.channelsChecked;
+    this.channelsChecked ||= firstCheck;
+    if (!channels.length && !this.channelsMade) {
+      // Once per start: sources a killed daemon left loaded go, quietly when there is no pactl
+      if (firstCheck && !this.stopping) await this.channelSources.clear();
+      return;
+    }
     const ready = await this.channelSources.sync(channels, this.settings?.source ?? 'auto');
     this.channelsMade = ready.size > 0;
     for (const instance of instances) {

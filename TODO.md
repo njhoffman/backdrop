@@ -207,6 +207,11 @@ Reviewed: 2026-11-07
       Done (2.69.1): counted against the monitors in `state.json`; copies too small are named; without a daemon sizes stay unchecked.
 - [ ] **npm audit flags mocha's glob and minimatch.** (p3) [chore] Three moderate advisories (GHSA-g3hv-75wg-m249 and others) in `glob` 13 and `minimatch` 10 under `mocha` 12, dev dependencies only; `npm audit fix --force` would move mocha across a major version. Check for a mocha release that takes the fixed versions, or pin them with `overrides`, and run the suite.
 - [ ] **Why CUDA's probe became slow.** (p3) [test] Split from the decoder order item: mpv's CUDA probe stalled its start past the IPC timeout on the NVIDIA desktop on 2026-11-05, having been fine earlier that day, so 2.50.7 put VAAPI first. Unexplained, and VAAPI first is untried on another NVIDIA machine; time `mpv --hwdec=cuda` starts there and check the driver's state (`nvidia-smi`) when it is slow.
+- [ ] **A reversal fails when its item is rated mid-job.** (p3) [bug] On 2026-11-10 at 15:46 item 299 was skipped (moved
+      to `trash/`) while `reverseVideo` (`src/library/reverse.js`, run by `daemon/Bounce.js`) worked on it; ffmpeg failed
+      on the missing file with VAAPI and again with x264, logging two `Reverse encode failed` warnings. Harmless, but
+      noise and a wasted fallback. Fix: abort the job (its `signal`) when the item is rated or its path changes, or treat
+      a missing input as a cancel, not an encoder failure.
 - [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
@@ -704,19 +709,24 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done: dropped outright, with 0.39.2 noted in `docs/specs/sleeve.md`.
 - [ ] **Try it on the real desktop.** (p2) [test] Veil, lyrics, ring and bars have now been seen together on the laptop panel (2026-11-05): stacking order, polybar hidden, ring scale and the veil's color.
       Still unseen there: colors following the wallpaper over several wallpapers, a wallpaper restart under sleeve, `lyrics-stage` and `lyrics-now` (the opaque layouts, whose seam 0.39.2 should have removed), and all of it with audio on the desktop's sink, since the music was on a phone.
-- [ ] **One-speaker sources stay on the old output.** (p2) [bug] `ChannelSources.sync` (`src/visualizer/channels.js`)
+- [x] **One-speaker sources stay on the old output.** (p2) [bug] `ChannelSources.sync` (`src/visualizer/channels.js`)
       resolves `auto` to the default sink's monitor only when the visualizers start or sync, and nothing syncs again
       when the default output changes (headphones, Bluetooth, HDMI). The `channel: left`/`right` rings then read the
       old sink's monitor and lie flat; if that sink goes away, PulseAudio unloads the remap module and the instance
       reads a source that no longer exists. Fix: `audio.js` already follows `pactl subscribe` server changes; on a
       changed `get-default-sink`, call `syncChannels` again and restart the instances whose master moved.
-- [ ] **Remap sources outlive a crashed daemon.** (p3) [bug] `syncChannels` (`src/visualizer/VisualizerManager.js`)
+      Done (2.75.1): `AudioWatcher` reports a new default sink (`onSink`) and runs for one-speaker instances alone;
+      `VisualizerManager.onSink` stops those instances and syncs, which makes the sources again from the new monitor.
+- [x] **Remap sources outlive a crashed daemon.** (p3) [bug] `syncChannels` (`src/visualizer/VisualizerManager.js`)
       returns early when no instance wants a channel and `channelsMade` is unset, which it always is on a fresh start,
       so `backdrop_left`/`backdrop_right` modules a killed daemon left loaded stay until the sound server restarts.
       Fix: run one `sync([])` on start when `pactl` is there (cheap: one `list short modules`).
-- [ ] **`doctor` does not mention `channel` for pactl.** (p3) [docs] Its `pactl` check (`src/commands/DoctorCommand.js`)
+      Done (2.75.1): `ChannelSources.clear()` runs once per start with `audio: pulseaudio`, silent without pactl.
+- [x] **`doctor` does not mention `channel` for pactl.** (p3) [docs] Its `pactl` check (`src/commands/DoctorCommand.js`)
       asks for it only for `only_while_playing` or `wallpaper_dim`; an instance with `channel: left`/`right` needs
       it too (without it, the instance quietly shows both speakers).
+      Done (2.75.1): `followsOneSpeaker` (`src/visualizer/settings.js`) checks the section, its preset and the
+      screensaver's presets; the default `screensaver-instrumental` look makes pactl wanted whenever the visualizer is on.
 
 ## 10. Web interface
 
