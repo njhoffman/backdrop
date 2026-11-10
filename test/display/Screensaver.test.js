@@ -6,7 +6,7 @@ import { Screensaver, restoreDesktop, I3_MODE } from '../../src/display/daemon/S
 import { screensaverPath } from '../../src/display/runtimeFiles.js';
 
 describe('Screensaver', () => {
-  let runtimeDir, calls, daemon, saver, settings, idleMs, loadValue, failing;
+  let runtimeDir, calls, daemon, saver, settings, idleMs, loadValue, failing, watchers;
 
   const workspaces = [{ name: '3', focused: true, visible: true, output: 'DP-3' }, { name: '7', focused: false, visible: true, output: 'HDMI-1' }];
   const outputs = [{ name: 'DP-3', active: true }, { name: 'HDMI-1', active: true }, { name: 'xroot-0', active: false }];
@@ -40,9 +40,16 @@ describe('Screensaver', () => {
       runtimeDir, exec, stopping: false, now: () => 1000, visualizers: visualizers(),
       config: { get: () => ({ screensaver: settings }) },
       logger: { info() {}, warn() {}, error() {}, debug() {} },
-      load: { off: false, governor: { read: () => loadValue } }
+      load: { off: false, governor: { read: () => loadValue } },
+      enqueue: task => task(), screens: new Map()
     };
-    saver = new Screensaver(daemon);
+    watchers = [];
+    const watchTracks = options => {
+      const watcher = { options, running: false, start() { this.running = true; }, stop() { this.running = false; } };
+      watchers.push(watcher);
+      return watcher;
+    };
+    saver = new Screensaver(daemon, { watchTracks });
   });
 
   afterEach(() => fs.remove(runtimeDir));
@@ -166,6 +173,47 @@ describe('Screensaver', () => {
       failing = file => file === 'xprintidle';
       await saver.checkIdle();
       expect(saver.summary().active).to.equal(false);
+    });
+  });
+
+  describe('a new song', () => {
+    const screen = name => ({ monitor: { name }, client: { commands: [], command: async function (...args) { this.commands.push(args); } } });
+
+    beforeEach(() => {
+      daemon.screens = new Map([['DP-3', screen('DP-3')], ['HDMI-1', screen('HDMI-1')]]);
+    });
+
+    const nexts = () => [...daemon.screens.values()].map(({ client }) => client.commands);
+    const song = { player: 'spotify', artist: 'A', title: 'Two' };
+
+    it('moves every monitor to its next item while the screensaver runs, following songs only then', async () => {
+      await saver.apply('on');
+      expect(watchers).to.have.length(1);
+      expect(watchers[0].running).to.equal(true);
+      await watchers[0].options.onTrack(song);
+      expect(nexts()).to.deep.equal([[['playlist-next', 'force']], [['playlist-next', 'force']]]);
+      await saver.apply('off');
+      expect(watchers[0].running).to.equal(false);
+      // A song reported after leaving changes nothing
+      await watchers[0].options.onTrack(song);
+      expect(nexts()[0]).to.have.length(1);
+    });
+
+    it('does nothing with next_on_song off, read on each song', async () => {
+      settings.next_on_song = false;
+      await saver.apply('on');
+      await watchers[0].options.onTrack(song);
+      expect(nexts()).to.deep.equal([[], []]);
+      settings.next_on_song = true;
+      await watchers[0].options.onTrack(song);
+      expect(nexts()[0]).to.have.length(1);
+    });
+
+    it('still changes the other monitors when one fails', async () => {
+      daemon.screens.get('DP-3').client.command = async () => { throw new Error('gone'); };
+      await saver.apply('on');
+      await watchers[0].options.onTrack(song);
+      expect(nexts()[1]).to.have.length(1);
     });
   });
 });

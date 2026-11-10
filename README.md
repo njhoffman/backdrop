@@ -132,7 +132,7 @@ piped, they are tab-separated and plain, keeping colors only with `FORCE_COLOR` 
 
 `next`, `skip`, `go-next` and `keep --next` play the next item of the shuffled playlist, which is reshuffled on
 every pass, so the order is random without repeats; automatic advances follow it too. Images change every
-`display.image_duration` seconds; videos loop for about `display.video_duration` (10 minutes): short ones loop
+`display.image_duration` seconds; videos loop for about `display.video_duration` (2 minutes): short ones loop
 as many whole times as fit, longer ones stop at the limit, and 0 loops each video forever.
 Slowed videos (`backdrop speed 0.5`) show fewer frames a second and can stutter. With `display.smooth: true` and
 [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) installed (`display.smooth_rife`, its `rife-v4.6`

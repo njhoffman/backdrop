@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.70.0] - 2026-11-09
+
+### Added
+- `screensaver.next_on_song` (default true): while the screensaver runs, a media player starting another song
+  (followed through `playerctl`) changes the wallpaper on every monitor. It applies at once when changed.
+
+### Changed
+- `display.video_duration` defaults to 120 seconds (was 600), so videos change every 2 minutes.
+
+### Fixed
+- The palette test that runs a real ffmpeg no longer times out on a loaded machine.
+
 ## [2.69.2] - 2026-11-09
 
 ### Fixed

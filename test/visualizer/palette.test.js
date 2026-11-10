@@ -62,7 +62,9 @@ describe('visualizer palette', () => {
       expect(error.message).to.include('ffmpeg returned 10 bytes');
     });
 
-    (hasFfmpeg ? it : it.skip)('samples a real image with ffmpeg', async () => {
+    (hasFfmpeg ? it : it.skip)('samples a real image with ffmpeg', async function () {
+      // Two real ffmpeg runs, slow on a loaded machine
+      this.timeout(15000);
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-palette-'));
       try {
         const file = path.join(dir, 'split.png');

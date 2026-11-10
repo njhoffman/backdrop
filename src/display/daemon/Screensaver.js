@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import { screensaverPath } from '../runtimeFiles.js';
 import { enterWorkspaces, DEFAULT_WORKSPACE } from '../../utils/workspace.js';
 import { run as defaultRun } from '../Monitors.js';
+import { TrackWatcher } from '../trackWatcher.js';
 
 // The i3 binding mode the config defines for this, holding Escape and the keys that still work: only a binding
 // can catch Escape with no window focused
@@ -34,12 +35,15 @@ export async function restoreDesktop(runtimeDir, { run = defaultRun, logger } = 
 // Screensaver mode, for a Daemon (passed in): an empty workspace on every output with nothing but the daemon's
 // layers, its own visualizer preset, and the i3 mode that keeps only a few keys. It ends only by asking (Escape
 // or the toggle in that mode), so rating from a menu cannot end it. What it changed is recorded in a file, so a
-// crashed daemon's next start, or `backdrop screensaver off` without one, can put the desktop back.
+// crashed daemon's next start, or `backdrop screensaver off` without one, can put the desktop back. While it runs,
+// a media player starting another song moves every monitor to its next item (screensaver.next_on_song).
 export class Screensaver {
-  constructor(daemon) {
+  constructor(daemon, { watchTracks = options => new TrackWatcher(options) } = {}) {
     this.daemon = daemon;
     this.active = null;
     this.saved = null;
+    this.watchTracks = watchTracks;
+    this.tracks = null;
   }
 
   get settings() {
@@ -70,6 +74,7 @@ export class Screensaver {
     logger.info('Screensaver on', { trigger, preset });
     await run('i3-msg', ['mode', I3_MODE]).catch(error => logger.warn('No i3 mode for the screensaver, so Escape will not end it', { error: error.message }));
     await runHooks(onEnter, run, logger);
+    this.followSongs();
     try {
       if (!visualizers.active) await visualizers.setEnabled(true);
       if (preset) await visualizers.setPreset(preset);
@@ -84,6 +89,8 @@ export class Screensaver {
     const { preset, wasOn } = this.saved;
     this.active = null;
     this.saved = null;
+    this.tracks?.stop();
+    this.tracks = null;
     logger.info('Screensaver off');
     await restoreDesktop(runtimeDir, { run, logger });
     // A daemon on its way out stops them anyway
@@ -93,6 +100,27 @@ export class Screensaver {
       if (!wasOn) await visualizers.setEnabled(false);
     } catch (error) {
       logger.error('Screensaver visualizer failed', { error: error.message });
+    }
+  }
+
+  // Follows songs for as long as it runs; next_on_song is read on each song, so turning it off or on applies at once
+  followSongs() {
+    const { spawn, logger } = this.daemon;
+    this.tracks = this.watchTracks({ spawn, logger, onTrack: song => this.daemon.enqueue(() => this.nextOnSong(song)) });
+    this.tracks.start();
+  }
+
+  // Every monitor showing the wallpaper moves to its next item, as `backdrop next` does on one
+  async nextOnSong(song) {
+    if (!this.active || this.settings.next_on_song === false || this.daemon.stopping) return;
+    const { logger, screens } = this.daemon;
+    logger.info('New song, next wallpaper', { player: song.player, title: song.title });
+    for (const screen of screens.values()) {
+      try {
+        await screen.client.command('playlist-next', 'force');
+      } catch (error) {
+        logger.warn('Failed to change the wallpaper for a new song', { monitor: screen.monitor?.name, error: error.message });
+      }
     }
   }
 

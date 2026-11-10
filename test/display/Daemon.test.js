@@ -420,9 +420,9 @@ describe('Daemon', () => {
       const { client } = clients[0];
 
       await load(0, '/m/short.mp4');
-      expect(client.properties).to.include({ 'loop-file': 29, end: 'none' });
+      expect(client.properties).to.include({ 'loop-file': 5, end: 'none' });
       await load(0, '/m/long.mp4');
-      expect(client.properties).to.include({ 'loop-file': 'no', end: '600' });
+      expect(client.properties).to.include({ 'loop-file': 'no', end: '120' });
       await load(0, '/m/i.png');
       expect(client.properties.end).to.equal('none');
       await load(0, '/elsewhere.mp4');
@@ -440,8 +440,8 @@ describe('Daemon', () => {
       const { client } = clients[0];
 
       await load(0, `edl://%8%/m/b.mp4;%12%/c/bounce/1`);
-      // 600 s of 40 s passes: this one and 14 more
-      expect(client.properties).to.include({ 'loop-file': 14, end: 'none' });
+      // 120 s of 40 s passes: this one and 2 more
+      expect(client.properties).to.include({ 'loop-file': 2, end: 'none' });
       expect([...daemon.screens.values()].find(screen => screen.client === client).media.id).to.equal(id);
       await tick();
       expect(reversed).to.deep.equal([id]);
@@ -450,7 +450,7 @@ describe('Daemon', () => {
       await load(0, '/m/other.mp4');
       await load(0, '/m/b.mp4');
       await tick();
-      expect(client.properties).to.include({ 'loop-file': 29 });
+      expect(client.properties).to.include({ 'loop-file': 5 });
       expect(reversed).to.deep.equal([id]);
     });
 

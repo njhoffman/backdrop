@@ -46,7 +46,7 @@ library:
 display:
   monitors: auto           # auto (xrandr) or a list of output names
   image_duration: 300      # seconds per image in a slideshow
-  video_duration: 600      # seconds of wall time per video before the next; 0 loops each video forever.
+  video_duration: 120      # seconds of wall time per video before the next; 0 loops each video forever.
                            #   Shorter videos loop whole times that fit, longer ones stop at the limit
   video_loop: loop         # loop (from the start again) or bounce (backwards to the start, then forwards);
                            #   `backdrop bounce on|off|reset` sets it per video. A bounce needs a reversed copy,
@@ -129,6 +129,7 @@ screensaver:
   idle_minutes: 10
   max_load: null           # with idle, only under this load average (load.window); null for no limit
   preset: screensaver      # visualizer preset while on; screensaver-projectm adds projectM, null keeps the running one
+  next_on_song: true       # a media player starting another song (playerctl) changes the wallpaper on every monitor
   workspace: backdrop      # the empty i3 workspace to show; other outputs get backdrop-<output>
   on_enter: ['polybar-msg cmd hide']  # shell commands run on entering and leaving
   on_leave: ['polybar-msg cmd show']

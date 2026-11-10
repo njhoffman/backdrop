@@ -234,7 +234,7 @@ export class ConfigManager {
       display: {
         monitors: 'auto',
         image_duration: 300,
-        video_duration: 600,
+        video_duration: 120,
         video_loop: 'loop',
         bounce_cache_gb: 10,
         smooth: false,
@@ -286,6 +286,7 @@ export class ConfigManager {
         idle_minutes: 10,
         max_load: null,
         preset: 'screensaver',
+        next_on_song: true,
         workspace: 'backdrop',
         on_enter: ['polybar-msg cmd hide'],
         on_leave: ['polybar-msg cmd show'],
