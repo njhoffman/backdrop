@@ -2,6 +2,7 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { SourceRegistry } from '../sources/SourceRegistry.js';
 import { DisplayControl } from '../display/DisplayControl.js';
@@ -15,8 +16,12 @@ import { matchFilters, hasMatchFilters } from '../library/match.js';
 const KINDS = { both: ['image', 'video', 'gif'], images: ['image'], videos: ['video', 'gif'] };
 const EXTENSIONS = { 'video/mp4': '.mp4', 'video/webm': '.webm', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
 
+// A download whose body sends nothing for this long fails
+const STALL_MS = 30000;
+
 export class DownloadCommand {
-  constructor(config, database, logger, { sources, control, monitors, probe = probeMedia, transfer } = {}) {
+  constructor(config, database, logger, { sources, control, monitors, probe = probeMedia, transfer, stallTimeout = STALL_MS } = {}) {
+    this.stallTimeout = stallTimeout;
     this.config = config;
     this.database = database;
     this.logger = logger;
@@ -27,16 +32,41 @@ export class DownloadCommand {
     this.transfer = transfer ?? this.downloadFile.bind(this);
   }
 
-  // onBytes(received, total) reports transfer progress; total is null without a Content-Length
+  // onBytes(received, total) reports transfer progress; total is null without a Content-Length. axios' timeout covers
+  // only the wait for the response, so a body that stops arriving for stallTimeout fails here, as does one that
+  // runs past its Content-Length.
   async downloadFile(url, file, onBytes = () => {}) {
-    const response = await axios.get(url, { responseType: 'stream', timeout: 30000 });
+    const controller = new AbortController();
+    const response = await axios.get(url, { responseType: 'stream', timeout: 30000, signal: controller.signal });
     const total = Number(response.headers?.['content-length']) || null;
+    const stallTimeout = this.stallTimeout;
     let received = 0;
-    response.data.on('data', chunk => {
-      received += chunk.length;
-      onBytes(received, total);
+    let timer;
+    const meter = new Transform({
+      transform(chunk, encoding, callback) {
+        received += chunk.length;
+        if (total && received > total) {
+          callback(new Error(`Download sent more than its Content-Length (${received} of ${total} bytes)`));
+          return;
+        }
+        onBytes(received, total);
+        arm();
+        callback(null, chunk);
+      }
     });
-    await pipeline(response.data, fs.createWriteStream(file, { flags: 'wx' }));
+    function arm() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        meter.destroy(new Error(`Download stalled: no data for ${Math.round(stallTimeout / 1000)} s`));
+        controller.abort();
+      }, stallTimeout);
+    }
+    arm();
+    try {
+      await pipeline(response.data, meter, fs.createWriteStream(file, { flags: 'wx' }));
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async filters(options, { requireTarget = true } = {}) {

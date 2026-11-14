@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
 import { probeMedia } from '../../library/probe.js';
+import { listReverseWork } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
 import { notifyError } from '../../utils/notify.js';
@@ -386,6 +387,15 @@ export class Smooth {
       if (work.id === this.encoding) continue;
       const media = this.daemon.database.getMedia(work.id);
       const wanted = media?.path && media.status !== 'skipped' && media.speed === work.speed && wantsSmoothing(media, this.target);
+      if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
+    }
+    // The same for a stopped reversal of a smoothed copy, which also needs the item to bounce
+    for (const work of await listReverseWork(paths.smooth)) {
+      const match = /^(\d+)@([\d.]+)\.reversed$/.exec(work.key);
+      const id = match ? Number(match[1]) : null;
+      if (id !== null && id === this.encoding) continue;
+      const media = id === null ? null : this.daemon.database.getMedia(id);
+      const wanted = media?.path && media.status !== 'skipped' && media.speed === Number(match[2]) && wantsSmoothing(media, this.target) && bounces(media, display);
       if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     if (removed.size) {

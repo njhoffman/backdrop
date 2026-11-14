@@ -34,14 +34,27 @@ export function getMode(database) {
   return getModeHold(database) ?? getChosenMode(database);
 }
 
-export function getModeHold(database) {
-  const hold = database.getSetting(MODE_HOLD, null);
-  return MODES.includes(hold) ? hold : null;
+// Whether a process runs: signal 0 checks without sending anything (EPERM: it runs as another user)
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
 }
 
-// Set and cleared by the daemon only; setMode leaves it, so the chosen mode returns when it ends
-export function setModeHold(database, mode) {
-  database.setSetting(MODE_HOLD, mode);
+// The hold is stored as "<mode>:<daemon pid>" and counts only while that daemon runs, so one left by a crashed daemon
+// is ignored rather than reported until the next start. A bare mode (written before 2.80.0) is ignored too.
+export function getModeHold(database, { alive = running } = {}) {
+  const match = /^(\w+):(\d+)$/.exec(String(database.getSetting(MODE_HOLD, null) ?? ''));
+  if (!match || !MODES.includes(match[1])) return null;
+  return alive(Number(match[2])) ? match[1] : null;
+}
+
+// Set and cleared by the daemon only (pid, its own); setMode leaves it, so the chosen mode returns when it ends
+export function setModeHold(database, mode, pid = process.pid) {
+  database.setSetting(MODE_HOLD, mode ? `${mode}:${pid}` : null);
 }
 
 // The mode a monitor shows. A monitor with nothing eligible in the held mode keeps the chosen one, since

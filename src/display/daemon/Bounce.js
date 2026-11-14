@@ -1,7 +1,7 @@
 import { bounces, entryPath, playsBounce, playUrl, smoothedFor } from '../bounce.js';
 import { refreshEntries } from '../Playlist.js';
 import fs from 'fs-extra';
-import { listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
+import { listReverseWork, listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
 
 const GIGABYTE = 1024 ** 3;
 // How long before its end a playing video is switched to its bounce, so the switch lands where it would loop anyway
@@ -278,6 +278,14 @@ export class Bounce {
       if (!limit || total <= limit) break;
       evicted.push(copy);
       total -= copy.size;
+    }
+    // A stopped job's chunks stay only while its item still bounces (the job running now keeps its own)
+    for (const work of await listReverseWork(paths.bounce)) {
+      const id = Number(work.key);
+      if (id === this.encoding) continue;
+      const media = Number.isInteger(id) ? this.daemon.database.getMedia(id) : null;
+      if (media?.path && media.status !== 'skipped' && bounces(media, display)) continue;
+      await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete reverse work', { file: work.file, error: error.message }));
     }
     const removed = [];
     for (const copy of [...unwanted, ...evicted]) {

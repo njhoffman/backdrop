@@ -301,6 +301,15 @@ describe('Bounce (daemon)', () => {
     });
   });
 
+  it('keeps a stopped job\'s chunks while its item still bounces, and deletes those of items gone, skipped or no longer bouncing', async () => {
+    const [kept, off, skipped] = await videos(3);
+    db.setBounce(off.id, false);
+    db.addRating(skipped.id, 0);
+    for (const key of [kept.id, off.id, skipped.id, 99]) await fs.outputFile(path.join(dir, 'bounce', `${key}.reverse.work`, 'c00000.mp4'), 'chunk');
+    await bounce.prune();
+    expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${kept.id}.reverse.work`]);
+  });
+
   it('removes work an earlier daemon left on start', async () => {
     await fs.outputFile(path.join(dir, 'bounce', '3.99.tmp', 'c00000.mp4'), 'chunk');
     await bounce.begin();

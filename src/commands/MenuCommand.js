@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { DisplayService } from '../services/DisplayService.js';
 import { RatingService } from '../services/RatingService.js';
 import { PRESET_NAME, SWATCHES, VisualizerService } from '../services/VisualizerService.js';
-import { MODE_KINDS, getMode, otherMode, randomOrder } from '../display/Playlist.js';
+import { MODE_KINDS, getChosenMode, getModeHold, otherMode, randomOrder } from '../display/Playlist.js';
 import { bounceState, bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
@@ -379,7 +379,12 @@ export class MenuCommand {
     const video = Boolean(media && MODE_KINDS.video.includes(media.kind));
     // Buttons that need mpv stay in place, faded, while the wallpaper is off
     const off = Boolean(item.wallpaperOff);
-    const other = otherMode(getMode(this.database));
+    // From the chosen mode, not the one in force: during a load hold the choice is what the button changes, and the
+    // caption says what holds it
+    const chosen = getChosenMode(this.database);
+    const other = otherMode(chosen);
+    const hold = getModeHold(this.database);
+    const held = Boolean(hold && hold !== chosen);
     const keep = value => ({
       icon: ICONS.keep, label: `keep ${value}`, key: String(value), disabled: !media, active: item.rating?.rating === value,
       run: () => done(this.rating.keep(value, target))
@@ -392,7 +397,7 @@ export class MenuCommand {
       { icon: ICONS.prev, label: 'prev', key: 'p', disabled: off, run: () => done(this.display.prev({ monitor })) },
       { icon: ICONS.skip, label: 'skip', key: 's', disabled: !media, run: () => done(this.rating.skip(target)) },
       { icon: ICONS.undo, label: 'undo', key: 'u', run: () => done(this.rating.undo()) },
-      { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: 'mode', key: 'm', run: () => done(this.display.mode(other, { monitor })) },
+      { icon: ICONS[other], label: `mode: switch to ${other}s`, caption: held ? `mode, held: ${hold}s` : 'mode', key: 'm', active: held, run: () => done(this.display.mode(other, { monitor })) },
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
         disabled: !media, active: Boolean(media?.dim), run: () => this.stepMenu(monitor, 'dim', DIMS) }
     ];

@@ -7,6 +7,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MenuCommand, minimalView, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
+import { setMode, setModeHold } from '../../src/display/Playlist.js';
 import { readNextFilters } from '../../src/display/nextFilters.js';
 import { stillFor, thumbnailFor } from '../../src/library/thumbnail.js';
 import { notifications } from '../helpers/setup.js';
@@ -194,6 +195,20 @@ describe('MenuCommand', () => {
     await withWeb.open();
     expect(started).to.equal(1);
     expect(opened).to.have.length(1);
+  });
+
+  it('labels the mode button from the chosen mode, and captions a load hold', async () => {
+    const button = () => shown[0].entries.find(entry => entry.key === 'm');
+    setMode(db, 'video');
+    setModeHold(db, 'image');
+    picks = [null];
+    await command.open();
+    // Video is still the choice, so the button offers images, and shows what holds the wallpaper there
+    expect(button()).to.include({ label: 'mode: switch to images', caption: 'mode, held: images', active: true });
+    shown.length = 0;
+    setModeHold(db, null);
+    await command.open();
+    expect(button()).to.include({ label: 'mode: switch to images', caption: 'mode', active: false });
   });
 
   it('captions the bounce button "reversing" while its reversed copy is made', async () => {

@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  chunkSeconds, chunkStarts, encodeCounts, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reversedPath, reversedReady, run
+  chunkSeconds, chunkStarts, encodeCounts, listReverseWork, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -113,7 +113,8 @@ describe('reverse', () => {
       expect(await reverseVideo(media, dir, { exec, logger })).to.equal(null);
       expect(calls).to.have.length(1);
       expect(warnings).to.deep.equal([]);
-      expect((await fs.readdir(dir)).filter(name => name.endsWith('.tmp'))).to.deep.equal([]);
+      // Its work stays, for the job to resume from the new path
+      expect(await fs.pathExists(reverseWorkPath(media, dir))).to.equal(true);
     });
 
     it('stops without a copy when aborted', async () => {
@@ -123,7 +124,55 @@ describe('reverse', () => {
         await fs.outputFile(args.at(-1), 'out');
       };
       expect(await reverseVideo(media, dir, { exec, signal: controller.signal, encoders: ['x264'] })).to.equal(null);
-      expect(await fs.readdir(dir)).to.deep.equal(['media']);
+      // No copy; the finished chunk stays for the next job
+      expect(await fs.readdir(dir)).to.deep.equal(['7.reverse.work', 'media']);
+    });
+
+    // Stops the job (as a load rise or a daemon restart does) once the first chunk is encoded
+    async function stopAfterFirstChunk(encoders = ['x264']) {
+      const controller = new AbortController();
+      const inner = fakeExec();
+      const exec = async (file, args) => {
+        await inner(file, args);
+        controller.abort();
+      };
+      expect(await reverseVideo(media, dir, { exec, signal: controller.signal, encoders, logger: silentLogger })).to.equal(null);
+    }
+
+    it('keeps the finished chunks of a stopped job, and the next one carries on from them with the same encoder', async () => {
+      await stopAfterFirstChunk(['vaapi', 'x264']);
+      const work = reverseWorkPath(media, dir);
+      expect(work).to.equal(path.join(dir, '7.reverse.work'));
+      expect((await fs.readdir(work)).filter(name => name.endsWith('.mp4'))).to.deep.equal(['c00000.mp4']);
+      calls = [];
+      expect(await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger })).to.equal(reversedPath(media, dir));
+      // Only the second chunk and the join; still VAAPI
+      expect(calls).to.have.length(2);
+      expect(calls[0]).to.include.members(['-ss', '2', 'h264_vaapi']);
+      expect(await fs.pathExists(work)).to.equal(false);
+    });
+
+    it('starts afresh when the kept chunks were made from another file or another way', async () => {
+      await stopAfterFirstChunk();
+      // download --upgrade replaced the video
+      await fs.outputFile(media.path, 'a larger video');
+      calls = [];
+      await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
+      expect(calls).to.have.length(3);
+      await fs.remove(reversedPath(media, dir));
+      await stopAfterFirstChunk();
+      calls = [];
+      // The kept chunks used libx264, which this job may not use
+      await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['vaapi'] });
+      expect(calls).to.have.length(3);
+    });
+
+    it('lists kept work folders by the id they are for', async () => {
+      await fs.ensureDir(path.join(dir, '7.reverse.work'));
+      await fs.ensureDir(path.join(dir, '3@0.5.reversed.reverse.work'));
+      await fs.ensureDir(path.join(dir, '3@0.5.smooth.work'));
+      expect((await listReverseWork(dir)).map(work => work.key).sort()).to.deep.equal(['3@0.5.reversed', '7']);
+      expect(await listReverseWork(path.join(dir, 'missing'))).to.deep.equal([]);
     });
 
     it('skips items with no file or length', async () => {

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.80.0] - 2026-11-13
+
+### Added
+- A reversed copy for bounce that is stopped part way (the load rising, a daemon restart, a rating moving the file)
+  keeps its finished chunks and carries on from them next time, as smoothing does, instead of starting over.
+  Kept work for items that no longer bounce is deleted.
+
+### Fixed
+- A download whose server stops sending data now fails after 30 seconds instead of hanging, and one that sends more
+  than its announced size fails instead of filling the disk.
+- After a daemon crash during a load hold, `status` no longer reports the wallpaper held to images: the hold counts
+  only while the daemon that set it runs.
+- The menu's mode button offered to switch to the mode already chosen while the load held the other one. It now
+  goes by your choice, and its caption shows the hold ("mode, held: images").
+- `npm audit` no longer flags the test runner's `glob` and `minimatch` (development dependencies only).
+
 ## [2.79.0] - 2026-11-13
 
 ### Added

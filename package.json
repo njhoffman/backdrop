@@ -1,6 +1,6 @@
 {
   "name": "backdrop",
-  "version": "2.79.0",
+  "version": "2.80.0",
   "description": "Wallpaper and screensaver manager: curate images and videos from free sources and display them with mpv",
   "type": "module",
   "main": "src/index.js",
@@ -43,5 +43,11 @@
   "man": [
     "./share/man/man1/backdrop.1",
     "./share/man/man5/backdrop-config.5"
-  ]
+  ],
+  "overrides": {
+    "mocha": {
+      "glob": "^14.0.6",
+      "minimatch": "^11.0.8"
+    }
+  }
 }

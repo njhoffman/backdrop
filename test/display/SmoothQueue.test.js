@@ -209,6 +209,16 @@ describe('Smooth (daemon)', () => {
     expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${kept.id}@0.5.mp4`, `${kept.id}@0.5.smooth.work`]);
   });
 
+  it('keeps a stopped reversal of a smoothed copy only while its item bounces at that speed', async () => {
+    const bouncing = await video(1, { bounce: true });
+    const plain = await video(2);
+    const dirSmooth = config.get().paths.smooth;
+    const work = (media, speed = media.speed) => path.join(dirSmooth, `${media.id}@${speed}.reversed.reverse.work`);
+    for (const file of [work(bouncing), work(bouncing, 0.75), work(plain)]) await fs.outputFile(path.join(file, 'c00000.mp4'), 'chunk');
+    await smooth.prune();
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([path.basename(work(bouncing))]);
+  });
+
   it('keeps the cache limit while smoothing is off', async () => {
     const low = await video(1);
     const high = await video(2);

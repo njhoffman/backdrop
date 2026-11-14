@@ -363,4 +363,22 @@ describe('DownloadCommand', () => {
     try { await command.downloadFile('https://example.com/v', path.join(dir, 'partial')); } catch (error) { caught = error; }
     expect(caught.message).to.equal('stream failed');
   });
+
+  it('fails a download whose body stops arriving', async () => {
+    const stream = new Readable({ read() {} });
+    stream.push(Buffer.alloc(4));
+    sinon.stub(axios, 'get').resolves({ data: stream, headers: { 'content-length': '10' } });
+    command.stallTimeout = 30;
+    let caught;
+    try { await command.downloadFile('https://example.com/v', path.join(dir, 'partial')); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('Download stalled: no data for 0 s');
+    expect(axios.get.firstCall.args[1].signal.aborted).to.equal(true);
+  });
+
+  it('fails a download that sends more than its Content-Length', async () => {
+    sinon.stub(axios, 'get').resolves({ data: Readable.from([Buffer.alloc(6), Buffer.alloc(6)]), headers: { 'content-length': '8' } });
+    let caught;
+    try { await command.downloadFile('https://example.com/v', path.join(dir, 'partial')); } catch (error) { caught = error; }
+    expect(caught.message).to.equal('Download sent more than its Content-Length (12 of 8 bytes)');
+  });
 });

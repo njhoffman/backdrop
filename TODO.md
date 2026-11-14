@@ -182,7 +182,8 @@ Reviewed: 2026-11-07
       few weeks of runs without it. Five full runs right after: no stall, two of them at a load average near 24.
 - [x] **WebCommand's port test failed under load.** (p3) [test] It waited a fixed 20 ms for `run()` to print, and once found nothing.
       Done (2.64.3): the WebCommand tests wait for the line or the opened page itself, up to 5 s.
-- [ ] **Resume stopped reversals too.** (p3) [perf] `reverseVideo` still starts over when stopped; it is fast with VAAPI, but a long video under libx264 loses minutes. The same kept-chunks scheme would fit its chunked reverse.
+- [x] **Resume stopped reversals too.** (p3) [perf] `reverseVideo` still starts over when stopped; it is fast with VAAPI, but a long video under libx264 loses minutes. The same kept-chunks scheme would fit its chunked reverse.
+      Done (2.80.0): `<id>.reverse.work` with a `job.json` (source size and mtime, chunk, chunks, encoder); a stopped or moved job keeps its chunks, and the bounce and smooth prunes delete those of items no longer bouncing. The bounce queue still only reaches a kept job when its item plays or is next.
 - [x] **The smooth cache has no size cap.** (p3) [feature] `Smooth.prune` (`src/display/daemon/Smooth.js`) only deletes copies no longer wanted; unlike `display.bounce_cache_gb` there is no limit, and `~/.cache/backdrop/smooth` was 12 GB on 2026-11-09 (bounce 9.2 of its 10 GB). Add `display.smooth_cache_gb` with the same pruning, and show its use in `doctor`.
       Done in 2.68.0: lowest-rated first, newest first (as bounce), forward and reversed together; the backlog stops while the cache has no room for another copy of the average size, since a backlog copy made into a full cache would be pruned again.
 - [ ] **RIFE is slow on integrated graphics.** (p3) [perf] Now on the CPU by default (2.79.0), about five times slower again. About one 1080p frame a second on the Iris Xe, so a 20 s clip at 0.5 takes about 30 minutes and the 39 slowed videos about a day. Try `-j` thread counts (load:proc:save), RIFE's half-resolution flow for 4K-sourced copies (`-u` off, `-x`), or the smaller `rife-v4` model, timing each on the same clip.
@@ -243,7 +244,8 @@ Reviewed: 2026-11-07
       Done: not a slow step but a race. Every stand-in lowers itself whenever any window maps (at once and 200 ms later), so when `other-N` mapped, the visualizer and earlier stand-ins lowered themselves too; under load one of their late lowerings landed after `other-N`'s last, and nothing mapped again, so it never reached the bottom however long the wait. `lowWindow` now lowers it again on each check until it stays there for three; the wallpaper test turns the wallpaper back on in a `finally`, and the overlay test makes sure it is on, so one failure no longer fails the next. Passed 3 of 3 alone and 3 of 3 with every CPU busy.
 - [x] **`doctor` counts smoothed copies without their size.** (p3) [bug] `checkSmooth` (`src/commands/DoctorCommand.js`) counts a copy as smoothed with `smoothedReady(media, dir)` and no need, so a copy smaller than the monitors (which plays the original) still counts as done. Pass `neededSize` for the daemon's monitors from `state.json`, as `backdrop copies` does, and say how many wait for a larger copy.
       Done (2.69.1): counted against the monitors in `state.json`; copies too small are named; without a daemon sizes stay unchecked.
-- [ ] **npm audit flags mocha's glob and minimatch.** (p3) [chore] Three moderate advisories (GHSA-g3hv-75wg-m249 and others) in `glob` 13 and `minimatch` 10 under `mocha` 12, dev dependencies only; `npm audit fix --force` would move mocha across a major version. Check for a mocha release that takes the fixed versions, or pin them with `overrides`, and run the suite.
+- [x] **npm audit flags mocha's glob and minimatch.** (p3) [chore] Three moderate advisories (GHSA-g3hv-75wg-m249 and others) in `glob` 13 and `minimatch` 10 under `mocha` 12, dev dependencies only; `npm audit fix --force` would move mocha across a major version. Check for a mocha release that takes the fixed versions, or pin them with `overrides`, and run the suite.
+      Done (2.80.0): mocha 12.0.3, the latest, still asks for glob ^13 and minimatch ^10; `overrides` pin glob ^14.0.6 and minimatch ^11.0.8 under it. `npm audit` is clean and the suite passes. Drop the override once mocha takes them.
 - [ ] **Why CUDA's probe became slow.** (p3) [test] Split from the decoder order item: mpv's CUDA probe stalled its start past the IPC timeout on the NVIDIA desktop on 2026-11-05, having been fine earlier that day, so 2.50.7 put VAAPI first. Unexplained, and VAAPI first is untried on another NVIDIA machine; time `mpv --hwdec=cuda` starts there and check the driver's state (`nvidia-smi`) when it is slow.
 - [x] **A reversal fails when its item is rated mid-job.** (p3) [bug] On 2026-11-10 at 15:46 item 299 was skipped (moved
       to `trash/`) while `reverseVideo` (`src/library/reverse.js`, run by `daemon/Bounce.js`) worked on it; ffmpeg failed
@@ -304,8 +306,9 @@ Reviewed: 2026-11-07
       rate limit hits, so a broad query with a small `--per-page` spends one request per page (161 for "ocean" at
       3 per page on 2026-10-31; the live quota headers report a limit of 25,000, so that was about 0.6% of it). Add `--max-pages` (and a `sources.<name>.max_pages`
       default), or warn when `--per-page` is small and the query broad.
-- [ ] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
+- [x] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
       a body that stalls mid-transfer, and nothing caps the size. Abort when no data arrives for 30s and when bytes exceed Content-Length (or a configured maximum).
+      Done (2.80.0): `downloadFile` fails after 30 s without data (aborting the request) and when more bytes arrive than Content-Length. No configured maximum, so a download without a Content-Length is still uncapped.
 
 ## 5. Local library import
 
@@ -397,11 +400,13 @@ Reviewed: 2026-11-07
       idle time falling), at most every 20 s; `screensaver.hint`. i3 cannot bind every key in a mode, hence the polling.
 - [ ] **Follow the load levels.** (p2) [feature] Partly there: the screensaver's preset uses the daemon's visualizers, so they stop at `off` and projectM stops at `image`, and `max_load` holds back an idle start. Missing: skipping
       `screensaver.streams` once playlists exist, and deciding whether the empty workspace should stay up at `off`, when nothing is left to show. A `screensaver.load` override can wait until there is a need.
-- [ ] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports
+- [x] **A mode hold survives a crash until the next start.** (p3) [bug] After a daemon crash during a load hold, `mode_hold` stays in the database, so `status` reports
       images with no daemon running until the next start clears it (`LoadShedding.begin`). Harmless, since nothing plays; tagging the hold with the daemon's pid
       like `next-filters.json` would make it exact.
-- [ ] **The menu's mode button ignores a hold.** (p3) [bug] `MenuCommand` labels the button from the mode in force, so during a load hold it offers "switch to videos"
+      Done (2.80.0): stored as `<mode>:<pid>` and counted only while that daemon runs (`process.kill(pid, 0)`); a bare mode from an older daemon is ignored.
+- [x] **The menu's mode button ignores a hold.** (p3) [bug] `MenuCommand` labels the button from the mode in force, so during a load hold it offers "switch to videos"
       even when video is already the choice, and pressing it only reports the hold. Label it from `getChosenMode` and show the hold.
+      Done (2.80.0): labelled from `getChosenMode`, captioned "mode, held: images" and highlighted while a hold differs.
 - [ ] **Screensaver playlists.** (p2) [feature] `screensaver.sources` and `streams` are in the config and example but nothing reads them yet, so setting them does nothing. Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
       Decide with the idle screensaver above: on 2026-11-04 there is no locker or idle tool running here and DPMS is off, so there is nothing to coexist with yet.

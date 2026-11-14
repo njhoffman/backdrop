@@ -252,6 +252,21 @@ describe('Load shedding', () => {
     expect(daemon.screens.size).to.equal(2);
   });
 
+  it('counts a hold only while the daemon that set it runs', () => {
+    setModeHold(db, 'image');
+    expect(getModeHold(db)).to.equal('image');
+    expect(db.getSetting('mode_hold')).to.equal(`image:${process.pid}`);
+    // A crashed daemon's hold, and one written before 2.80.0 without a pid
+    setModeHold(db, 'image', 4242);
+    expect(getModeHold(db, { alive: pid => pid !== 4242 })).to.equal(null);
+    expect(getModeHold(db, { alive: () => true })).to.equal('image');
+    db.setSetting('mode_hold', 'image');
+    expect(getModeHold(db)).to.equal(null);
+    expect(getMode(db)).to.equal(getChosenMode(db));
+    setModeHold(db, null);
+    expect(db.getSetting('mode_hold', null)).to.equal(null);
+  });
+
   it('starts at the level for the load now, and replaces a hold a crash left', async () => {
     load = 25;
     await daemon.start();

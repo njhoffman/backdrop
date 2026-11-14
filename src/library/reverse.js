@@ -67,26 +67,73 @@ function chunkName(index) {
   return `c${String(index).padStart(5, '0')}.mp4`;
 }
 
+// The folder a copy is made in, kept when a job stops so the next one carries on from its finished chunks. A smoothed
+// copy's reversal (id "<id>@<speed>.reversed", in the smooth folder) gets its own.
+export function reverseWorkPath(media, dir) {
+  return path.join(dir, `${media.id}.reverse.work`);
+}
+
+// What a work folder's chunks were made from; a job resumes only one that matches all but the encoder. The source is
+// its size and modification time, not its path, so a file a rating moved (renamed, same mtime) still matches.
+function jobOf(media, chunk, starts) {
+  const stat = fs.statSync(media.path);
+  return { source: { size: stat.size, mtimeMs: stat.mtimeMs }, chunk, chunks: starts.length };
+}
+
+function sameJob(a, b) {
+  return Boolean(a && b && JSON.stringify({ ...a, encoder: undefined }) === JSON.stringify({ ...b, encoder: undefined }));
+}
+
 // Makes the reversed copy, trying each encoder in turn; returns its path, or null when none could make it or
-// signal aborted it. Work happens in <dir>/<id>.<pid>.tmp, renamed into place only when complete.
+// signal aborted it. Work happens in reverseWorkPath: each finished chunk is kept there, so a job stopped by the load
+// or a daemon restart starts again at its first missing chunk, with the encoder it was using. A finished copy, or a
+// failure with every encoder, removes the folder.
 export async function reverseVideo(media, dir, { exec = run, logger, nice = true, signal, encoders = ENCODER_ORDER, now = Date.now } = {}) {
   if (!media?.path || !(media.duration > 0)) return null;
   const target = reversedPath(media, dir);
-  const work = path.join(dir, `${media.id}.${process.pid}.tmp`);
+  const work = reverseWorkPath(media, dir);
   const chunk = chunkSeconds(media);
   const starts = chunkStarts(media.duration, chunk, media.fps || DEFAULT_FPS);
   const ffmpeg = args => (nice ? exec('nice', ['-n', '19', 'ffmpeg', ...args], { signal }) : exec('ffmpeg', args, { signal }));
   await fs.ensureDir(dir);
+  let job;
+  try {
+    job = jobOf(media, chunk, starts);
+  } catch (error) {
+    logger?.warn('Reverse encode failed', { mediaId: media.id, error: error.message });
+    return null;
+  }
+  // A matching job left behind resumes with its encoder; anything else starts afresh
+  const previous = await fs.readJson(path.join(work, 'job.json')).catch(() => null);
+  const resumes = sameJob(previous, job) && encoders.includes(previous.encoder);
+  const order = resumes ? encoders.slice(encoders.indexOf(previous.encoder)) : encoders;
 
-  for (const name of encoders) {
+  for (const [attempt, name] of order.entries()) {
     const encoder = ENCODERS[name];
     const started = now();
+    let keepWork = false;
     try {
-      await fs.emptyDir(work);
+      if (!(resumes && attempt === 0)) {
+        await fs.emptyDir(work);
+        await fs.writeJson(path.join(work, 'job.json'), { ...job, encoder: name });
+      }
+      const done = new Set((await fs.readdir(work)).filter(file => /^c\d{5}\.mp4$/.test(file)));
+      if (done.size) logger?.info('Resuming reverse', { mediaId: media.id, chunks: `${done.size} of ${starts.length}`, encoder: name });
       for (const [index, start] of starts.entries()) {
-        if (signal?.aborted) return null;
+        if (signal?.aborted) {
+          keepWork = true;
+          return null;
+        }
+        if (done.has(chunkName(index))) continue;
+        // Written under another name and renamed, so a chunk cut short is never taken for a finished one
+        const partial = path.join(work, `partial-${chunkName(index)}`);
         await ffmpeg(['-v', 'error', '-y', ...encoder.input, '-ss', String(start), '-t', String(chunk), '-i', media.path,
-          '-an', '-sn', '-dn', '-vf', encoder.filter, ...encoder.output, path.join(work, chunkName(index))]);
+          '-an', '-sn', '-dn', '-vf', encoder.filter, ...encoder.output, partial]);
+        await fs.rename(partial, path.join(work, chunkName(index)));
+      }
+      if (signal?.aborted) {
+        keepWork = true;
+        return null;
       }
       // Relative names resolve against the list's own folder
       const list = starts.map((start, index) => `file '${chunkName(index)}'`).reverse().join('\n');
@@ -95,25 +142,43 @@ export async function reverseVideo(media, dir, { exec = run, logger, nice = true
       await ffmpeg(['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'chunks.txt'),
         '-c', 'copy', '-movflags', '+faststart', joined]);
       await fs.rename(joined, target);
-      logger?.info('Reversed video for bounce', { mediaId: media.id, encoder: name, chunks: starts.length, seconds: Math.round((now() - started) / 100) / 10 });
+      logger?.info('Reversed video for bounce', {
+        mediaId: media.id, encoder: name, chunks: starts.length, resumed: done.size, seconds: Math.round((now() - started) / 100) / 10
+      });
       return target;
     } catch (error) {
-      if (signal?.aborted) return null;
-      // A rating moved the file (inbox to library, or to the trash): no encoder can read it there, and the bounce
-      // job tries again from its new path
+      if (signal?.aborted) {
+        keepWork = true;
+        return null;
+      }
+      // A rating moved the file (inbox to library, or to the trash): no encoder can read it there; the chunks stay
+      // (a rename keeps the size and time the job is matched by) and the bounce job tries again from its new path
       if (!await fs.pathExists(media.path)) {
+        keepWork = true;
         logger?.info('Reverse stopped: the file moved', { mediaId: media.id });
         return null;
       }
       logger?.warn('Reverse encode failed', { mediaId: media.id, encoder: name, error: error.message.split('\n')[0] });
     } finally {
-      await fs.remove(work).catch(() => {});
+      // A stopped job keeps its chunks; a finished or failed one leaves nothing
+      if (!keepWork) await fs.remove(work).catch(() => {});
     }
   }
   return null;
 }
 
-// Work folders a daemon left when it died mid-encode
+// Work folders kept by stopped jobs: { key, file }, key the id part of the name ("12", or "12@0.5.reversed" for a
+// smoothed copy's reversal)
+export async function listReverseWork(dir) {
+  const names = await fs.readdir(dir).catch(() => []);
+  return names.map(name => {
+    const match = /^(.+)\.reverse\.work$/.exec(name);
+    return match ? { key: match[1], file: path.join(dir, name) } : null;
+  }).filter(Boolean);
+}
+
+// Work folders a daemon of a version before 2.80 left when it died mid-encode (named for its pid); kept work folders
+// stay for their job to resume
 export async function removeStaleWork(dir) {
   const names = await fs.readdir(dir).catch(() => []);
   await Promise.all(names.filter(name => name.endsWith('.tmp')).map(name => fs.remove(path.join(dir, name))));
