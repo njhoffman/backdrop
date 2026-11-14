@@ -66,6 +66,11 @@ display:
                            #   lowest-rated videos go first, the newest of them first. The backlog stops while it is
                            #   full; copies for what plays now and next are still made. 0 for no limit.
                            #   Turning smooth off keeps the copies made (still within this limit)
+  smooth_idle_load: 0.25   # smoothing starts only once the 5-minute load average per CPU (2 on 8 CPUs) has stayed
+                           #   under this for smooth_idle_minutes, whatever the load section says; null: no wait
+  smooth_idle_minutes: 10  # how long the load stays under smooth_idle_load before a job starts
+  smooth_stop_load: 0.75   # a job stops (its finished chunks kept) when the 1-minute average per CPU goes over this;
+                           #   keep it well above smooth_idle_load, since RIFE adds about 2 to the load itself
   smooth_gpu: -1           # the GPU RIFE runs on (its Vulkan device number); -1, the CPU, is about five times slower.
                            #   On a GPU the daemon follows the kernel log (journalctl -k, the adm group) and moves to
                            #   the CPU on the first fence timeout or GPU hang naming RIFE, or a chunk far past its

@@ -4,6 +4,7 @@ import { probeMedia } from '../../library/probe.js';
 import { listReverseWork } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
+import { SmoothGate } from '../SmoothGate.js';
 import { notifyError } from '../../utils/notify.js';
 
 const GIGABYTE = 1024 ** 3;
@@ -25,9 +26,19 @@ import {
 // first fence timeout or GPU hang naming RIFE, or a chunk past its time limit, stops the job and moves smoothing to
 // the CPU for the daemon's life (the job resumes there from its finished chunks); a kernel log this user cannot read
 // keeps it on the CPU from the start. Either shows in state.json (summary), status and doctor.
+//
+// Jobs also wait for the machine to be idle (SmoothGate, display.smooth_idle_load and the rest), whatever the load
+// section says: the gate is read every GATE_INTERVAL_MS, and a job running when it closes stops, keeping its chunks.
+const GATE_INTERVAL_MS = 15_000;
+
 export class Smooth {
-  constructor(daemon) {
+  constructor(daemon, { loadavg, cpus } = {}) {
     this.daemon = daemon;
+    this.gate = new SmoothGate({
+      settings: () => this.settings.display,
+      ...(loadavg ? { loadavg } : {}), ...(cpus ? { cpus } : {}),
+      now: () => (this.daemon.now ?? Date.now)()
+    });
     // Items waiting, by id, in order
     this.queue = new Map();
     // Queued items that play now or next, made even when the cache is full
@@ -67,7 +78,27 @@ export class Smooth {
 
   // For state.json: the device asked for, the one in use, and why they differ
   summary() {
-    return { enabled: this.enabled, gpu: this.gpu, device: this.fallback ? -1 : this.gpu, fallback: this.fallback, encoding: this.encoding };
+    return {
+      enabled: this.enabled, gpu: this.gpu, device: this.fallback ? -1 : this.gpu, fallback: this.fallback, encoding: this.encoding,
+      waiting: this.queue.size, gate: this.gate.summary()
+    };
+  }
+
+  // A gate reading: a job starts when it opens, and the one running stops (to resume later) when it closes
+  async tick() {
+    const was = this.gate.allowed;
+    this.gate.check();
+    const now = this.gate.allowed;
+    if (was === now) return;
+    const load = this.gate.load ? { one: Math.round(this.gate.load.one * 100) / 100, five: Math.round(this.gate.load.five * 100) / 100 } : null;
+    if (now) {
+      this.daemon.logger.info('Smoothing allowed: the load stayed low', { perCpu: load });
+      this.kick();
+    } else {
+      this.daemon.logger.info('Smoothing paused: the load rose', { perCpu: load, encoding: this.encoding });
+      this.controller?.abort();
+    }
+    if (this.daemon.writeState) await this.daemon.writeState().catch(() => {});
   }
 
   // The device the next job runs on: the CPU after a fallback, or when the kernel log cannot be watched
@@ -105,6 +136,8 @@ export class Smooth {
 
   async begin() {
     if (!this.settings.paths.smooth) return;
+    this.gate.check();
+    this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Smoothing gate check failed', { error: error.message })));
     await removeStaleSmoothWork(this.settings.paths.smooth);
     await this.recordSizes();
     await this.prune();
@@ -201,7 +234,7 @@ export class Smooth {
   // Starts the next job. None while no monitor is known (at start, or all unplugged): its size would fall back to the
   // video's own, up to four times the pixels a 1080p screen shows; the next load starts it again.
   kick() {
-    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.enabled) return;
+    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.enabled || !this.gate.allowed) return;
     if (!this.daemon.monitors.size) return;
     const [id, queued] = this.queue.entries().next().value;
     this.queue.delete(id);

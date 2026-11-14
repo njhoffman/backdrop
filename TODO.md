@@ -264,6 +264,11 @@ Reviewed: 2026-11-07
       spawned pid lives (up to a minute, say), and fail at once when it exits.
       Done (2.80.1): waits up to 60 s while the process runs, fails at once when it exits or is killed (saying which), and a
       timeout says the daemon is still running, with its pid.
+- [x] **Smoothing ran at any load.** (p2) [feature] With no `load` section the level stays normal, so RIFE ran on the CPU
+      at a load average of 64 (2026-11-13). Done (2.81.0): `SmoothGate` (`src/display/SmoothGate.js`), apart from the
+      load section: starts after the 5-minute average per CPU stays under `smooth_idle_load` (0.25) for
+      `smooth_idle_minutes` (10), stops a job (chunks kept) when the 1-minute average goes over `smooth_stop_load` (0.75).
+      `status` shows the wait.
 - [ ] **mpv died on a hotplug and the wallpaper stayed black.** (p2) [bug] On 2026-11-10 at 14:45:34 (local) a 1920x1080 monitor
       replaced the 2560x1440 one on DP-3; mpv exited with code 1, `handleExit` restarted it, and the next `Visualizer colors` read
       `{}`: no frame, so the screen behind the visualizers stayed black until a reboot. The log has no reason for the exit, since

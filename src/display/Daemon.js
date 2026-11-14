@@ -216,7 +216,7 @@ export class Daemon {
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
     this.bounce = new Bounce(this);
-    this.smoothing = new Smooth(this);
+    this.smoothing = new Smooth(this, { loadavg });
     this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();

@@ -20,7 +20,9 @@ describe('Smooth (daemon)', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-smoothq-'));
     db = new DatabaseManager();
     db.initialize(':memory:');
-    config = makeConfig({ 'paths.smooth': path.join(dir, 'smooth'), 'paths.bounce': path.join(dir, 'bounce'), 'display.smooth': true });
+    config = makeConfig({ 'paths.smooth': path.join(dir, 'smooth'), 'paths.bounce': path.join(dir, 'bounce'), 'display.smooth': true,
+      // No wait for an idle machine, but in the tests of the gate
+      'display.smooth_idle_load': null });
     made = [];
     reversed = [];
     swapped = [];
@@ -517,5 +519,82 @@ describe('Smooth (daemon)', () => {
     expect(daemon.kernelLog.readable.called).to.equal(false);
     expect(daemon.kernelLog.follow.called).to.equal(false);
     expect(smooth.summary()).to.include({ gpu: -1, device: -1, fallback: null });
+  });
+
+  describe('load gate', () => {
+    let load, clock;
+
+    beforeEach(() => {
+      load = [8, 8, 8];
+      clock = 0;
+      config.set('display.smooth_idle_load', 0.25);
+      config.set('display.smooth_idle_minutes', 10);
+      config.set('display.smooth_stop_load', 0.75);
+      daemon.now = () => clock;
+      daemon.writeState = sinon.stub().resolves();
+      smooth = new Smooth(daemon, { loadavg: () => load, cpus: 8 });
+    });
+
+    it('starts nothing until the load has stayed low long enough, then smooths', async () => {
+      await smooth.begin();
+      smooth.want(await video(1));
+      await settle();
+      expect(made).to.deep.equal([]);
+      // Under 2 on 8 CPUs, but not for 10 minutes yet
+      load = [1, 1.5, 3];
+      await smooth.tick();
+      clock = 9 * 60_000;
+      await smooth.tick();
+      expect(smooth.gate.allowed).to.equal(false);
+      expect(smooth.summary().gate).to.include({ open: false, low_since: 0, cpus: 8, idle_load: 0.25 });
+      // A rise starts the wait again
+      load = [3, 2.5, 3];
+      await smooth.tick();
+      expect(smooth.gate.lowSince).to.equal(null);
+      load = [1, 1.5, 1];
+      clock = 10 * 60_000;
+      await smooth.tick();
+      clock = 20 * 60_000;
+      await smooth.tick();
+      await settle();
+      expect(made.map(item => item.id)).to.have.length(1);
+      expect(daemon.writeState.called).to.equal(true);
+    });
+
+    it('stops a running job when the load rises, keeping it queued, and stays open in between', async () => {
+      let stopped = 0;
+      daemon.smoothVideo = (item, { signal }) => new Promise(resolve => signal.addEventListener('abort', () => {
+        stopped++;
+        resolve(null);
+      }));
+      load = [0.5, 0.5, 0.5];
+      config.set('display.smooth_idle_minutes', 0);
+      await smooth.begin();
+      expect(smooth.gate.allowed).to.equal(true);
+      const media = await video(1);
+      smooth.want(media);
+      await wait(10);
+      expect(smooth.encoding).to.equal(media.id);
+      // RIFE's own load: over the idle threshold, under the stop one
+      load = [4, 3, 1];
+      await smooth.tick();
+      expect(smooth.gate.allowed).to.equal(true);
+      expect(stopped).to.equal(0);
+      load = [7, 4, 2];
+      await smooth.tick();
+      await settle();
+      expect(stopped).to.equal(1);
+      expect(smooth.gate.allowed).to.equal(false);
+      expect([...smooth.queue.keys()]).to.deep.equal([media.id]);
+    });
+
+    it('leaves the gate open with smooth_idle_load null', async () => {
+      config.set('display.smooth_idle_load', null);
+      load = [64, 64, 64];
+      expect(smooth.gate.allowed).to.equal(true);
+      smooth.want(await video(1));
+      await settle();
+      expect(made).to.have.length(1);
+    });
   });
 });

@@ -78,6 +78,13 @@ const SECTIONS = {
     smooth_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
       kind: 'number', min: 0, step: 1, help: 'Room for smoothed copies of slowed videos, in GB; 0 for no limit'
     }),
+    smooth_idle_load: field(value => (value === null || (typeof value === 'number' && value >= 0 && value <= 16) ? value : fail('a load average per CPU (0.25), or null to smooth whatever the load')), {
+      kind: 'number', min: 0, step: 0.05, nullable: true, help: 'Smoothing starts once the 5-minute load average per CPU has stayed under this for smooth_idle_minutes; null for no wait'
+    }),
+    smooth_idle_minutes: field(integer(0, 1440), { kind: 'integer', min: 0, max: 1440, help: 'How long the load has to stay under smooth_idle_load before smoothing starts' }),
+    smooth_stop_load: field(value => (typeof value === 'number' && value > 0 && value <= 16 ? value : fail('a load average per CPU (0.75)')), {
+      kind: 'number', min: 0, step: 0.05, help: 'A smoothing job stops (keeping its work) when the 1-minute load average per CPU goes over this; keep it well above smooth_idle_load, since RIFE adds load itself'
+    }),
     smooth_gpu: field(integer(-1, 15), {
       kind: 'integer', min: -1, max: 15, help: 'The GPU RIFE runs on (its Vulkan device number), -1 for the CPU; a GPU job moves to the CPU on the kernel\'s first sign of a hang'
     }),

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.81.0] - 2026-11-13
+
+### Added
+- Smoothing waits for an idle machine, whether or not the `load` section is on. A job starts only after the
+  5-minute load average has stayed under `display.smooth_idle_load` (0.25 per CPU) for `display.smooth_idle_minutes`
+  (10). A job stops, keeping its finished work, when the 1-minute average goes over `display.smooth_stop_load`
+  (0.75 per CPU). `status` says when smoothing is waiting, and `status --json` gives the readings. Set
+  `smooth_idle_load: null` to smooth at any load, as before.
+
 ## [2.80.1] - 2026-11-13
 
 ### Fixed

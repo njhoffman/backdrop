@@ -91,6 +91,18 @@ describe('DisplayCommand', () => {
       expect(lines.join('\n')).to.include('Smoothing: on the CPU since 21:47 (the GPU hung under RIFE; restart the daemon to try GPU 0 again)');
     });
 
+    it('says when smoothing waits for an idle machine', async () => {
+      command.control = { current: async () => ({ path: null }) };
+      const gate = { open: false, low_since: new Date(2026, 10, 13, 23, 30).getTime(), load: { one: 0.1, five: 0.2 }, cpus: 8, idle_load: 0.25, idle_minutes: 10, stop_load: 0.75 };
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, gpu: -1, device: -1, fallback: null, waiting: 3, gate } });
+      await command.status();
+      expect(lines.join('\n')).to.include('Smoothing: waiting for an idle machine (3 videos wait; load 0.20 a CPU, under it since 23:30; starts after 10 min under 0.25)');
+      lines.length = 0;
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, waiting: 3, gate: { ...gate, open: true } } });
+      await command.status();
+      expect(lines.join('\n')).to.not.include('Smoothing');
+    });
+
     it('shows the load and the mode it holds back', async () => {
       setMode(db, 'video');
       setModeHold(db, 'image');
