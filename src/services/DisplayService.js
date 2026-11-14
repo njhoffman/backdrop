@@ -14,7 +14,9 @@ import { notifyCommand } from '../utils/notify.js';
 import { visualizerSettings } from '../visualizer/settings.js';
 
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
-const START_TIMEOUT_MS = 15_000;
+// How long start waits for the daemon's first state.json while its process lives: it gives up at once when the
+// process exits, so this only bounds a start slowed by a loaded machine (one took 22 s at a load average near 50)
+const START_TIMEOUT_MS = 60_000;
 export const PARTS = ['wallpaper', 'visualizer'];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -67,14 +69,19 @@ export class DisplayService {
     const child = this.spawnProcess(process.execPath, [ENTRY_POINT, 'daemon', ...flags], { detached: true, stdio: 'ignore' });
     child.unref();
 
+    const { logfile } = this.config.get().paths;
     const deadline = Date.now() + this.timeout;
-    while (Date.now() < deadline) {
+    for (;;) {
       const state = await readState(this.runtimeDir);
       if (state) return { action: 'started', state };
-      if (child.exitCode !== null) break;
+      if (child.exitCode !== null || child.signalCode) {
+        const how = child.signalCode ? `was killed (${child.signalCode})` : `exited (code ${child.exitCode})`;
+        throw new Error(`Daemon ${how} before it started; see ${logfile}`);
+      }
+      if (Date.now() >= deadline) break;
       await sleep(200);
     }
-    throw new Error(`Daemon did not start; see ${this.config.get().paths.logfile}`);
+    throw new Error(`Daemon did not start within ${Math.round(this.timeout / 1000)} s (pid ${child.pid ?? 'unknown'}, still running); see ${logfile}`);
   }
 
   // Without parts, stops the daemon; with them, turns only those off (the daemon stops itself when neither is left).

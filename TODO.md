@@ -258,6 +258,12 @@ Reviewed: 2026-11-07
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
       (`src/display/LoadGovernor.js`, `config.example.yaml`, `docs/specs/config.md`). `screensaver.max_load` reads the same value.
+- [x] **`start` gives up on a daemon that is still starting.** (p3) [bug] On 2026-11-13 at a load average near 50 (another
+      project's bats run beside it), `backdrop start` printed "Daemon did not start" while the daemon came up 22 s after it was
+      spawned. `DisplayService.start` waits a fixed 15 s (`START_TIMEOUT_MS`) for `state.json`. Keep waiting while the
+      spawned pid lives (up to a minute, say), and fail at once when it exits.
+      Done (2.80.1): waits up to 60 s while the process runs, fails at once when it exits or is killed (saying which), and a
+      timeout says the daemon is still running, with its pid.
 - [ ] **mpv died on a hotplug and the wallpaper stayed black.** (p2) [bug] On 2026-11-10 at 14:45:34 (local) a 1920x1080 monitor
       replaced the 2560x1440 one on DP-3; mpv exited with code 1, `handleExit` restarted it, and the next `Visualizer colors` read
       `{}`: no frame, so the screen behind the visualizers stayed black until a reboot. The log has no reason for the exit, since

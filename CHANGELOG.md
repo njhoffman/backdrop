@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.80.1] - 2026-11-13
+
+### Fixed
+- `backdrop start` on a heavily loaded machine reported "Daemon did not start" while the daemon was still coming up.
+  It now waits up to a minute while the daemon's process runs. It fails at once when that process exits or is
+  killed, saying which, and on a timeout it says the daemon is still running, with its pid.
+
 ## [2.80.0] - 2026-11-13
 
 ### Added

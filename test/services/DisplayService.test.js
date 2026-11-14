@@ -40,6 +40,46 @@ describe('DisplayService', () => {
     expect(printed).to.deep.equal([]);
   });
 
+  describe('start', () => {
+    // A spawned daemon that writes its state after ms, or never (null); exitCode set later by the test
+    function daemonAfter(ms) {
+      const child = { pid: 4321, exitCode: null, signalCode: null, unref() {} };
+      const spawnProcess = () => {
+        if (ms !== null) setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, control: 0, monitors: [monitor] }), ms);
+        return child;
+      };
+      return { child, spawnProcess };
+    }
+
+    it('waits for a slow daemon while its process runs', async () => {
+      const { spawnProcess } = daemonAfter(400);
+      const result = await make({ spawnProcess, timeout: 2000 }).start();
+      expect(result.action).to.equal('started');
+    });
+
+    it('fails at once when the daemon exits or is killed before it starts', async () => {
+      const exiting = daemonAfter(null);
+      setTimeout(() => { exiting.child.exitCode = 1; }, 50);
+      const began = Date.now();
+      let caught;
+      try { await make({ spawnProcess: exiting.spawnProcess, timeout: 5000 }).start(); } catch (error) { caught = error; }
+      expect(caught.message).to.match(/^Daemon exited \(code 1\) before it started; see /);
+      expect(Date.now() - began).to.be.below(2000);
+      const killed = daemonAfter(null);
+      setTimeout(() => { killed.child.signalCode = 'SIGKILL'; }, 50);
+      caught = null;
+      try { await make({ spawnProcess: killed.spawnProcess, timeout: 5000 }).start(); } catch (error) { caught = error; }
+      expect(caught.message).to.match(/^Daemon was killed \(SIGKILL\) before it started/);
+    });
+
+    it('gives up after the timeout on a daemon still running without a state, saying so', async () => {
+      const { spawnProcess } = daemonAfter(null);
+      let caught;
+      try { await make({ spawnProcess, timeout: 300 }).start(); } catch (error) { caught = error; }
+      expect(caught.message).to.match(/^Daemon did not start within 0 s \(pid 4321, still running\); see /);
+    });
+  });
+
   it('reports a running daemon on start without spawning another', async () => {
     const state = { pid: process.pid, control: 0, monitors: [monitor] };
     await fs.writeJson(statePath(dir), state);
