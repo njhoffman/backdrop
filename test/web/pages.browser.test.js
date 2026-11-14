@@ -34,12 +34,48 @@ function chromeProcesses() {
   }
 }
 
-function within(step, promise) {
+function within(step, promise, ms = STEP_MS) {
   let timer;
   const deadline = new Promise((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`Chrome took over ${STEP_MS / 1000} s ${step}; its processes:\n${chromeProcesses()}`)), STEP_MS);
+    timer = setTimeout(() => reject(new Error(`Chrome took over ${ms / 1000} s ${step}; its processes:\n${chromeProcesses()}`)), ms);
   });
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+// Starting Chrome may take longer on a loaded machine, but must leave the hook (60 s) time to say so
+const LAUNCH_MS = 45000;
+
+// Chrome processes started by this test process (its descendants), killed when Chrome cannot be closed: a launch
+// still running when its hook timed out, or a Chrome too stuck to answer close, would otherwise keep mocha from
+// exiting. Only descendants, so a desktop Chrome is never touched.
+function killOwnChrome() {
+  let rows;
+  try {
+    rows = execSync('ps -eo pid=,ppid=,comm=', { encoding: 'utf8' }).trim().split('\n').map(line => line.trim().split(/\s+/));
+  } catch {
+    return 0;
+  }
+  const children = new Map();
+  for (const [pid, ppid] of rows) children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+  const names = new Map(rows.map(([pid, , comm]) => [pid, comm ?? '']));
+  const own = [];
+  const walk = pid => {
+    for (const child of children.get(pid) ?? []) {
+      own.push(child);
+      walk(child);
+    }
+  };
+  walk(String(process.pid));
+  let killed = 0;
+  for (const pid of own.filter(pid => /chrom/i.test(names.get(pid)))) {
+    try {
+      process.kill(Number(pid), 'SIGKILL');
+      killed++;
+    } catch {
+      // Gone already
+    }
+  }
+  return killed;
 }
 
 // Chrome talks to the session and system buses even headless, and waits on a call there (25 s each) before it opens a
@@ -50,19 +86,27 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
   this.timeout(60000);
   const token = 'browser-test-token-0123456789';
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
-  let dir, db, config, server, browser, base, display, id, errors;
+  let dir, db, config, server, browser, launching, base, display, id, errors;
 
   before(async () => {
-    browser = await chromium.launch({
+    launching = chromium.launch({
       // No GPU: these checks draw nothing that needs one, and a GPU kept busy (the daemon's RIFE smoothing) was the
       // next suspect for the page that took over 15 s to open
       args: ['--disable-gpu'],
       executablePath, headless: true, env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: NO_BUS, DBUS_SYSTEM_BUS_ADDRESS: NO_BUS }
     });
+    browser = await within('starting', launching, LAUNCH_MS);
   });
 
   after(async () => {
-    await browser?.close();
+    try {
+      if (!browser) throw new Error('not started');
+      await within('closing', browser.close());
+    } catch {
+      // A launch that lands after this is closed then; whatever runs now is ended, so mocha can exit
+      launching?.then(late => late.close()).catch(() => {});
+      killOwnChrome();
+    }
   });
 
   beforeEach(async () => {

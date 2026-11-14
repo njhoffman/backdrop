@@ -180,6 +180,10 @@ Reviewed: 2026-11-07
 - [ ] **The browser test still stalls opening a page.** (p2) [test] The D-Bus fix (2.64.1) was not the whole cause: a later full run failed both tests with "Chrome took over 15 s opening a page", with Chrome off the buses. It shows in about one full run in three and never alone; 3 runs with Chrome's stderr logged (`DEBUG=pw:browser`) did not catch it. The deadline error now carries every Chrome process's state and kernel wait channel; read them on the next failure (the GPU, which the daemon's RIFE keeps busy, is the next suspect: `--disable-gpu` would test it).
       2.77.0 launches Chrome with `--disable-gpu`; it had not shown in 7 full runs on 2026-11-10 before that. Close after a
       few weeks of runs without it. Five full runs right after: no stall, two of them at a load average near 24.
+      2026-11-13: under a load of 30-60 (another project's tests) a page took 2 min to open, and a run whose Chrome hung
+      while starting never exited: `before` timed out with the launch still pending, so `after` had no browser to close.
+      2.81.1 gives the launch its own 45 s deadline, closes under a deadline, and otherwise kills this process's own
+      Chrome descendants (reproduced with SIGSTOP on them: fails in 48 s and exits). The stall itself remains open.
 - [x] **WebCommand's port test failed under load.** (p3) [test] It waited a fixed 20 ms for `run()` to print, and once found nothing.
       Done (2.64.3): the WebCommand tests wait for the line or the opened page itself, up to 5 s.
 - [x] **Resume stopped reversals too.** (p3) [perf] `reverseVideo` still starts over when stopped; it is fast with VAAPI, but a long video under libx264 loses minutes. The same kept-chunks scheme would fit its chunked reverse.

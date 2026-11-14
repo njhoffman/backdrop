@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.81.1] - 2026-11-13
+
+### Fixed
+- The test suite no longer hangs after the browser test's Chrome gets stuck while starting or closing, which can
+  happen on a heavily loaded machine. The test fails with the step that stalled, and ends only the Chrome
+  processes it started itself.
+
 ## [2.81.0] - 2026-11-13
 
 ### Added
