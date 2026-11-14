@@ -1,6 +1,6 @@
 {
   "name": "backdrop",
-  "version": "2.81.1",
+  "version": "2.82.0",
   "description": "Wallpaper and screensaver manager: curate images and videos from free sources and display them with mpv",
   "type": "module",
   "main": "src/index.js",
@@ -23,18 +23,18 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@inquirer/prompts": "^8.7.5",
-    "axios": "^1.21.0",
-    "commander": "^15.0.0",
-    "fs-extra": "^11.2.0",
-    "winston": "^3.11.0",
-    "x11": "^4.3.3",
+    "@inquirer/prompts": "^8.8.0",
+    "axios": "^1.21.1",
+    "commander": "^15.1.0",
+    "fs-extra": "^11.4.1",
+    "winston": "^3.19.0",
+    "x11": "^4.4.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
     "chai": "^6.3.0",
     "mocha": "^12.0.3",
-    "playwright-core": "^1.65.0",
+    "playwright-core": "^1.65.1",
     "sinon": "^22.1.0"
   },
   "engines": {

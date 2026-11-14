@@ -195,10 +195,11 @@ export function panelView(extraArgs = [], spawnProcess = spawn, theme = PANEL_TH
 // --random/--no-random and --query/--tag/--keywords are stored like next's (see nextFilters.js), apply to
 // next and to the advance after skip, and are shown beside the item's details. With i3 the menu
 // shows an empty workspace (menu.workspace) while open, so the wallpaper is in full view.
-// An action's result is the menu's next state ({ quit }, { monitor }), so a service's own result is dropped
+// An action's result is the menu's next state ({ quit }, { monitor }), so a service's own result is dropped, except
+// for the playlist warnings of a rating (RatingService), which attempt() shows
 async function done(action) {
-  await action;
-  return {};
+  const { warnings } = (await action) ?? {};
+  return warnings?.length ? { warnings } : {};
 }
 
 // Menus are built as { prompt, title, message, status, preview, entries: [{ icon, label, caption, key,
@@ -300,14 +301,22 @@ export class MenuCommand {
     }
   }
 
-  // Runs a picked action; an error is announced and the menu stays open
+  // Runs a picked action; an error is announced and the menu stays open. So are the playlist warnings of a rating,
+  // whether it went through or failed after the rating was saved (error.done)
   async attempt(action) {
     try {
-      return (await action()) ?? {};
+      const { warnings = [], ...result } = (await action()) ?? {};
+      await this.warn(warnings);
+      return result;
     } catch (error) {
+      await this.warn(error.done?.warnings ?? []);
       await notifyError(error.message, { logger: this.logger });
       return {};
     }
+  }
+
+  async warn(warnings) {
+    for (const warning of warnings) await notifyError(warning, { logger: this.logger });
   }
 
   // The playing item: title (its file name), message (summary and details, Pango markup) and, for the

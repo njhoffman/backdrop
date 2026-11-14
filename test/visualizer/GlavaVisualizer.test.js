@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { scaledDefines, GlavaVisualizer, applyDefines } from '../../src/visualizer/GlavaVisualizer.js';
+import { scaledDefines, shaderDefines, GlavaVisualizer, applyDefines } from '../../src/visualizer/GlavaVisualizer.js';
 import { createVisualizer } from '../../src/visualizer/index.js';
 import { visualizerSettings } from '../../src/visualizer/settings.js';
 
@@ -42,6 +42,15 @@ describe('GlavaVisualizer', () => {
     const bars = await fs.readFile(path.join(root, 'glava', 'bars.glsl'), 'utf8');
     expect(bars).to.include('#define BAR_WIDTH 9\n  #define AMPLIFY 200\n#define FLIP 0').and.include('#define USE_ALPHA 1');
     expect((await fs.lstat(path.join(root, 'glava', 'bars.glsl'))).isSymbolicLink()).to.be.false;
+  });
+
+  it('scales the installed shader\'s own sizes where the config leaves them unset', async () => {
+    await fs.outputFile(path.join(shaders, 'wave.glsl'), '#define MIN_THICKNESS 1\n#define MAX_THICKNESS 6\n#define AMPLIFY 500\n');
+    const root = path.join(dir, 'root');
+    await glava({ module: 'wave', placement: { anchor: 'fill' }, wave: { max_thickness: 4 } }, { root }).prepare();
+    const wave = await fs.readFile(path.join(root, 'glava', 'wave.glsl'), 'utf8');
+    expect(wave).to.equal('#define MIN_THICKNESS (1.0 * float(screen.y) / 1440.0)\n#define MAX_THICKNESS (4.0 * float(screen.y) / 1440.0)\n'
+      + '#define AMPLIFY (500.0 * float(screen.y) / 1440.0)\n');
   });
 
   it('fails clearly when the shaders are not where shader_dir says', async () => {
@@ -94,6 +103,15 @@ describe('GlavaVisualizer', () => {
     it('takes sizes already written as floats', () => {
       const defines = scaledDefines({ C_RADIUS: '150.0', BAR_WIDTH: '4.5' }, { scaled: ['C_RADIUS', 'BAR_WIDTH'], layout }, 1440);
       expect(defines).to.deep.equal({ C_RADIUS: '(150.0 * float(screen.y) / 360.0)', BAR_WIDTH: '(4.5 * float(screen.y) / 360.0)' });
+    });
+
+    it('scales a size the config leaves unset from the shader\'s default, and leaves other values alone', () => {
+      const source = '#define GRADIENT 95\n  #define C_LINE 2.5\n#define ROTATE (PI / 2)\n#define COLOR @fg:#fff';
+      expect(shaderDefines(source)).to.deep.equal({ GRADIENT: '95', C_LINE: '2.5', ROTATE: '(PI / 2)', COLOR: '@fg:#fff' });
+      const defines = scaledDefines({ C_RADIUS: '150.0' }, { scaled: ['C_RADIUS', 'C_LINE', 'GRADIENT', 'ROTATE', 'NBARS'], layout }, 1440, source);
+      expect(defines).to.deep.equal({
+        C_RADIUS: '(150.0 * float(screen.y) / 360.0)', C_LINE: '(2.5 * float(screen.y) / 360.0)', GRADIENT: '(95.0 * float(screen.y) / 360.0)'
+      });
     });
 
     it('leaves them alone with no reference height', () => {

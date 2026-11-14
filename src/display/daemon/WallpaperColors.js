@@ -1,7 +1,5 @@
-import { mainColors, paletteColors, shownAverage, stripPixels, veilBackground } from '../../visualizer/palette.js';
+import { hex, mainColors, paletteColors, shownAverage, stripPixels, veilBackground } from '../../visualizer/palette.js';
 import { resolveArea } from '../../visualizer/settings.js';
-
-const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
 
 // Visualizer colors from the wallpaper (visualizer.palette.source: wallpaper): each monitor's item is
 // sampled once per load and every instance takes its colors from the strip under it; for a Daemon (passed in).

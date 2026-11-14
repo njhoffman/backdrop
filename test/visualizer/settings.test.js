@@ -370,6 +370,15 @@ describe('visualizer settings', () => {
           expect(placed('bars'), name).to.deep.equal({ x: 990, y: 750, width: 2010, height: 250 });
         }
       });
+
+      it('give the screensaver the veil look with only its colors turning', () => {
+        const uncolored = name => lyrics(name).instances.map(({ palette, pipe, pipeDefine, defines, ...rest }) => rest);
+        expect(uncolored('screensaver')).to.deep.equal(uncolored('lyrics-veil'));
+        const ring = name => lyrics(name).instances.find(item => item.name === 'ring');
+        expect(ring('screensaver').palette.source).to.equal('cycle');
+        expect(ring('lyrics-veil').palette.source).to.not.equal('cycle');
+        expect(ring('screensaver').defines).to.include({ C_RADIUS: ring('lyrics-veil').defines.C_RADIUS, AMPLIFY: ring('lyrics-veil').defines.AMPLIFY });
+      });
     });
 
     it('takes projectm settings, and refuses unknown ones', () => {
@@ -384,8 +393,10 @@ describe('visualizer settings', () => {
       expect(visualizerSettings({}).referenceHeight).to.equal(1440);
       expect(visualizerSettings({ reference_height: null }).referenceHeight).to.equal(null);
       const [item] = visualizerSettings({ module: 'radial', radial: { radius: 100, amplify: 200 }, defines: { AMPLIFY: 90 } }).instances;
-      expect(item.scaled).to.deep.equal(['C_RADIUS']);
+      expect(item.scaled).to.deep.equal(['C_RADIUS', 'C_LINE', 'BAR_WIDTH', 'GRADIENT']);
       expect(visualizerSettings({}).instances[0].scaled).to.deep.equal(['BAR_WIDTH', 'BAR_GAP', 'AMPLIFY', 'GRADIENT']);
+      expect(visualizerSettings({ module: 'wave' }).instances[0].scaled).to.deep.equal(['MIN_THICKNESS', 'MAX_THICKNESS', 'AMPLIFY']);
+      expect(visualizerSettings({ module: 'graph', defines: { VSCALE: 200 } }).instances[0].scaled).to.deep.equal(['GRADIENT']);
     });
 
     it('ships a preset with lyrics above the bars', () => {

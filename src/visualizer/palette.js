@@ -215,7 +215,8 @@ export function shownAverage(pixels, dim = 0) {
   return sum.map(value => Math.round(value / Math.max(1, pixels.length) * (1 - dim / 100)));
 }
 
-const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+// An [r, g, b] color as #rrggbb, each channel clamped to 0-255
+export const hex = color => `#${color.map(value => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
 
 // A sleeve background of `auto`: its color and strength when nothing is known of the wallpaper yet
 export const DEFAULT_VEIL = '#0a0f1a99';

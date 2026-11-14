@@ -468,7 +468,9 @@ Reviewed: 2026-11-07
       move and its database write) and exits with its usual code; other stream errors still throw.
 - [x] **Docs and comments still describing older behavior.** (p3) [docs] `docs/specs/visualizer.md` lines 94, 135 and 138 say brightness where a dim is now contrast. "GLava draws nothing until every piped value has arrived" stays in `check.js`, `settings.js` and `VisualizerManager.js`, though a lost `fg2` was seen drawing a fade (2.48.1).
       Done, along with the screensaver settings in `docs/specs/config.md`.
-- [ ] **Small cleanups.** (p3) [chore] `hex` is defined in both `palette.js` and `daemon/WallpaperColors.js`. `fs-extra` (11.3.0 to 11.4.1) and `winston` (3.17.0 to 3.19.0) have minor updates; `npm audit` is clean. `Daemon.js` (943 lines) and `VisualizerManager.js` (796) keep growing: sleeve's display and veil handling could move out of the manager as `daemon/` did.
+- [x] **Small cleanups.** (p3) [chore] `hex` is defined in both `palette.js` and `daemon/WallpaperColors.js`. `fs-extra` (11.3.0 to 11.4.1) and `winston` (3.17.0 to 3.19.0) have minor updates; `npm audit` is clean.
+      Done (2.82.0): one `hex` in `src/visualizer/palette.js`; every dependency on its latest minor release.
+- [ ] **Daemon.js and VisualizerManager.js keep growing.** (p3) [refactor] 1039 and 906 lines on 2026-11-14 (943 and 796 before). Sleeve's display and veil handling could move out of the manager as `daemon/` did; split from the small cleanups.
 - [x] **CI jobs can hang on apt with no limit.** (p2) [chore] On 2026-11-05 the latest-Node job of the 2.50.7 run sat over 20 minutes in `Install integration test tools` while its 22.13 twin passed, and a GitHub job's default limit is 6 hours. Set `timeout-minutes` on the job and the install step, and pass apt `-o Acquire::Retries=3`.
       Done: 15 minutes for the job, 5 for the install, apt retries, no recommended packages, and a stalled install skips the integration tests rather than failing the run.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
@@ -532,11 +534,12 @@ Reviewed: 2026-11-07
 - [x] **Notifications stack under deadd-notification-center.** (p3) [bug] `notify-send --replace-id` and the dunst stack tag
       replace the previous notification per monitor on dunst, but deadd returned a new id on 2026-10-28, so rapid `next`
       presses pile up. Check deadd's replace support, or close the previous id (gdbus `CloseNotification`) before sending.
-- [ ] **Two waiters can both take over a stale lock.** (p3) [bug] In `FileLock.tryAcquire` (`src/utils/fileLock.js`)
+- [x] **Two waiters can both take over a stale lock.** (p3) [bug] In `FileLock.tryAcquire` (`src/utils/fileLock.js`)
       two processes that both find a stale lock both `rmSync` it; if one removes the file the other has just written,
       both hold the lock. Rare (it needs a crashed holder and two waiters, e.g. `next` from the menu and a CLI call
       at once). Fix: take over by renaming the stale file to a unique name first (only one rename succeeds), check
       it was the stale content, then create with `wx` as now.
+      Done (2.82.0): `setAside` renames it to a name of its own and checks the inode and text it found stale; a fresh lock moved by mistake is linked back. Left: a third waiter taking the lock in the instant it is moved aside can still share it with the second.
 
 ## 9. Music visualizer
 
@@ -704,8 +707,10 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
 - [x] **The visualizer menu offers GLava's controls for projectM.** (p3) [bug] `MenuCommand` tests `look.engine === 'sleeve'` and otherwise shows module, amplify and colors, so a `projectm` instance gets controls that do nothing or fail. It needs its own branch, with `fps` and `preset_duration`.
       Done (2.60.0): `instanceLook` gives projectM its `fps` and `preset_duration`, and the menu and the Visualizer page show those instead of module, amplify and colors.
 - [ ] **projectM has not run through backdrop on the real desktop.** (p2) [test] The window was tried alone under Xvfb. Unseen: placing and stacking in `screensaver-projectm`, what it costs on the GPU, and whether `PULSE_SOURCE=@DEFAULT_MONITOR@` hears the music rather than a microphone.
-- [ ] **`reference_height` covers only bars, radial and circle.** (p3) [feature] `SCALED_DEFINES` leaves wave and graph in pixels, so they do not follow the monitor, and a shader default left unset (radial's gradient of 95) stays in pixels too.
-- [ ] **Presets repeat the veil layout.** (p3) [refactor] `lyrics-veil` and `screensaver` are the same instances, written out twice with the ring's numbers, so tuning one leaves the other behind; `lyrics-stage` shares the rects. Build them from one constant.
+- [x] **`reference_height` covers only bars, radial and circle.** (p3) [feature] `SCALED_DEFINES` leaves wave and graph in pixels, so they do not follow the monitor, and a shader default left unset (radial's gradient of 95) stays in pixels too.
+      Done (2.82.0): wave's MIN/MAX_THICKNESS and AMPLIFY, graph's VSCALE and GRADIENT and circle's AMPLIFY scale; an unset one takes its value from the installed shader file (`shaderDefines`). Not yet seen on the real desktop.
+- [x] **Presets repeat the veil layout.** (p3) [refactor] `lyrics-veil` and `screensaver` are the same instances, written out twice with the ring's numbers, so tuning one leaves the other behind; `lyrics-stage` shares the rects. Build them from one constant.
+      Done (2.82.0): `veil({ cycle })`, `SIDE_RECTS`, `VEIL_RING` and `CYCLE_BARS`; every built-in preset comes out as before.
 - [ ] **A long-lived X connection for stacking.** (p3) [refactor] backdrop opens a connection per placement and learns
       of overlays only from `backdrop restack`. One connection watching the root's SubstructureNotify and
       PropertyNotify (`_BACKDROP_OVERLAY`) would find overlays and their mark changes by itself, replace the 500ms
@@ -809,7 +814,8 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
 - [x] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
       parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
       Done: `RatingService` and `DisplayService`; the commands print their results and the menu calls them directly. The existing tests passed unchanged, plus service tests of the returned data.
-- [ ] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
+- [x] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
+      Done (2.82.0): `done` passes `warnings` on and `attempt` notifies them, and those of `error.done` on a failure after the rating.
 - [x] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
       speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
       Done: `backdrop web` (2.54.0), with live updates; seen working against the daemon on 2026-11-07. Not yet: next's filters from the page, which come with the library browser.

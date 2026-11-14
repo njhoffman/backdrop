@@ -299,6 +299,17 @@ describe('MenuCommand', () => {
     expect(notifications).to.have.length(2);
   });
 
+  it('announces the playlist warnings of a rating, also when it fails after the rating', async () => {
+    rating.keep.resolves({ rated: playing.media, warnings: ['Could not update the playlist: socket gone'], playing: null });
+    const failed = Object.assign(new Error('next failed'), { done: { rated: playing.media, warnings: ['Could not remove it from the playlist'] } });
+    rating.skip.rejects(failed);
+    picks = ['keep 3', 'skip'];
+    await command.open();
+    const bodies = notifications.map(args => args.at(-1));
+    expect(bodies).to.deep.equal(['Could not update the playlist: socket gone', 'Could not remove it from the playlist', 'next failed']);
+    expect(notifications.every(args => args.includes('--urgency=critical'))).to.be.true;
+  });
+
   describe('views', () => {
     function fakeSpawn(code, output = '', error = null) {
       const calls = [];

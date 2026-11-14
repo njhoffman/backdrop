@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.82.0] - 2026-11-14
+
+### Changed
+- The visualizer's `reference_height` now also scales the wave module's thickness and amplitude, the graph module's
+  height scale and gradient, and the circle module's amplitude, so they look the same on monitors of any height.
+  A size the config leaves unset scales too, from the installed GLava shader's own default (radial's gradient, for
+  one), where before it stayed in pixels. Sizes given as raw `defines` are still left as written.
+- Dependencies updated to their latest minor releases (commander, axios, winston, fs-extra, @inquirer/prompts, x11).
+
+### Fixed
+- A rating from the menu whose playlist update fails now shows the warning as a notification, where the menu
+  dropped it before. That includes a rating saved just before the action failed.
+- Two processes waiting on the same stale lock (for example `next` from the menu and from a terminal at the same
+  moment, after a crash) could both take it over. Now only one does.
+
 ## [2.81.1] - 2026-11-13
 
 ### Fixed

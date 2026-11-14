@@ -62,6 +62,51 @@ describe('ImportLock', () => {
     expect(lock.tryAcquire()).to.be.true;
   });
 
+  it('lets only one of two waiters take over the same stale lock', () => {
+    lockFor(100).tryAcquire();
+    delete starts[100];
+    starts[300] = '700';
+    const slow = lockFor(200);
+    const fast = lockFor(300);
+    // The slow waiter finds the lock stale, then the fast one takes it over before the slow one moves it
+    const inspect = slow.inspect.bind(slow);
+    slow.inspect = () => {
+      const found = inspect();
+      if (!found.holder) expect(fast.tryAcquire()).to.be.true;
+      return found;
+    };
+
+    expect(slow.tryAcquire()).to.be.false;
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).pid).to.equal(300);
+    expect(fs.readdirSync(path.dirname(file))).to.deep.equal(['import.lock']);
+    fast.release();
+    expect(fs.existsSync(file)).to.be.false;
+  });
+
+  it('takes over a stale lock another waiter has already moved aside', () => {
+    lockFor(100).tryAcquire();
+    delete starts[100];
+    const lock = lockFor(200);
+    const inspect = lock.inspect.bind(lock);
+    lock.inspect = () => {
+      const found = inspect();
+      fs.renameSync(file, `${file}.elsewhere`);
+      return found;
+    };
+
+    expect(lock.tryAcquire()).to.be.true;
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).pid).to.equal(200);
+  });
+
+  it('takes over an unreadable lock that is old and leaves nothing beside it', () => {
+    fs.outputFileSync(file, '');
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(file, old, old);
+
+    expect(lockFor(200).tryAcquire()).to.be.true;
+    expect(fs.readdirSync(path.dirname(file))).to.deep.equal(['import.lock']);
+  });
+
   it('leaves a lock alone on release once another process has taken it over', () => {
     const first = lockFor(100);
     first.tryAcquire();

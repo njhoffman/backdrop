@@ -7,6 +7,23 @@ const CYCLE_COLORS = { source: 'cycle', cycle: '90s' };
 // album, seek bar), so the two never overlap
 const VEIL_LYRICS = { now: 'full', now_position: 'top-left', now_area: '33%x11%+0+0', lyrics_area: '33%x89%+0+11%', background: 'auto' };
 const RING = { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] };
+// The veil looks' ring, larger and louder than the ring preset's
+const VEIL_RING = { ...RING, radius: 230, width: 5, amplify: 450 };
+// Beside lyrics in the left third: bars along the bottom of the rest, and a ring above them
+const SIDE_RECTS = { bars: { x: '33%', y: '75%', width: '67%', height: '25%' }, ring: { x: '33%', y: 0, width: '67%', height: '75%' } };
+// The bars' colors where they turn through the hues, blue to start with
+const CYCLE_BARS = { colors: ['#000000', '#33aacc'] };
+
+// The veil looks' instances: the wallpaper darkened under a see-through layer tinted from it, solid lyrics on it,
+// a ring beside them with bars below it. With cycle, the ring and bars turn through the hues together.
+function veil({ cycle = false } = {}) {
+  const palette = cycle ? { palette: CYCLE_COLORS } : {};
+  return [
+    { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
+    { name: 'bars', module: 'bars', ...palette, rect: SIDE_RECTS.bars, ...(cycle ? { bars: CYCLE_BARS } : {}) },
+    { name: 'ring', module: 'radial', ...palette, rect: SIDE_RECTS.ring, radial: VEIL_RING }
+  ];
+}
 
 export const BUILTIN_PRESETS = {
   // Short, thin bars along the bottom, mostly see-through
@@ -52,17 +69,11 @@ export const BUILTIN_PRESETS = {
   'lyrics-side': {
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'left', width: '33%', height: '100%' } },
-      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } }
+      { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars }
     ]
   },
   // The wallpaper darkened under a see-through layer tinted from it, solid lyrics on it, a ring beside them with bars below it
-  'lyrics-veil': {
-    instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
-      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
-      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
-    ]
-  },
+  'lyrics-veil': { instances: veil() },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
   'lyrics-blend': {
     instances: [
@@ -72,13 +83,7 @@ export const BUILTIN_PRESETS = {
   },
   // The screensaver's own (screensaver.preset): the wallpaper under a veil, lyrics, a ring and bars, the ring and
   // bars blue to start with and turning through the hues together
-  screensaver: {
-    instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
-      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: '33%', y: '75%', width: '67%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
-      { name: 'ring', module: 'radial', palette: CYCLE_COLORS, rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
-    ]
-  },
+  screensaver: { instances: veil({ cycle: true }) },
   // The screensaver's look for a song without lyrics (screensaver.preset_without_lyrics): the same veil and
   // now-playing panel as the screensaver's own, its lyrics area empty, under bars across the whole width and a ring
   // over each half, the left one following the left speaker and the right one the right, below the panel's strip,
@@ -87,9 +92,9 @@ export const BUILTIN_PRESETS = {
   'screensaver-instrumental': {
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { ...VEIL_LYRICS, background: 'auto@0.5' } },
-      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: { colors: ['#000000', '#33aacc'] } },
-      { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } },
-      { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: { ...RING, radius: 230, width: 5, amplify: 450 } }
+      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: CYCLE_BARS },
+      { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING },
+      { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING }
     ]
   },
   // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it
@@ -99,7 +104,7 @@ export const BUILTIN_PRESETS = {
     instances: [
       { name: 'projectm', engine: 'projectm', placement: { anchor: 'fill' } },
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'transparent' } },
-      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } }
+      { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars }
     ]
   },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
@@ -107,8 +112,8 @@ export const BUILTIN_PRESETS = {
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover' } },
-      { name: 'bars', module: 'bars', rect: { x: '33%', y: '75%', width: '67%', height: '25%' } },
-      { name: 'ring', module: 'radial', rect: { x: '33%', y: 0, width: '67%', height: '75%' }, radial: RING }
+      { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars },
+      { name: 'ring', module: 'radial', rect: SIDE_RECTS.ring, radial: RING }
     ]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom

@@ -388,11 +388,14 @@ function projectmSettings(raw, prefix) {
   };
 }
 
-// The options in pixels of each module, as #defines, which scale with the window (GlavaVisualizer)
+// The options in pixels of each module, as #defines, which scale with the window (GlavaVisualizer); one the config
+// leaves unset scales from the shader's own default. AMPLIFY and graph's VSCALE turn the audio into pixels.
 const SCALED_DEFINES = {
   bars: ['BAR_WIDTH', 'BAR_GAP', 'AMPLIFY', 'GRADIENT'],
+  graph: ['VSCALE', 'GRADIENT'],
   radial: ['C_RADIUS', 'C_LINE', 'BAR_WIDTH', 'AMPLIFY', 'GRADIENT'],
-  circle: ['C_RADIUS', 'C_LINE']
+  circle: ['C_RADIUS', 'C_LINE', 'AMPLIFY'],
+  wave: ['MIN_THICKNESS', 'MAX_THICKNESS', 'AMPLIFY']
 };
 
 function instance(raw, prefix) {
@@ -461,7 +464,7 @@ function instance(raw, prefix) {
     channel: oneOf(`${prefix}channel`, raw.channel ?? 'both', CHANNELS),
     defines: allDefines,
     // Raw defines are the user's exact word
-    scaled: (SCALED_DEFINES[module] ?? []).filter(name => allDefines[name] !== undefined && raw.defines?.[name] === undefined),
+    scaled: (SCALED_DEFINES[module] ?? []).filter(name => raw.defines?.[name] === undefined),
     requests: stringList(`${prefix}requests`, raw.requests ?? [])
   };
 }

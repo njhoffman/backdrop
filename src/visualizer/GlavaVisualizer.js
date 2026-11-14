@@ -26,16 +26,34 @@ export function applyDefines(source, values) {
   return [...lines, ...(added.length ? ['', '/* Added by backdrop */', ...added] : [])].join('\n');
 }
 
+// The #define values of a module's settings file, by name, as written
+export function shaderDefines(source) {
+  const found = {};
+  for (const line of String(source).split('\n')) {
+    const match = /^\s*#define\s+([A-Za-z_]\w*)\s+(.*?)\s*$/.exec(line);
+    if (match && !(match[1] in found)) found[match[1]] = match[2];
+  }
+  return found;
+}
+
 // Sizes in pixels as GLSL following the window's height, so they look the same on any monitor. One config serves
 // every monitor, and each window's shader knows its own height (screen.y), compared with that window's height
-// on a monitor of the reference height. A window of a fixed height stays in pixels by this too.
-export function scaledDefines(defines, { scaled = [], layout }, referenceHeight) {
+// on a monitor of the reference height. A window of a fixed height stays in pixels by this too. A size the
+// config leaves unset takes the shader's default from source (the module's settings file); one that is not a
+// plain number there, or missing, stays as it is.
+export function scaledDefines(defines, { scaled = [], layout }, referenceHeight, source = '') {
   if (!referenceHeight || !scaled.length) return defines;
   const reference = { name: '', x: 0, y: 0, width: Math.round(referenceHeight * 16 / 9), height: referenceHeight };
   const { height } = resolveGeometry(reference, layout);
-  // Some options are already written as float literals
-  const literal = value => (Number.isInteger(Number(value)) ? `${Number(value)}.0` : String(Number(value)));
-  return { ...defines, ...Object.fromEntries(scaled.map(name => [name, `(${literal(defines[name])} * float(screen.y) / ${height}.0)`])) };
+  const defaults = shaderDefines(source);
+  const sizes = scaled.flatMap(name => {
+    // Some options are already written as float literals
+    const value = Number(defines[name] ?? defaults[name] ?? NaN);
+    if (!Number.isFinite(value)) return [];
+    const literal = Number.isInteger(value) ? `${value}.0` : String(value);
+    return [[name, `(${literal} * float(screen.y) / ${height}.0)`]];
+  });
+  return { ...defines, ...Object.fromEntries(sizes) };
 }
 
 // GLava behind the visualizer adapter, for one instance of the visualizer section: prepare() builds its
@@ -68,7 +86,7 @@ export class GlavaVisualizer {
       await this.fs.symlink(path.join(shaderDir, entry), path.join(dir, entry));
     }
     const source = await this.fs.readFile(path.join(shaderDir, `${module}.glsl`), 'utf8');
-    await this.fs.writeFile(path.join(dir, `${module}.glsl`), applyDefines(source, scaledDefines(defines, this.instance, this.settings.referenceHeight)));
+    await this.fs.writeFile(path.join(dir, `${module}.glsl`), applyDefines(source, scaledDefines(defines, this.instance, this.settings.referenceHeight, source)));
   }
 
   // geometry is absolute in the root window: { x, y, width, height }
