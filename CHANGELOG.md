@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.83.0] - 2026-11-14
+
+### Added
+
+- `just install`: dependencies from the lock file (`npm ci`), then `~/.local/bin/backdrop` (or
+  `$XDG_BIN_HOME`) linked to `src/index.js`; it refuses to replace a file that is not a link.
+  `just install-check` exits 1 when the link or `node_modules` is missing. `~/.shell`'s
+  `deploy --with repos` runs them on each host.
+
 ## [2.82.0] - 2026-11-14
 
 ### Changed
