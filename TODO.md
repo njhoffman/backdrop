@@ -185,9 +185,45 @@ Reviewed: 2026-11-07
 - [ ] **Resume stopped reversals too.** (p3) [perf] `reverseVideo` still starts over when stopped; it is fast with VAAPI, but a long video under libx264 loses minutes. The same kept-chunks scheme would fit its chunked reverse.
 - [x] **The smooth cache has no size cap.** (p3) [feature] `Smooth.prune` (`src/display/daemon/Smooth.js`) only deletes copies no longer wanted; unlike `display.bounce_cache_gb` there is no limit, and `~/.cache/backdrop/smooth` was 12 GB on 2026-11-09 (bounce 9.2 of its 10 GB). Add `display.smooth_cache_gb` with the same pruning, and show its use in `doctor`.
       Done in 2.68.0: lowest-rated first, newest first (as bounce), forward and reversed together; the backlog stops while the cache has no room for another copy of the average size, since a backlog copy made into a full cache would be pruned again.
-- [ ] **RIFE is slow on integrated graphics.** (p3) [perf] About one 1080p frame a second on the Iris Xe, so a 20 s clip at 0.5 takes about 30 minutes and the 39 slowed videos about a day. Try `-j` thread counts (load:proc:save), RIFE's half-resolution flow for 4K-sourced copies (`-u` off, `-x`), or the smaller `rife-v4` model, timing each on the same clip.
+- [ ] **RIFE is slow on integrated graphics.** (p3) [perf] Now on the CPU by default (2.79.0), about five times slower again. About one 1080p frame a second on the Iris Xe, so a 20 s clip at 0.5 takes about 30 minutes and the 39 slowed videos about a day. Try `-j` thread counts (load:proc:save), RIFE's half-resolution flow for 4K-sourced copies (`-u` off, `-x`), or the smaller `rife-v4` model, timing each on the same clip.
       Tried `-j` on 2026-11-08 (6 frames of 2560x1440 to 16, factor 3, the daemon paused, three rounds): `1:2:2` (the default), `1:1:2`, `2:2:2`, `2:4:4` and `4:8:4` all took 23.6-25.6 s, the spread within a round. RIFE is bound by the GPU, so threads change nothing; left at the default. What remains is the work itself: the smaller model, or fewer pixels.
       Tried the models on 2026-11-08 (same frames, daemon paused): rife-v4.6 26.0 s, v4.6 with `-u` 24.6 s, rife-v4 23.1 s, within the noise; one frame alone takes 7.5 s, about 5 s of it loading the model. v2/v3 only double the frames, and the lite models of the TNTwise fork are trimmed newer models, no lighter than v4.6. What helped: a 30 fps target (2.65.0), half the frames for a 0.5 video; #153 (0.3x of 25 fps) took 13.2 min at 30 against about 26 at 60.
+- [x] **RIFE hung the iGPU and froze the machine.** (p1) [bug] On 2026-11-13 21:48 the kernel logged two
+      "GPU HANG: ecode 12:1:8fddfff9, in rife-ncnn-vulka"; the rcs0 engine reset and then the full reset timed out, and
+      Charon froze at 21:50 (no panic; the journal just stops). The i915 iGPU is the only GPU and Xorg runs on it, so a RIFE
+      hang takes the desktop with it. 100 "Fence expiration time out ...rife-ncnn-vulka" warnings since 2026-11-10 15:55
+      (backdrop's checkout changed at 15:52 that day), and 7 hangs in the boot before; none in earlier boots. `smoothVideo` (`src/library/smooth.js:207`)
+      always passes `-g 0` with RIFE's default tiles and `-j`. Fix: add `display.smooth_gpu` (default `-1`, CPU; a
+      device index opts in), and on the GPU pass `-j 1:1:1` and a small tile size (`-t 128`) so each submission stays far
+      from i915's fence timeout. Smoothing is off until this lands (`smooth: false`, 2026-11-13).
+      Done (2.79.0): `display.smooth_gpu` (default -1, the CPU), and `-j 1:1:1` on a GPU. This rife-ncnn-vulkan build has
+      no tile option (`-h` lists no `-t`), so a GPU submission is still one whole frame. The CPU is about five times
+      slower (29 s for 6 frames at 1080p with the default `-j`, about 1.7 cores, 2026-11-13).
+- [x] **Stop RIFE on the kernel's fence warnings.** (p1) [feature] A "Fence expiration time out ... rife-ncnn-vulka"
+      line comes before a hang. While a RIFE job runs, follow the kernel log (`journalctl -k -f -o cat`, or `/dev/kmsg`)
+      in `daemon/Smooth.js`; on the first fence warning or "GPU HANG" naming rife, abort the job (the controller already
+      stops it), turn smoothing off for the daemon's life, notify, and record it in `state.json` so `status` and `doctor`
+      show it. Also cap each chunk's time (a few times what its pixels should take) and kill a chunk that runs past it.
+      Done (2.79.0, `src/display/kernelLog.js`): `journalctl -k -f` per GPU job (`/dev/kmsg` is closed by
+      `dmesg_restrict`); a fence timeout, hang or chunk past its limit (`rifeTimeLimit`: four times the job's slowest
+      rate, 30 s a 1080p frame before one is timed) moves smoothing to the CPU for the daemon's life, resuming the job
+      there, and notifies; an unreadable kernel log keeps it on the CPU. Shown in `state.json` `smoothing`, `status`
+      and `doctor`.
+- [x] **Turning smoothing off deletes every copy.** (p2) [bug] With `smooth: false`, `Smooth.reconfigure` calls `prune`,
+      which keeps only what is playing (`wanted` needs `display.smooth`), so 13 GB of RIFE work (127 entries) would have
+      gone on 2026-11-13; it was moved aside first. Turning smoothing off should stop making copies and keep the ones
+      made (the cache cap still applies); deleting them belongs to `purge` or an explicit `--prune`.
+      Done (2.79.0): `prune` no longer counts `display.smooth` off as unwanted, for copies or kept work; the originals
+      play while it is off. No `--prune` was added: deleting the folder clears it, as doctor says.
+- [x] **Doctor: warn when RIFE shares the display's GPU.** (p3) [feature] `doctor` checks the RIFE binary and model;
+      also warn when `smooth_gpu` picks the device Xorg renders on (on Charon, the only one), since a hang there freezes
+      the desktop, not just the job.
+      Done (2.79.0): the `smoothing gpu` check warns with one render node (`/dev/dri/renderD*`), since mapping a
+      Vulkan device number to Xorg's GPU is not reliable; also on an unreadable kernel log and the daemon's fallback.
+- [ ] **Put the kept smoothed copies back.** (p2) [chore] `~/.cache/backdrop/smooth.kept-20261113` (13 GB, 127 entries)
+      is the cache from before smoothing was turned off. Once the guards above are in, move it back to
+      `~/.cache/backdrop/smooth` while the daemon is stopped, then set `smooth: true`. `config.yaml.pre-nosmooth` is the
+      config from before.
 - [x] **The first smoothing job after a start ignored the monitors.** (p2) [bug] `smoothing.begin()` ran before the daemon registered its monitors, so `smoothSize` fell back to the video's own size: #1622 was being made at 2560x1440 for a 1920x1080 screen, and a 4K source would be made at 3840x2160, four times the pixels. One of the 14 finished copies is 2560x1440 for this reason.
       Done (2.64.2): smoothing starts after the monitors, and no job starts while none is known.
 - [ ] **Judge the bounce seam by eye.** (p2) [test] mpv sets up the decoder again where the video meets its reversed copy. On the desktop (2026-11-07, 2732x1440 at 24 fps, VAAPI) no frame dropped at the seam or the loop,

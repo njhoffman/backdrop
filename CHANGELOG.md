@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.79.0] - 2026-11-13
+
+### Added
+- `display.smooth_gpu`: the device RIFE runs on. It defaults to -1, the CPU, which is about five times slower but
+  cannot hang the GPU the desktop draws on (on Intel integrated graphics, a RIFE hang froze the whole machine). A
+  GPU device number opts in, and RIFE then works one frame at a time.
+- On a GPU the daemon watches the kernel log while RIFE runs. On the first fence timeout or GPU hang that names
+  RIFE, or a chunk running far past its expected time, it stops the job, notifies you and carries on from the
+  finished chunks on the CPU until the daemon restarts. Without a readable kernel log (`journalctl -k`, the `adm`
+  group) it stays on the CPU. `status` and `status --json` (`smoothing`) show the fallback.
+- `doctor` warns when RIFE is set to run on the only GPU, when the kernel log cannot be read, and when the daemon
+  has moved smoothing to the CPU.
+- A RIFE chunk that runs past its time limit is stopped, also on the CPU, where its video is given up until the
+  daemon restarts.
+
+### Fixed
+- Turning `display.smooth` off deleted every smoothed copy. It now stops making copies and plays the originals,
+  keeping the copies made (within `display.smooth_cache_gb`) for when it is turned on again.
+
 ## [2.78.0] - 2026-11-10
 
 ### Added

@@ -14,6 +14,7 @@ import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { reverseVideo } from '../library/reverse.js';
 import { smoothVideo } from '../library/smooth.js';
+import { canReadKernelLog, followKernelLog } from './kernelLog.js';
 import { entryPath, playsBounce } from './bounce.js';
 import { Bounce } from './daemon/Bounce.js';
 import { Smooth } from './daemon/Smooth.js';
@@ -133,7 +134,9 @@ export class Daemon {
     // A bouncing video's reversed copy (src/library/reverse.js); resolves to its path, or null
     reverse = (media, { signal, dir } = {}) => reverseVideo(media, dir ?? config.get().paths.bounce, { logger, signal }),
     // A slowed video's smoothed copy (src/library/smooth.js); resolves to its path, or null
-    smoothVideo: smoothen = (media, { dir, size, target, rife, signal } = {}) => smoothVideo(media, dir, { rife, size, target, logger, signal }),
+    smoothVideo: smoothen = (media, { dir, size, target, rife, gpu, signal } = {}) => smoothVideo(media, dir, { rife, size, target, gpu, logger, signal }),
+    // The kernel log, watched while RIFE runs on a GPU (src/display/kernelLog.js)
+    kernelLog = { readable: () => canReadKernelLog(), follow: onLine => followKernelLog(onLine, { onError: error => logger.warn('Failed to follow the kernel log', { error: error.message }) }) },
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
     // The whole config file loaded and checked again, for a saved change; throws on a mistake in it
     readConfig = async () => {
@@ -193,6 +196,7 @@ export class Daemon {
     this.thumbnail = thumbnail;
     this.reverse = reverse;
     this.smoothVideo = smoothen;
+    this.kernelLog = kernelLog;
     this.timers = [];
     // Active monitors by name; screens holds their wallpaper processes, empty while the wallpaper is off
     this.monitors = new Map();
@@ -892,7 +896,7 @@ export class Daemon {
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
-      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary()
+      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary()
     });
     await fs.rename(temporary, file);
   }

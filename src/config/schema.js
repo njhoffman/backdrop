@@ -78,6 +78,9 @@ const SECTIONS = {
     smooth_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
       kind: 'number', min: 0, step: 1, help: 'Room for smoothed copies of slowed videos, in GB; 0 for no limit'
     }),
+    smooth_gpu: field(integer(-1, 15), {
+      kind: 'integer', min: -1, max: 15, help: 'The GPU RIFE runs on (its Vulkan device number), -1 for the CPU; a GPU job moves to the CPU on the kernel\'s first sign of a hang'
+    }),
     allow_upscale: field(boolean, { kind: 'boolean', help: 'Show media smaller than the monitor' }),
     order: field(oneOf(ORDERS), { kind: 'choice', choices: ORDERS, help: 'How next with filters picks a match: random (any still ahead) or shuffle (the next in order)' }),
     notify: field(oneOf(NOTIFY_MODES), { kind: 'choice', choices: NOTIFY_MODES, help: 'Desktop notifications: on commands, on every load, or off' }),

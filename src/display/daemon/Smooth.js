@@ -2,10 +2,12 @@ import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
 import { probeMedia } from '../../library/probe.js';
 import { MODE_KINDS } from '../Playlist.js';
+import { gpuTrouble, processName } from '../kernelLog.js';
+import { notifyError } from '../../utils/notify.js';
 
 const GIGABYTE = 1024 ** 3;
 import {
-  SMOOTH_BELOW, SMOOTH_FPS, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
+  RifeTimeoutError, SMOOTH_BELOW, SMOOTH_FPS, SMOOTH_GPU, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
   smoothedReversedReady, smoothedSize, smoothedSizePath, smoothFactor, staleCopy, stutters, wantsSmoothing
 } from '../../library/smooth.js';
 
@@ -16,6 +18,12 @@ import {
 // (the bounce queue's swap, which also switches a playing entry at the end of its pass). Copies of items no longer
 // slowed, at another speed, gone or skipped are deleted, and the rest kept within display.smooth_cache_gb (prune).
 // Copies for the items playing and next are always made; the backlog only while the cache has room for another.
+// Turning smoothing off stops new copies and plays the originals, but keeps the copies made (within the cache limit).
+//
+// RIFE runs on the CPU unless display.smooth_gpu names a device. On a GPU each job follows the kernel log, and the
+// first fence timeout or GPU hang naming RIFE, or a chunk past its time limit, stops the job and moves smoothing to
+// the CPU for the daemon's life (the job resumes there from its finished chunks); a kernel log this user cannot read
+// keeps it on the CPU from the start. Either shows in state.json (summary), status and doctor.
 export class Smooth {
   constructor(daemon) {
     this.daemon = daemon;
@@ -29,6 +37,9 @@ export class Smooth {
     this.running = null;
     this.controller = null;
     this.encoding = null;
+    // Why smoothing runs on the CPU though display.smooth_gpu names a device: { reason, at }, for the daemon's life
+    this.fallback = null;
+    this.logReadable = null;
   }
 
   get settings() {
@@ -45,6 +56,50 @@ export class Smooth {
 
   get below() {
     return this.settings.display.smooth_below ?? SMOOTH_BELOW;
+  }
+
+  // The device display.smooth_gpu asks for, -1 for the CPU
+  get gpu() {
+    const gpu = this.settings.display.smooth_gpu ?? SMOOTH_GPU;
+    return Number.isInteger(gpu) && gpu >= 0 ? gpu : -1;
+  }
+
+  // For state.json: the device asked for, the one in use, and why they differ
+  summary() {
+    return { enabled: this.enabled, gpu: this.gpu, device: this.fallback ? -1 : this.gpu, fallback: this.fallback, encoding: this.encoding };
+  }
+
+  // The device the next job runs on: the CPU after a fallback, or when the kernel log cannot be watched
+  async device() {
+    if (this.gpu < 0 || this.fallback) return -1;
+    this.logReadable ??= await Promise.resolve(this.daemon.kernelLog?.readable()).catch(() => false);
+    if (!this.logReadable) {
+      await this.fallBack('the kernel log cannot be read (journalctl -k), so a GPU hang could not be caught; add yourself to the adm group', { notify: false, stop: false });
+      return -1;
+    }
+    return this.gpu;
+  }
+
+  // Moves smoothing to the CPU for the daemon's life, stopping the job running (it is queued again, to resume there)
+  async fallBack(reason, { notify = true, stop = true } = {}) {
+    if (this.fallback) return;
+    this.fallback = { reason, at: this.daemon.now?.() ?? Date.now() };
+    this.daemon.logger.warn('Smoothing moved to the CPU', { gpu: this.gpu, reason });
+    if (stop) this.controller?.abort();
+    if (notify) await notifyError(`Smoothing moved to the CPU: ${reason}`, { logger: this.daemon.logger });
+    if (this.daemon.writeState) await this.daemon.writeState().catch(() => {});
+  }
+
+  // While a job runs on a GPU: the kernel's first fence timeout or hang naming RIFE moves smoothing to the CPU
+  watch(rife) {
+    const name = processName(rife);
+    return this.daemon.kernelLog.follow(line => {
+      const trouble = gpuTrouble(line, name);
+      if (!trouble) return;
+      const what = trouble === 'hang' ? 'the GPU hung' : 'the GPU timed out a fence';
+      this.fallBack(`${what} under RIFE ("${String(line).trim().slice(0, 120)}")`)
+        .catch(error => this.daemon.logger.warn('Failed to move smoothing to the CPU', { error: error.message }));
+    });
   }
 
   async begin() {
@@ -175,7 +230,25 @@ export class Smooth {
     const dir = paths.smooth;
     const size = smoothSize(media, [...this.daemon.monitors.values()]);
     if (!smoothedReady(media, dir, size)) {
-      const made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, signal });
+      // Awaited only for a GPU: on the CPU the job starts at once
+      const gpu = this.gpu < 0 || this.fallback ? -1 : await this.device();
+      if (signal.aborted) return this.requeue(media);
+      const watch = gpu >= 0 ? this.watch(display.smooth_rife) : null;
+      let made;
+      try {
+        made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, gpu, signal });
+      } catch (error) {
+        if (!(error instanceof RifeTimeoutError)) throw error;
+        // On a GPU a stalled chunk may be a hang coming; on the CPU the item is given up until the daemon restarts
+        if (gpu >= 0) {
+          await this.fallBack(error.message);
+          return this.requeue(media);
+        }
+        this.failed.add(media.id);
+        return;
+      } finally {
+        watch?.stop();
+      }
       if (signal.aborted) return this.requeue(media);
       if (!made) {
         // A rating moves the file under a running job: try again from where it is
@@ -254,7 +327,7 @@ export class Smooth {
     this.backlog();
   }
 
-  // Deletes copies no longer wanted: smoothing off, the item gone, skipped, at another speed or no longer slowed, and a
+  // Deletes copies no longer wanted: the item gone, skipped, at another speed or no longer slowed, and a
   // reversed copy of an item that no longer bounces, and the kept work of jobs for them. Then, while the rest do not fit
   // in display.smooth_cache_gb (0 for no limit), an item's copies (forward and reversed together) of the lowest-rated
   // items, the newest first, as display.bounce_cache_gb does. Copies of what plays now and of protect stay, counted
@@ -280,7 +353,7 @@ export class Smooth {
     for (const copy of await listSmoothed(paths.smooth)) {
       const media = playing.has(copy.id) ? null : this.daemon.database.getMedia(copy.id);
       // A copy older than its video (download --upgrade replaced it) shows what the item no longer is
-      const wanted = playing.has(copy.id) || (display.smooth && media?.path && media.status !== 'skipped' && media.speed === copy.speed
+      const wanted = playing.has(copy.id) || (media?.path && media.status !== 'skipped' && media.speed === copy.speed
         && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)) && !staleCopy(copy.file, media));
       if (!wanted && await remove(copy)) continue;
       const item = kept.get(copy.id) ?? { id: copy.id, copies: [], size: 0, mtimeMs: 0 };
@@ -312,7 +385,7 @@ export class Smooth {
     for (const work of await listSmoothWork(paths.smooth)) {
       if (work.id === this.encoding) continue;
       const media = this.daemon.database.getMedia(work.id);
-      const wanted = display.smooth && media?.path && media.status !== 'skipped' && media.speed === work.speed && wantsSmoothing(media, this.target);
+      const wanted = media?.path && media.status !== 'skipped' && media.speed === work.speed && wantsSmoothing(media, this.target);
       if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     if (removed.size) {

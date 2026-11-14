@@ -79,6 +79,18 @@ describe('DisplayCommand', () => {
       expect(lines.join('\n')).to.include('Screensaver: off');
     });
 
+    it('says when the daemon moved smoothing from the GPU to the CPU, and nothing otherwise', async () => {
+      command.control = { current: async () => ({ path: null }) };
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: 0, fallback: null } });
+      await command.status();
+      expect(lines.join('\n')).to.not.include('Smoothing');
+      lines.length = 0;
+      const at = new Date(2026, 10, 13, 21, 47).getTime();
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: -1, fallback: { reason: 'the GPU hung under RIFE', at } } });
+      await command.status();
+      expect(lines.join('\n')).to.include('Smoothing: on the CPU since 21:47 (the GPU hung under RIFE; restart the daemon to try GPU 0 again)');
+    });
+
     it('shows the load and the mode it holds back', async () => {
       setMode(db, 'video');
       setModeHold(db, 'image');
@@ -223,7 +235,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], screensaver: null, web: null, config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], screensaver: null, smoothing: null, web: null, config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });

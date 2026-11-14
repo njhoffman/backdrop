@@ -10,7 +10,8 @@ import { enginesOf, followsOneSpeaker, visualizerSettings } from '../visualizer/
 import { ANIMATED_WEBP } from '../library/probe.js';
 import { encodeCounts, listReversed } from '../library/reverse.js';
 import { neededSize } from '../display/bounce.js';
-import { SMOOTH_BELOW, SMOOTH_FPS, listSmoothed, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
+import { canReadKernelLog } from '../display/kernelLog.js';
+import { SMOOTH_BELOW, SMOOTH_FPS, SMOOTH_GPU, listSmoothed, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
 import { wantsJson } from '../utils/mediaView.js';
 import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
@@ -69,9 +70,11 @@ async function onPath(name, env = process.env) {
 export class DoctorCommand {
   constructor(config, database, logger, {
     version = null, which = onPath, x11 = withX11, readStateFile = readState, orphans = findOrphans,
-    checkVisualizers = checkVisualizer, pathExists = fs.pathExists, exec = run
+    checkVisualizers = checkVisualizer, pathExists = fs.pathExists, exec = run,
+    // The GPUs' render nodes (renderD128 and on), one per GPU
+    renderNodes = () => fs.readdir('/dev/dri').then(names => names.filter(name => name.startsWith('renderD'))).catch(() => [])
   } = {}) {
-    Object.assign(this, { config, database, logger, version, which, x11, readStateFile, orphans, checkVisualizers, pathExists, exec });
+    Object.assign(this, { config, database, logger, version, which, x11, readStateFile, orphans, checkVisualizers, pathExists, exec, renderNodes });
   }
 
   async run(options = {}) {
@@ -207,6 +210,32 @@ export class DoctorCommand {
       over ? `the daemon prunes it to display.bounce_cache_gb; delete ${displayPath(paths.bounce)} to clear it` : undefined);
   }
 
+  // display.smooth_gpu: RIFE on a GPU needs the kernel log to be caught before a hang, and on the only GPU a hang takes
+  // the desktop with it (on Charon's i915 it froze the machine); the daemon's move to the CPU, and why
+  async checkSmoothGpu(add, display, state) {
+    const gpu = display.smooth_gpu ?? SMOOTH_GPU;
+    if (!(Number.isInteger(gpu) && gpu >= 0)) return;
+    const problems = [];
+    const hints = [];
+    const fallback = state?.smoothing?.fallback;
+    if (fallback) {
+      const at = Number.isFinite(fallback.at) ? ` since ${new Date(fallback.at).toTimeString().slice(0, 5)}` : '';
+      problems.push(`the daemon smooths on the CPU${at}: ${fallback.reason}`);
+      hints.push('restart the daemon to try the GPU again (backdrop stop, then backdrop start)');
+    } else if (!await canReadKernelLog({ exec: this.exec })) {
+      problems.push('the kernel log cannot be read, so the daemon smooths on the CPU (a GPU hang could not be caught)');
+      hints.push('add yourself to the adm group (sudo usermod -aG adm $USER) and log in again');
+    }
+    const nodes = await this.renderNodes();
+    if (nodes.length <= 1) {
+      problems.push('RIFE shares the only GPU, the one the desktop draws on: a hang there can freeze the machine');
+      hints.push('set display.smooth_gpu: -1 to smooth on the CPU');
+    }
+    add('library', 'smoothing gpu', problems.length ? 'warn' : 'ok',
+      problems.length ? problems.join('; ') : `RIFE on GPU ${gpu} of ${nodes.length}, watched through the kernel log`,
+      hints.length ? hints.join('; ') : undefined);
+  }
+
   // display.smooth: RIFE and its model where the config says, and how many slowed videos have their copies
   async checkSmooth(add) {
     const { display, paths } = this.config.get();
@@ -221,11 +250,12 @@ export class DoctorCommand {
       add('library', 'smoothing', 'fail', `no rife-v4.6 model beside ${binary}`, 'copy the release\'s rife-v4.6 folder next to the binary');
       return;
     }
+    // A copy counts only when it covers the daemon's monitors, as when it plays; without a daemon sizes go unchecked
+    const state = await this.readStateFile(paths.runtime).catch(() => null);
+    await this.checkSmoothGpu(add, display, state);
     const slowed = this.database.findMedia({ kind: ['video', 'gif'], status: ['new', 'kept'], downloaded: true })
       .filter(media => wantsSmoothing(media, display.smooth_fps ?? SMOOTH_FPS)
         && (stutters(media, display.smooth_below ?? SMOOTH_BELOW) || smoothedReady(media, paths.smooth)));
-    // A copy counts only when it covers the daemon's monitors, as when it plays; without a daemon sizes go unchecked
-    const state = await this.readStateFile(paths.runtime).catch(() => null);
     const monitors = state?.monitors ?? [];
     const ready = slowed.filter(media => smoothedReady(media, paths.smooth, neededSize(media, monitors))).length;
     const small = slowed.filter(media => smoothedReady(media, paths.smooth) && !smoothedReady(media, paths.smooth, neededSize(media, monitors))).length;

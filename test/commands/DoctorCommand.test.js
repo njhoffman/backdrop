@@ -184,6 +184,30 @@ describe('DoctorCommand', () => {
     expect(byName(await doctor().run(), 'smoothing')).to.include({ status: 'ok', detail: '0 of 1 slowed videos smoothed; the daemon makes the rest' });
   });
 
+  it('warns when RIFE runs on the only GPU, cannot be watched there, or the daemon moved it to the CPU', async () => {
+    config.set('display.smooth', true);
+    config.set('display.smooth_rife', 'rife-ncnn-vulkan');
+    const which = async () => true;
+    const journal = (line = 'a kernel line') => async (file, args) => (file === 'journalctl' && args.includes('-k') ? line : '');
+    // On the CPU (the default): nothing to say
+    expect(byName(await doctor({ which }).run(), 'smoothing gpu')).to.equal(undefined);
+    config.set('display.smooth_gpu', 0);
+    let check = byName(await doctor({ which, exec: journal(), renderNodes: async () => ['renderD128'] }).run(), 'smoothing gpu');
+    expect(check).to.include({ status: 'warn', detail: 'RIFE shares the only GPU, the one the desktop draws on: a hang there can freeze the machine' });
+    expect(check.hint).to.include('smooth_gpu: -1');
+    check = byName(await doctor({ which, exec: journal(), renderNodes: async () => ['renderD128', 'renderD129'] }).run(), 'smoothing gpu');
+    expect(check).to.include({ status: 'ok', detail: 'RIFE on GPU 0 of 2, watched through the kernel log' });
+    check = byName(await doctor({ which, exec: journal(''), renderNodes: async () => ['renderD128', 'renderD129'] }).run(), 'smoothing gpu');
+    expect(check.status).to.equal('warn');
+    expect(check.detail).to.include('the kernel log cannot be read');
+    expect(check.hint).to.include('adm group');
+    const at = new Date(2026, 10, 13, 21, 47).getTime();
+    const readStateFile = async () => ({ pid: 1, monitors: [], smoothing: { gpu: 0, device: -1, fallback: { reason: 'the GPU hung under RIFE', at } } });
+    check = byName(await doctor({ which, exec: journal(), readStateFile, renderNodes: async () => ['renderD128', 'renderD129'] }).run(), 'smoothing gpu');
+    expect(check).to.include({ status: 'warn', detail: 'the daemon smooths on the CPU since 21:47: the GPU hung under RIFE' });
+    expect(check.hint).to.include('restart the daemon');
+  });
+
   it('reports the smooth cache against its limit, and says when a full cache holds the backlog', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-doctor-smooth-'));
     try {

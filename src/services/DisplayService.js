@@ -159,9 +159,11 @@ export class DisplayService {
     };
     // The screensaver's state while the daemon runs; the running `backdrop web` (its port, never its token)
     const screensaver = state?.screensaver ?? null;
+    // Smoothing's device: { enabled, gpu, device, fallback: { reason, at } | null, encoding }, while the daemon runs
+    const smoothing = state?.smoothing ?? null;
     const info = await readWebInfo(this.runtimeDir);
     const web = info ? { pid: info.pid, port: info.port } : null;
-    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, screensaver, web, config_warnings: this.config.warnings ?? [] };
+    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, screensaver, smoothing, web, config_warnings: this.config.warnings ?? [] };
   }
 
   // What options.monitor (or the monitor under the pointer) plays: { monitor, path, media, rating }

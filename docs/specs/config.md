@@ -64,7 +64,13 @@ display:
   smooth_rife: rife-ncnn-vulkan  # the RIFE binary (https://github.com/nihui/rife-ncnn-vulkan); rife-v4.6 beside it
   smooth_cache_gb: 10      # room for smoothed copies in ~/.cache/backdrop/smooth; over it, copies of the
                            #   lowest-rated videos go first, the newest of them first. The backlog stops while it is
-                           #   full; copies for what plays now and next are still made. 0 for no limit
+                           #   full; copies for what plays now and next are still made. 0 for no limit.
+                           #   Turning smooth off keeps the copies made (still within this limit)
+  smooth_gpu: -1           # the GPU RIFE runs on (its Vulkan device number); -1, the CPU, is about five times slower.
+                           #   On a GPU the daemon follows the kernel log (journalctl -k, the adm group) and moves to
+                           #   the CPU on the first fence timeout or GPU hang naming RIFE, or a chunk far past its
+                           #   expected time; without a readable kernel log it stays on the CPU. A hang on the GPU
+                           #   the desktop draws on can freeze the machine (doctor warns)
   allow_upscale: false     # true allows media smaller than the monitor
   order: random            # how next with filters picks a match: random (any still ahead this pass) or shuffle
                            #   (the next in playlist order); --random / --no-random override it per command.

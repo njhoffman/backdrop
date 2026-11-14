@@ -6,7 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Smooth } from '../../src/display/daemon/Smooth.js';
 import { bounceUrl } from '../../src/display/bounce.js';
-import { smoothWorkPath, smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
+import { RifeTimeoutError, smoothWorkPath, smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
 import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -186,7 +186,7 @@ describe('Smooth (daemon)', () => {
     expect(release).to.be.a('function');
   });
 
-  it('deletes copies for another speed, of items gone or skipped, and stays out of the way when smoothing is off', async () => {
+  it('deletes copies for another speed, of items gone or skipped, and keeps the rest when smoothing is turned off', async () => {
     const kept = await video(1);
     const respeeded = await video(2);
     const gone = await video(3);
@@ -199,11 +199,27 @@ describe('Smooth (daemon)', () => {
     expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.id}@0.5.mp4`]);
     expect(swapped).to.have.length(1);
 
+    // Off: no new copies, and the ones made stay for when it is turned on again, as does a stopped job's work
     config.set('display.smooth', false);
+    await fs.ensureDir(smoothWorkPath(kept, dirSmooth));
     smooth.want(await video(9));
     expect(smooth.queue.size).to.equal(0);
-    await smooth.prune();
-    expect(await fs.readdir(dirSmooth)).to.deep.equal([]);
+    expect(await smooth.prune()).to.deep.equal([]);
+    await smooth.reconfigure();
+    expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${kept.id}@0.5.mp4`, `${kept.id}@0.5.smooth.work`]);
+  });
+
+  it('keeps the cache limit while smoothing is off', async () => {
+    const low = await video(1);
+    const high = await video(2);
+    db.addRating(high.id, 3);
+    const dirSmooth = config.get().paths.smooth;
+    await fs.outputFile(smoothedPath(low, dirSmooth), Buffer.alloc(800));
+    await fs.outputFile(smoothedPath(high, dirSmooth), Buffer.alloc(800));
+    config.set('display.smooth', false);
+    config.set('display.smooth_cache_gb', 1000 / 1024 ** 3);
+    expect(await smooth.prune()).to.deep.equal([low.id]);
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${high.id}@0.5.mp4`]);
   });
 
   it('makes a new copy after a speed change, first in line', async () => {
@@ -377,5 +393,119 @@ describe('Smooth (daemon)', () => {
       expect(await fs.readdir(dirSmooth)).to.have.length(2);
       expect(smooth.usage.bytes).to.be.at.most(5 * 1024);
     });
+  });
+
+  describe('on a GPU', () => {
+    let lines, followed, stopped, gpus;
+
+    beforeEach(() => {
+      config.set('display.smooth_gpu', 0);
+      config.set('display.smooth_rife', '/opt/rife/rife-ncnn-vulkan');
+      followed = 0;
+      stopped = 0;
+      gpus = [];
+      lines = null;
+      daemon.kernelLog = {
+        readable: async () => true,
+        follow: onLine => {
+          followed++;
+          lines = onLine;
+          return { stop: () => { stopped++; } };
+        }
+      };
+      daemon.writeState = sinon.stub().resolves();
+    });
+
+    // A job that waits until stopped on a GPU, and finishes at once on the CPU
+    function hangingOnGpu() {
+      daemon.smoothVideo = async (media, { dir: out, size, gpu, signal }) => {
+        gpus.push(gpu);
+        if (gpu >= 0) {
+          await new Promise(resolve => signal.addEventListener('abort', resolve));
+          return null;
+        }
+        await fs.outputFile(smoothedPath(media, out), 'smoothed');
+        await fs.writeJson(smoothedSizePath(media, out), size);
+        return smoothedPath(media, out);
+      };
+    }
+
+    it('follows the kernel log, and moves to the CPU on a fence timeout naming RIFE, resuming the job there', async () => {
+      hangingOnGpu();
+      const media = await video(1);
+      smooth.want(media);
+      for (let i = 0; i < 100 && !lines; i++) await wait(5);
+      expect(smooth.summary()).to.include({ gpu: 0, device: 0, fallback: null });
+      // Another process's trouble, or RIFE's ordinary lines, change nothing
+      lines('Fence expiration time out i915-0000:00:02.0:Xorg[3087]:96ce4!');
+      lines('rife-ncnn-vulka: something else');
+      await wait(10);
+      expect(gpus).to.deep.equal([0]);
+      lines('Fence expiration time out i915-0000:00:02.0:rife-ncnn-vulka[429491]:8!');
+      await settle();
+      expect(gpus).to.deep.equal([0, -1]);
+      expect(await fs.pathExists(smoothedPath(media, config.get().paths.smooth))).to.equal(true);
+      expect(followed).to.equal(1);
+      expect(stopped).to.equal(1);
+      const { fallback, device } = smooth.summary();
+      expect(device).to.equal(-1);
+      expect(fallback.reason).to.include('the GPU timed out a fence');
+      expect(daemon.writeState.called).to.equal(true);
+      // For the daemon's life: the next job starts on the CPU without watching
+      smooth.want(await video(2));
+      await settle();
+      expect(gpus).to.deep.equal([0, -1, -1]);
+      expect(followed).to.equal(1);
+    });
+
+    it('moves to the CPU on a GPU hang too', async () => {
+      hangingOnGpu();
+      smooth.want(await video(1));
+      for (let i = 0; i < 100 && !lines; i++) await wait(5);
+      lines('i915 0000:00:02.0: [drm] GPU HANG: ecode 12:1:8fddfff9, in rife-ncnn-vulka [381556]');
+      await settle();
+      expect(gpus).to.deep.equal([0, -1]);
+      expect(smooth.summary().fallback.reason).to.include('the GPU hung');
+    });
+
+    it('stays on the CPU when the kernel log cannot be read', async () => {
+      daemon.kernelLog.readable = async () => false;
+      hangingOnGpu();
+      smooth.want(await video(1));
+      await settle();
+      expect(gpus).to.deep.equal([-1]);
+      expect(followed).to.equal(0);
+      expect(smooth.summary().fallback.reason).to.include('kernel log cannot be read');
+    });
+
+    it('moves to the CPU when a chunk runs past its time limit, but gives up the item when that happens on the CPU', async () => {
+      daemon.smoothVideo = async (media, { gpu }) => {
+        gpus.push(gpu);
+        throw new RifeTimeoutError(60);
+      };
+      const media = await video(1);
+      smooth.want(media);
+      await settle();
+      expect(gpus).to.deep.equal([0, -1]);
+      expect(smooth.summary().fallback.reason).to.include('time limit');
+      expect(smooth.failed.has(media.id)).to.equal(true);
+      expect(stopped).to.equal(1);
+    });
+  });
+
+  it('runs on the CPU and never reads the kernel log by default', async () => {
+    const gpus = [];
+    daemon.kernelLog = { readable: sinon.stub().resolves(true), follow: sinon.stub() };
+    const original = daemon.smoothVideo;
+    daemon.smoothVideo = (media, options) => {
+      gpus.push(options.gpu);
+      return original(media, options);
+    };
+    smooth.want(await video(1));
+    await settle();
+    expect(gpus).to.deep.equal([-1]);
+    expect(daemon.kernelLog.readable.called).to.equal(false);
+    expect(daemon.kernelLog.follow.called).to.equal(false);
+    expect(smooth.summary()).to.include({ gpu: -1, device: -1, fallback: null });
   });
 });

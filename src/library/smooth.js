@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ENCODERS, ENCODER_ORDER, run } from './reverse.js';
 
-// Smoothed copies of slowed videos (display.smooth): RIFE (rife-ncnn-vulkan, on the GPU through Vulkan) makes the
+// Smoothed copies of slowed videos (display.smooth): RIFE (rife-ncnn-vulkan, on the CPU or display.smooth_gpu) makes the
 // frames in between, so a video slowed to a speed still shows display.smooth_fps frames a second. A copy has the same
 // length as the video and a whole multiple of its frame rate, and plays at the item's stored speed as the video did;
 // it is named for that speed, so a speed change leaves it stale.
@@ -136,18 +136,73 @@ async function readJob(work) {
 
 const partName = index => `p${String(index).padStart(5, '0')}.mp4`;
 
+// display.smooth_gpu when unset: the CPU. RIFE on the i915 iGPU the desktop draws on hung it and froze the machine
+// (2026-11-13); a GPU is an opt-in, guarded by the daemon's kernel log watch (src/display/kernelLog.js).
+export const SMOOTH_GPU = -1;
+
+// RIFE's arguments for one chunk: on a GPU one frame at a time (-j 1:1:1), so the least work waits on the GPU at once
+export function rifeArgs({ rife, input, output, frames, gpu = SMOOTH_GPU }) {
+  const device = Number.isInteger(gpu) && gpu >= 0 ? gpu : -1;
+  return ['-i', input, '-o', output, '-m', rifeModel(rife), '-n', String(frames), '-g', String(device),
+    ...(device >= 0 ? ['-j', '1:1:1'] : []), '-f', '%08d.png'];
+}
+
+// A RIFE chunk ran past its time limit (rifeTimeLimit) and was stopped: a stall, or the GPU's first sign of a hang
+export class RifeTimeoutError extends Error {
+  constructor(seconds) {
+    super(`RIFE ran past its time limit (${Math.round(seconds)} s for one chunk)`);
+    this.name = 'RifeTimeoutError';
+    this.code = 'RIFE_TIMEOUT';
+  }
+}
+
+// Before any chunk of a job is timed: 30 s a 1080p frame (six times what the CPU took on Charon, 30 times the iGPU),
+// plus the minute loading the model can take on a busy machine
+const FIRST_SECONDS_PER_MEGAPIXEL = 30 / (1920 * 1080 / 1e6);
+const LIMIT_MARGIN = 4;
+const LIMIT_BASE_SECONDS = 60;
+
+// How long, in ms, RIFE may take for a chunk of frames (made) of pixels each; rate is the slowest seconds a megapixel
+// frame took in the job's chunks so far, null before the first
+export function rifeTimeLimit({ frames, pixels, rate = null }) {
+  const megapixels = (frames * pixels) / 1e6;
+  const perMegapixel = rate > 0 ? rate * LIMIT_MARGIN : FIRST_SECONDS_PER_MEGAPIXEL;
+  return Math.round((LIMIT_BASE_SECONDS + megapixels * perMegapixel) * 1000);
+}
+
 // Makes the smoothed copy: returns its path, or null when it could not (logged) or signal aborted it. rife is the
-// binary; size from smoothSize; target is display.smooth_fps. Work happens in smoothWorkPath: each finished chunk is
-// kept there, so a job stopped by the load or a daemon restart starts again at its first missing chunk, with the
-// encoder it was using. A finished copy, or a failure with every encoder, removes the folder.
+// binary; gpu RIFE's device (-1 the CPU); size from smoothSize; target is display.smooth_fps. Work happens in
+// smoothWorkPath: each finished chunk is kept there, so a job stopped by the load or a daemon restart starts again at
+// its first missing chunk, with the encoder it was using. A finished copy, or a failure with every encoder, removes the
+// folder. A RIFE chunk past timeLimit (rifeTimeLimit) is stopped and throws RifeTimeoutError, keeping the work.
 export async function smoothVideo(media, dir, {
-  rife, size, target = SMOOTH_FPS, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true
+  rife, size, target = SMOOTH_FPS, gpu = SMOOTH_GPU, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true,
+  timeLimit = rifeTimeLimit
 } = {}) {
   if (!wantsSmoothing(media, target) || !rife || !size) return null;
   const factor = smoothFactor(media.fps, media.speed, target);
   const fps = media.fps * factor;
   const work = smoothWorkPath(media, dir);
-  const command = (file, args) => (nice ? exec('nice', ['-n', '19', file, ...args], { signal }) : exec(file, args, { signal }));
+  const command = (file, args, stop = signal) => (nice ? exec('nice', ['-n', '19', file, ...args], { signal: stop }) : exec(file, args, { signal: stop }));
+  // The slowest seconds a megapixel frame took in this job, for the next chunk's limit
+  let rate = null;
+  const interpolate = async (input, output, frames) => {
+    const limit = timeLimit({ frames, pixels: size.width * size.height, rate });
+    const timer = new AbortController();
+    const timeout = setTimeout(() => timer.abort(), limit);
+    const begun = now();
+    try {
+      await command(rife, rifeArgs({ rife, input, output, frames, gpu }), signal ? AbortSignal.any([signal, timer.signal]) : timer.signal);
+    } catch (error) {
+      if (timer.signal.aborted && !signal?.aborted) throw new RifeTimeoutError(limit / 1000);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    const seconds = (now() - begun) / 1000;
+    const megapixels = (frames * size.width * size.height) / 1e6;
+    if (megapixels > 0) rate = Math.max(rate ?? 0, seconds / megapixels);
+  };
   // Chunks start at frame numbers, sought half a frame early so the seek lands on that frame whatever the rate
   const perChunk = Math.max(2, Math.round(CHUNK_SECONDS * media.fps));
   const total = Math.max(1, Math.round(media.duration * media.fps));
@@ -204,7 +259,7 @@ export async function smoothVideo(media, dir, {
         // factor - 1 frames between each pair: (taken - 1) * factor + 1 in all, ending on the last frame taken
         const wanted = taken === 1 ? 1 : (taken - 1) * factor + 1;
         if (taken > 1) {
-          await command(rife, ['-i', frames, '-o', out, '-m', rifeModel(rife), '-n', String(wanted), '-g', '0', '-f', '%08d.png']);
+          await interpolate(frames, out, wanted);
         } else {
           await fs.copy(path.join(frames, '000001.png'), path.join(out, '00000001.png'));
         }
@@ -239,6 +294,12 @@ export async function smoothVideo(media, dir, {
       if (signal?.aborted) {
         keepWork = true;
         return null;
+      }
+      // Not the encoder's fault: the finished chunks stay, and the caller decides (the daemon moves a GPU job to the CPU)
+      if (error instanceof RifeTimeoutError) {
+        keepWork = true;
+        logger?.warn('Smoothing stopped: RIFE ran past its time limit', { mediaId: media.id, gpu, error: error.message });
+        throw error;
       }
       // A rating moved the file: the chunks stay (a rename keeps the size and time the job is matched by), and
       // the smoothing job tries again from its new path, resuming them

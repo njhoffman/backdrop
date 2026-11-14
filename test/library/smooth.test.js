@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  covers, listSmoothWork, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
+  RifeTimeoutError, covers, listSmoothWork, rifeArgs, rifeTimeLimit, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
   smoothedSize, smoothedSizePath, staleCopy,
   smoothedReversedPath, stutters, wantsSmoothing
 } from '../../src/library/smooth.js';
@@ -158,7 +158,9 @@ describe('smooth', () => {
       const rife = calls.filter(call => call[0] === '/opt/rife');
       // 10 fps at 0.5 shows 5 a second, so 60 needs a factor of 12: (21 - 1) * 12 + 1 and (5 - 1) * 12 + 1
       expect(rife.map(call => call[call.indexOf('-n') + 1])).to.deep.equal(['241', '49']);
-      expect(rife[0]).to.include.members(['-m', '/opt/rife-v4.6', '-g', '0']);
+      // On the CPU unless a GPU is asked for
+      expect(rife[0]).to.include.members(['-m', '/opt/rife-v4.6', '-g', '-1']);
+      expect(rife[0]).to.not.include('-j');
       const encodes = calls.filter(call => call[0] === 'ffmpeg' && call.includes('-framerate'));
       // The shared frame is dropped from the first chunk; the last keeps all
       expect(encodes.map(call => [call[call.indexOf('-framerate') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['120', '240'], ['120', '49']]);
@@ -262,6 +264,56 @@ describe('smooth', () => {
       };
       expect(await smoothVideo(media, dir, { rife: '/opt/rife', size: { width: 640, height: 360 }, exec, signal: controller.signal, nice: false, encoders: ['x264'] })).to.equal(null);
       expect(await fs.pathExists(smoothedPath(media, dir))).to.equal(false);
+    });
+
+    it('runs RIFE on the GPU asked for, one frame at a time', async () => {
+      const exec = fakeExec();
+      expect(await smoothVideo(media, dir, options(exec, { gpu: 1 }))).to.equal(smoothedPath(media, dir));
+      const rife = calls.find(call => call[0] === '/opt/rife');
+      expect(rife.slice(rife.indexOf('-g'), rife.indexOf('-g') + 4)).to.deep.equal(['-g', '1', '-j', '1:1:1']);
+    });
+
+    it('stops a RIFE chunk past its time limit, keeping the finished chunks, and throws', async () => {
+      const inner = fakeExec();
+      let rifeRuns = 0;
+      // The second chunk's RIFE never finishes until it is stopped
+      const exec = async (file, args, { signal } = {}) => {
+        if (file === '/opt/rife' && ++rifeRuns === 2) {
+          calls.push([file, ...args]);
+          await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('killed'))));
+        }
+        return inner(file, args);
+      };
+      const limits = [];
+      const timeLimit = work => {
+        limits.push(work);
+        return work.rate === null ? 5000 : 20;
+      };
+      let error;
+      try {
+        await smoothVideo(media, dir, options(exec, { timeLimit }));
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).to.be.instanceOf(RifeTimeoutError);
+      expect(error.message).to.include('time limit');
+      // The first chunk was timed, so the second's limit came from its rate
+      expect(limits.map(work => [work.frames, work.pixels, work.rate === null])).to.deep.equal([[121, 640 * 360, true], [115, 640 * 360, false]]);
+      expect((await fs.readdir(smoothWorkPath(media, dir))).filter(name => name.endsWith('.mp4'))).to.deep.equal(['p00000.mp4']);
+      // No other encoder was tried for it
+      expect(calls.filter(call => call[0] === '/opt/rife')).to.have.length(2);
+    });
+
+    it('sets a chunk\'s RIFE arguments and time limit', () => {
+      expect(rifeArgs({ rife: '/opt/rife', input: 'in', output: 'out', frames: 9 })).to.deep.equal(['-i', 'in', '-o', 'out', '-m', '/opt/rife-v4.6', '-n', '9', '-g', '-1', '-f', '%08d.png']);
+      const device = args => args.slice(args.indexOf('-g'), -2);
+      expect(device(rifeArgs({ rife: '/opt/rife', input: 'in', output: 'out', frames: 9, gpu: 'x' }))).to.deep.equal(['-g', '-1']);
+      expect(device(rifeArgs({ rife: '/opt/rife', input: 'in', output: 'out', frames: 9, gpu: 0 }))).to.deep.equal(['-g', '0', '-j', '1:1:1']);
+      const pixels = 1920 * 1080;
+      // 30 s a 1080p frame before any chunk is timed, a minute on top
+      expect(rifeTimeLimit({ frames: 10, pixels })).to.be.closeTo(360000, 1);
+      // Four times the slowest rate measured, here 2 s a megapixel frame
+      expect(rifeTimeLimit({ frames: 10, pixels: 1e6, rate: 2 })).to.equal(140000);
     });
   });
 });
