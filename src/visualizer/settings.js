@@ -21,7 +21,7 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim'];
+const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
 const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
@@ -488,6 +488,9 @@ function normalize(raw, prefix) {
     wallpaperDim: integer(`${prefix}wallpaper_dim`, raw.wallpaper_dim ?? 0, { max: 100 }),
     // The monitor height sizes in pixels are meant for; null leaves them in pixels on every monitor
     referenceHeight: raw.reference_height === null ? null : integer(`${prefix}reference_height`, raw.reference_height ?? 1440, { min: 1 }),
+    // The capture latency GLava's streams ask for (PULSE_LATENCY_MSEC): its own 128-frame request pulls the
+    // whole PipeWire graph down to a 5 ms quantum, which stutters playback; null or 0 leaves its request alone
+    latencyMs: raw.latency_ms === null ? null : integer(`${prefix}latency_ms`, raw.latency_ms ?? 30, { max: 1000 }) || null,
     glava: {
       shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
       args: stringList(`${prefix}glava.args`, glava.args ?? [])
@@ -616,7 +619,7 @@ export function lookAsPreset(section = {}, { preset, live } = {}) {
 // The visualizer section normalized, with its active preset laid over it: preset (`backdrop visualizer
 // preset`) when given, else visualizer.preset, then the visualizer menu's changes (live). Every preset is
 // checked, so a mistake in one shows before it is used. Returns { enabled, engine, audio, source,
-// onlyWhilePlaying, silenceGrace, wallpaperDim, glava, instances: [{ name, module, opacity, layout, monitors,
+// onlyWhilePlaying, silenceGrace, wallpaperDim, latencyMs, glava, instances: [{ name, module, opacity, layout, monitors,
 // palette, pipe, defines, requests }], preset, presets }.
 export function visualizerSettings(section = {}, { preset, live } = {}) {
   if (!isObject(section)) fail('', 'a mapping', section);

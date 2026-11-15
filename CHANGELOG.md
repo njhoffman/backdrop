@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.84.0] - 2026-11-14
+
+### Added
+
+- `visualizer.latency_ms` (default 30): the capture latency GLava asks the sound server for; `null` or 0 leaves
+  GLava's own.
+
+### Fixed
+
+- Music playback no longer stutters while GLava runs on PipeWire: its capture asked for 128-frame fragments, pulling
+  the whole audio graph down to a 5 ms quantum, with xruns on every stream.
+
 ## [2.83.0] - 2026-11-14
 
 ### Added

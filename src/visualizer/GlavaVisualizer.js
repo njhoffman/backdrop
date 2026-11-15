@@ -91,7 +91,7 @@ export class GlavaVisualizer {
 
   // geometry is absolute in the root window: { x, y, width, height }
   command(monitor, geometry, env = process.env) {
-    const { audio, source, glava } = this.settings;
+    const { audio, source, glava, latencyMs } = this.settings;
     const { module, requests } = this.instance;
     const all = [
       ...BASE_REQUESTS,
@@ -113,7 +113,9 @@ export class GlavaVisualizer {
       env: {
         ...env,
         XDG_CONFIG_HOME: this.root,
-        PULSE_COOKIE: env.PULSE_COOKIE ?? path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'pulse', 'cookie')
+        PULSE_COOKIE: env.PULSE_COOKIE ?? path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'pulse', 'cookie'),
+        // libpulse lays this over GLava's own small fragment size, so its capture stops shrinking the graph's quantum
+        ...(latencyMs ? { PULSE_LATENCY_MSEC: String(latencyMs) } : {})
       }
     };
   }

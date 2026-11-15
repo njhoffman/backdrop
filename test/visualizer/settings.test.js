@@ -392,6 +392,11 @@ describe('visualizer settings', () => {
     it('marks the pixel sizes that follow the window, except raw defines', () => {
       expect(visualizerSettings({}).referenceHeight).to.equal(1440);
       expect(visualizerSettings({ reference_height: null }).referenceHeight).to.equal(null);
+      expect(visualizerSettings({}).latencyMs).to.equal(30);
+      expect(visualizerSettings({ latency_ms: 0 }).latencyMs).to.equal(null);
+      expect(visualizerSettings({ latency_ms: null }).latencyMs).to.equal(null);
+      expect(() => visualizerSettings({ latency_ms: -5 })).to.throw(/visualizer.latency_ms/);
+      expect(() => visualizerSettings({ instances: [{ name: 'a', latency_ms: 50 }] })).to.throw(/latency_ms/);
       const [item] = visualizerSettings({ module: 'radial', radial: { radius: 100, amplify: 200 }, defines: { AMPLIFY: 90 } }).instances;
       expect(item.scaled).to.deep.equal(['C_RADIUS', 'C_LINE', 'BAR_WIDTH', 'GRADIENT']);
       expect(visualizerSettings({}).instances[0].scaled).to.deep.equal(['BAR_WIDTH', 'BAR_GAP', 'AMPLIFY', 'GRADIENT']);

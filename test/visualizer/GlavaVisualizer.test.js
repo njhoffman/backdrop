@@ -80,8 +80,16 @@ describe('GlavaVisualizer', () => {
     const own = visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 10, height: 10 }, {}).args;
     expect(own).to.include('setsource "backdrop_left"');
     expect(args.at(-1)).to.equal('-v');
-    expect(env).to.deep.equal({ PATH: '/bin', XDG_CONFIG_HOME: '/run/bd/visualizer', PULSE_COOKIE: '/home/u/.config/pulse/cookie' });
+    expect(env).to.deep.equal({ PATH: '/bin', XDG_CONFIG_HOME: '/run/bd/visualizer', PULSE_COOKIE: '/home/u/.config/pulse/cookie', PULSE_LATENCY_MSEC: '30' });
     expect(visualizer.command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, { PULSE_COOKIE: '/c' }).env.PULSE_COOKIE).to.equal('/c');
+  });
+
+  it('asks for the configured capture latency, over one in the environment, or leaves it alone', () => {
+    const latency = (section, env = {}) => glava(section, { root: '/r' }).command({ name: 'DP-3' }, { x: 0, y: 0, width: 1, height: 1 }, env).env.PULSE_LATENCY_MSEC;
+    expect(latency({ latency_ms: 50 })).to.equal('50');
+    expect(latency({ latency_ms: 50 }, { PULSE_LATENCY_MSEC: '10' })).to.equal('50');
+    expect(latency({ latency_ms: null })).to.equal(undefined);
+    expect(latency({ latency_ms: 0 }, { PULSE_LATENCY_MSEC: '10' })).to.equal('10');
   });
 
   it('reads the piped colors from stdin when there are any', () => {

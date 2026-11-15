@@ -801,6 +801,19 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done (2.75.1): `followsOneSpeaker` (`src/visualizer/settings.js`) checks the section, its preset and the
       screensaver's presets; the default `screensaver-instrumental` look makes pactl wanted whenever the visualizer is on.
 
+- [x] **GLava's capture forces a 5 ms audio quantum.** (p1) [bug] Seen 2026-11-14 on charon (PipeWire 1.4.7, Bluetooth
+      SBC sink): each GLava capture stream asks for 128 frames at 22050 Hz, which pulls the whole graph down to a
+      256-frame quantum (about 5 ms at 48 kHz) instead of 1024, and `pw-top` showed 17,796 xruns on GLava's stream,
+      566 on Spotify's and 162 on the sink, heard as stutter in playback. Fix: give the spawned GLava a larger latency
+      through its environment in `GlavaVisualizer.js` (`PULSE_LATENCY_MSEC`, e.g. 50; a `visualizer.latency_ms`
+      option), then check that `pw-top` shows the graph back at 1024 and GLava's ERR count staying flat.
+      Done (2.84.0): `visualizer.latency_ms` (default 30, `null`/0 for GLava's own) sets `PULSE_LATENCY_MSEC` on each
+      GLava, over the daemon's environment. Checked on charon: the sink back at 1024, GLava's stream at 661 frames
+      (30 ms at 22050 Hz); over 45 s the sink's ERR stayed flat and GLava's and Spotify's rose by a handful (was 22,653).
+- [ ] **Check sleeve's and projectM's capture quantum.** (p3) [test] Both capture audio too (`SleeveVisualizer.js`,
+      `ProjectmVisualizer.js`); run each on the real desktop and see in `pw-top` whether its stream lowers the graph's
+      quantum below 1024 the way GLava's did. If one does, give it the same `PULSE_LATENCY_MSEC` from `latency_ms`.
+
 ## 10. Web interface
 
 A local HTML interface for what the CLI and the rofi menu do now: the library, what each monitor plays, visualizer
