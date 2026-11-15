@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
 import { probeMedia } from '../../library/probe.js';
+import { renameIdCopies } from '../../library/copies.js';
 import { listReverseWork } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
@@ -10,7 +11,7 @@ import { notifyError } from '../../utils/notify.js';
 const GIGABYTE = 1024 ** 3;
 import {
   RifeTimeoutError, SMOOTH_BELOW, SMOOTH_FPS, SMOOTH_GPU, listSmoothWork, listSmoothed, removeStaleSmoothWork, smoothSize, smoothWorkPath, smoothedPath, smoothedReady, smoothedReversedPath,
-  smoothedReversedReady, smoothedSize, smoothedSizePath, smoothFactor, staleCopy, stutters, wantsSmoothing
+  smoothedReversedReady, smoothedSize, smoothedSizePath, smoothFactor, stutters, wantsSmoothing
 } from '../../library/smooth.js';
 
 // Smoothed copies of slowed videos (display.smooth, src/library/smooth.js) for a Daemon (passed in), and mpv's frame
@@ -138,6 +139,7 @@ export class Smooth {
     if (!this.settings.paths.smooth) return;
     this.gate.check();
     this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Smoothing gate check failed', { error: error.message })));
+    await renameIdCopies(this.settings.paths.smooth, this.daemon.database, { logger: this.daemon.logger });
     await removeStaleSmoothWork(this.settings.paths.smooth);
     await this.recordSizes();
     await this.prune();
@@ -156,7 +158,7 @@ export class Smooth {
     const dir = this.settings.paths.smooth;
     const probe = this.daemon.probe ?? probeMedia;
     for (const copy of await listSmoothed(dir)) {
-      const media = { id: copy.id, speed: copy.speed };
+      const media = { sha256: copy.sha256, speed: copy.speed };
       if (copy.reversed || smoothedSize(media, dir)) continue;
       try {
         const { width, height } = await probe(copy.file);
@@ -301,7 +303,7 @@ export class Smooth {
     }
     if (bounces(media, display) && !smoothedReversedReady(media, dir, size)) {
       const fps = media.fps * smoothFactor(media.fps, media.speed, this.target);
-      const copy = { id: `${media.id}@${media.speed}.reversed`, kind: media.kind, path: smoothedPath(media, dir), duration: media.duration, fps, ...size };
+      const copy = { id: media.id, copyKey: `${media.sha256}@${media.speed}.reversed`, kind: media.kind, path: smoothedPath(media, dir), duration: media.duration, fps, ...size };
       const reversed = await this.daemon.reverse(copy, { signal, dir });
       if (signal.aborted) return this.requeue(media);
       if (!reversed || reversed !== smoothedReversedPath(media, dir)) this.daemon.logger.warn('No reversed smoothed copy', { mediaId: media.id });
@@ -388,22 +390,24 @@ export class Smooth {
       }
     };
     const kept = new Map();
-    for (const copy of await listSmoothed(paths.smooth)) {
-      const media = playing.has(copy.id) ? null : this.daemon.database.getMedia(copy.id);
-      // A copy older than its video (download --upgrade replaced it) shows what the item no longer is
-      const wanted = playing.has(copy.id) || (media?.path && media.status !== 'skipped' && media.speed === copy.speed
-        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)) && !staleCopy(copy.file, media));
+    // Copies are named for their item's sha256: one whose file was replaced (download --upgrade) has no item any more
+    for (const listed of await listSmoothed(paths.smooth)) {
+      const media = this.daemon.database.getMediaBySha256(listed.sha256);
+      const copy = { ...listed, id: media?.id ?? null };
+      const shown = copy.id !== null && playing.has(copy.id);
+      const wanted = shown || (media?.path && media.status !== 'skipped' && media.speed === copy.speed
+        && wantsSmoothing(media, this.target) && (!copy.reversed || bounces(media, display)));
       if (!wanted && await remove(copy)) continue;
-      const item = kept.get(copy.id) ?? { id: copy.id, copies: [], size: 0, mtimeMs: 0 };
+      const item = kept.get(copy.sha256) ?? { id: copy.id, copies: [], size: 0, mtimeMs: 0 };
       item.copies.push(copy);
       item.size += copy.size;
       item.mtimeMs = Math.max(item.mtimeMs, copy.mtimeMs);
-      kept.set(copy.id, item);
+      kept.set(copy.sha256, item);
     }
     const limit = (display.smooth_cache_gb ?? 0) * GIGABYTE;
     let total = [...kept.values()].reduce((sum, item) => sum + item.size, 0);
     const rating = id => this.daemon.database.getLatestRating(id)?.rating ?? 0;
-    const order = [...kept.values()].filter(item => !playing.has(item.id))
+    const order = [...kept.entries()].filter(([, item]) => !playing.has(item.id)).map(([sha256, item]) => ({ ...item, sha256 }))
       .map(item => ({ ...item, rating: rating(item.id) }))
       .sort((a, b) => a.rating - b.rating || b.mtimeMs - a.mtimeMs);
     let evicted = 0;
@@ -415,31 +419,31 @@ export class Smooth {
         total -= copy.size;
         gone++;
       }
-      if (gone === item.copies.length) kept.delete(item.id);
+      if (gone === item.copies.length) kept.delete(item.sha256);
       if (gone) evicted++;
     }
     this.usage = { bytes: total, items: kept.size };
     // A stopped job's chunks stay only while its item still wants that copy (the job running now keeps its own)
     for (const work of await listSmoothWork(paths.smooth)) {
-      if (work.id === this.encoding) continue;
-      const media = this.daemon.database.getMedia(work.id);
+      const media = this.daemon.database.getMediaBySha256(work.sha256);
+      if (media && media.id === this.encoding) continue;
       const wanted = media?.path && media.status !== 'skipped' && media.speed === work.speed && wantsSmoothing(media, this.target);
       if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     // The same for a stopped reversal of a smoothed copy, which also needs the item to bounce
     for (const work of await listReverseWork(paths.smooth)) {
-      const match = /^(\d+)@([\d.]+)\.reversed$/.exec(work.key);
-      const id = match ? Number(match[1]) : null;
-      if (id !== null && id === this.encoding) continue;
-      const media = id === null ? null : this.daemon.database.getMedia(id);
+      const match = /^([0-9a-f]{64})@([\d.]+)\.reversed$/.exec(work.key);
+      const media = match ? this.daemon.database.getMediaBySha256(match[1]) : null;
+      if (media && media.id === this.encoding) continue;
       const wanted = media?.path && media.status !== 'skipped' && media.speed === Number(match[2]) && wantsSmoothing(media, this.target) && bounces(media, display);
       if (!wanted) await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete smoothing work', { file: work.file, error: error.message }));
     }
     if (removed.size) {
       this.daemon.logger.info('Pruned smoothed copies', { items: removed.size, overLimit: evicted, bytesKept: total });
-      await this.daemon.bounce.swap(removed);
+      // A copy of a replaced file (no item has its sha256 now) may still be what an entry plays: every entry is checked
+      await this.daemon.bounce.swap(removed.has(null) ? null : removed);
     }
-    return [...removed];
+    return [...removed].filter(id => id !== null);
   }
 }
 

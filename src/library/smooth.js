@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { ENCODERS, ENCODER_ORDER, run } from './reverse.js';
+import { ENCODERS, ENCODER_ORDER, SHA256, copyKey, run } from './reverse.js';
 
 // Smoothed copies of slowed videos (display.smooth): RIFE (rife-ncnn-vulkan, on the CPU or display.smooth_gpu) makes the
 // frames in between, so a video slowed to a speed still shows display.smooth_fps frames a second. A copy has the same
@@ -14,25 +14,33 @@ import { ENCODERS, ENCODER_ORDER, run } from './reverse.js';
 
 const CHUNK_SECONDS = 2;
 
+// Named for the item's sha256 and speed (see copyKey in reverse.js); null for an item with no sha256
+const named = (media, dir, suffix) => {
+  const key = copyKey(media);
+  return key && dir ? path.join(dir, `${key}@${media.speed}${suffix}`) : null;
+};
+
 export function smoothedPath(media, dir) {
-  return path.join(dir, `${media.id}@${media.speed}.mp4`);
+  return named(media, dir, '.mp4');
 }
 
 // The reversed copy of a smoothed copy, for a bouncing video
 export function smoothedReversedPath(media, dir) {
-  return path.join(dir, `${media.id}@${media.speed}.reversed.mp4`);
+  return named(media, dir, '.reversed.mp4');
 }
 
 // The size a smoothed copy was made at, beside it: { width, height }. Its reversed copy, made from it, has the same.
 export function smoothedSizePath(media, dir) {
-  return path.join(dir, `${media.id}@${media.speed}.json`);
+  return named(media, dir, '.json');
 }
 
 // The recorded size of the item's smoothed copy, or null when none is recorded (a copy from before 2.69.0, until the
 // daemon probes it)
 export function smoothedSize(media, dir) {
+  const file = smoothedSizePath(media, dir);
+  if (!file) return null;
   try {
-    const size = JSON.parse(fs.readFileSync(smoothedSizePath(media, dir), 'utf8'));
+    const size = JSON.parse(fs.readFileSync(file, 'utf8'));
     return size?.width > 0 && size?.height > 0 ? { width: size.width, height: size.height } : null;
   } catch {
     return null;
@@ -45,6 +53,7 @@ export function covers(size, need) {
 }
 
 function newer(file, than) {
+  if (!file || !than) return false;
   try {
     return fs.statSync(file).mtimeMs >= fs.statSync(than).mtimeMs;
   } catch {
@@ -52,21 +61,23 @@ function newer(file, than) {
   }
 }
 
-// Whether the item's copy for its speed exists and is no older than the video; with need (smoothSize for the
-// monitors it would show on), also that it was made at least that large, so a copy never plays below the original's
-// resolution on a monitor
+function isFile(file) {
+  try {
+    return Boolean(file) && fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// Whether the item's copy for its speed exists; with need (smoothSize for the monitors it would show on), also that it
+// was made at least that large, so a copy never plays below the original's resolution on a monitor
 export function smoothedReady(media, dir, need = null) {
-  if (!(media?.path && dir && newer(smoothedPath(media, dir), media.path))) return false;
+  if (!(media?.path && isFile(smoothedPath(media, dir)))) return false;
   return !need || covers(smoothedSize(media, dir), need);
 }
 
 export function smoothedReversedReady(media, dir, need = null) {
   return Boolean(media?.path && dir && newer(smoothedReversedPath(media, dir), smoothedPath(media, dir)) && smoothedReady(media, dir, need));
-}
-
-// Whether a copy file is older than the item's video (download --upgrade replaced it), so it no longer shows it
-export function staleCopy(file, media) {
-  return Boolean(media?.path && !newer(file, media.path));
 }
 
 // display.smooth_fps when unset: 30 a second is enough for a slowed video not to stutter, and costs half the GPU
@@ -116,7 +127,7 @@ export function rifeModel(binary) {
 
 // The folder a copy is made in, kept when a job stops so the next one carries on from its finished chunks
 export function smoothWorkPath(media, dir) {
-  return path.join(dir, `${media.id}@${media.speed}.smooth.work`);
+  return named(media, dir, '.smooth.work');
 }
 
 // What a work folder's chunks were made from and how; a job resumes only one that matches all but the encoder. The
@@ -179,7 +190,7 @@ export async function smoothVideo(media, dir, {
   rife, size, target = SMOOTH_FPS, gpu = SMOOTH_GPU, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true,
   timeLimit = rifeTimeLimit
 } = {}) {
-  if (!wantsSmoothing(media, target) || !rife || !size) return null;
+  if (!wantsSmoothing(media, target) || !rife || !size || !copyKey(media)) return null;
   const factor = smoothFactor(media.fps, media.speed, target);
   const fps = media.fps * factor;
   const work = smoothWorkPath(media, dir);
@@ -317,26 +328,28 @@ export async function smoothVideo(media, dir, {
   return null;
 }
 
-// The smoothed copies in dir (forward and reversed), with their size and modification time, oldest first
+// The smoothed copies in dir (forward and reversed): { sha256, speed, reversed, file, size, mtimeMs }, oldest first
 export async function listSmoothed(dir) {
   const names = await fs.readdir(dir).catch(() => []);
   const copies = [];
+  const pattern = new RegExp(`^(${SHA256})@([\\d.]+)(\\.reversed)?\\.mp4$`);
   for (const name of names) {
-    const match = /^(\d+)@([\d.]+)(\.reversed)?\.mp4$/.exec(name);
+    const match = pattern.exec(name);
     if (!match) continue;
     const file = path.join(dir, name);
     const stat = await fs.stat(file).catch(() => null);
-    if (stat?.isFile()) copies.push({ id: Number(match[1]), speed: Number(match[2]), reversed: Boolean(match[3]), file, size: stat.size, mtimeMs: stat.mtimeMs });
+    if (stat?.isFile()) copies.push({ sha256: match[1], speed: Number(match[2]), reversed: Boolean(match[3]), file, size: stat.size, mtimeMs: stat.mtimeMs });
   }
   return copies.sort((a, b) => a.mtimeMs - b.mtimeMs);
 }
 
-// Work folders kept by stopped jobs, by item and speed
+// Work folders kept by stopped jobs, by item (sha256) and speed
 export async function listSmoothWork(dir) {
   const names = await fs.readdir(dir).catch(() => []);
+  const pattern = new RegExp(`^(${SHA256})@([\\d.]+)\\.smooth\\.work$`);
   return names.map(name => {
-    const match = /^(\d+)@([\d.]+)\.smooth\.work$/.exec(name);
-    return match ? { id: Number(match[1]), speed: Number(match[2]), file: path.join(dir, name) } : null;
+    const match = pattern.exec(name);
+    return match ? { sha256: match[1], speed: Number(match[2]), file: path.join(dir, name) } : null;
   }).filter(Boolean);
 }
 

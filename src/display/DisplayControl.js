@@ -275,8 +275,8 @@ export class DisplayControl {
   }
 
   // Rebuild affected playlists after a file move, keeping the same item selected where possible.
-  // An item's file was replaced (download --upgrade): the daemon deletes its reversed and smoothed copies, now older
-  // than the file, and makes them again first, at the new resolution. Nothing to do while no daemon runs, which
+  // An item's file was replaced (download --upgrade): the daemon deletes its reversed and smoothed copies, named for
+  // the old content, and makes them again first, at the new resolution. Nothing to do while no daemon runs, which
   // prunes them on start.
   async mediaReplaced(media) {
     const state = await this.state({ required: false });

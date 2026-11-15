@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-11-07
+Reviewed: 2026-11-15
 
 ## 3. Display engine on mpv sockets
 
@@ -299,6 +299,24 @@ Reviewed: 2026-11-07
       resizing Xephyr did not reproduce it (16 starts mid-`xrandr -s`, all fine; no DRI3 there, and no output swap).
       Left: read the `output` of the next `mpv exited` warning after a monitor swap, and fix what it names (an X error
       suggests waiting for the layout to settle before starting, step 3 of the plan).
+- [x] **Reversals have no NVENC encoder.** (p2) [perf] `ENCODERS` in `src/library/reverse.js` tries VAAPI, then
+      libx264. On an NVIDIA machine (minerva) VAAPI fails, so every reversal falls back to CPU x264 even though mpv
+      already prefers nvdec there. Add an `h264_nvenc` entry (`-cq 20`, `-preset p4`) ahead of x264 when the NVIDIA
+      driver is loaded, the same probe `Daemon.js` uses for nvdec.
+      Done in 2.87.0, partly: NVIDIA machines skip VAAPI (libx264 alone), and `ENCODERS.nvenc` exists but is not in
+      `defaultEncoders`, since CUDA took about 19 s to start per ffmpeg on minerva (see the next item).
+- [ ] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
+      (`nvidia-smi -q`, though `nvidia-persistenced` is active), and each ffmpeg spent about 19 s starting CUDA, against
+      about 1 s for a 1080p libx264 chunk on 12 cores (2026-11-15). Enable it (`sudo nvidia-smi -pm 1`, or drop
+      `--no-persistence-mode` from the unit), time a finite `testsrc=...:duration=2` encode again under `timeout` and a
+      `systemd-run --scope -p MemoryMax=2G`, and put `nvenc` ahead of `x264` in `defaultEncoders` if it beats libx264.
+- [x] **Derived copies are keyed by the local media id.** (p3) [refactor] `reversedPath` and `smoothedPath`
+      (`src/library/reverse.js`, `smooth.js`) name copies `<media.id>.mp4` / `<id>@<speed>.mp4`, and staleness compares
+      mtimes with the item's file. Both are meaningful only in one database, so a copy made on another machine (or
+      restored from a backup) cannot be matched. Keying by `sha256` (already UNIQUE on `media`) plus the parameters
+      would make copies portable; needed before any offloading to a second host.
+      Done in 2.87.0: copies are `<sha256>...`, readiness no longer compares file times, and the daemon renames
+      id-named copies on start (`renameIdCopies`, `src/library/copies.js`).
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
@@ -871,6 +889,25 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
 - [x] **Tests for the web interface.** (p3) [test] Request handlers driven with the fakes the command tests use (`test/helpers/fakes.js`), so routine runs stay offline, and one optional browser test skipped
       when no headless browser is installed, like the rofi and Xvfb integration tests.
       Done: route tests (`test/web/server.test.js`) and `test/web/pages.browser.test.js`, every page in headless Chrome through `playwright-core` (2.60.0), skipped without a browser.
+
+## 11. Two machines
+
+minerva (the always-on desktop, NVIDIA) is the source of truth; charon (the laptop) offloads encodes to it and syncs
+ratings with it. Media is not synced: either machine can fetch and encode again. Agreed 2026-11-15.
+
+- [ ] **Encode worker over SSH.** (p2) [feature] `backdrop worker`: a stateless JSON-over-stdio process, reached as
+      `ssh minerva backdrop worker`. The shared encode slot (`daemon/Bounce.js`, `daemon/Smooth.js`) gets a host list
+      (e.g. `offload.hosts: [minerva, local]`) and falls back to the local slot when minerva cannot be reached. A job
+      carries the sha256, kind, speed, fps and the requester's target size; Pexels sources are fetched by the worker
+      itself, local imports streamed over the connection. A protocol version is exchanged on connect.
+- [ ] **Rating sync.** (p2) [feature] Schema v11: a host id per database and a change log keyed by (host, sequence)
+      for ratings, undo events and per-item attributes (speed, bounce; dim stays per machine). Peers exchange entries
+      after each host's high-water mark (`ssh minerva backdrop sync --serve`); ratings merge as a set union, attributes
+      last writer wins. Items match on (source, source_id), or sha256 for local imports; verdicts for media a machine
+      does not have become rows with no file, so a remote skip stops a download, and a remote skip of a file it has
+      trashes it. Status must come from the latest rating by `created_at`, not row id.
+- [ ] **Reach minerva off the LAN.** (p3) [chore] Tailscale is installed on charon but tailscaled was not running
+      (2026-11-15). Bring up both machines on the tailnet so `ssh minerva` works anywhere; nothing in backdrop changes.
 
 ## Completed
 

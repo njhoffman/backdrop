@@ -2,6 +2,7 @@ import { bounces, entryPath, playsBounce, playUrl, smoothedFor } from '../bounce
 import { refreshEntries } from '../Playlist.js';
 import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
 import fs from 'fs-extra';
+import { renameIdCopies } from '../../library/copies.js';
 import { listReverseWork, listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
 
 const GIGABYTE = 1024 ** 3;
@@ -49,6 +50,7 @@ export class Bounce {
     if (!this.settings.paths.bounce) return;
     this.gate.check();
     this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Bounce gate check failed', { error: error.message })));
+    await renameIdCopies(this.settings.paths.bounce, this.daemon.database, { logger: this.daemon.logger });
     await removeStaleWork(this.settings.paths.bounce);
     await this.prune();
   }
@@ -189,8 +191,8 @@ export class Bounce {
     this.want(media);
   }
 
-  // `backdrop copies --sync`: unwanted and stale copies go, and the items still bouncing are reversed again, not
-  // waiting for their next play
+  // `backdrop copies --sync`: unwanted copies go, and the items still bouncing are reversed again, not waiting for their
+  // next play. A copy of a replaced file is of content no item has, so its item is reversed on its next play instead.
   async resync() {
     const removed = await this.prune();
     for (const id of removed) this.want(this.daemon.database.getMedia(id));
@@ -301,13 +303,14 @@ export class Bounce {
     if (!paths.bounce) return [];
     const playing = new Set([...this.daemon.screens.values()].map(screen => screen.media?.id).filter(Boolean));
     for (const id of protect) playing.add(id);
-    const all = await listReversed(paths.bounce);
-    const copies = all.filter(copy => !playing.has(copy.id));
-    const unwanted = copies.filter(copy => {
-      const media = this.daemon.database.getMedia(copy.id);
-      // A copy older than its video (download --upgrade replaced it) reverses what the item no longer is
-      return !media?.path || media.status === 'skipped' || !bounces(media, display) || !reversedReady(media, paths.bounce);
+    // Copies are named for their item's sha256: one whose file was replaced (download --upgrade) has no item any more
+    const all = (await listReversed(paths.bounce)).map(copy => {
+      const media = this.daemon.database.getMediaBySha256(copy.sha256);
+      return { ...copy, media, id: media?.id ?? null };
     });
+    const copies = all.filter(copy => copy.id === null || !playing.has(copy.id));
+    const unwanted = copies.filter(({ media }) => !media?.path || media.status === 'skipped' || !bounces(media, display)
+      || !reversedReady(media, paths.bounce));
     const rating = id => this.daemon.database.getLatestRating(id)?.rating ?? 0;
     const kept = copies.filter(copy => !unwanted.includes(copy))
       .map(copy => ({ ...copy, rating: rating(copy.id) }))
@@ -323,9 +326,8 @@ export class Bounce {
     }
     // A stopped job's chunks stay only while its item still bounces (the job running now keeps its own)
     for (const work of await listReverseWork(paths.bounce)) {
-      const id = Number(work.key);
-      if (id === this.encoding) continue;
-      const media = Number.isInteger(id) ? this.daemon.database.getMedia(id) : null;
+      const media = this.daemon.database.getMediaBySha256(work.key);
+      if (media && media.id === this.encoding) continue;
       if (media?.path && media.status !== 'skipped' && bounces(media, display)) continue;
       await fs.remove(work.file).catch(error => this.daemon.logger.warn('Failed to delete reverse work', { file: work.file, error: error.message }));
     }
@@ -335,12 +337,13 @@ export class Bounce {
         await fs.remove(copy.file);
         removed.push(copy.id);
       } catch (error) {
-        this.daemon.logger.warn('Failed to delete a reversed copy', { mediaId: copy.id, error: error.message });
+        this.daemon.logger.warn('Failed to delete a reversed copy', { mediaId: copy.id, file: copy.file, error: error.message });
       }
     }
     if (!removed.length) return removed;
     this.daemon.logger.info('Pruned reversed copies', { unwanted: unwanted.length, overLimit: evicted.length, bytesKept: total });
-    await this.swap(removed);
-    return removed;
+    // A copy of a replaced file (no item has its sha256 now) may still be what an entry plays: every entry is checked
+    await this.swap(removed.includes(null) ? null : removed);
+    return removed.filter(id => id !== null);
   }
 }

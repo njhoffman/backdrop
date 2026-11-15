@@ -6,7 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { purgeTrash, trashDays } from '../../src/library/purge.js';
 import { PurgeCommand } from '../../src/commands/PurgeCommand.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('trash purge', () => {
   let dir, db, config;
@@ -29,6 +29,7 @@ describe('trash purge', () => {
     const file = path.join(dir, folder, name);
     await fs.outputFile(file, 'media');
     const id = db.addMedia({ kind: 'image', source: 'pexels', source_id: name, path: file });
+    db.updateMedia(id, { sha256: fakeSha(id) });
     db.addRating(id, 0);
     db.db.prepare(`UPDATE media SET status_changed_at = datetime('now', ?) WHERE id = ?`).run(`-${age} days`, id);
     return id;
@@ -56,7 +57,7 @@ describe('trash purge', () => {
   it('deletes the reversed copy of a purged video', async () => {
     config.set('paths.bounce', path.join(dir, 'bounce'));
     const id = await skipped('old.mp4');
-    const copy = path.join(dir, 'bounce', `${id}.mp4`);
+    const copy = path.join(dir, 'bounce', `${fakeSha(id)}.mp4`);
     await fs.outputFile(copy, 'reversed');
     await run();
     expect(await fs.pathExists(copy)).to.be.false;

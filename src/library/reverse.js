@@ -19,9 +19,14 @@ const MAX_CHUNK = 2;
 // For frame sizes and rates not recorded yet
 const DEFAULT_FPS = 60;
 
-// Encoders tried in order: VAAPI where the GPU has it, libx264 everywhere else. Every chunk of one copy
-// comes from the same encoder, since joining them without encoding needs matching streams.
+// Encoders tried in order: NVENC on an NVIDIA card, VAAPI where the GPU has it, libx264 everywhere else. Every chunk of
+// one copy comes from the same encoder, since joining them without encoding needs matching streams.
 export const ENCODERS = {
+  nvenc: {
+    input: [],
+    filter: 'reverse,format=yuv420p',
+    output: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '20', '-b:v', '0']
+  },
   vaapi: {
     input: ['-init_hw_device', 'vaapi=va', '-filter_hw_device', 'va'],
     filter: 'reverse,format=nv12,hwupload',
@@ -35,15 +40,38 @@ export const ENCODERS = {
 };
 export const ENCODER_ORDER = ['vaapi', 'x264'];
 
-export function reversedPath(media, dir) {
-  return path.join(dir, `${media.id}.mp4`);
+// Where NVIDIA's kernel driver reports itself once loaded
+export const NVIDIA_DRIVER = '/proc/driver/nvidia/version';
+
+// The encoders to try on this machine. Where NVIDIA's driver is loaded, VAAPI goes through nvidia-vaapi-driver, which
+// cannot encode, so every job failed with it before falling back; libx264 goes first there. NVENC is not tried yet:
+// each ffmpeg spent about 19 s starting CUDA on minerva (GTX 960, persistence mode off, 2026-11-15) against about 1 s
+// for a libx264 chunk on its 12 cores, and a reversal starts one ffmpeg per chunk. VAAPI first elsewhere.
+export function defaultEncoders({ exists = fs.existsSync } = {}) {
+  return exists(NVIDIA_DRIVER) ? ['x264'] : ENCODER_ORDER;
 }
 
-// Whether the reversed copy exists and is no older than the video (download --upgrade replaces it)
+// Copies are named for the item's content (media.sha256), not its id, so a copy means the same video in any library
+// and a replaced file (download --upgrade, a new sha256) leaves its old copy unwanted instead of stale. copyKey lets a
+// caller name a copy of something else: a smoothed copy's reversal is "<sha256>@<speed>.reversed".
+export const SHA256 = '[0-9a-f]{64}';
+
+export function copyKey(media) {
+  return media?.copyKey ?? media?.sha256 ?? null;
+}
+
+// The reversed copy's path, or null for an item with no sha256
+export function reversedPath(media, dir) {
+  const key = copyKey(media);
+  return key && dir ? path.join(dir, `${key}.mp4`) : null;
+}
+
+// Whether the item's reversed copy exists
 export function reversedReady(media, dir) {
-  if (!media?.path || !dir) return false;
+  const file = media?.path ? reversedPath(media, dir) : null;
+  if (!file) return false;
   try {
-    return fs.statSync(reversedPath(media, dir)).mtimeMs >= fs.statSync(media.path).mtimeMs;
+    return fs.statSync(file).isFile();
   } catch {
     return false;
   }
@@ -68,9 +96,9 @@ function chunkName(index) {
 }
 
 // The folder a copy is made in, kept when a job stops so the next one carries on from its finished chunks. A smoothed
-// copy's reversal (id "<id>@<speed>.reversed", in the smooth folder) gets its own.
+// copy's reversal (key "<sha256>@<speed>.reversed", in the smooth folder) gets its own.
 export function reverseWorkPath(media, dir) {
-  return path.join(dir, `${media.id}.reverse.work`);
+  return path.join(dir, `${copyKey(media)}.reverse.work`);
 }
 
 // What a work folder's chunks were made from; a job resumes only one that matches all but the encoder. The source is
@@ -89,7 +117,7 @@ function sameJob(a, b) {
 // or a daemon restart starts again at its first missing chunk, with the encoder it was using. A finished copy, or a
 // failure with every encoder, removes the folder.
 export async function reverseVideo(media, dir, { exec = run, logger, nice = true, signal, encoders = ENCODER_ORDER, now = Date.now } = {}) {
-  if (!media?.path || !(media.duration > 0)) return null;
+  if (!media?.path || !(media.duration > 0) || !copyKey(media)) return null;
   const target = reversedPath(media, dir);
   const work = reverseWorkPath(media, dir);
   const chunk = chunkSeconds(media);
@@ -167,8 +195,8 @@ export async function reverseVideo(media, dir, { exec = run, logger, nice = true
   return null;
 }
 
-// Work folders kept by stopped jobs: { key, file }, key the id part of the name ("12", or "12@0.5.reversed" for a
-// smoothed copy's reversal)
+// Work folders kept by stopped jobs: { key, file }, key the copy's name before the suffix ("<sha256>", or
+// "<sha256>@0.5.reversed" for a smoothed copy's reversal)
 export async function listReverseWork(dir) {
   const names = await fs.readdir(dir).catch(() => []);
   return names.map(name => {
@@ -184,16 +212,17 @@ export async function removeStaleWork(dir) {
   await Promise.all(names.filter(name => name.endsWith('.tmp')).map(name => fs.remove(path.join(dir, name))));
 }
 
-// The finished copies in dir: { id, file, size, mtimeMs }, oldest first. Work folders and other names are left out.
+// The finished copies in dir: { sha256, file, size, mtimeMs }, oldest first. Work folders and other names are left out.
 export async function listReversed(dir) {
   const names = await fs.readdir(dir).catch(() => []);
   const copies = [];
+  const pattern = new RegExp(`^(${SHA256})\\.mp4$`);
   for (const name of names) {
-    const match = /^(\d+)\.mp4$/.exec(name);
+    const match = pattern.exec(name);
     if (!match) continue;
     const file = path.join(dir, name);
     const stat = await fs.stat(file).catch(() => null);
-    if (stat?.isFile()) copies.push({ id: Number(match[1]), file, size: stat.size, mtimeMs: stat.mtimeMs });
+    if (stat?.isFile()) copies.push({ sha256: match[1], file, size: stat.size, mtimeMs: stat.mtimeMs });
   }
   return copies.sort((a, b) => a.mtimeMs - b.mtimeMs);
 }
@@ -224,6 +253,6 @@ export function encodeCounts(database, now = new Date()) {
 
 // Drops an item's reversed copy (purged, or its file replaced)
 export async function removeReversed(media, dir) {
-  if (!dir) return;
-  await fs.remove(reversedPath(media, dir));
+  const file = reversedPath(media, dir);
+  if (file) await fs.remove(file);
 }

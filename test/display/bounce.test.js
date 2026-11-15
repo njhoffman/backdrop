@@ -8,7 +8,7 @@ import { mediaJson } from '../../src/utils/mediaView.js';
 import { smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
 import { loadPlaylist, refreshEntries, syncPlaylist, queueMatching } from '../../src/display/Playlist.js';
 import { reversedPath } from '../../src/library/reverse.js';
-import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
+import { FakeMpvClient, fakeSha, makeConfig } from '../helpers/fakes.js';
 
 const MONITOR = { name: 'DP-3', width: 1920, height: 1080, x: 0, y: 0 };
 
@@ -31,7 +31,7 @@ describe('bounce', () => {
   async function video(id, { reversed = false, kind = 'video' } = {}) {
     const file = path.join(dir, 'media', `${id}.mp4`);
     await fs.outputFile(file, 'video');
-    const mediaId = db.addMedia({ kind, source: 'local', source_id: id, width: 1920, height: 1080, duration: 10, path: file });
+    const mediaId = db.addMedia({ kind, source: 'local', source_id: id, sha256: fakeSha(id), width: 1920, height: 1080, duration: 10, path: file });
     const media = db.getMedia(mediaId);
     if (reversed) await fs.outputFile(reversedPath(media, config.get().paths.bounce), 'reversed');
     return media;
@@ -63,16 +63,17 @@ describe('bounce', () => {
       expect(isBounceUrl('/m/1.mp4')).to.equal(false);
     });
 
-    it('plays the file until the reversed copy is ready and no older than it', async () => {
+    it('plays the file until the reversed copy of its content is ready', async () => {
       const ready = await video(1, { reversed: true });
       const waiting = await video(2);
       expect(playUrl(ready, config.get())).to.equal(bounceUrl(ready.path, reversedPath(ready, config.get().paths.bounce)));
       expect(playUrl(waiting, config.get())).to.equal(waiting.path);
 
-      // download --upgrade replaced the file after the copy was made
+      // download --upgrade replaced the file after the copy was made: another sha256, so the copy is not its
       const later = new Date(Date.now() + 60000);
       await fs.utimes(ready.path, later, later);
-      expect(playUrl(ready, config.get())).to.equal(ready.path);
+      expect(playUrl(ready, config.get())).to.equal(bounceUrl(ready.path, reversedPath(ready, config.get().paths.bounce)));
+      expect(playUrl({ ...ready, sha256: fakeSha(99) }, config.get())).to.equal(ready.path);
     });
 
     it('plays the file when the item does not bounce, whatever copy there is', async () => {
@@ -121,7 +122,7 @@ describe('bounce', () => {
       config.set('paths.smooth', path.join(dir, 'smooth'));
       const file = path.join(dir, 'media', '5.mp4');
       await fs.outputFile(file, 'video');
-      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 5, path: file, duration: 10, fps: 30, speed: 0.5 }));
+      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 5, sha256: fakeSha(5), path: file, duration: 10, fps: 30, speed: 0.5 }));
       const smooth = config.get().paths.smooth;
       await fs.outputFile(reversedPath(media, config.get().paths.bounce), 'reversed original');
       expect(playUrl(media, config.get())).to.equal(bounceUrl(file, reversedPath(media, config.get().paths.bounce)));
@@ -141,7 +142,7 @@ describe('bounce', () => {
       const file = path.join(dir, 'media', '6.mp4');
       await fs.outputFile(file, 'video');
       await fs.utimes(file, 1000, 1000);
-      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 6, path: file, width: 3840, height: 2160, duration: 10, fps: 30, speed: 0.5 }));
+      const media = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 6, sha256: fakeSha(6), path: file, width: 3840, height: 2160, duration: 10, fps: 30, speed: 0.5 }));
       const smooth = config.get().paths.smooth;
       await fs.outputFile(smoothedPath(media, smooth), 'smoothed at 1080p');
       await fs.writeJson(smoothedSizePath(media, smooth), { width: 1920, height: 1080 });

@@ -7,7 +7,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Smooth } from '../../src/display/daemon/Smooth.js';
 import { bounceUrl } from '../../src/display/bounce.js';
 import { RifeTimeoutError, smoothWorkPath, smoothedPath, smoothedReversedPath, smoothedSizePath } from '../../src/library/smooth.js';
-import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { FakeMpvClient, fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -40,7 +40,7 @@ describe('Smooth (daemon)', () => {
       },
       reverse: async (copy, { dir: out }) => {
         reversed.push(copy);
-        const file = path.join(out, `${copy.id}.mp4`);
+        const file = path.join(out, `${copy.copyKey}.mp4`);
         await fs.outputFile(file, 'reversed');
         return file;
       }
@@ -57,9 +57,8 @@ describe('Smooth (daemon)', () => {
   async function video(n, { speed = 0.5, fps = 30, bounce = false } = {}) {
     const file = path.join(dir, 'media', `${n}.mp4`);
     await fs.outputFile(file, 'video');
-    // Older than any copy the tests make, which would otherwise count as stale (older than their video)
     await fs.utimes(file, OLD, OLD);
-    return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: n, path: file, width: 2560, height: 1440, duration: 10, fps, speed, bounce }));
+    return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: n, sha256: fakeSha(n), path: file, width: 2560, height: 1440, duration: 10, fps, speed, bounce }));
   }
 
   const settle = async () => {
@@ -155,15 +154,26 @@ describe('Smooth (daemon)', () => {
     expect(made.map(item => item.id)).to.deep.equal([started.id, high.id]);
   });
 
+  it('renames copies named for the id on start, keeping their size, so they play without being made again', async () => {
+    const media = await video(1);
+    const dirSmooth = config.get().paths.smooth;
+    await fs.outputFile(path.join(dirSmooth, '1@0.5.mp4'), 'smoothed');
+    await fs.writeJson(path.join(dirSmooth, '1@0.5.json'), { width: 1920, height: 1080 });
+    await smooth.begin();
+    await settle();
+    expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${media.sha256}@0.5.json`, `${media.sha256}@0.5.mp4`]);
+    expect(made).to.deep.equal([]);
+  });
+
   it('deletes kept work of items that no longer want that copy', async () => {
     const kept = await video(1);
     const respeeded = await video(2);
     const dirSmooth = config.get().paths.smooth;
     for (const media of [kept, respeeded]) await fs.ensureDir(smoothWorkPath(media, dirSmooth));
-    await fs.ensureDir(path.join(dirSmooth, '99@0.5.smooth.work'));
+    await fs.ensureDir(path.join(dirSmooth, `${fakeSha(99)}@0.5.smooth.work`));
     db.updateMedia(respeeded.id, { speed: 0.75 });
     await smooth.prune();
-    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.id}@0.5.smooth.work`]);
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.sha256}@0.5.smooth.work`]);
   });
 
   it('makes a bouncing video\'s reversed copy from its smoothed one', async () => {
@@ -171,7 +181,7 @@ describe('Smooth (daemon)', () => {
     smooth.want(media);
     await settle();
     expect(reversed).to.have.length(1);
-    expect(reversed[0]).to.include({ id: `${media.id}@0.5.reversed`, path: smoothedPath(media, config.get().paths.smooth), fps: 60, width: 1920 });
+    expect(reversed[0]).to.include({ id: media.id, copyKey: `${media.sha256}@0.5.reversed`, path: smoothedPath(media, config.get().paths.smooth), fps: 60, width: 1920 });
     expect(await fs.pathExists(smoothedReversedPath(media, config.get().paths.smooth))).to.equal(true);
   });
 
@@ -223,7 +233,7 @@ describe('Smooth (daemon)', () => {
     db.updateMedia(respeeded.id, { speed: 0.75 });
     db.addRating(gone.id, 0);
     expect((await smooth.prune()).sort()).to.deep.equal([kept.id, respeeded.id, gone.id].sort());
-    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.id}@0.5.mp4`]);
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${kept.sha256}@0.5.mp4`]);
     expect(swapped).to.have.length(1);
 
     // Off: no new copies, and the ones made stay for when it is turned on again, as does a stopped job's work
@@ -233,14 +243,14 @@ describe('Smooth (daemon)', () => {
     expect(smooth.queue.size).to.equal(0);
     expect(await smooth.prune()).to.deep.equal([]);
     await smooth.reconfigure();
-    expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${kept.id}@0.5.mp4`, `${kept.id}@0.5.smooth.work`]);
+    expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${kept.sha256}@0.5.mp4`, `${kept.sha256}@0.5.smooth.work`]);
   });
 
   it('keeps a stopped reversal of a smoothed copy only while its item bounces at that speed', async () => {
     const bouncing = await video(1, { bounce: true });
     const plain = await video(2);
     const dirSmooth = config.get().paths.smooth;
-    const work = (media, speed = media.speed) => path.join(dirSmooth, `${media.id}@${speed}.reversed.reverse.work`);
+    const work = (media, speed = media.speed) => path.join(dirSmooth, `${media.sha256}@${speed}.reversed.reverse.work`);
     for (const file of [work(bouncing), work(bouncing, 0.75), work(plain)]) await fs.outputFile(path.join(file, 'c00000.mp4'), 'chunk');
     await smooth.prune();
     expect(await fs.readdir(dirSmooth)).to.deep.equal([path.basename(work(bouncing))]);
@@ -256,7 +266,7 @@ describe('Smooth (daemon)', () => {
     config.set('display.smooth', false);
     config.set('display.smooth_cache_gb', 1000 / 1024 ** 3);
     expect(await smooth.prune()).to.deep.equal([low.id]);
-    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${high.id}@0.5.mp4`]);
+    expect(await fs.readdir(dirSmooth)).to.deep.equal([`${high.sha256}@0.5.mp4`]);
   });
 
   it('makes a new copy after a speed change, first in line', async () => {
@@ -340,24 +350,20 @@ describe('Smooth (daemon)', () => {
       daemon.probe = async file => { probed.push(path.basename(file)); return { width: 1920, height: 1080 }; };
       await smooth.begin();
       await settle();
-      expect(probed).to.deep.equal([`${media.id}@0.5.mp4`]);
+      expect(probed).to.deep.equal([`${media.sha256}@0.5.mp4`]);
       expect(await fs.readJson(smoothedSizePath(media, dirSmooth))).to.deep.equal(hd);
       expect(made).to.deep.equal([]);
     });
 
-    it('deletes copies older than their video (download --upgrade), with their size, and makes them again', async () => {
+    it('deletes the copies of a replaced file (download --upgrade, a new sha256), with their size, and makes them again', async () => {
       const dirSmooth = config.get().paths.smooth;
       const media = await video(1, { bounce: true });
       config.set('display.video_loop', 'bounce');
-      // The copies a day before the video, not moments: written moments apart they can share its timestamp
-      const before = new Date(Date.now() - 86_400_000);
-      for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) {
-        await fs.outputFile(file, 'old');
-        await fs.utimes(file, before, before);
-      }
+      for (const file of [smoothedPath(media, dirSmooth), smoothedReversedPath(media, dirSmooth)]) await fs.outputFile(file, 'old');
       await fs.writeJson(smoothedSizePath(media, dirSmooth), hd);
-      await fs.utimes(media.path, new Date(), new Date());
-      expect((await smooth.prune())).to.deep.equal([media.id]);
+      db.updateMedia(media.id, { sha256: fakeSha(50) });
+      // Of content no item has: deleted, with no id to return, and every entry checked
+      expect((await smooth.prune())).to.deep.equal([]);
       expect(await fs.readdir(dirSmooth)).to.deep.equal([]);
       await smooth.changed(media.id);
       await settle();
@@ -391,7 +397,7 @@ describe('Smooth (daemon)', () => {
       // 7 KB of copies: room for 4, the playing item's counted but kept
       config.set('display.smooth_cache_gb', 4 * KB);
       expect((await smooth.prune()).sort()).to.deep.equal([lowOld.id, lowNew.id].sort());
-      expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${high.id}@0.5.mp4`, `${high.id}@0.5.reversed.mp4`, `${playing.id}@0.5.mp4`]);
+      expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${high.sha256}@0.5.mp4`, `${high.sha256}@0.5.reversed.mp4`, `${playing.sha256}@0.5.mp4`]);
       expect(smooth.usage).to.deep.equal({ bytes: 3 * 1024, items: 2 });
       expect(swapped).to.have.length(1);
 

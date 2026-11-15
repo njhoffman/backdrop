@@ -4,10 +4,13 @@ import os from 'os';
 import path from 'path';
 import {
   RifeTimeoutError, covers, listSmoothWork, rifeArgs, rifeTimeLimit, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
-  smoothedSize, smoothedSizePath, staleCopy,
+  smoothedSize, smoothedSizePath,
   smoothedReversedPath, stutters, wantsSmoothing
 } from '../../src/library/smooth.js';
-import { silentLogger } from '../helpers/fakes.js';
+import { fakeSha, silentLogger } from '../helpers/fakes.js';
+
+const S3 = fakeSha(3);
+const S7 = fakeSha(7);
 
 describe('smooth', () => {
   let dir;
@@ -69,24 +72,29 @@ describe('smooth', () => {
     expect(smoothSize({ width: null, height: 1 })).to.equal(null);
   });
 
-  it('names copies by item and speed, and finds the model beside the binary', async () => {
-    const media = { id: 7, speed: 0.5, path: path.join(dir, 'v.mp4') };
-    expect(smoothedPath(media, dir)).to.equal(path.join(dir, '7@0.5.mp4'));
-    expect(smoothedReversedPath(media, dir)).to.equal(path.join(dir, '7@0.5.reversed.mp4'));
+  it('names copies by content and speed, and finds the model beside the binary', async () => {
+    const media = { id: 7, sha256: S7, speed: 0.5, path: path.join(dir, 'v.mp4') };
+    expect(smoothedPath(media, dir)).to.equal(path.join(dir, `${S7}@0.5.mp4`));
+    expect(smoothedReversedPath(media, dir)).to.equal(path.join(dir, `${S7}@0.5.reversed.mp4`));
+    // No sha256, no name, so nothing is ever made or found for it
+    expect(smoothedPath({ id: 7, speed: 0.5 }, dir)).to.equal(null);
+    expect(smoothedReady({ id: 7, speed: 0.5, path: media.path }, dir)).to.equal(false);
     expect(rifeModel('/opt/rife/rife-ncnn-vulkan')).to.equal('/opt/rife/rife-v4.6');
     await fs.outputFile(media.path, 'video');
     expect(smoothedReady(media, dir)).to.equal(false);
     await fs.outputFile(smoothedPath(media, dir), 'copy');
     expect(smoothedReady(media, dir)).to.equal(true);
     expect(smoothedReady({ ...media, speed: 0.75 }, dir)).to.equal(false);
-    await fs.outputFile(path.join(dir, '7@0.5.reversed.mp4'), 'r');
+    await fs.outputFile(path.join(dir, `${S7}@0.5.reversed.mp4`), 'r');
     await fs.outputFile(path.join(dir, 'notes.txt'), 'x');
-    expect((await listSmoothed(dir)).map(({ id, speed, reversed }) => ({ id, speed, reversed })).sort((a, b) => a.reversed - b.reversed))
-      .to.deep.equal([{ id: 7, speed: 0.5, reversed: false }, { id: 7, speed: 0.5, reversed: true }]);
+    // Names from before 2.87 (the item's id) are not copies until the daemon renames them
+    await fs.outputFile(path.join(dir, '7@0.5.mp4'), 'old');
+    expect((await listSmoothed(dir)).map(({ sha256, speed, reversed }) => ({ sha256, speed, reversed })).sort((a, b) => a.reversed - b.reversed))
+      .to.deep.equal([{ sha256: S7, speed: 0.5, reversed: false }, { sha256: S7, speed: 0.5, reversed: true }]);
   });
 
-  it('counts a copy ready for monitors only when its recorded size covers what they need, and a copy older than its video stale', async () => {
-    const media = { id: 7, speed: 0.5, path: path.join(dir, 'v.mp4') };
+  it('counts a copy ready for monitors only when its recorded size covers what they need, whatever its age', async () => {
+    const media = { id: 7, sha256: S7, speed: 0.5, path: path.join(dir, 'v.mp4') };
     await fs.outputFile(media.path, 'video');
     await fs.utimes(media.path, 1000, 1000);
     await fs.outputFile(smoothedPath(media, dir), 'copy');
@@ -100,21 +108,18 @@ describe('smooth', () => {
     expect(smoothedReady(media, dir, { width: 2560, height: 1440 })).to.equal(false);
     expect(covers(hd, { width: 1920, height: 1082 })).to.equal(false);
     expect(covers(null, hd)).to.equal(false);
-    // The video replaced after the copy (download --upgrade)
-    expect(staleCopy(smoothedPath(media, dir), media)).to.equal(false);
-    // A day after the copy, not moments: written moments apart they can share a timestamp
+    // A video newer than its copy (a rating moved it) still has it: a replaced file would have another sha256
     await fs.utimes(media.path, new Date(Date.now() + 86_400_000), new Date(Date.now() + 86_400_000));
-    expect(staleCopy(smoothedPath(media, dir), media)).to.equal(true);
-    expect(smoothedReady(media, dir)).to.equal(false);
+    expect(smoothedReady(media, dir)).to.equal(true);
   });
 
   it('lists kept work folders, and clears only temporary leftovers', async () => {
-    await fs.ensureDir(path.join(dir, '7@0.5.smooth.work'));
+    await fs.ensureDir(path.join(dir, `${S7}@0.5.smooth.work`));
     await fs.ensureDir(path.join(dir, '8.1234.smooth.tmp'));
     await fs.outputFile(path.join(dir, '9.mp4.tmp'), 'x');
-    expect((await listSmoothWork(dir)).map(({ id, speed }) => ({ id, speed }))).to.deep.equal([{ id: 7, speed: 0.5 }]);
+    expect((await listSmoothWork(dir)).map(({ sha256, speed }) => ({ sha256, speed }))).to.deep.equal([{ sha256: S7, speed: 0.5 }]);
     await removeStaleSmoothWork(dir);
-    expect(await fs.readdir(dir)).to.deep.equal(['7@0.5.smooth.work']);
+    expect(await fs.readdir(dir)).to.deep.equal([`${S7}@0.5.smooth.work`]);
   });
 
   describe('smoothVideo', () => {
@@ -124,7 +129,7 @@ describe('smooth', () => {
       const file = path.join(dir, 'media', 'v.mp4');
       await fs.outputFile(file, 'video');
       // 2.5 s at 10 fps: chunks of 20 frames from frames 0 and 20, the second the last
-      media = { id: 3, kind: 'video', path: file, duration: 2.5, fps: 10, speed: 0.5, width: 640, height: 360 };
+      media = { id: 3, sha256: S3, kind: 'video', path: file, duration: 2.5, fps: 10, speed: 0.5, width: 640, height: 360 };
       calls = [];
     });
 
@@ -150,8 +155,8 @@ describe('smooth', () => {
       const copy = await smoothVideo(media, dir, {
         rife: '/opt/rife', size: { width: 640, height: 360 }, exec, nice: false, logger: silentLogger, encoders: ['x264'], target: 60
       });
-      expect(copy).to.equal(path.join(dir, '3@0.5.mp4'));
-      expect(await fs.readJson(path.join(dir, '3@0.5.json'))).to.deep.equal({ width: 640, height: 360 });
+      expect(copy).to.equal(path.join(dir, `${S3}@0.5.mp4`));
+      expect(await fs.readJson(path.join(dir, `${S3}@0.5.json`))).to.deep.equal({ width: 640, height: 360 });
       const extracts = calls.filter(call => call[0] === 'ffmpeg' && call.some(arg => String(arg).endsWith('%06d.png')));
       // Chunk starts half a frame early so the seek lands on frames 0 and 20
       expect(extracts.map(call => [call[call.indexOf('-ss') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['0', '21'], ['1.95', '20']]);
@@ -165,7 +170,7 @@ describe('smooth', () => {
       // The shared frame is dropped from the first chunk; the last keeps all
       expect(encodes.map(call => [call[call.indexOf('-framerate') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['120', '240'], ['120', '49']]);
       expect(calls.at(-1)).to.include.members(['-f', 'concat', '-c', 'copy']);
-      expect(await fs.readdir(dir)).to.include.members(['3@0.5.mp4', 'media']);
+      expect(await fs.readdir(dir)).to.include.members([`${S3}@0.5.mp4`, 'media']);
       expect((await fs.readdir(dir)).filter(name => name.endsWith('.tmp'))).to.deep.equal([]);
     });
 
@@ -173,7 +178,7 @@ describe('smooth', () => {
       const copy = await smoothVideo(media, dir, {
         rife: '/opt/rife', size: { width: 640, height: 360 }, exec: fakeExec({ fail: (file, args) => args.includes('h264_vaapi') }), nice: false, logger: silentLogger
       });
-      expect(copy).to.equal(path.join(dir, '3@0.5.mp4'));
+      expect(copy).to.equal(path.join(dir, `${S3}@0.5.mp4`));
       await fs.remove(copy);
       expect(await smoothVideo(media, dir, {
         rife: '/opt/rife', size: { width: 640, height: 360 }, exec: fakeExec({ fail: file => file === '/opt/rife' }), nice: false, logger: silentLogger
@@ -197,7 +202,7 @@ describe('smooth', () => {
     it('keeps the finished chunks of a stopped job, and the next one carries on from them', async () => {
       await stopAfterFirstChunk();
       const work = smoothWorkPath(media, dir);
-      expect(work).to.equal(path.join(dir, '3@0.5.smooth.work'));
+      expect(work).to.equal(path.join(dir, `${S3}@0.5.smooth.work`));
       expect((await fs.readdir(work)).filter(name => name.endsWith('.mp4'))).to.deep.equal(['p00000.mp4']);
       calls = [];
       const copy = await smoothVideo(media, dir, options(fakeExec()));

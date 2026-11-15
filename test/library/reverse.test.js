@@ -4,9 +4,9 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  chunkSeconds, chunkStarts, encodeCounts, listReverseWork, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, chunkSeconds, chunkStarts, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
-import { silentLogger } from '../helpers/fakes.js';
+import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 
 function hasTool(name) {
@@ -51,7 +51,7 @@ describe('reverse', () => {
     beforeEach(async () => {
       const file = path.join(dir, 'media', 'clip.mp4');
       await fs.outputFile(file, 'video');
-      media = { id: 7, kind: 'video', path: file, duration: 2.5, width: 1280, height: 720, fps: 24 };
+      media = { id: 7, sha256: fakeSha(7), kind: 'video', path: file, duration: 2.5, width: 1280, height: 720, fps: 24 };
       calls = [];
     });
 
@@ -76,7 +76,7 @@ describe('reverse', () => {
       expect(calls[1]).to.include.members(['-ss', '2']);
       expect(calls[2]).to.include.members(['-f', 'concat', '-c', 'copy']);
       // The work folder is gone, the list went with it
-      expect(await fs.readdir(bounceDir)).to.deep.equal(['7.mp4']);
+      expect(await fs.readdir(bounceDir)).to.deep.equal([`${fakeSha(7)}.mp4`]);
     });
 
     it('lists the chunks in reverse order for the join', async () => {
@@ -125,7 +125,7 @@ describe('reverse', () => {
       };
       expect(await reverseVideo(media, dir, { exec, signal: controller.signal, encoders: ['x264'] })).to.equal(null);
       // No copy; the finished chunk stays for the next job
-      expect(await fs.readdir(dir)).to.deep.equal(['7.reverse.work', 'media']);
+      expect(await fs.readdir(dir)).to.deep.equal([`${fakeSha(7)}.reverse.work`, 'media']);
     });
 
     // Stops the job (as a load rise or a daemon restart does) once the first chunk is encoded
@@ -142,7 +142,7 @@ describe('reverse', () => {
     it('keeps the finished chunks of a stopped job, and the next one carries on from them with the same encoder', async () => {
       await stopAfterFirstChunk(['vaapi', 'x264']);
       const work = reverseWorkPath(media, dir);
-      expect(work).to.equal(path.join(dir, '7.reverse.work'));
+      expect(work).to.equal(path.join(dir, `${fakeSha(7)}.reverse.work`));
       expect((await fs.readdir(work)).filter(name => name.endsWith('.mp4'))).to.deep.equal(['c00000.mp4']);
       calls = [];
       expect(await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger })).to.equal(reversedPath(media, dir));
@@ -168,10 +168,10 @@ describe('reverse', () => {
     });
 
     it('lists kept work folders by the id they are for', async () => {
-      await fs.ensureDir(path.join(dir, '7.reverse.work'));
-      await fs.ensureDir(path.join(dir, '3@0.5.reversed.reverse.work'));
+      await fs.ensureDir(path.join(dir, `${fakeSha(7)}.reverse.work`));
+      await fs.ensureDir(path.join(dir, `${fakeSha(3)}@0.5.reversed.reverse.work`));
       await fs.ensureDir(path.join(dir, '3@0.5.smooth.work'));
-      expect((await listReverseWork(dir)).map(work => work.key).sort()).to.deep.equal(['3@0.5.reversed', '7']);
+      expect((await listReverseWork(dir)).map(work => work.key).sort()).to.deep.equal([`${fakeSha(3)}@0.5.reversed`, fakeSha(7)]);
       expect(await listReverseWork(path.join(dir, 'missing'))).to.deep.equal([]);
     });
 
@@ -182,11 +182,27 @@ describe('reverse', () => {
     });
   });
 
+  describe('encoders', () => {
+    it('skips VAAPI where NVIDIA\'s driver is loaded, and tries it first elsewhere', () => {
+      expect(defaultEncoders({ exists: file => file === '/proc/driver/nvidia/version' })).to.deep.equal(['x264']);
+      expect(defaultEncoders({ exists: () => false })).to.deep.equal(['vaapi', 'x264']);
+    });
+
+    it('encodes NVENC from 8-bit 4:2:0 frames, which a smoothed chunk keeps once the reverse is dropped', () => {
+      expect(ENCODERS.nvenc.filter).to.equal('reverse,format=yuv420p');
+      expect(ENCODERS.nvenc.filter.replace(/^reverse,?/, '')).to.equal('format=yuv420p');
+      expect(ENCODERS.nvenc.output).to.include.members(['-c:v', 'h264_nvenc']);
+    });
+  });
+
   describe('files', () => {
-    it('is ready only when the copy is no older than the video', async () => {
+    it('is ready while the copy named for the content exists, and never for an item without a sha256', async () => {
       const file = path.join(dir, 'clip.mp4');
       await fs.outputFile(file, 'video');
-      const media = { id: 3, path: file };
+      const media = { id: 3, sha256: fakeSha(3), path: file };
+      expect(reversedPath({ id: 3, path: file }, dir)).to.equal(null);
+      expect(reversedReady({ id: 3, path: file }, dir)).to.equal(false);
+      await removeReversed({ id: 3, path: file }, dir);
       expect(reversedReady(media, dir)).to.equal(false);
       await fs.outputFile(reversedPath(media, dir), 'reversed');
       expect(reversedReady(media, dir)).to.equal(true);
@@ -196,21 +212,23 @@ describe('reverse', () => {
     });
 
     it('lists finished copies oldest first, leaving out work folders and other files', async () => {
-      await fs.outputFile(path.join(dir, '5.mp4'), 'abc');
-      await fs.outputFile(path.join(dir, '6.mp4'), 'a');
+      await fs.outputFile(path.join(dir, `${fakeSha(5)}.mp4`), 'abc');
+      await fs.outputFile(path.join(dir, `${fakeSha(6)}.mp4`), 'a');
+      // An id name from before 2.87, which the daemon renames on start
+      await fs.outputFile(path.join(dir, '8.mp4'), 'old');
       await fs.outputFile(path.join(dir, '7.1.tmp', 'c00000.mp4'), 'chunk');
       await fs.outputFile(path.join(dir, 'notes.txt'), 'x');
       const old = new Date(Date.now() - 60000);
-      await fs.utimes(path.join(dir, '6.mp4'), old, old);
-      expect((await listReversed(dir)).map(({ id, size }) => ({ id, size }))).to.deep.equal([{ id: 6, size: 1 }, { id: 5, size: 3 }]);
+      await fs.utimes(path.join(dir, `${fakeSha(6)}.mp4`), old, old);
+      expect((await listReversed(dir)).map(({ sha256, size }) => ({ sha256, size }))).to.deep.equal([{ sha256: fakeSha(6), size: 1 }, { sha256: fakeSha(5), size: 3 }]);
       expect(await listReversed(path.join(dir, 'missing'))).to.deep.equal([]);
     });
 
     it('removes work folders a daemon left behind and keeps finished copies', async () => {
       await fs.outputFile(path.join(dir, '4.123.tmp', 'c00000.mp4'), 'chunk');
-      await fs.outputFile(path.join(dir, '4.mp4'), 'reversed');
+      await fs.outputFile(path.join(dir, `${fakeSha(4)}.mp4`), 'reversed');
       await removeStaleWork(dir);
-      expect(await fs.readdir(dir)).to.deep.equal(['4.mp4']);
+      expect(await fs.readdir(dir)).to.deep.equal([`${fakeSha(4)}.mp4`]);
       await removeStaleWork(path.join(dir, 'missing'));
     });
   });
@@ -244,7 +262,7 @@ describe('reverse', () => {
       const file = path.join(dir, 'clip.mp4');
       execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=96x64:rate=10:duration=2.3',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
-      const media = { id: 1, kind: 'video', path: file, duration: 2.3, width: 96, height: 64, fps: 10 };
+      const media = { id: 1, sha256: fakeSha(1), kind: 'video', path: file, duration: 2.3, width: 96, height: 64, fps: 10 };
       const target = await reverseVideo(media, path.join(dir, 'bounce'), { encoders: ['x264'], nice: false });
       const frames = async video => Number((await run('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v',
         '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', video])).trim());

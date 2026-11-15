@@ -72,6 +72,11 @@ export function makeConfig(overrides = {}) {
   return manager;
 }
 
+// A stand-in sha256 for item n: its number in hex, padded to 64 digits, so copy names stay readable in tests
+export function fakeSha(n) {
+  return Number(n).toString(16).padStart(64, '0');
+}
+
 export const silentLogger = {
   info() {}, warn() {}, error() {}, debug() {}, enableConsole() {}
 };

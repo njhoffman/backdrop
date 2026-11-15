@@ -263,7 +263,7 @@ export class DoctorCommand {
     const used = copies.reduce((sum, copy) => sum + copy.size, 0);
     const limit = (display.smooth_cache_gb ?? 0) * 1024 ** 3;
     // The daemon stops the backlog at the limit, so the rest wait rather than come
-    const full = limit && used + (copies.length ? used / new Set(copies.map(copy => copy.id)).size : 0) > limit;
+    const full = limit && used + (copies.length ? used / new Set(copies.map(copy => copy.sha256)).size : 0) > limit;
     const larger = small ? `; ${small} ${small === 1 ? 'copy is' : 'copies are'} smaller than the monitors need, the original plays until a larger one is made` : '';
     const rest = ready < slowed.length ? `${larger}${full ? '; the cache is full, so only what plays now and next is made' : '; the daemon makes the rest'}` : '';
     const cache = copies.length ? `, ${formatBytes(used)}${limit ? ` of ${formatBytes(limit)}` : ' (no limit)'}` : '';

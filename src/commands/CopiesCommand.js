@@ -7,7 +7,6 @@ import { out, fmt, displayPath, formatBytes } from '../utils/output.js';
 
 const PROBLEMS = {
   unwanted: 'no longer wanted',
-  stale: 'older than its video',
   small: 'smaller than the monitors need',
   unsized: 'size not recorded yet'
 };
@@ -51,7 +50,9 @@ export class CopiesCommand {
     }
     for (const copy of problems) {
       const sizes = copy.problem === 'small' ? ` (${resolution(copy.size)}, needs ${resolution(copy.need)})` : '';
-      out.print(`${fmt.bold(`#${copy.id}`)} ${copy.copy}: ${PROBLEMS[copy.problem]}${sizes} ${fmt.dim(displayPath(copy.file))}`);
+      // A copy no item has the content of (its file was replaced) is named by the start of its sha256
+      const name = copy.id === null ? copy.sha256.slice(0, 12) : `#${copy.id}`;
+      out.print(`${fmt.bold(name)} ${copy.copy}: ${PROBLEMS[copy.problem]}${sizes} ${fmt.dim(displayPath(copy.file))}`);
     }
     const bytes = copies.reduce((sum, copy) => sum + copy.bytes, 0);
     const checkedAgainst = monitors.length ? ` against ${monitors.map(monitor => `${monitor.name} ${resolution(monitor)}`).join(', ')}` : ' (no monitors found, sizes unchecked)';

@@ -87,14 +87,16 @@ IPC socket) would break a wallpaper.
 - **Bounce:** a bouncing video loads as one EDL URL, `edl://<video>;<reversed copy>` (`src/display/bounce.js`),
   so `loop-file` and the video duration work on the pair at twice the length; code that compares mpv's paths
   with the library's reads them through `entryPath`. The copy (`src/library/reverse.js`, in `paths.bounce`,
-  `~/.cache/backdrop/bounce/<id>.mp4`) is made by the daemon (`daemon/Bounce.js`) when the item first plays and
+  `~/.cache/backdrop/bounce/<sha256>.mp4`, named for the item's content) is made by the daemon (`daemon/Bounce.js`) when the item first plays and
   for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
-  in chunks of about 256 MiB of raw frames each, with VAAPI or else libx264, and the chunks are joined without
+  in chunks of about 256 MiB of raw frames each, with VAAPI or else libx264, or libx264 alone where NVIDIA's
+  driver is loaded, whose VAAPI cannot encode (`defaultEncoders`; an NVENC encoder exists but waits on CUDA's start
+  time, TODO.md), and the chunks are joined without
   encoding again. Once a copy is ready the item's entries are swapped for the URL. The playing one switches about
   100 ms before the end of its pass, where mpv would loop anyway (`loadfile <url> insert-next`, `playlist-next`,
   then the old entry removed), carrying its play time into the video duration; when the duration leaves no room for
   a whole bounce it waits for its next play. Purging the item deletes its copy; a replaced file (download
-  --upgrade) is reversed again. After each encode, on start and when the setting or an item's bounce changes, the
+  --upgrade) has a new sha256, so its old copy belongs to no item and is deleted, and it is reversed again. After each encode, on start and when the setting or an item's bounce changes, the
   daemon deletes copies of items that are gone, skipped or no longer bounce, then, until the rest fit in
   `display.bounce_cache_gb`, those of the lowest-rated items, the newest copy first. Every video plays once per
   pass of the reshuffled playlist, so deleting the least recently played would remove each copy just before its
@@ -105,10 +107,10 @@ IPC socket) would break a wallpaper.
 - **Smoothing:** with `display.smooth`, a slowed video that stutters (speed below 1, fewer than `smooth_below` frames a second at
   that speed, 20 by default) gets a copy with the frames in between made by RIFE (`rife-ncnn-vulkan` on the GPU through Vulkan,
   `src/library/smooth.js`): the frame rate times the whole factor that reaches `smooth_fps` at the item's speed
-  (within 1%), at the size that covers the largest monitor, in `paths.smooth` as `<id>@<speed>.mp4`, so a speed
-  change leaves it stale. It is made in two-second chunks (ffmpeg to PNG, RIFE, encoded with VAAPI or libx264, the
+  (within 1%), at the size that covers the largest monitor, in `paths.smooth` as `<sha256>@<speed>.mp4`, so a speed
+  change leaves it unwanted. It is made in two-second chunks (ffmpeg to PNG, RIFE, encoded as reversed copies are, the
   frame shared across a join interpolated with the chunk before), then joined. Finished chunks are kept in
-  `<id>@<speed>.smooth.work` with a `job.json` (source size and modification time, copy size, factor, chunk length,
+  `<sha256>@<speed>.smooth.work` with a `job.json` (source size and modification time, copy size, factor, chunk length,
   encoder), so a job stopped by the load or a restart carries on from its first missing chunk when that matches, and
   starts afresh when it does not; such items go first in the backlog. The daemon (`daemon/Smooth.js`) makes
   one at a time at the normal load level, the items playing and next first, then every other slowed video, highest
@@ -123,14 +125,19 @@ IPC socket) would break a wallpaper.
   are always made, but the backlog starts a job only while the cache has room for another of the average size so
   far: a copy made into a full cache would be deleted again, hours of GPU for nothing. What the backlog skips is
   queued again at the next start or smooth setting change. `doctor` shows the cache's size against the limit.
-  Each copy's size is recorded beside it (`<id>@<speed>.json`, written after the copy; copies without one are
+  Each copy's size is recorded beside it (`<sha256>@<speed>.json`, written after the copy; copies without one are
   probed on start). `playUrl` takes the monitors an item loads on and plays the copy only when it covers what they
   need (`smoothSize`), so a copy never shows below the original's resolution; the queue counts a copy done only when
-  it covers every monitor, so a larger monitor (hotplug queues the backlog again) gets a larger copy. Copies older
-  than their video (`download --upgrade`) are deleted by both prunes; the upgrade sends an `item` control request so
-  both copies are made again first. `backdrop copies` lists copies that are unwanted, stale, too small or unsized
+  it covers every monitor, so a larger monitor (hotplug queues the backlog again) gets a larger copy. Copies of a
+  replaced file (`download --upgrade`) belong to no item and are deleted by both prunes, which then check every
+  entry; the upgrade sends an `item` control request so both copies are made again first. `backdrop copies` lists
+  copies that are unwanted, too small or unsized
   (`src/library/copies.js`), and `--sync` sends `{ copies: true }`: Bounce's `resync` prunes and reverses the
   removed items that still bounce, Smooth's records missing sizes and reconfigures.
+  Copies are named for content rather than the item's id so that they mean the same video in any library, which
+  lets another machine make them. Versions before 2.87 named them `<id>...`; on start the daemon
+  renames those (`renameIdCopies`, `src/library/copies.js`), deleting what those versions would have: copies of
+  items gone or without their file, and forward copies older than the item's file.
   On the Iris Xe this was measured at about one interpolated 1080p frame a second, with no dropped wallpaper frames.
 - **Hotplug:** the daemon reads the layout (`xrandr --current --listactivemonitors`) on each of i3's output events
   (`i3-msg -t subscribe -m '["output","tick"]'`, `src/display/outputWatcher.js`), and otherwise once a minute; without

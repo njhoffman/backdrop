@@ -89,7 +89,7 @@ backdrop pending             # media saved by searches, with its queries and the
 backdrop download --total 10 --type videos
 backdrop download --query 'ocean waves' --tag sunset  # only media one of your searches found, with every tag
 backdrop download --upgrade # refetch downloads smaller than your monitors at a larger size
-backdrop copies --sync      # have the daemon remake reversed/smoothed copies that are stale or too small
+backdrop copies --sync      # have the daemon remake reversed/smoothed copies that are unwanted or too small
 backdrop list-videos --rated landscape
 backdrop list-videos --tag ocean waves  # items tagged with every word
 backdrop list-images --interactive  # browse and rate downloaded images
@@ -154,8 +154,8 @@ and next get new copies. A copy never plays below the original's resolution: one
 only where it covers the screen, and the daemon makes a larger one when a larger monitor appears.
 
 `download --upgrade` has the daemon make an upgraded video's reversed and smoothed copies again at the new size,
-first in line. `backdrop copies` checks every copy against its video and the monitors (stale after a replaced file,
-no longer wanted, too small, or with no size recorded yet) and `backdrop copies --sync` has the daemon delete those
+first in line. `backdrop copies` checks every copy against its video and the monitors (no longer wanted, which
+includes the copies of a replaced file, too small, or with no size recorded yet) and `backdrop copies --sync` has the daemon delete those
 and make the wanted ones again; the daemon does the same on start.
 
 With `display.video_loop: bounce` (or `backdrop bounce on` for one video, also in the menu's speed panel) a video

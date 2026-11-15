@@ -6,7 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DoctorCommand } from '../../src/commands/DoctorCommand.js';
 import { ANIMATED_WEBP } from '../../src/library/probe.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 describe('DoctorCommand', () => {
   let db, config, lines, errors, installed, files, savedDisplay, modes;
@@ -157,7 +157,7 @@ describe('DoctorCommand', () => {
     try {
       config.set('paths.bounce', dir);
       expect(byName(await doctor().run(), 'bounce cache')).to.equal(undefined);
-      await fs.outputFile(path.join(dir, '1.mp4'), Buffer.alloc(2048));
+      await fs.outputFile(path.join(dir, `${fakeSha(1)}.mp4`), Buffer.alloc(2048));
       config.set('display.bounce_cache_gb', 1);
       db.setSetting('bounce_encodes', { [new Date().toISOString().slice(0, 10)]: { count: 3, seconds: 90 } });
       expect(byName(await doctor().run(), 'bounce cache')).to.include({
@@ -217,19 +217,19 @@ describe('DoctorCommand', () => {
       const video = path.join(dir, 'media', '1.mp4');
       await fs.outputFile(video, 'video');
       await fs.utimes(video, 1000, 1000);
-      const done = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: video, width: 2560, height: 1440, speed: 0.5, fps: 30, duration: 10 }));
+      const done = db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: 1, sha256: fakeSha(1), path: video, width: 2560, height: 1440, speed: 0.5, fps: 30, duration: 10 }));
       db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/2.mp4', speed: 0.5, fps: 30, duration: 10 });
-      await fs.outputFile(path.join(dir, `${done.id}@0.5.mp4`), Buffer.alloc(2048));
+      await fs.outputFile(path.join(dir, `${done.sha256}@0.5.mp4`), Buffer.alloc(2048));
       config.set('display.smooth_cache_gb', 1);
       expect(byName(await doctor({ which: async () => true }).run(), 'smoothing')).to.include({
         status: 'ok', detail: '1 of 2 slowed videos smoothed, 2.0 KB of 1.0 GB; the daemon makes the rest'
       });
       // A copy smaller than the daemon's monitors need does not count (sizes unchecked without a daemon, as above)
-      await fs.writeJson(path.join(dir, `${done.id}@0.5.json`), { width: 1280, height: 720 });
+      await fs.writeJson(path.join(dir, `${done.sha256}@0.5.json`), { width: 1280, height: 720 });
       const withDaemon = { which: async () => true, readStateFile: async () => ({ pid: 1, monitors: [{ name: 'DP-1', width: 1920, height: 1080 }] }) };
       expect(byName(await doctor(withDaemon).run(), 'smoothing').detail).to.equal('0 of 2 slowed videos smoothed, 2.0 KB of 1.0 GB; '
         + '1 copy is smaller than the monitors need, the original plays until a larger one is made; the daemon makes the rest');
-      await fs.writeJson(path.join(dir, `${done.id}@0.5.json`), { width: 1920, height: 1080 });
+      await fs.writeJson(path.join(dir, `${done.sha256}@0.5.json`), { width: 1920, height: 1080 });
       expect(byName(await doctor(withDaemon).run(), 'smoothing').detail).to.include('1 of 2 slowed videos smoothed');
       config.set('display.smooth_cache_gb', 3 / 1024 ** 2);
       expect(byName(await doctor({ which: async () => true }).run(), 'smoothing').detail).to.include('the cache is full');

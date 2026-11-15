@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.87.0] - 2026-11-15
+
+### Changed
+
+- Copies are named for the video's content (its sha256) instead of its id: `<sha256>.mp4` in the bounce cache,
+  `<sha256>@<speed>.mp4` and its `.reversed.mp4` and `.json` in the smooth cache. A copy now means the same video
+  in any library, the groundwork for having another machine make them. The daemon renames existing copies once on
+  start, keeping what still plays, so nothing is encoded again; copies that versions before this one would have
+  deleted (items gone, or a forward copy older than its file) go instead.
+- On a machine where NVIDIA's driver is loaded, reversed and smoothed copies are encoded with libx264 straight
+  away. VAAPI there goes through nvidia-vaapi-driver, which cannot encode, so every job used to fail with it first.
+  Other machines still try VAAPI, then libx264.
+- `backdrop copies` no longer reports copies as stale. A replaced file (`download --upgrade`) has new content, so
+  its old copies belong to no item and are listed as no longer wanted, named by the start of their sha256.
+
 ## [2.86.1] - 2026-11-14
 
 ### Fixed

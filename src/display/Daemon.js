@@ -12,7 +12,7 @@ import {
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
-import { reverseVideo } from '../library/reverse.js';
+import { NVIDIA_DRIVER, defaultEncoders, reverseVideo } from '../library/reverse.js';
 import { smoothVideo } from '../library/smooth.js';
 import { canReadKernelLog, followKernelLog } from './kernelLog.js';
 import { entryPath, playsBounce } from './bounce.js';
@@ -96,7 +96,7 @@ export async function readState(runtimeDir) {
 // VAAPI elsewhere, since auto-safe tries CUDA before it, which stalled mpv's start ~6 s on a machine with
 // CUDA's libraries but no NVIDIA card (2.50.7). auto-safe keeps the rest and software decoding after it.
 export function defaultHwdec({ exists = fs.existsSync } = {}) {
-  return exists('/proc/driver/nvidia/version') ? 'nvdec,auto-safe' : 'vaapi,auto-safe';
+  return exists(NVIDIA_DRIVER) ? 'nvdec,auto-safe' : 'vaapi,auto-safe';
 }
 
 export function buildCommand(monitor, socketPath, display, { hwdec = defaultHwdec() } = {}) {
@@ -140,9 +140,9 @@ export class Daemon {
     purge = () => purgeTrash({ config, database, logger }),
     thumbnail = media => thumbnailFor(media, config.get().paths.thumbnails, { logger, nice: true }),
     // A bouncing video's reversed copy (src/library/reverse.js); resolves to its path, or null
-    reverse = (media, { signal, dir } = {}) => reverseVideo(media, dir ?? config.get().paths.bounce, { logger, signal }),
+    reverse = (media, { signal, dir } = {}) => reverseVideo(media, dir ?? config.get().paths.bounce, { logger, signal, encoders: defaultEncoders() }),
     // A slowed video's smoothed copy (src/library/smooth.js); resolves to its path, or null
-    smoothVideo: smoothen = (media, { dir, size, target, rife, gpu, signal } = {}) => smoothVideo(media, dir, { rife, size, target, gpu, logger, signal }),
+    smoothVideo: smoothen = (media, { dir, size, target, rife, gpu, signal } = {}) => smoothVideo(media, dir, { rife, size, target, gpu, logger, signal, encoders: defaultEncoders() }),
     // The kernel log, watched while RIFE runs on a GPU (src/display/kernelLog.js)
     kernelLog = { readable: () => canReadKernelLog(), follow: onLine => followKernelLog(onLine, { onError: error => logger.warn('Failed to follow the kernel log', { error: error.message }) }) },
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),

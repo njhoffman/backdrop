@@ -6,7 +6,7 @@ import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { Bounce } from '../../src/display/daemon/Bounce.js';
 import { bounceUrl, playUrl } from '../../src/display/bounce.js';
-import { FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { FakeMpvClient, fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -30,8 +30,8 @@ describe('Bounce (daemon)', () => {
         encodes.push({
           media, signal,
           finish: async ok => {
-            if (ok) await fs.outputFile(path.join(dir, 'bounce', `${media.id}.mp4`), 'reversed');
-            resolve(ok ? path.join(dir, 'bounce', `${media.id}.mp4`) : null);
+            if (ok) await fs.outputFile(path.join(dir, 'bounce', `${media.sha256}.mp4`), 'reversed');
+            resolve(ok ? path.join(dir, 'bounce', `${media.sha256}.mp4`) : null);
           }
         });
         signal.addEventListener('abort', () => resolve(null));
@@ -49,9 +49,8 @@ describe('Bounce (daemon)', () => {
   async function video(id) {
     const file = path.join(dir, 'media', `${id}.mp4`);
     await fs.outputFile(file, 'video');
-    // Older than any copy the tests make, which would otherwise count as stale (older than their video)
     await fs.utimes(file, OLD, OLD);
-    return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: id, duration: 10, path: file }));
+    return db.getMedia(db.addMedia({ kind: 'video', source: 'local', source_id: id, sha256: fakeSha(id), duration: 10, path: file }));
   }
 
   // Videos 1 to count, made one after another so their ids follow
@@ -187,13 +186,14 @@ describe('Bounce (daemon)', () => {
 
     // A finished copy of size bytes, last played age seconds ago
     async function copy(media, size, age) {
-      const file = path.join(dir, 'bounce', `${media.id}.mp4`);
+      const file = path.join(dir, 'bounce', `${media.sha256}.mp4`);
       await fs.outputFile(file, Buffer.alloc(size));
       const when = new Date(Date.now() - age * 1000);
       await fs.utimes(file, when, when);
       return file;
     }
-    const left = async () => (await fs.readdir(path.join(dir, 'bounce'))).sort();
+    // The copies left, by item number
+    const left = async () => (await fs.readdir(path.join(dir, 'bounce'))).map(name => `${parseInt(name, 16)}.mp4`).sort();
 
     it('deletes the lowest-rated copies first, newest first among equals, never the one playing or just made', async () => {
       config.set('display.bounce_cache_gb', 4 / 1024);
@@ -221,38 +221,41 @@ describe('Bounce (daemon)', () => {
       await copy(off, MB, 10);
       await copy(skipped, MB, 10);
       await copy(kept, MB, 10);
-      await fs.outputFile(path.join(dir, 'bounce', '99.mp4'), 'no such item');
-      // The copies are dated before their videos, so the URL is built rather than asked of playUrl
-      const url = bounceUrl(off.path, path.join(dir, 'bounce', '1.mp4'));
+      await fs.outputFile(path.join(dir, 'bounce', `${fakeSha(99)}.mp4`), 'no such item');
+      const url = bounceUrl(off.path, path.join(dir, 'bounce', `${off.sha256}.mp4`));
       const shown = screen([{ id: 1, filename: '/m/other', current: true }, { id: 2, filename: url }]);
       db.setBounce(off.id, false);
       db.addRating(skipped.id, 0);
 
-      expect((await bounce.prune()).sort()).to.deep.equal([1, 2, 99]);
+      // The copy of content no item has is deleted too, but has no id to return
+      expect((await bounce.prune()).sort()).to.deep.equal([1, 2]);
       expect(await left()).to.deep.equal(['3.mp4']);
       expect(shown.client.commands).to.deep.include(['loadfile', off.path, 'insert-at', 1]);
     });
 
-    it('deletes a copy older than its video (download --upgrade replaced it), and reverses it again when told', async () => {
+    it('deletes the copy of a replaced file (download --upgrade, a new sha256), checks every entry, and reverses it again when told', async () => {
       const media = await video(1);
       await copy(media, MB, 10);
+      const shown = screen([{ id: 1, filename: '/m/other', current: true }, { id: 2, filename: bounceUrl(media.path, path.join(dir, 'bounce', `${media.sha256}.mp4`)) }]);
       expect(encodes).to.have.length(0);
-      await fs.utimes(media.path, new Date(), new Date());
-      expect(await bounce.prune()).to.deep.equal([media.id]);
+      db.updateMedia(media.id, { sha256: fakeSha(50) });
+      expect(await bounce.prune()).to.deep.equal([]);
       expect(await left()).to.deep.equal([]);
+      expect(shown.client.commands).to.deep.include(['loadfile', media.path, 'insert-at', 1]);
       await bounce.changed(media.id);
       expect(encodes).to.have.length(1);
     });
 
-    it('on a copies sync, deletes stale and unwanted copies and reverses again only the items still bouncing', async () => {
-      const [stale, off] = await videos(2);
-      await copy(stale, MB, 10);
+    it('on a copies sync, deletes unwanted copies and reverses again only the items still bouncing', async () => {
+      const [rated, off] = await videos(2);
+      await copy(rated, MB, 10);
       await copy(off, MB, 10);
-      await fs.utimes(stale.path, new Date(), new Date());
+      db.addRating(rated.id, 0);
+      db.addRating(rated.id, 2);
       db.setBounce(off.id, false);
-      expect((await bounce.resync()).sort()).to.deep.equal([stale.id, off.id]);
-      expect(await left()).to.deep.equal([]);
-      expect(encodes).to.have.length(1);
+      expect((await bounce.resync()).sort()).to.deep.equal([off.id]);
+      expect(await left()).to.deep.equal(['1.mp4']);
+      expect(encodes).to.have.length(0);
     });
 
     it('counts each encode for doctor', async () => {
@@ -272,7 +275,7 @@ describe('Bounce (daemon)', () => {
     beforeEach(async () => {
       clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['setTimeout', 'clearTimeout'] });
       media = await video(1);
-      await fs.outputFile(path.join(dir, 'bounce', '1.mp4'), 'reversed');
+      await fs.outputFile(path.join(dir, 'bounce', `${media.sha256}.mp4`), 'reversed');
       url = playUrl(media, config.get());
       shown = screen([{ id: 1, filename: media.path, current: true, playing: true }, { id: 2, filename: '/m/next.mp4' }]);
       shown.media = media;
@@ -321,9 +324,18 @@ describe('Bounce (daemon)', () => {
     const [kept, off, skipped] = await videos(3);
     db.setBounce(off.id, false);
     db.addRating(skipped.id, 0);
-    for (const key of [kept.id, off.id, skipped.id, 99]) await fs.outputFile(path.join(dir, 'bounce', `${key}.reverse.work`, 'c00000.mp4'), 'chunk');
+    for (const key of [kept.id, off.id, skipped.id, 99]) await fs.outputFile(path.join(dir, 'bounce', `${fakeSha(key)}.reverse.work`, 'c00000.mp4'), 'chunk');
     await bounce.prune();
-    expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${kept.id}.reverse.work`]);
+    expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${kept.sha256}.reverse.work`]);
+  });
+
+  it('renames copies named for the id on start, before pruning them', async () => {
+    const media = await video(1);
+    db.setBounce(media.id, true);
+    await fs.outputFile(path.join(dir, 'bounce', '1.mp4'), 'reversed');
+    await fs.outputFile(path.join(dir, 'bounce', '2.mp4'), 'no such item');
+    await bounce.begin();
+    expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${media.sha256}.mp4`]);
   });
 
   it('removes work an earlier daemon left on start', async () => {
