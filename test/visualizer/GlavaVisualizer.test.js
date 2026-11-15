@@ -53,6 +53,19 @@ describe('GlavaVisualizer', () => {
       + '#define AMPLIFY (500.0 * float(screen.y) / 1440.0)\n');
   });
 
+  it('finds the shaders with shader_dir auto in the first directory that has the module', async () => {
+    const local = path.join(dir, 'local');
+    await fs.outputFile(path.join(local, 'rc.glsl'), '#request mod bars\n');
+    await fs.outputFile(path.join(local, 'bars.glsl'), '#define BAR_WIDTH 7\n');
+    const normalized = visualizerSettings({ enabled: true, glava: { shader_dir: 'auto' } });
+    const make = shaderDirs => new GlavaVisualizer(normalized, normalized.instances[0], { root: path.join(dir, 'root'), shaderDirs });
+    expect(await make([path.join(dir, 'none'), local, shaders]).shaderDir()).to.equal(local);
+    expect(await make([path.join(dir, 'none'), shaders]).shaderDir()).to.equal(shaders);
+    let caught;
+    try { await make([path.join(dir, 'none'), path.join(dir, 'also')]).prepare(); } catch (err) { caught = err; }
+    expect(caught.message).to.equal(`GLava shaders not found in ${path.join(dir, 'none')}, ${path.join(dir, 'also')} (no bars.glsl); set visualizer.glava.shader_dir`);
+  });
+
   it('fails clearly when the shaders are not where shader_dir says', async () => {
     let caught;
     try {

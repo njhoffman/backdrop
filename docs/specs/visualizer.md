@@ -27,8 +27,9 @@ backdrop knows only `prepare()` and `command(monitor, geometry)`.
 ## Configuration
 
 GLava reads `$XDG_CONFIG_HOME/glava`. Each instance runs with `XDG_CONFIG_HOME` set to `<runtime>/visualizer`,
-which `prepare()` fills with links to every file of the installed shaders (`visualizer.glava.shader_dir`, as
-`glava -C` does), except the module's settings file (`bars.glsl`), which is a copy with backdrop's `#define`
+which `prepare()` fills with links to every file of the installed shaders (`visualizer.glava.shader_dir`; `auto`,
+the default, takes the first of `~/.local/etc/xdg/glava`, `/usr/local/etc/xdg/glava` and `/etc/xdg/glava` that
+has the module's `.glsl`, as `glava -C` does), except the module's settings file (`bars.glsl`), which is a copy with backdrop's `#define`
 values. `~/.config/glava` is neither read nor changed. `PULSE_COOKIE` points back at the user's own cookie,
 since PulseAudio keeps it under `XDG_CONFIG_HOME`.
 

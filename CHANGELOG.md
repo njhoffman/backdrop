@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.86.0] - 2026-11-14
+
+### Changed
+
+- `visualizer.glava.shader_dir` defaults to `auto`: the first of `~/.local/etc/xdg/glava` (a GLava built into
+  `~/.local`, as the shell repo's glava recipe does now that Ubuntu no longer packages it),
+  `/usr/local/etc/xdg/glava` and `/etc/xdg/glava` that has the module's `.glsl`. An explicit path still means
+  that path only. The error names every directory looked in. Set `shader_dir: auto` in a config that names
+  `/etc/xdg/glava` to pick up a source build.
+
 ## [2.85.1] - 2026-11-14
 
 ### Fixed

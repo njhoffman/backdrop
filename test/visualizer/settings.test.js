@@ -17,7 +17,7 @@ describe('visualizer settings', () => {
       BAR_WIDTH: 20, BAR_GAP: 1, BAR_OUTLINE_WIDTH: 0, AMPLIFY: 200, GRADIENT: 80,
       COLOR: 'mix(@fg:#000000 , @fg2:#33aacc , clamp(d / GRADIENT, 0, 1))', DIRECTION: 0, FLIP: 0, USE_ALPHA: 1
     });
-    expect(settings.glava).to.deep.equal({ shaderDir: '/etc/xdg/glava', args: [] });
+    expect(settings.glava).to.deep.equal({ shaderDir: 'auto', args: [] });
     expect(layoutFor(settings.instances[0], 'DP-3')).to.equal(settings.instances[0].layout);
   });
 

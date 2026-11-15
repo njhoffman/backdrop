@@ -72,7 +72,7 @@ visualizer:
   # Pick one in the menu or with `backdrop visualizer preset`, then edit it here: each save applies at once
   # presets:
   #   calm: {opacity: 0.4, module: wave, wave: {color: '#33aacc'}}
-  glava: {shader_dir: /etc/xdg/glava, args: []}
+  glava: {shader_dir: auto, args: []}
 
 # Lighten up while the system is busy: videos become images, then the wallpaper and visualizer stop.
 # Thresholds are load averages as `uptime` shows them; set one to null to skip that step.

@@ -130,7 +130,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   wave: {}
   defines: {}              # raw #defines written into the module's .glsl, applied over the typed options
   requests: []             # raw GLava requests (-r), applied after backdrop's
-  glava: {shader_dir: /etc/xdg/glava, args: []}
+  glava: {shader_dir: auto, args: []}
 
 load:                      # see "System load" in docs/specs/main.md
   enabled: false

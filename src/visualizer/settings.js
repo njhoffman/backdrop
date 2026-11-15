@@ -492,7 +492,8 @@ function normalize(raw, prefix) {
     // whole PipeWire graph down to a 5 ms quantum, which stutters playback; null or 0 leaves its request alone
     latencyMs: raw.latency_ms === null ? null : integer(`${prefix}latency_ms`, raw.latency_ms ?? 30, { max: 1000 }) || null,
     glava: {
-      shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? '/etc/xdg/glava', 'a path'),
+      // auto: the first of ~/.local/etc/xdg/glava, /usr/local/etc/xdg/glava and /etc/xdg/glava with the module
+      shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? 'auto', 'a path or auto'),
       args: stringList(`${prefix}glava.args`, glava.args ?? [])
     }
   };

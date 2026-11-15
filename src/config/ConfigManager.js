@@ -277,7 +277,7 @@ export class ConfigManager {
         bars: { width: 20, gap: 1, outline: 0, amplify: 200, colors: ['#000000', '#33aacc'], gradient: 80, direction: 'inward', flip: false },
         defines: {},
         requests: [],
-        glava: { shader_dir: '/etc/xdg/glava', args: [] }
+        glava: { shader_dir: 'auto', args: [] }
       },
       load: {
         enabled: false,

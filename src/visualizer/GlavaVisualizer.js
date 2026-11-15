@@ -60,12 +60,38 @@ export function scaledDefines(defines, { scaled = [], layout }, referenceHeight,
 // config root, command() launches it on a monitor. GLava reads $XDG_CONFIG_HOME/glava, so pointing that at the root leaves ~/.config/glava
 // alone. The root links every file of the installed shaders, as `glava -C` does, except the module's
 // settings file, which is a copy with backdrop's #defines.
+// Where shader_dir: auto looks for GLava's installed shaders, in order: a build into ~/.local (the shell
+// repo's glava recipe), one into /usr/local, then the distribution's package
+export const glavaShaderDirs = (home = os.homedir()) => [
+  path.join(home, '.local/etc/xdg/glava'),
+  '/usr/local/etc/xdg/glava',
+  '/etc/xdg/glava'
+];
+
 export class GlavaVisualizer {
-  constructor(settings, instance, { root, fs = fsExtra }) {
+  constructor(settings, instance, { root, fs = fsExtra, shaderDirs = glavaShaderDirs() }) {
     this.settings = settings;
     this.instance = instance;
     this.root = root;
     this.fs = fs;
+    this.shaderDirs = shaderDirs;
+  }
+
+  // The shader directory to use: shader_dir itself, or for auto the first of shaderDirs with the module
+  async shaderDir() {
+    const { shaderDir } = this.settings.glava;
+    const { module } = this.instance;
+    const has = async dir => this.fs.pathExists(path.join(dir, `${module}.glsl`));
+    if (shaderDir !== 'auto') {
+      if (!await has(shaderDir)) {
+        throw new Error(`GLava shaders not found in ${shaderDir} (no ${module}.glsl); set visualizer.glava.shader_dir`);
+      }
+      return shaderDir;
+    }
+    for (const dir of this.shaderDirs) {
+      if (await has(dir)) return dir;
+    }
+    throw new Error(`GLava shaders not found in ${this.shaderDirs.join(', ')} (no ${module}.glsl); set visualizer.glava.shader_dir`);
   }
 
   title(monitor) {
@@ -73,11 +99,8 @@ export class GlavaVisualizer {
   }
 
   async prepare() {
-    const { shaderDir } = this.settings.glava;
+    const shaderDir = await this.shaderDir();
     const { module, defines } = this.instance;
-    if (!await this.fs.pathExists(path.join(shaderDir, `${module}.glsl`))) {
-      throw new Error(`GLava shaders not found in ${shaderDir} (no ${module}.glsl); set visualizer.glava.shader_dir`);
-    }
     const dir = path.join(this.root, 'glava');
     await this.fs.remove(this.root);
     await this.fs.ensureDir(dir);
