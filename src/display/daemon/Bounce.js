@@ -1,5 +1,6 @@
 import { bounces, entryPath, playsBounce, playUrl, smoothedFor } from '../bounce.js';
 import { refreshEntries } from '../Playlist.js';
+import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
 import fs from 'fs-extra';
 import { listReverseWork, listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
 
@@ -9,13 +10,21 @@ const SWITCH_LEAD_MS = 100;
 
 // Reversed copies for bouncing videos (src/display/bounce.js), for a Daemon (passed in). An item is reversed
 // the first time it plays and, ahead of time, when it is next in a playlist; one encode runs at a time, at the
-// lowest CPU priority, and only while the load level is normal (a rise aborts it, to start again later). When
+// lowest CPU priority, and only while the load level is normal (a rise aborts it, to start again later) and, with
+// display.bounce_idle_load, once the machine has been idle (IdleGate, read every GATE_INTERVAL_MS; a job running
+// when it closes stops, keeping its finished chunks). When
 // a copy is ready the item's playlist entries are swapped for its bounce URL; the playing one switches at the end of
 // its pass, where it would loop anyway (planSwitch), when the video duration leaves room for a whole bounce, else at
 // its next play. The copies are kept within display.bounce_cache_gb (prune).
 export class Bounce {
-  constructor(daemon) {
+  constructor(daemon, { loadavg, cpus } = {}) {
     this.daemon = daemon;
+    this.gate = new IdleGate({
+      kind: 'bounce',
+      settings: () => this.settings.display,
+      ...(loadavg ? { loadavg } : {}), ...(cpus ? { cpus } : {}),
+      now: () => (this.daemon.now ?? Date.now)()
+    });
     // Items waiting to be reversed, by id, oldest first
     this.queue = new Map();
     // Items whose entries may still need swapping (a copy made, or the item's bounce changed)
@@ -38,8 +47,32 @@ export class Bounce {
 
   async begin() {
     if (!this.settings.paths.bounce) return;
+    this.gate.check();
+    this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Bounce gate check failed', { error: error.message })));
     await removeStaleWork(this.settings.paths.bounce);
     await this.prune();
+  }
+
+  // For state.json: how many items wait, the one being reversed, and the idle gate
+  summary() {
+    return { waiting: this.queue.size, encoding: this.encoding, gate: this.gate.summary() };
+  }
+
+  // A gate reading: an encode starts when it opens, and the one running stops (to resume later) when it closes
+  async tick() {
+    const was = this.gate.allowed;
+    this.gate.check();
+    const now = this.gate.allowed;
+    if (was === now) return;
+    const load = this.gate.load ? { one: Math.round(this.gate.load.one * 100) / 100, five: Math.round(this.gate.load.five * 100) / 100 } : null;
+    if (now) {
+      this.daemon.logger.info('Reversing allowed: the load stayed low', { perCpu: load });
+      this.kick();
+    } else {
+      this.daemon.logger.info('Reversing paused: the load rose', { perCpu: load, encoding: this.encoding });
+      this.controller?.abort();
+    }
+    if (this.daemon.writeState) await this.daemon.writeState().catch(() => {});
   }
 
   // Whether anything can bounce, so loads skip the look-ahead otherwise
@@ -76,9 +109,9 @@ export class Bounce {
     this.kick();
   }
 
-  // Starts the oldest queued encode when none runs and the load allows it
+  // Starts the oldest queued encode when none runs and the load allows it (the load level and the idle gate)
   kick() {
-    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal') return;
+    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.gate.allowed) return;
     const [id, media] = this.queue.entries().next().value;
     this.queue.delete(id);
     const controller = new AbortController();
@@ -88,7 +121,7 @@ export class Bounce {
       const started = this.daemon.now();
       const target = await this.daemon.reverse(media, { signal: controller.signal });
       if (controller.signal.aborted) {
-        // Paused for the load or stopped: queued again at the front for when the load falls
+        // Paused for the load (its level or the idle gate) or stopped: queued again at the front for when it falls
         if (!this.daemon.stopping) this.queue = new Map([[id, media], ...this.queue]);
         return;
       }

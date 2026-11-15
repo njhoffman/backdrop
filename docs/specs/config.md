@@ -55,6 +55,11 @@ display:
   bounce_cache_gb: 10      # room for reversed copies in ~/.cache/backdrop/bounce; over it, copies of the
                            #   lowest-rated videos go first, the newest of them first (made again ahead of their
                            #   next play), and copies of items that no longer bounce at once. 0 for no limit
+  bounce_idle_load: null   # a number: reversed copies are made only once the 5-minute load average per CPU has stayed
+                           #   under this for bounce_idle_minutes (also for what plays now), as smooth_idle_load does
+                           #   for smoothing; null: they wait only for the load section
+  bounce_idle_minutes: 10  # how long the load stays under bounce_idle_load before a reverse job starts
+  bounce_stop_load: 0.75   # a reverse job stops (its finished chunks kept) when the 1-minute average per CPU goes over this
   smooth: false            # true: copies of slowed videos (speed below 1) with the frames in between made by RIFE,
                            #   so they still show smooth_fps frames a second; made in the background, one at a time
   smooth_fps: 30           # frames a second a slowed video shows once smoothed

@@ -70,6 +70,13 @@ const SECTIONS = {
     bounce_cache_gb: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of gigabytes, 0 for no limit')), {
       kind: 'number', min: 0, step: 1, help: 'Room for reversed copies of bouncing videos, in GB; 0 for no limit'
     }),
+    bounce_idle_load: field(value => (value === null || (typeof value === 'number' && value >= 0 && value <= 16) ? value : fail('a load average per CPU (0.25), or null to reverse whatever the load')), {
+      kind: 'number', min: 0, step: 0.05, nullable: true, help: 'Reversing for bounce starts once the 5-minute load average per CPU has stayed under this for bounce_idle_minutes; null for no wait'
+    }),
+    bounce_idle_minutes: field(integer(0, 1440), { kind: 'integer', min: 0, max: 1440, help: 'How long the load has to stay under bounce_idle_load before reversing starts' }),
+    bounce_stop_load: field(value => (typeof value === 'number' && value > 0 && value <= 16 ? value : fail('a load average per CPU (0.75)')), {
+      kind: 'number', min: 0, step: 0.05, help: 'A reverse job stops (keeping its work) when the 1-minute load average per CPU goes over this; keep it above bounce_idle_load, since the encode adds load itself'
+    }),
     smooth: field(boolean, { kind: 'boolean', help: 'Make smooth_fps copies of slowed videos with RIFE in the background, so they play without stutter' }),
     smooth_fps: field(integer(24, 240), { kind: 'integer', min: 24, max: 240, help: 'Frames a second a slowed video shows once smoothed' }),
     smooth_below: field(integer(1, 240), { kind: 'integer', min: 1, max: 240, help: 'Smooth only slowed videos that show fewer frames a second than this; copies made before stay' }),

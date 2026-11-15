@@ -215,7 +215,7 @@ export class Daemon {
     this.health = new Health(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
-    this.bounce = new Bounce(this);
+    this.bounce = new Bounce(this, { loadavg });
     this.smoothing = new Smooth(this, { loadavg });
     this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
@@ -896,7 +896,7 @@ export class Daemon {
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
-      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary()
+      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary()
     });
     await fs.rename(temporary, file);
   }

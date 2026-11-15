@@ -262,6 +262,10 @@ Reviewed: 2026-11-07
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
       (`src/display/LoadGovernor.js`, `config.example.yaml`, `docs/specs/config.md`). `screensaver.max_load` reads the same value.
+- [ ] **The bounce and smoothing gates open together.** (p3) [perf] With `bounce_idle_load` and `smooth_idle_load` set alike,
+      both `IdleGate`s open on the same reading, so a reverse encode (about 2.3 CPUs with VAAPI) and RIFE start together and
+      their sum can cross one gate's stop load, closing it again. Each gate sees only the load, not the other job. Fix: let one
+      queue wait while the other runs (smoothing first, or the playing item first), in `daemon/Bounce.js` and `daemon/Smooth.js`.
 - [x] **`start` gives up on a daemon that is still starting.** (p3) [bug] On 2026-11-13 at a load average near 50 (another
       project's bats run beside it), `backdrop start` printed "Daemon did not start" while the daemon came up 22 s after it was
       spawned. `DisplayService.start` waits a fixed 15 s (`START_TIMEOUT_MS`) for `state.json`. Keep waiting while the

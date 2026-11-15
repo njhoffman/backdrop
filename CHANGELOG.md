@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.85.0] - 2026-11-14
+
+### Added
+
+- Reversed copies for bounce can wait for an idle machine, as smoothing does: `display.bounce_idle_load`,
+  `bounce_idle_minutes` and `bounce_stop_load`. With `bounce_idle_load` set, no copy is made (not even for the video
+  playing now) until the 5-minute load per CPU has stayed under it for `bounce_idle_minutes`, and a running one stops,
+  keeping its finished chunks, when the 1-minute load goes over `bounce_stop_load`. `status` shows a Bounce line while
+  videos wait, and `state.json` has a `bounce` section. Off (null) by default.
+
 ## [2.84.1] - 2026-11-14
 
 ### Fixed

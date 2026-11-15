@@ -103,6 +103,18 @@ describe('DisplayCommand', () => {
       expect(lines.join('\n')).to.not.include('Smoothing');
     });
 
+    it('says when reversing for bounce waits for an idle machine, and nothing without its gate', async () => {
+      command.control = { current: async () => ({ path: null }) };
+      const gate = { open: false, low_since: null, load: { one: 0.4, five: 0.3 }, cpus: 8, idle_load: 0.25, idle_minutes: 120, stop_load: 0.75 };
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate } });
+      await command.status();
+      expect(lines.join('\n')).to.include('Bounce: waiting for an idle machine (1 video waits; load 0.30 a CPU; starts after 120 min under 0.25)');
+      lines.length = 0;
+      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate: { ...gate, idle_load: null } } });
+      await command.status();
+      expect(lines.join('\n')).to.not.include('Bounce');
+    });
+
     it('shows the load and the mode it holds back', async () => {
       setMode(db, 'video');
       setModeHold(db, 'image');

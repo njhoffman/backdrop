@@ -4,7 +4,7 @@ import { probeMedia } from '../../library/probe.js';
 import { listReverseWork } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
-import { SmoothGate } from '../SmoothGate.js';
+import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
 import { notifyError } from '../../utils/notify.js';
 
 const GIGABYTE = 1024 ** 3;
@@ -27,14 +27,14 @@ import {
 // the CPU for the daemon's life (the job resumes there from its finished chunks); a kernel log this user cannot read
 // keeps it on the CPU from the start. Either shows in state.json (summary), status and doctor.
 //
-// Jobs also wait for the machine to be idle (SmoothGate, display.smooth_idle_load and the rest), whatever the load
+// Jobs also wait for the machine to be idle (IdleGate, display.smooth_idle_load and the rest), whatever the load
 // section says: the gate is read every GATE_INTERVAL_MS, and a job running when it closes stops, keeping its chunks.
-const GATE_INTERVAL_MS = 15_000;
 
 export class Smooth {
   constructor(daemon, { loadavg, cpus } = {}) {
     this.daemon = daemon;
-    this.gate = new SmoothGate({
+    this.gate = new IdleGate({
+      kind: 'smooth',
       settings: () => this.settings.display,
       ...(loadavg ? { loadavg } : {}), ...(cpus ? { cpus } : {}),
       now: () => (this.daemon.now ?? Date.now)()

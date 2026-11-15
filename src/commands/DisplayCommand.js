@@ -141,8 +141,10 @@ export class DisplayCommand {
     if (state.load) out.row('Load', this.describeLoad(state.load));
     if (state.screensaver) out.row('Screensaver', this.describeScreensaver(state.screensaver));
     if (state.smoothing?.fallback) out.row('Smoothing', this.describeSmoothing(state.smoothing));
-    const waiting = this.describeSmoothingWait(state.smoothing);
+    const waiting = this.describeIdleWait(state.smoothing);
     if (waiting) out.row('Smoothing', waiting);
+    const reversing = this.describeIdleWait(state.bounce);
+    if (reversing) out.row('Bounce', reversing);
     if (state.visualizer?.error) out.row('Visualizer', fmt.yellow(`off: ${state.visualizer.error}`));
     if (state.visualizer?.enabled && state.visualizer.compositor === false) {
       out.row('Visualizer', fmt.yellow('no compositor runs: the area around the bars shows black (start picom or another compositor)'));
@@ -202,14 +204,14 @@ export class DisplayCommand {
     return `${fmt.yellow(`on the CPU${at}`)} ${fmt.dim(`(${fallback.reason}; restart the daemon to try GPU ${gpu} again)`)}`;
   }
 
-  // While videos wait for the load gate (src/display/SmoothGate.js) to open: how loaded the machine is, and how long
-  // it has been idle enough
-  describeSmoothingWait(smoothing) {
-    const gate = smoothing?.gate;
-    if (!smoothing?.enabled || !smoothing.waiting || !gate || gate.open || gate.idle_load === null) return null;
+  // While videos wait for an idle gate (src/display/IdleGate.js; state.json smoothing or bounce) to open: how loaded
+  // the machine is, and how long it has been idle enough
+  describeIdleWait(queue) {
+    const gate = queue?.gate;
+    if (!queue || queue.enabled === false || !queue.waiting || !gate || gate.open || gate.idle_load === null) return null;
     const perCpu = gate.load ? `load ${gate.load.five.toFixed(2)} a CPU` : 'load not read yet';
     const low = Number.isFinite(gate.low_since) ? `, under it since ${new Date(gate.low_since).toTimeString().slice(0, 5)}` : '';
-    const videos = `${smoothing.waiting} ${smoothing.waiting === 1 ? 'video waits' : 'videos wait'}`;
+    const videos = `${queue.waiting} ${queue.waiting === 1 ? 'video waits' : 'videos wait'}`;
     return `${fmt.yellow('waiting for an idle machine')} ${fmt.dim(`(${videos}; ${perCpu}${low}; starts after ${gate.idle_minutes} min under ${gate.idle_load})`)}`;
   }
 

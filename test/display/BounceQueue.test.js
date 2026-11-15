@@ -315,4 +315,73 @@ describe('Bounce (daemon)', () => {
     await bounce.begin();
     expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([]);
   });
+
+  describe('idle gate (display.bounce_idle_load)', () => {
+    let load, clock;
+
+    beforeEach(() => {
+      load = [8, 8, 8];
+      clock = 0;
+      config.set('display.bounce_idle_load', 0.25);
+      config.set('display.bounce_idle_minutes', 120);
+      config.set('display.bounce_stop_load', 0.75);
+      daemon.now = () => clock;
+      daemon.writeState = sinon.stub().resolves();
+      bounce = new Bounce(daemon, { loadavg: () => load, cpus: 8 });
+    });
+
+    it('reverses nothing, not even what plays now, until the load has stayed low for bounce_idle_minutes', async () => {
+      await bounce.begin();
+      const playing = await video(1);
+      await bounce.onLoaded(screen([{ id: 1, filename: playing.path, current: true }]), playing);
+      expect(encodes).to.deep.equal([]);
+      expect(bounce.summary()).to.deep.include({ waiting: 1, encoding: null });
+      load = [1, 1.5, 3];
+      await bounce.tick();
+      clock = 119 * 60_000;
+      await bounce.tick();
+      expect(encodes).to.deep.equal([]);
+      expect(bounce.summary().gate).to.include({ open: false, low_since: 0, idle_minutes: 120 });
+      // A rise starts the wait again
+      load = [3, 2.5, 3];
+      await bounce.tick();
+      expect(bounce.gate.lowSince).to.equal(null);
+      load = [1, 1.5, 1];
+      await bounce.tick();
+      clock += 120 * 60_000;
+      await bounce.tick();
+      expect(encodes.map(encode => encode.media.id)).to.deep.equal([1]);
+      expect(daemon.writeState.called).to.equal(true);
+    });
+
+    it('stops a running encode when the load rises, queues it again first, and resumes when the gate opens again', async () => {
+      load = [0.5, 0.5, 0.5];
+      config.set('display.bounce_idle_minutes', 0);
+      await bounce.begin();
+      const [first, second] = await videos(2);
+      bounce.want(first);
+      bounce.want(second);
+      expect(encodes.map(encode => encode.media.id)).to.deep.equal([1]);
+      // The encode's own load: over the idle threshold, under the stop one
+      load = [4, 3, 1];
+      await bounce.tick();
+      expect(encodes[0].signal.aborted).to.equal(false);
+      load = [7, 4, 2];
+      await bounce.tick();
+      expect(encodes[0].signal.aborted).to.equal(true);
+      await bounce.running;
+      expect([...bounce.queue.keys()]).to.deep.equal([first.id, second.id]);
+      expect(encodes).to.have.length(1);
+      load = [0.5, 0.5, 0.5];
+      await bounce.tick();
+      expect(encodes.map(encode => encode.media.id)).to.deep.equal([1, 1]);
+    });
+
+    it('leaves reversing to the load level alone with bounce_idle_load null', async () => {
+      config.set('display.bounce_idle_load', null);
+      load = [64, 64, 64];
+      bounce.want(await video(1));
+      expect(encodes).to.have.length(1);
+    });
+  });
 });
