@@ -6,7 +6,7 @@ import path from 'path';
 import os from 'os';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { childrenPath } from '../../src/display/children.js';
-import { Daemon, buildCommand, readState, statePath, nextFiltersPath, controlPath, controlRequestPath, isProcessRunning } from '../../src/display/Daemon.js';
+import { Daemon, buildCommand, defaultHwdec, readState, statePath, nextFiltersPath, controlPath, controlRequestPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
 import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
@@ -111,11 +111,22 @@ describe('Daemon', () => {
       expect(args[args.length - 1]).to.equal('--vo=gpu');
     });
 
-    // 2.50.7: VAAPI first, since CUDA's probe stalled mpv's start past the IPC timeout on the NVIDIA desktop;
-    // auto-safe keeps the other hardware decoders and software decoding after it
-    it('tries VAAPI before the other safe hardware decoders', () => {
-      const { args } = buildCommand({ width: 1920, height: 1080, x: 0, y: 0 }, '/run/backdrop/DP-1.sock', config.get().display);
-      expect(args.filter(arg => arg.startsWith('--hwdec'))).to.deep.equal(['--hwdec=vaapi,auto-safe']);
+    // 2.50.7: VAAPI first without an NVIDIA driver, since CUDA's probe stalled mpv's start past the IPC timeout;
+    // 2.85.1: nvdec first with one, since VAAPI through nvidia-vaapi-driver deadlocked mpv
+    it('tries nvdec first where the NVIDIA driver is loaded, else VAAPI, before the other safe decoders', () => {
+      const nvidia = { exists: file => file === '/proc/driver/nvidia/version' };
+      expect(defaultHwdec(nvidia)).to.equal('nvdec,auto-safe');
+      expect(defaultHwdec({ exists: () => false })).to.equal('vaapi,auto-safe');
+      const monitor = { width: 1920, height: 1080, x: 0, y: 0 };
+      const { args } = buildCommand(monitor, '/run/backdrop/DP-1.sock', config.get().display, { hwdec: 'nvdec,auto-safe' });
+      expect(args.filter(arg => arg.startsWith('--hwdec'))).to.deep.equal(['--hwdec=nvdec,auto-safe']);
+    });
+
+    it('lets a --hwdec in display.mpv_args win over the default', () => {
+      const display = { ...config.get().display, mpv_args: ['--hwdec=no'] };
+      const { args } = buildCommand({ width: 1920, height: 1080, x: 0, y: 0 }, '/run/backdrop/DP-1.sock', display, { hwdec: 'vaapi,auto-safe' });
+      const hwdec = args.filter(arg => arg.startsWith('--hwdec'));
+      expect(hwdec[hwdec.length - 1]).to.equal('--hwdec=no');
     });
   });
 

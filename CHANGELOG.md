@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.85.1] - 2026-11-14
+
+### Fixed
+
+- On a machine with NVIDIA's driver loaded, mpv deadlocked probing VAAPI through nvidia-vaapi-driver
+  (minerva: GTX 960, driver 580, nvidia-vaapi-driver 0.0.8): it answered no IPC at all, so
+  `backdrop mode video` failed with "mpv set_property timed out after 5000ms" and nothing played. mpv now
+  tries NVIDIA's own decoder first there (`--hwdec=nvdec,auto-safe`, when `/proc/driver/nvidia/version`
+  exists), and VAAPI first elsewhere as before (`vaapi,auto-safe`, which keeps 2.50.7's fix for CUDA's
+  stall on a machine without the card). A `--hwdec` in `display.mpv_args` still wins.
+
 ## [2.85.0] - 2026-11-14
 
 ### Added

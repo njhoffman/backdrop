@@ -91,7 +91,15 @@ export async function readState(runtimeDir) {
   }
 }
 
-export function buildCommand(monitor, socketPath, display) {
+// mpv's hardware decoders, most likely first: NVIDIA's own (nvdec) where its driver is loaded, since a
+// VAAPI probe through nvidia-vaapi-driver can deadlock mpv there (no IPC answers at all; minerva, 2.85.1);
+// VAAPI elsewhere, since auto-safe tries CUDA before it, which stalled mpv's start ~6 s on a machine with
+// CUDA's libraries but no NVIDIA card (2.50.7). auto-safe keeps the rest and software decoding after it.
+export function defaultHwdec({ exists = fs.existsSync } = {}) {
+  return exists('/proc/driver/nvidia/version') ? 'nvdec,auto-safe' : 'vaapi,auto-safe';
+}
+
+export function buildCommand(monitor, socketPath, display, { hwdec = defaultHwdec() } = {}) {
   return {
     file: 'xwinwrap',
     args: [
@@ -114,8 +122,8 @@ export function buildCommand(monitor, socketPath, display) {
       '--msg-level=all=warn',
       '--framedrop=vo',
       '--panscan=1.0',
-      // VAAPI first: auto-safe tries NVIDIA's CUDA before it, which can stall mpv for 6 s on a machine without the card
-      '--hwdec=vaapi,auto-safe',
+      // display.mpv_args come after, so a --hwdec there wins
+      `--hwdec=${hwdec}`,
       ...display.mpv_args
     ]
   };
