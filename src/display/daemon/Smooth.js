@@ -232,9 +232,12 @@ export class Smooth {
   }
 
   // Starts the next job. None while no monitor is known (at start, or all unplugged): its size would fall back to the
-  // video's own, up to four times the pixels a 1080p screen shows; the next load starts it again.
+  // video's own, up to four times the pixels a 1080p screen shows; the next load starts it again. None either while a
+  // reverse encode runs or could start (daemon/Bounce.js): the two share one slot, and a reversal, minutes against
+  // RIFE's hours and for what plays now or next, goes first.
   kick() {
     if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.enabled || !this.gate.allowed) return;
+    if (this.daemon.bounce?.running || this.daemon.bounce?.canStart?.()) return;
     if (!this.daemon.monitors.size) return;
     const [id, queued] = this.queue.entries().next().value;
     this.queue.delete(id);
@@ -255,7 +258,8 @@ export class Smooth {
         this.running = null;
         this.controller = null;
         this.encoding = null;
-        this.kick();
+        // A reversal waiting for the slot goes first
+        if (!this.daemon.bounce?.kick?.()) this.kick();
       });
   }
 

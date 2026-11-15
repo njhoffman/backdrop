@@ -79,6 +79,31 @@ describe('Smooth (daemon)', () => {
     expect(swapped.map(ids => ids.at(-1))).to.deep.equal([high.id, low.id]);
   });
 
+  it('shares one encode slot with the bounce queue, which goes first', async () => {
+    daemon.bounce.running = Promise.resolve();
+    smooth.want(await video(1));
+    await settle();
+    expect(made).to.deep.equal([]);
+    // Nothing reversing, but a reversal could start: it takes the slot
+    daemon.bounce.running = null;
+    daemon.bounce.canStart = () => true;
+    smooth.kick();
+    await settle();
+    expect(made).to.deep.equal([]);
+    daemon.bounce.canStart = () => false;
+    // A job ending offers the slot to the bounce queue before the next job
+    let offered = 0;
+    daemon.bounce.kick = () => {
+      offered++;
+      return false;
+    };
+    smooth.want(await video(2));
+    smooth.kick();
+    await settle();
+    expect(made.map(item => item.id)).to.have.length(2);
+    expect(offered).to.equal(2);
+  });
+
   it('starts no job while no monitor is known, so no copy is made at the video\'s own size', async () => {
     const media = await video(1);
     const monitors = daemon.monitors;

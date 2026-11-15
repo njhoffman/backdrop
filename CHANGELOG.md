@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.86.1] - 2026-11-14
+
+### Fixed
+
+- Reversed copies for bounce and smoothed copies no longer encode at the same time: they share one slot, a reversal
+  (minutes of work, for what plays now or next) going first. With both idle gates set alike, the two used to start on
+  the same reading, and their combined load could close one gate again moments later.
+
 ## [2.86.0] - 2026-11-14
 
 ### Changed

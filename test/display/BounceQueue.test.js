@@ -88,6 +88,22 @@ describe('Bounce (daemon)', () => {
     expect([...bounce.pending]).to.deep.equal([1]);
   });
 
+  it('waits while a smoothing job runs, and hands the slot to smoothing when nothing more is reversed', async () => {
+    const smoothing = { running: Promise.resolve(), kick: sinon.spy() };
+    daemon.smoothing = smoothing;
+    const media = await video(1);
+    bounce.want(media);
+    expect(encodes).to.deep.equal([]);
+    expect(bounce.canStart()).to.equal(true);
+    smoothing.running = null;
+    expect(bounce.kick()).to.equal(true);
+    expect(encodes).to.have.length(1);
+    await encodes[0].finish(true);
+    await bounce.running;
+    await tick();
+    expect(smoothing.kick.calledOnce).to.equal(true);
+  });
+
   it('does not queue an item again while it is being reversed', async () => {
     const media = await video(1);
     bounce.want(media);

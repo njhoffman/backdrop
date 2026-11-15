@@ -109,9 +109,16 @@ export class Bounce {
     this.kick();
   }
 
-  // Starts the oldest queued encode when none runs and the load allows it (the load level and the idle gate)
+  // Whether an encode would start now, apart from smoothing: one queued, none running, and the load allows it (the
+  // load level and the idle gate)
+  canStart() {
+    return !this.running && !this.daemon.stopping && this.queue.size > 0 && this.daemon.load.level === 'normal' && this.gate.allowed;
+  }
+
+  // Starts the oldest queued encode when canStart and no smoothing job runs: background encodes share one slot, so the
+  // two never add their load together (and close each other's idle gate). Returns whether one started.
   kick() {
-    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.gate.allowed) return;
+    if (!this.canStart() || this.daemon.smoothing?.running) return false;
     const [id, media] = this.queue.entries().next().value;
     this.queue.delete(id);
     const controller = new AbortController();
@@ -153,8 +160,10 @@ export class Bounce {
         this.running = null;
         this.controller = null;
         this.encoding = null;
-        this.kick();
+        // The slot passes to smoothing when nothing more is reversed now
+        if (!this.kick()) this.daemon.smoothing?.kick?.();
       });
+    return true;
   }
 
   // The load left normal: the running encode stops and waits
