@@ -1,4 +1,5 @@
-import { pathToFileURL } from 'url';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { checkSetting } from '../config/schema.js';
 import { run } from '../display/Monitors.js';
 import { stillFor } from '../library/thumbnail.js';
@@ -6,6 +7,10 @@ import { out, formatClock, formatResolution } from './output.js';
 
 // commands: navigation commands notify; all: the daemon notifies on every load, commands included; off
 export { NOTIFY_MODES } from '../config/schema.js';
+
+// The app's icon (share/icons/backdrop.svg, rendered by `npm run icons`): a PNG, which every notification server
+// can show, by absolute path so nothing has to be installed into an icon theme
+export const APP_ICON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../share/icons/backdrop-128.png');
 
 // Tests replace exec so notify-send never runs, and still so no ffmpeg runs for the picture
 const settings = { exec: run, still: (media, dir, logger) => stillFor(media, dir, { logger, nice: true }) };
@@ -85,7 +90,7 @@ async function closeNotification(id) {
 // a missing notify-send or notification server must not fail the command or the daemon.
 // With thumbnails (the thumbnail folder), the notification shows the item: a 16:9 still (stillFor) as the
 // image-path hint, as a file:// URI, which deadd needs (a plain path showed a placeholder); without one it shows an
-// icon as before: the image itself, or a generic video icon.
+// icon as before: the image itself, or for a video the app's icon.
 export async function notifyPlaying(database, { monitor, media, rating }, { logger, thumbnails } = {}) {
   if (!media) return;
   const key = `notify_id:${monitor.name}`;
@@ -96,7 +101,7 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
   const still = thumbnails ? await Promise.resolve(settings.still(media, thumbnails, logger)).catch(() => null) : null;
   const picture = still
     ? `--hint=string:image-path:${pathToFileURL(still).href}`
-    : `--icon=${media.kind === 'image' ? media.path : 'video-x-generic'}`;
+    : `--icon=${media.kind === 'image' ? media.path : APP_ICON}`;
   const args = [
     '--print-id', '--app-name=backdrop', '--urgency=low',
     `--hint=string:x-dunst-stack-tag:backdrop-${monitor.name}`,
@@ -117,7 +122,7 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
 // Errors from commands run without a terminal (the rofi menu), shown whatever display.notify says
 export async function notifyError(message, { logger } = {}) {
   try {
-    await settings.exec('notify-send', ['--app-name=backdrop', '--urgency=critical', 'backdrop', escapeMarkup(message)]);
+    await settings.exec('notify-send', ['--app-name=backdrop', `--icon=${APP_ICON}`, '--urgency=critical', 'backdrop', escapeMarkup(message)]);
   } catch (error) {
     logger?.warn('Error notification failed', { error: error.message });
   }
@@ -126,7 +131,7 @@ export async function notifyError(message, { logger } = {}) {
 // The daemon changing what it shows for the system load
 export async function notifyLoad(message, { logger } = {}) {
   try {
-    await settings.exec('notify-send', ['--app-name=backdrop', 'backdrop', escapeMarkup(message)]);
+    await settings.exec('notify-send', ['--app-name=backdrop', `--icon=${APP_ICON}`, 'backdrop', escapeMarkup(message)]);
   } catch (error) {
     logger?.warn('Notification failed', { error: error.message });
   }

@@ -1,3 +1,5 @@
+<img src="share/icons/backdrop.svg" alt="" width="96" height="96" align="right">
+
 # backdrop
 
 Wallpaper and screensaver manager for X11. Collects images and videos from free sources (Pexels, with

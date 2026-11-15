@@ -1,6 +1,6 @@
 {
   "name": "backdrop",
-  "version": "2.88.0",
+  "version": "2.89.0",
   "description": "Wallpaper and screensaver manager: curate images and videos from free sources and display them with mpv",
   "type": "module",
   "main": "src/index.js",
@@ -11,6 +11,7 @@
     "test": "mocha 'test/**/*.test.js'",
     "test:brief": "mocha --reporter dot 'test/**/*.test.js'",
     "start": "node src/index.js",
+    "icons": "for n in 48 128 256; do rsvg-convert -w $n -h $n share/icons/backdrop.svg -o share/icons/backdrop-$n.png; done && cp share/icons/backdrop.svg share/web/icon.svg",
     "man": "node src/index.js man 1 > share/man/man1/backdrop.1 && node src/index.js man 5 > share/man/man5/backdrop-config.5"
   },
   "keywords": [

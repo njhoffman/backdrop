@@ -1,7 +1,8 @@
 import { expect } from 'chai';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
+import fs from 'fs';
 import {
-  configureNotify, describeNotification, notifyMode, notifyPlaying, notifyCommand
+  APP_ICON, configureNotify, describeNotification, notifyError, notifyLoad, notifyMode, notifyPlaying, notifyCommand
 } from '../../src/utils/notify.js';
 import { notifications, closedNotifications } from '../helpers/setup.js';
 import { makeConfig } from '../helpers/fakes.js';
@@ -51,7 +52,7 @@ describe('notify', () => {
     await notifyPlaying(db, { monitor, media, rating: null });
     await notifyPlaying(db, { monitor, media, rating: null });
     expect(recorded).to.have.length(2);
-    expect(recorded[0]).to.include('--icon=video-x-generic').and.include('--hint=string:x-dunst-stack-tag:backdrop-DP-1');
+    expect(recorded[0]).to.include(`--icon=${APP_ICON}`).and.include('--hint=string:x-dunst-stack-tag:backdrop-DP-1');
     expect(recorded[0].some(arg => arg.startsWith('--replace-id'))).to.be.false;
     expect(recorded[1]).to.include('--replace-id=1');
     expect(db.getSetting('notify_id:DP-1')).to.equal(2);
@@ -77,11 +78,11 @@ describe('notify', () => {
 
       configureNotify({ still: async () => null });
       await notifyPlaying(db, { monitor, media, rating: null }, { thumbnails: '/cache/thumbs' });
-      expect(recorded[1]).to.include('--icon=video-x-generic');
+      expect(recorded[1]).to.include(`--icon=${APP_ICON}`);
       // A failing still falls back the same way
       configureNotify({ still: async () => { throw new Error('ffmpeg missing'); } });
       await notifyPlaying(db, { monitor, media, rating: null }, { thumbnails: '/cache/thumbs' });
-      expect(recorded[2]).to.include('--icon=video-x-generic');
+      expect(recorded[2]).to.include(`--icon=${APP_ICON}`);
     } finally {
       configureNotify({ still: async () => null });
     }
@@ -109,6 +110,14 @@ describe('notify', () => {
       configureNotify({ exec });
     }
     expect(warnings[0][1].error).to.include('ENOENT');
+  });
+
+  it('shows the app\'s icon on errors and load changes, from a PNG that ships with it', async () => {
+    await notifyError('rofi failed');
+    await notifyLoad('Load high: images only');
+    expect(recorded.slice(-2).every(args => args.includes(`--icon=${APP_ICON}`))).to.equal(true);
+    expect(APP_ICON).to.match(/share\/icons\/backdrop-128\.png$/);
+    expect(fs.existsSync(APP_ICON)).to.equal(true);
   });
 
   it('notifies from commands only in commands mode and validates the setting', async () => {

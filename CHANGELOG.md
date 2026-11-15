@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.89.0] - 2026-11-15
+
+### Added
+
+- backdrop has an icon: a screen at dusk in front of a second layer, the backdrop behind it
+  (`share/icons/backdrop.svg`, with PNGs at 48, 128 and 256 pixels from `npm run icons`). Error and load
+  notifications show it, a playing video without a still shows it instead of a generic video icon, and the web
+  interface uses it as its favicon and logo.
+
 ## [2.88.0] - 2026-11-15
 
 ### Added
