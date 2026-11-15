@@ -35,7 +35,9 @@ export class ProjectmVisualizer {
         SDL_X11_FORCE_OVERRIDE_REDIRECT: '1',
         // Otherwise it records from the default capture device, a microphone, rather than what is playing
         SDL_AUDIODRIVER: 'pulseaudio',
-        PULSE_SOURCE: '@DEFAULT_MONITOR@'
+        PULSE_SOURCE: '@DEFAULT_MONITOR@',
+        // Its own 480-frame capture pulls the PipeWire graph down to a 512 quantum (visualizer.latency_ms)
+        ...(this.settings.latencyMs ? { PULSE_LATENCY_MSEC: String(this.settings.latencyMs) } : {})
       }
     };
   }

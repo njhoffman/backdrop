@@ -106,7 +106,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only)
   silence_grace: 10        # seconds of silence before they stop
   reference_height: 1440   # monitor height GLava's pixel sizes are meant for; they follow the window's height. null: exact pixels
-  latency_ms: 30           # GLava's capture latency (PULSE_LATENCY_MSEC); below ~22 it shrinks PipeWire's quantum and playback stutters. null: GLava's own
+  latency_ms: 30           # GLava's and projectM's capture latency (PULSE_LATENCY_MSEC); below ~22 it shrinks PipeWire's quantum and playback stutters. null: GLava's own
   wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it

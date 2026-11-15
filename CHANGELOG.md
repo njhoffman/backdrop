@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.84.1] - 2026-11-14
+
+### Fixed
+
+- projectM follows `visualizer.latency_ms` too: its capture asked for about 11 ms and pulled the audio graph down
+  to a 512-frame quantum.
+
 ## [2.84.0] - 2026-11-14
 
 ### Added

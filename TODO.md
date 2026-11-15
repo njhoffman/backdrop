@@ -810,9 +810,15 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done (2.84.0): `visualizer.latency_ms` (default 30, `null`/0 for GLava's own) sets `PULSE_LATENCY_MSEC` on each
       GLava, over the daemon's environment. Checked on charon: the sink back at 1024, GLava's stream at 661 frames
       (30 ms at 22050 Hz); over 45 s the sink's ERR stayed flat and GLava's and Spotify's rose by a handful (was 22,653).
-- [ ] **Check sleeve's and projectM's capture quantum.** (p3) [test] Both capture audio too (`SleeveVisualizer.js`,
+- [x] **Check sleeve's and projectM's capture quantum.** (p3) [test] Both capture audio too (`SleeveVisualizer.js`,
       `ProjectmVisualizer.js`); run each on the real desktop and see in `pw-top` whether its stream lowers the graph's
       quantum below 1024 the way GLava's did. If one does, give it the same `PULSE_LATENCY_MSEC` from `latency_ms`.
+      Checked 2026-11-14 on charon: sleeve opens no audio stream (`lyrics-only` left only Spotify, graph at 2048).
+      projectMSDL (`screensaver-projectm`) asks for 480 frames at 44100 Hz (about 11 ms) and pulls the sink to a
+      512 quantum, with no new xruns in 30 s. Fix: `PULSE_LATENCY_MSEC` in `ProjectmVisualizer.command`'s env, then
+      check through the daemon (a projectMSDL started from a shell stalled after loading its config, never opening audio).
+      Done (2.84.1): `ProjectmVisualizer.command` sets `PULSE_LATENCY_MSEC` from `latency_ms`; through the daemon
+      projectMSDL asks for 1323 frames at 44100 Hz (30 ms), the sink stays at 1024, no new xruns in 30 s.
 
 ## 10. Web interface
 
