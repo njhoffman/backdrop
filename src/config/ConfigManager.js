@@ -208,6 +208,8 @@ export class ConfigManager {
       bounce: path.join(cacheDir, 'bounce'),
       // Smoothed (smooth_fps) copies of slowed videos (display.smooth), and their reversed copies for bounce
       smooth: path.join(cacheDir, 'smooth'),
+      // Sources and copies of the jobs `backdrop worker` makes for other machines
+      worker: path.join(cacheDir, 'worker'),
       runtime: runtimeDir()
     };
   }
@@ -260,6 +262,12 @@ export class ConfigManager {
         style: 'panel',
         rofi_args: [],
         workspace: true
+      },
+      // Encodes made on another machine (src/offload/RemoteEncoder.js, `backdrop worker` there)
+      offload: {
+        hosts: [],
+        worker_command: 'backdrop worker',
+        memory_max: '4G'
       },
       // `backdrop web` (docs/specs/web.md); a taken port falls back to a free one
       web: {

@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { Bounce } from '../../src/display/daemon/Bounce.js';
+import { Bounce, UNAVAILABLE } from '../../src/display/daemon/Bounce.js';
 import { bounceUrl, playUrl } from '../../src/display/bounce.js';
 import { FakeMpvClient, fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
 
@@ -37,6 +37,8 @@ describe('Bounce (daemon)', () => {
         signal.addEventListener('abort', () => resolve(null));
       })
     };
+    // As the daemon does with no offload host
+    daemon.reverseAnywhere = (media, target, options) => daemon.reverse(media, options);
     bounce = new Bounce(daemon);
   });
 
@@ -327,6 +329,43 @@ describe('Bounce (daemon)', () => {
     for (const key of [kept.id, off.id, skipped.id, 99]) await fs.outputFile(path.join(dir, 'bounce', `${fakeSha(key)}.reverse.work`, 'c00000.mp4'), 'chunk');
     await bounce.prune();
     expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${kept.sha256}.reverse.work`]);
+  });
+
+  describe('on another machine (offload.hosts)', () => {
+    it('reverses there whatever the load here, and a load rise does not stop it', async () => {
+      daemon.load.level = 'shed';
+      const media = await video(1);
+      bounce.want(media);
+      expect(encodes).to.have.length(0);
+      const targets = [];
+      daemon.offload = { available: true, host: { name: 'minerva' } };
+      daemon.reverseAnywhere = (item, target, options) => {
+        targets.push({ target, local: options.local });
+        return daemon.reverse(item, options);
+      };
+      expect(bounce.kick()).to.equal(true);
+      expect(targets).to.deep.equal([{ target: path.join(dir, 'bounce', `${media.sha256}.mp4`), local: false }]);
+      expect(bounce.summary().host).to.equal('minerva');
+      bounce.pause();
+      expect(encodes[0].signal.aborted).to.equal(false);
+      await encodes[0].finish(true);
+      await bounce.running;
+      expect(bounce.remote).to.equal(false);
+    });
+
+    it('queues the job again when the machine went away, for this one\'s gates to start', async () => {
+      daemon.load.level = 'shed';
+      const media = await video(1);
+      daemon.offload = { available: true, host: { name: 'minerva' } };
+      daemon.reverseAnywhere = async () => {
+        daemon.offload.available = false;
+        return UNAVAILABLE;
+      };
+      bounce.want(media);
+      await bounce.running;
+      expect([...bounce.queue.keys()]).to.deep.equal([media.id]);
+      expect(encodes).to.have.length(0);
+    });
   });
 
   it('renames copies named for the id on start, before pruning them', async () => {

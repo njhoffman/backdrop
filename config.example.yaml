@@ -31,6 +31,11 @@ menu:
   rofi_args: []                      # extra rofi options for backdrop menu, e.g. [-theme, ~/.config/rofi/backdrop.rasi]
   workspace: true                    # i3: show an empty workspace ("backdrop", or a name given here) while the menu is open; false to stay
 
+offload:
+  hosts: []                          # SSH destinations that make reversed and smoothed copies for this machine, e.g. [minerva]
+  # worker_command: backdrop worker  # what a host runs for a job, in a login shell there
+  # memory_max: 4G                   # memory a job may use on the host; null for no limit
+
 visualizer:
   enabled: false                     # run a GLava music visualizer above the wallpaper (needs glava and a compositor)
   # engine: glava                    # or sleeve for synced lyrics (also per instance; needs sleeve 0.33 or later)

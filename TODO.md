@@ -895,11 +895,15 @@ presets and the config. It talks to the running daemon the way the CLI does (`Di
 minerva (the always-on desktop, NVIDIA) is the source of truth; charon (the laptop) offloads encodes to it and syncs
 ratings with it. Media is not synced: either machine can fetch and encode again. Agreed 2026-11-15.
 
-- [ ] **Encode worker over SSH.** (p2) [feature] `backdrop worker`: a stateless JSON-over-stdio process, reached as
+- [x] **Encode worker over SSH.** (p2) [feature] `backdrop worker`: a stateless JSON-over-stdio process, reached as
       `ssh minerva backdrop worker`. The shared encode slot (`daemon/Bounce.js`, `daemon/Smooth.js`) gets a host list
       (e.g. `offload.hosts: [minerva, local]`) and falls back to the local slot when minerva cannot be reached. A job
       carries the sha256, kind, speed, fps and the requester's target size; Pexels sources are fetched by the worker
       itself, local imports streamed over the connection. A protocol version is exchanged on connect.
+      Done in 2.88.0 (`src/offload/`, `docs/specs/offload.md`), with sources uploaded by rsync for every item.
+- [ ] **The worker fetches Pexels sources itself.** (p3) [perf] Off the LAN, uploading each video from the laptop is
+      the slow part of an offloaded job. For a Pexels item the job could carry the chosen variant's URL and the
+      worker download it (`src/offload/worker.js`), falling back to the upload for local imports.
 - [ ] **Rating sync.** (p2) [feature] Schema v11: a host id per database and a change log keyed by (host, sequence)
       for ratings, undo events and per-item attributes (speed, bounce; dim stays per machine). Peers exchange entries
       after each host's high-water mark (`ssh minerva backdrop sync --serve`); ratings merge as a set union, attributes

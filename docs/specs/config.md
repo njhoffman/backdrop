@@ -95,6 +95,11 @@ menu:
   rofi_args: []            # appended to `rofi -dmenu` for `backdrop menu`, e.g. [-theme-str, 'window { width: 900px; }']
   workspace: true          # i3: an empty workspace (true: "backdrop", or a name) while the menu is open; false to stay
 
+offload:                   # reversed and smoothed copies made on another machine (docs/specs/offload.md)
+  hosts: []                # SSH destinations running backdrop, tried in order, e.g. [minerva]; empty encodes here
+  worker_command: backdrop worker  # what a host runs for a job, in a login shell there
+  memory_max: 4G           # systemd-run MemoryMax for a job on the host; null for no limit
+
 web:
   port: 7737               # `backdrop web` listens on 127.0.0.1 here; a taken port falls back to a free one (docs/specs/web.md)
 
@@ -180,6 +185,7 @@ individually:
 | `media` | `$XDG_DATA_HOME/backdrop/media` |
 | `trash` | `$XDG_DATA_HOME/backdrop/trash` |
 | `inbox` | `$XDG_CACHE_HOME/backdrop/inbox` |
+| `worker` | `$XDG_CACHE_HOME/backdrop/worker` (sources and copies of `backdrop worker` jobs for other machines) |
 | `runtime` | `$XDG_RUNTIME_DIR/backdrop`, or `$TMPDIR/backdrop-<uid>` without it |
 
 Paths and `library.import_dirs` expand a leading `~`, `$VAR` and `${VAR}`; unknown variables are left as-is.

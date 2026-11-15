@@ -45,6 +45,8 @@ describe('Smooth (daemon)', () => {
         return file;
       }
     };
+    // As the daemon does with no offload host
+    daemon.reverseAnywhere = (media, target, options) => daemon.reverse(media, options);
     smooth = new Smooth(daemon);
   });
 

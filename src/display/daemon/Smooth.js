@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
 import { probeMedia } from '../../library/probe.js';
 import { renameIdCopies } from '../../library/copies.js';
+import { OffloadUnavailable } from '../../offload/RemoteEncoder.js';
 import { listReverseWork } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
@@ -81,8 +82,14 @@ export class Smooth {
   summary() {
     return {
       enabled: this.enabled, gpu: this.gpu, device: this.fallback ? -1 : this.gpu, fallback: this.fallback, encoding: this.encoding,
-      waiting: this.queue.size, gate: this.gate.summary()
+      waiting: this.queue.size, gate: this.gate.summary(), host: this.offloading ? this.daemon.offload.host.name : null
     };
+  }
+
+  // Whether jobs go to another machine (offload.hosts, src/offload/RemoteEncoder.js): then this machine's load and
+  // idle gate do not hold them, since the work is not done here
+  get offloading() {
+    return Boolean(this.daemon.offload?.canSmooth);
   }
 
   // A gate reading: a job starts when it opens, and the one running stops (to resume later) when it closes
@@ -97,7 +104,7 @@ export class Smooth {
       this.kick();
     } else {
       this.daemon.logger.info('Smoothing paused: the load rose', { perCpu: load, encoding: this.encoding });
-      this.controller?.abort();
+      if (!this.remote) this.controller?.abort();
     }
     if (this.daemon.writeState) await this.daemon.writeState().catch(() => {});
   }
@@ -238,7 +245,8 @@ export class Smooth {
   // reverse encode runs or could start (daemon/Bounce.js): the two share one slot, and a reversal, minutes against
   // RIFE's hours and for what plays now or next, goes first.
   kick() {
-    if (this.running || this.daemon.stopping || !this.queue.size || this.daemon.load.level !== 'normal' || !this.enabled || !this.gate.allowed) return;
+    if (this.running || this.daemon.stopping || !this.queue.size || !this.enabled) return;
+    if (!this.offloading && (this.daemon.load.level !== 'normal' || !this.gate.allowed)) return;
     if (this.daemon.bounce?.running || this.daemon.bounce?.canStart?.()) return;
     if (!this.daemon.monitors.size) return;
     const [id, queued] = this.queue.entries().next().value;
@@ -260,6 +268,7 @@ export class Smooth {
         this.running = null;
         this.controller = null;
         this.encoding = null;
+        this.remote = false;
         // A reversal waiting for the slot goes first
         if (!this.daemon.bounce?.kick?.()) this.kick();
       });
@@ -270,24 +279,35 @@ export class Smooth {
     const dir = paths.smooth;
     const size = smoothSize(media, [...this.daemon.monitors.values()]);
     if (!smoothedReady(media, dir, size)) {
-      // Awaited only for a GPU: on the CPU the job starts at once
-      const gpu = this.gpu < 0 || this.fallback ? -1 : await this.device();
-      if (signal.aborted) return this.requeue(media);
-      const watch = gpu >= 0 ? this.watch(display.smooth_rife) : null;
       let made;
-      try {
-        made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, gpu, signal });
-      } catch (error) {
-        if (!(error instanceof RifeTimeoutError)) throw error;
-        // On a GPU a stalled chunk may be a hang coming; on the CPU the item is given up until the daemon restarts
-        if (gpu >= 0) {
-          await this.fallBack(error.message);
-          return this.requeue(media);
+      if (this.offloading) {
+        // Made on another machine with its own RIFE and GPU settings; gone there, the job waits for this machine's gates
+        this.remote = true;
+        try {
+          made = await this.daemon.offload.smooth(media, smoothedPath(media, dir), { size, fps: this.target, signal });
+        } catch (error) {
+          if (error instanceof OffloadUnavailable) return this.requeue(media);
+          throw error;
         }
-        this.failed.add(media.id);
-        return;
-      } finally {
-        watch?.stop();
+      } else {
+        // Awaited only for a GPU: on the CPU the job starts at once
+        const gpu = this.gpu < 0 || this.fallback ? -1 : await this.device();
+        if (signal.aborted) return this.requeue(media);
+        const watch = gpu >= 0 ? this.watch(display.smooth_rife) : null;
+        try {
+          made = await this.daemon.smoothVideo(media, { dir, size, target: this.target, rife: display.smooth_rife, gpu, signal });
+        } catch (error) {
+          if (!(error instanceof RifeTimeoutError)) throw error;
+          // On a GPU a stalled chunk may be a hang coming; on the CPU the item is given up until the daemon restarts
+          if (gpu >= 0) {
+            await this.fallBack(error.message);
+            return this.requeue(media);
+          }
+          this.failed.add(media.id);
+          return;
+        } finally {
+          watch?.stop();
+        }
       }
       if (signal.aborted) return this.requeue(media);
       if (!made) {
@@ -304,7 +324,7 @@ export class Smooth {
     if (bounces(media, display) && !smoothedReversedReady(media, dir, size)) {
       const fps = media.fps * smoothFactor(media.fps, media.speed, this.target);
       const copy = { id: media.id, copyKey: `${media.sha256}@${media.speed}.reversed`, kind: media.kind, path: smoothedPath(media, dir), duration: media.duration, fps, ...size };
-      const reversed = await this.daemon.reverse(copy, { signal, dir });
+      const reversed = await this.daemon.reverseAnywhere(copy, smoothedReversedPath(media, dir), { signal, dir });
       if (signal.aborted) return this.requeue(media);
       if (!reversed || reversed !== smoothedReversedPath(media, dir)) this.daemon.logger.warn('No reversed smoothed copy', { mediaId: media.id });
     }
@@ -328,8 +348,9 @@ export class Smooth {
     if (!this.daemon.stopping) this.queue = new Map([[media.id, media], ...this.queue]);
   }
 
+  // The load left normal: a job here stops and waits; one on another machine goes on
   pause() {
-    this.controller?.abort();
+    if (!this.remote) this.controller?.abort();
   }
 
   async stop() {

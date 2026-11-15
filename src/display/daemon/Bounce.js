@@ -3,9 +3,11 @@ import { refreshEntries } from '../Playlist.js';
 import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
 import fs from 'fs-extra';
 import { renameIdCopies } from '../../library/copies.js';
-import { listReverseWork, listReversed, recordEncode, reversedReady, removeStaleWork } from '../../library/reverse.js';
+import { listReverseWork, listReversed, recordEncode, reversedPath, reversedReady, removeStaleWork } from '../../library/reverse.js';
 
 const GIGABYTE = 1024 ** 3;
+// What Daemon.reverseAnywhere returns when the other machine went away and the job may not run here
+export const UNAVAILABLE = Symbol('offload unavailable');
 // How long before its end a playing video is switched to its bounce, so the switch lands where it would loop anyway
 const SWITCH_LEAD_MS = 100;
 
@@ -57,7 +59,13 @@ export class Bounce {
 
   // For state.json: how many items wait, the one being reversed, and the idle gate
   summary() {
-    return { waiting: this.queue.size, encoding: this.encoding, gate: this.gate.summary() };
+    return { waiting: this.queue.size, encoding: this.encoding, gate: this.gate.summary(), host: this.offloading ? this.daemon.offload.host.name : null };
+  }
+
+  // Whether reversals go to another machine (offload.hosts, src/offload/RemoteEncoder.js): then this machine's load
+  // and idle gate do not hold them, since the work is not done here
+  get offloading() {
+    return Boolean(this.daemon.offload?.available);
   }
 
   // A gate reading: an encode starts when it opens, and the one running stops (to resume later) when it closes
@@ -72,7 +80,7 @@ export class Bounce {
       this.kick();
     } else {
       this.daemon.logger.info('Reversing paused: the load rose', { perCpu: load, encoding: this.encoding });
-      this.controller?.abort();
+      if (!this.remote) this.controller?.abort();
     }
     if (this.daemon.writeState) await this.daemon.writeState().catch(() => {});
   }
@@ -114,7 +122,8 @@ export class Bounce {
   // Whether an encode would start now, apart from smoothing: one queued, none running, and the load allows it (the
   // load level and the idle gate)
   canStart() {
-    return !this.running && !this.daemon.stopping && this.queue.size > 0 && this.daemon.load.level === 'normal' && this.gate.allowed;
+    return !this.running && !this.daemon.stopping && this.queue.size > 0
+      && (this.offloading || (this.daemon.load.level === 'normal' && this.gate.allowed));
   }
 
   // Starts the oldest queued encode when canStart and no smoothing job runs: background encodes share one slot, so the
@@ -126,9 +135,15 @@ export class Bounce {
     const controller = new AbortController();
     this.controller = controller;
     this.encoding = id;
+    this.remote = this.offloading;
     this.running = (async () => {
       const started = this.daemon.now();
-      const target = await this.daemon.reverse(media, { signal: controller.signal });
+      const target = await this.daemon.reverseAnywhere(media, reversedPath(media, this.settings.paths.bounce), { signal: controller.signal, local: !this.remote });
+      if (target === UNAVAILABLE) {
+        // The other machine went away: queued again at the front, for this machine's gates to start
+        this.queue = new Map([[id, media], ...this.queue]);
+        return;
+      }
       if (controller.signal.aborted) {
         // Paused for the load (its level or the idle gate) or stopped: queued again at the front for when it falls
         if (!this.daemon.stopping) this.queue = new Map([[id, media], ...this.queue]);
@@ -162,15 +177,16 @@ export class Bounce {
         this.running = null;
         this.controller = null;
         this.encoding = null;
+        this.remote = false;
         // The slot passes to smoothing when nothing more is reversed now
         if (!this.kick()) this.daemon.smoothing?.kick?.();
       });
     return true;
   }
 
-  // The load left normal: the running encode stops and waits
+  // The load left normal: the running encode stops and waits; one on another machine goes on
   pause() {
-    this.controller?.abort();
+    if (!this.remote) this.controller?.abort();
   }
 
   async stop() {

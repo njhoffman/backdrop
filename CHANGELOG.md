@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.88.0] - 2026-11-15
+
+### Added
+
+- Reversed and smoothed copies can be made on another machine: list it in `offload.hosts` (an SSH destination
+  running backdrop, such as an always-on desktop), and the daemon uploads each video there, has `backdrop worker`
+  make the copy with that machine's encoders and RIFE, and fetches it back. While a host answers, encodes no longer
+  wait for this machine to be idle, and its load does not stop them. When the host cannot be reached the job is
+  made here as before. `backdrop status` shows where copies are made (`Bounce: on minerva`).
+- A job on the other machine runs under a memory limit (`offload.memory_max`, 4G by default) and stops on its own
+  when this machine goes away or stops it, so nothing is left running there.
+
 ## [2.87.0] - 2026-11-15
 
 ### Changed

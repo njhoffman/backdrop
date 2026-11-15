@@ -13,6 +13,7 @@ import { ImportCommand } from './commands/ImportCommand.js';
 import { RemoveCommand } from './commands/RemoveCommand.js';
 import { PurgeCommand } from './commands/PurgeCommand.js';
 import { CopiesCommand } from './commands/CopiesCommand.js';
+import { WorkerCommand } from './commands/WorkerCommand.js';
 import { RescanCommand } from './commands/RescanCommand.js';
 import { MenuCommand } from './commands/MenuCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
@@ -110,6 +111,7 @@ class BackdropApp {
     const remover = new RemoveCommand(this.config, this.database, this.logger);
     const purger = new PurgeCommand(this.config, this.database, this.logger);
     const copies = new CopiesCommand(this.config, this.database, this.logger);
+    const worker = new WorkerCommand(this.config, this.database, this.logger, { version });
     const rescanner = new RescanCommand(this.config, this.database, this.logger);
     const rating = new RatingCommand(this.config, this.database, this.logger);
     const menu = new MenuCommand(this.config, this.database, this.logger, { display, rating });
@@ -356,6 +358,9 @@ class BackdropApp {
     // man pages, made from this program and the config schema (src/utils/manpage.js); `npm run man` writes share/man
     program.command('man', { hidden: true }).argument('[section]', '1 for backdrop(1), 5 for backdrop-config(5)', '1')
       .action(this.action(section => printManPage(section, program, version)));
+    program.command('worker', { hidden: true }).description('Encode one job for a daemon on another machine (offload.hosts), which runs this over SSH')
+      .option('--hello', 'Print what this worker can do, as JSON, and exit')
+      .action(this.action(options => worker.run(options)));
     program.command('complete-values', { hidden: true }).argument('<kind>', 'queries or tags')
       .action(this.action(kind => completion.printValues(kind)));
     program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), or try every instance and preset briefly (check)')
@@ -388,7 +393,7 @@ class BackdropApp {
     this.setupCommands();
     // The daemon logs its version at startup instead; --version prints it already; completion output is a script
     const args = process.argv.slice(2);
-    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'complete-values', 'systemd', 'man'].includes(arg))) printVersion(version);
+    if (!args.some(arg => ['-V', '--version', 'daemon', 'completion', 'complete-values', 'systemd', 'man', 'worker'].includes(arg))) printVersion(version);
     try {
       // Bare `backdrop` shows the status
       await program.parseAsync(args.length ? process.argv : [...process.argv, 'status']);

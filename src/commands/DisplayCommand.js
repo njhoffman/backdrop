@@ -205,9 +205,14 @@ export class DisplayCommand {
   }
 
   // While videos wait for an idle gate (src/display/IdleGate.js; state.json smoothing or bounce) to open: how loaded
-  // the machine is, and how long it has been idle enough
+  // the machine is, and how long it has been idle enough. With an offload host (state.json host) the gate does not
+  // hold them: where they are made instead.
   describeIdleWait(queue) {
     const gate = queue?.gate;
+    if (queue?.host && queue.enabled !== false && (queue.waiting || queue.encoding)) {
+      const videos = queue.waiting ? `${queue.waiting} ${queue.waiting === 1 ? 'video waits' : 'videos wait'}` : 'none waits';
+      return `${fmt.green(`on ${queue.host}`)} ${fmt.dim(`(${queue.encoding ? `#${queue.encoding} now; ` : ''}${videos})`)}`;
+    }
     if (!queue || queue.enabled === false || !queue.waiting || !gate || gate.open || gate.idle_load === null) return null;
     const perCpu = gate.load ? `load ${gate.load.five.toFixed(2)} a CPU` : 'load not read yet';
     const low = Number.isFinite(gate.low_since) ? `, under it since ${new Date(gate.low_since).toTimeString().slice(0, 5)}` : '';

@@ -37,6 +37,12 @@ const choices = allowed => (allowed.length > 1 ? `${allowed.slice(0, -1).join(',
 const oneOf = allowed => value => (allowed.includes(value) ? value : fail(choices(allowed)));
 const boolean = value => (typeof value === 'boolean' ? value : fail('true or false'));
 const text = value => (typeof value === 'string' ? value : fail('a string'));
+const nonEmpty = value => (typeof value === 'string' && value.trim() ? value : fail('a non-empty string'));
+// user@host, host or an ~/.ssh/config alias; never starting with "-", which ssh and rsync would read as an option
+const sshHosts = value => (Array.isArray(value) && value.every(host => typeof host === 'string' && /^[A-Za-z0-9_.@][A-Za-z0-9_.@:-]*$/.test(host))
+  ? value
+  : fail('a list of SSH destinations such as minerva or user@host'));
+const memoryLimit = value => (value === null || (typeof value === 'string' && /^\d+[KMGT]?$/.test(value)) ? value : fail('a size such as 4G, or null for none'));
 const integer = (min, max = Infinity) => value => (Number.isInteger(value) && value >= min && value <= max
   ? value
   : fail(max === Infinity ? `a whole number from ${min}` : `a whole number from ${min} to ${max}`));
@@ -118,6 +124,11 @@ const SECTIONS = {
     workspace: field(value => (typeof value === 'boolean' || (typeof value === 'string' && value.trim())
       ? value
       : fail('true, false or a workspace name')), { kind: 'workspace', help: 'i3: an empty workspace while the menu is open (true: "backdrop", or a name); false to stay' })
+  },
+  offload: {
+    hosts: field(sshHosts, { kind: 'strings', help: 'SSH destinations that make reversed and smoothed copies for this machine, tried in order; empty to encode here' }),
+    worker_command: field(nonEmpty, { kind: 'text', help: 'The command a host runs for a job, in a login shell there' }),
+    memory_max: field(memoryLimit, { kind: 'text', nullable: true, help: 'Memory a job may use on the host (systemd-run MemoryMax, e.g. 4G); empty for no limit' })
   },
   web: {
     port: field(integer(1, 65535), { kind: 'integer', min: 1, max: 65535, help: 'Port `backdrop web` listens on; a taken one falls back to a free port' })

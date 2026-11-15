@@ -18,7 +18,9 @@ export const LIVE_SETTINGS = {
   // Read when used
   'screensaver.idle': 'taken', 'screensaver.idle_minutes': 'taken', 'screensaver.max_load': 'taken', 'screensaver.preset': 'taken', 'screensaver.next_on_song': 'taken', 'screensaver.hide_pointer': 'taken', 'screensaver.hint': 'taken', 'screensaver.preset_without_lyrics': 'taken',
   'screensaver.workspace': 'taken', 'screensaver.on_enter': 'taken', 'screensaver.on_leave': 'taken',
-  'library.import_dirs': 'imports', 'library.watch_imports': 'imports'
+  'library.import_dirs': 'imports', 'library.watch_imports': 'imports',
+  // Read for each job, and offload.hosts again when the host is checked
+  'offload.hosts': 'taken', 'offload.worker_command': 'taken', 'offload.memory_max': 'taken'
 };
 
 // The config file watcher and how a saved change reaches the running daemon (LIVE_SETTINGS), for a Daemon

@@ -12,11 +12,12 @@ import {
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
+import { CHECK_MS as OFFLOAD_CHECK_MS, OffloadUnavailable, RemoteEncoder } from '../offload/RemoteEncoder.js';
 import { NVIDIA_DRIVER, defaultEncoders, reverseVideo } from '../library/reverse.js';
 import { smoothVideo } from '../library/smooth.js';
 import { canReadKernelLog, followKernelLog } from './kernelLog.js';
 import { entryPath, playsBounce } from './bounce.js';
-import { Bounce } from './daemon/Bounce.js';
+import { Bounce, UNAVAILABLE } from './daemon/Bounce.js';
 import { Smooth } from './daemon/Smooth.js';
 import { notifyMode, notifyPlaying, notifyError } from '../utils/notify.js';
 import { outputTail } from './outputTail.js';
@@ -143,6 +144,8 @@ export class Daemon {
     reverse = (media, { signal, dir } = {}) => reverseVideo(media, dir ?? config.get().paths.bounce, { logger, signal, encoders: defaultEncoders() }),
     // A slowed video's smoothed copy (src/library/smooth.js); resolves to its path, or null
     smoothVideo: smoothen = (media, { dir, size, target, rife, gpu, signal } = {}) => smoothVideo(media, dir, { rife, size, target, gpu, logger, signal, encoders: defaultEncoders() }),
+    // Encodes on another machine (offload.hosts); built in the constructor with the tracked spawn unless given
+    offload = null, offloadInterval = OFFLOAD_CHECK_MS,
     // The kernel log, watched while RIFE runs on a GPU (src/display/kernelLog.js)
     kernelLog = { readable: () => canReadKernelLog(), follow: onLine => followKernelLog(onLine, { onError: error => logger.warn('Failed to follow the kernel log', { error: error.message }) }) },
     visualizers, reloadConfig = () => config.reloadSection('visualizer'),
@@ -204,6 +207,7 @@ export class Daemon {
     this.thumbnail = thumbnail;
     this.reverse = reverse;
     this.smoothVideo = smoothen;
+    this.offloadInterval = offloadInterval;
     this.kernelLog = kernelLog;
     this.timers = [];
     // Active monitors by name; screens holds their wallpaper processes, empty while the wallpaper is off
@@ -223,6 +227,7 @@ export class Daemon {
     this.health = new Health(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
+    this.offload = offload ?? new RemoteEncoder({ config, logger, spawn: this.spawn, now });
     this.bounce = new Bounce(this, { loadavg });
     this.smoothing = new Smooth(this, { loadavg });
     this.screensaver = new Screensaver(this);
@@ -297,6 +302,8 @@ export class Daemon {
     }
     // After the monitors, since a copy is made at the size that covers them
     await this.smoothing.begin().catch(error => this.logger.warn('Failed to start smoothing', { error: error.message }));
+    this.checkOffload();
+    this.every(this.offloadInterval, () => this.checkOffload());
 
     await this.visualizers.sync();
     if (!this.wallpaper && !this.visualizers.active) {
@@ -456,6 +463,31 @@ export class Daemon {
   // display time, and the video's end, counted from when it started
   applyDurations() {
     return this.controls.applyDurations();
+  }
+
+  // Asks offload.hosts again (not awaited: a host that does not answer takes its timeout); the queues start what waits
+  // when one answers
+  checkOffload() {
+    const before = this.offload.available;
+    return this.offload.check()
+      .then(host => {
+        if (host && !before && !this.stopping && !this.bounce.kick()) this.smoothing.kick();
+      })
+      .catch(error => this.logger.warn('Offload check failed', { error: error.message }));
+  }
+
+  // A reversed copy at target: made on the offload host when there is one, here otherwise. With local false the job
+  // may not run here (this machine's gates did not allow it), so a host gone resolves to UNAVAILABLE.
+  async reverseAnywhere(media, target, { signal, dir, local = true } = {}) {
+    if (this.offload.available) {
+      try {
+        return await this.offload.reverse(media, target, { signal });
+      } catch (error) {
+        if (!(error instanceof OffloadUnavailable)) throw error;
+        if (!local) return UNAVAILABLE;
+      }
+    }
+    return this.reverse(media, { signal, dir });
   }
 
   every(interval, fn) {
@@ -904,7 +936,8 @@ export class Daemon {
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
-      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary()
+      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary(),
+      offload: this.offload.summary()
     });
     await fs.rename(temporary, file);
   }

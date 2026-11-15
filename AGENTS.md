@@ -113,6 +113,11 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   at `smooth_fps`, one at a time, playing them through an EDL URL tagged with the library path (`backdrop_path`,
   read by `entryPath`; `forwardPath` gives the file mpv plays, `playsBounce` whether a reversed half follows). Mpv
   blends frames for a slowed video meanwhile. A speed change sends an `item` control request so the copy follows.
+- **Offload** (`src/offload/`, `docs/specs/offload.md`) - with `offload.hosts`, `RemoteEncoder` has reversed and
+  smoothed copies made on another machine by `backdrop worker` (hidden): rsync carries the files, the job goes over
+  SSH as JSON with a heartbeat, and the worker stops when its stdin closes or goes quiet. `Daemon.reverseAnywhere`
+  picks the host or here; with a host the queues skip this machine's load and idle gates. A host gone puts the job
+  back for this machine to do.
 - **Screensaver** (`src/display/daemon/Screensaver.js`) - the daemon's mode, asked for through a control request by `ScreensaverCommand`; see `docs/specs/main.md`.
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
