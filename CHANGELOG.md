@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.90.0] - 2026-11-20
+
+### Added
+
+- `search-images` and `search-videos` take `--max-pages`, and `sources.pexels.max_pages` sets it for every search, to
+  cap the requests a broad query spends (one a page). 0, the default, reads every page as before; a search the cap
+  stops says more results remain.
+
+### Fixed
+
+- A reversed or smoothed copy in the cache that cannot be played (made by an older version, or damaged) is removed
+  when the daemon starts and made again, instead of hanging mpv when it plays.
+
 ## [2.89.2] - 2026-11-20
 
 ### Fixed

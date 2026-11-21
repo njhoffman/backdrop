@@ -30,6 +30,7 @@ sources:
   pexels:
     api_key: ""            # falls back to $PEXELS_API; never written back to the file
     per_page: 80           # 15-80
+    max_pages: 0           # pages one search reads at most, a request each (--max-pages); 0 for no limit
     image_min_size: large  # large (24MP), medium (12MP), small (4MP)
 
 library:

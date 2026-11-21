@@ -30,6 +30,7 @@ describe('Smooth (daemon)', () => {
       config, database: db, logger: silentLogger, stopping: false, screens: new Map(), monitors: new Map([['DP-1', { name: 'DP-1', width: 1920, height: 1080 }]]),
       load: { level: 'normal' }, now: () => Date.now(),
       enqueue: task => task(),
+      probeCopy: async () => ({ codec: 'h264', pixFmt: 'yuv420p', frames: 10 }),
       bounce: { pending: new Set(), swap: async ids => { if (ids) swapped.push([...ids]); } },
       smoothVideo: async (media, { dir: out, size, signal }) => {
         made.push({ id: media.id, size });
@@ -165,6 +166,17 @@ describe('Smooth (daemon)', () => {
     await settle();
     expect((await fs.readdir(dirSmooth)).sort()).to.deep.equal([`${media.sha256}@0.5.json`, `${media.sha256}@0.5.mp4`]);
     expect(made).to.deep.equal([]);
+  });
+
+  it('removes a copy that cannot be played on start, with its size, and makes it again', async () => {
+    const media = await video(1);
+    const dirSmooth = config.get().paths.smooth;
+    await fs.outputFile(smoothedPath(media, dirSmooth), 'smoothed');
+    await fs.writeJson(smoothedSizePath(media, dirSmooth), { width: 1920, height: 1080 });
+    daemon.probeCopy = async () => ({ codec: 'h264', pixFmt: null, frames: 300 });
+    await smooth.begin();
+    await settle();
+    expect(made.map(item => item.id)).to.deep.equal([media.id]);
   });
 
   it('deletes kept work of items that no longer want that copy', async () => {

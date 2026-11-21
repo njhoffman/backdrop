@@ -177,6 +177,7 @@ const SOURCES = {
   pexels: {
     api_key: field(text, { kind: 'secret', help: 'Pexels API key (PEXELS_API in the environment also works); never shown' }),
     per_page: field(integer(1, 80), { kind: 'integer', min: 1, max: 80, help: 'Results asked for per search page' }),
+    max_pages: field(integer(0, 10000), { kind: 'integer', min: 0, max: 10000, help: 'Pages one search reads at most, one request each; 0 for no limit' }),
     image_min_size: field(oneOf(PEXELS_IMAGE_SIZES), { kind: 'choice', choices: PEXELS_IMAGE_SIZES, help: 'Smallest image variant considered' })
   }
 };

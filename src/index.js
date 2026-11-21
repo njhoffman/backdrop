@@ -311,6 +311,7 @@ class BackdropApp {
         .argument('[query]', 'Search keywords (quote multiple words)')
         .option('--source <name>', 'Source adapter', 'pexels')
         .option('--per-page <number>', 'Results per page (1-80)')
+        .option('--max-pages <number>', 'Pages to read at most, a request each (default: sources.<name>.max_pages, 0 for no limit)')
         .option('--orientation <type>', 'landscape, portrait or square')
         .option('--portrait', 'Only portrait media')
         .option('--min-size <size>', 'Minimum image size: large, medium or small')

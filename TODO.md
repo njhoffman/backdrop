@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-11-15
+Reviewed: 2026-11-20
 
 ## 3. Display engine on mpv sockets
 
@@ -225,10 +225,6 @@ Reviewed: 2026-11-15
       the desktop, not just the job.
       Done (2.79.0): the `smoothing gpu` check warns with one render node (`/dev/dri/renderD*`), since mapping a
       Vulkan device number to Xorg's GPU is not reliable; also on an unreadable kernel log and the daemon's fallback.
-- [ ] **Put the kept smoothed copies back.** (p2) [chore] `~/.cache/backdrop/smooth.kept-20261113` (13 GB, 127 entries)
-      is the cache from before smoothing was turned off. Once the guards above are in, move it back to
-      `~/.cache/backdrop/smooth` while the daemon is stopped, then set `smooth: true`. `config.yaml.pre-nosmooth` is the
-      config from before.
 - [x] **The first smoothing job after a start ignored the monitors.** (p2) [bug] `smoothing.begin()` ran before the daemon registered its monitors, so `smoothSize` fell back to the video's own size: #1622 was being made at 2560x1440 for a 1920x1080 screen, and a 4K source would be made at 3840x2160, four times the pixels. One of the 14 finished copies is 2560x1440 for this reason.
       Done (2.64.2): smoothing starts after the monitors, and no job starts while none is known.
 - [ ] **Judge the bounce seam by eye.** (p2) [test] mpv sets up the decoder again where the video meets its reversed copy. On the desktop (2026-11-07, 2732x1440 at 24 fps, VAAPI) no frame dropped at the seam or the loop,
@@ -329,6 +325,14 @@ Reviewed: 2026-11-15
       behind the bounce hang cannot happen there, but a bad part would play as the same hang. Run `copyProblem` on the
       joined copy before the rename, as `reverseVideo` does.
       Done (2.89.2): the joined copy must hold the frames of its parts.
+- [x] **A broken copy already in the cache is played.** (p3) [bug] `reversedReady` and `smoothedReady`
+      (`src/library/reverse.js`, `smooth.js`) only check that the file exists. Copies are now probed before they are
+      put in place, but one made before 2.89.1, damaged on disk, or copied in by hand is played as is, and a copy mpv
+      cannot decode hangs it until `Daemon.onHung` drops the item. Probe a copy once before its first play (cached by
+      size and mtime) and remove it when `copyProblem` finds fault, so it is made again.
+      Done (2.90.0), at start rather than before each play: the bounce and smoothing queues probe every copy before
+      the playlists load (`removeBrokenCopies`, four at a time) and remove those `copyProblem` faults, with a smoothed
+      copy's recorded size. A copy ffprobe cannot read at all is kept, so a missing ffprobe cannot empty the cache.
 - [ ] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
       (`nvidia-smi -q`, though `nvidia-persistenced` is active), and each ffmpeg spent about 19 s starting CUDA, against
       about 1 s for a 1080p libx264 chunk on 12 cores (2026-11-15). Enable it (`sudo nvidia-smi -pm 1`, or drop
@@ -363,10 +367,12 @@ Reviewed: 2026-11-15
       `Duplicate content of #N` and leaves the pending row as `new`, so every `backdrop download` fetches it again, and its search queries never reach the kept copy.
       Record the duplicate (e.g. `media.duplicate_of`), move its `search_results` to the original, and exclude it from pending lists.
       Done: schema v6 `media.duplicate_of` (no foreign key); searches that return a known duplicate credit the original.
-- [ ] **A search has no page cap.** (p3) [feature] `SearchCommand` follows `nextPage` until results run out or the
+- [x] **A search has no page cap.** (p3) [feature] `SearchCommand` follows `nextPage` until results run out or the
       rate limit hits, so a broad query with a small `--per-page` spends one request per page (161 for "ocean" at
       3 per page on 2026-10-31; the live quota headers report a limit of 25,000, so that was about 0.6% of it). Add `--max-pages` (and a `sources.<name>.max_pages`
       default), or warn when `--per-page` is small and the query broad.
+      Done (2.90.0): `--max-pages` and `sources.<name>.max_pages` (0, the default, for no limit); a search the cap
+      stops warns that more results remain and reports `capped` in its summary.
 - [x] **Downloads have no size limit or stall timeout.** (p3) [bug] `downloadFile()` streams whatever the server sends; axios `timeout` is not verified to cover
       a body that stalls mid-transfer, and nothing caps the size. Abort when no data arrives for 30s and when bytes exceed Content-Length (or a configured maximum).
       Done (2.80.0): `downloadFile` fails after 30 s without data (aborting the request) and when more bytes arrive than Content-Length. No configured maximum, so a download without a Content-Length is still uncapped.
@@ -471,9 +477,11 @@ Reviewed: 2026-11-15
 - [ ] **Screensaver playlists.** (p2) [feature] `screensaver.sources` and `streams` are in the config and example but nothing reads them yet, so setting them does nothing. Sources: rated live wallpapers, separate video files, and YouTube links (mpv + yt-dlp). Configurable per playlist, shuffle, and per-item speed.
 - [ ] **Coexist with locker and DPMS.** (p3) [feature] Decide interaction with the screen locker and monitor sleep, and inhibit during fullscreen apps or media playback.
       Decide with the idle screensaver above: on 2026-11-04 there is no locker or idle tool running here and DPMS is off, so there is nothing to coexist with yet.
-- [ ] **`ScreensaverCommand` has no tests.** (p3) [test] `src/commands/ScreensaverCommand.js` (on, off, toggle,
+- [x] **`ScreensaverCommand` has no tests.** (p3) [test] `src/commands/ScreensaverCommand.js` (on, off, toggle,
       status through a control request) is only exercised by hand; the daemon side is covered in `Screensaver.test.js`.
       Add a command test with a fake runtime dir like `DisplayCommand`'s, including no daemon running.
+      Done: `test/commands/ScreensaverCommand.test.js`, with a stand-in daemon answering control requests: status, each
+      action, no answer, a daemon too old, and no daemon (restoring a saved desktop for off and the toggle, not for on).
 
 ## 8. CLI experience and packaging
 

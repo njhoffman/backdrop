@@ -62,6 +62,7 @@ describe('Daemon', () => {
       // Tests that sample CPU pass their own /proc reader
       readFile: async () => { throw new Error('no /proc in tests'); },
       gpuMemory: async () => null,
+      probeCopy: async () => ({ codec: 'h264', pixFmt: 'yuv420p', frames: 10 }),
       monitorInterval: 0,
       // Tests that watch the config file pass their own
       watch: null, watchOutputs: null,

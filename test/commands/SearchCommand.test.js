@@ -86,8 +86,32 @@ describe('SearchCommand', () => {
     expect(db.findMedia()).to.have.length(1);
   });
 
+  it('reads at most max pages, from the option or the source\'s setting, and says more remain', async () => {
+    const pages = () => {
+      source.search.resetBehavior();
+      source.search.callsFake(async ({ page }) => ({ items: [item(page * 10), item(page * 10 + 1)], nextPage: page < 5 ? page + 1 : null }));
+      source.search.resetHistory();
+    };
+    pages();
+    expect(await run({ maxPages: '2' })).to.include({ pages: 2, capped: true, fetched: 4 });
+    expect(source.search.callCount).to.equal(2);
+    expect(console.error.args.flat().some(line => String(line).includes('stopped after 2 pages (max pages); more results remain'))).to.be.true;
+
+    config.get().sources.fake = { max_pages: 3 };
+    pages();
+    expect(await run()).to.include({ pages: 3, capped: true });
+    // The option wins over the setting; 0 reads every page
+    pages();
+    expect(await run({ maxPages: 0 })).to.include({ pages: 5, capped: false });
+    expect(source.search.callCount).to.equal(5);
+    // A cap the results end at is not a cap
+    config.get().sources.fake = { max_pages: 5 };
+    pages();
+    expect(await run()).to.include({ pages: 5, capped: false });
+  });
+
   it('fails before searching on invalid inputs or unavailable monitor dimensions', async () => {
-    for (const options of [{ perPage: '2junk' }, { perPage: 81 }, { orientation: 'diagonal' }, { resolution: '0x10' }, { minSize: 'tiny' }]) {
+    for (const options of [{ perPage: '2junk' }, { perPage: 81 }, { maxPages: '-1' }, { maxPages: 'all' }, { orientation: 'diagonal' }, { resolution: '0x10' }, { minSize: 'tiny' }]) {
       let caught; try { await run(options); } catch (error) { caught = error; }
       expect(caught).to.be.instanceOf(Error);
     }

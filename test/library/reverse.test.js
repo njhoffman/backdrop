@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  ENCODERS, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeBrokenCopies, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -247,6 +247,22 @@ describe('reverse', () => {
       expect(await probeVideo('/copy.mp4', { exec: async () => JSON.stringify({ streams: [{ codec_name: 'h264', pix_fmt: 'unknown' }] }) }))
         .to.deep.equal({ codec: 'h264', pixFmt: null, frames: 0 });
       expect(await probeVideo('/copy.mp4', { exec: async () => '{"streams":[]}' })).to.equal(null);
+    });
+
+    it('removes the copies a probe finds fault with, and keeps those it cannot read', async () => {
+      const files = ['good', 'broken', 'unreadable'].map(name => path.join(dir, `${name}.mp4`));
+      for (const file of files) await fs.outputFile(file, 'copy');
+      const probe = async file => {
+        if (file.includes('unreadable')) throw new Error('ffprobe: moov atom not found\nmore');
+        return file.includes('broken') ? { codec: 'h264', pixFmt: null, frames: 724 } : { codec: 'h264', pixFmt: 'yuv420p', frames: 724 };
+      };
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) };
+      const removed = await removeBrokenCopies(files.map(file => ({ file })), { probe, logger });
+      expect(removed.map(copy => copy.file)).to.deep.equal([files[1]]);
+      expect(await Promise.all(files.map(file => fs.pathExists(file)))).to.deep.equal([true, false, true]);
+      expect(warnings).to.deep.equal([['Removed a copy that cannot be played', { file: files[1], problem: 'the video stream has no pixel format' }]]);
+      expect(await removeBrokenCopies([], { probe })).to.deep.equal([]);
     });
 
     it('says why a copy cannot be played', () => {

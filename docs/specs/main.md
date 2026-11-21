@@ -67,8 +67,9 @@ IPC socket) would break a wallpaper.
 - **Modes:** `video` (videos and GIFs, each looping until `next`) or `image` (slideshow every
   `display.image_duration` seconds). Only one mode plays at a time, on all monitors. `backdrop mode` toggles,
   `backdrop mode video|image` sets it; the mode is stored in the database and survives restarts.
-- **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), written
-  as `<output>.m3u` and loaded with `loadlist`. The item last shown in the mode on that monitor goes first, so
+- **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), loaded
+  with one `loadfile` per item (since 2.42.0; before, an `<output>.m3u` and `loadlist`), so each oversized image
+  carries its own prescale. The item last shown in the mode on that monitor goes first, so
   startup and toggling back resume it. mpv loops the playlist, and the daemon reshuffles it each time playback
   wraps from the last entry to the first (keeping the playing entry first), so no two passes repeat an order.
 - **Order:** `next`, `skip`, `go-next` and `keep --next` advance through the shuffled playlist, which is
@@ -76,6 +77,9 @@ IPC socket) would break a wallpaper.
   `display.order` (`random`, the default, or `shuffle`) and `--random`/`--no-random` decide only how a
   filtered `next` picks among matching entries: any of those still ahead in this pass, or the next one in
   playlist order. The pick is moved to just after the playing entry before advancing, so `prev` returns to it.
+- **Hangs:** a health check every 30 s asks each mpv for its pid; two missed in a row kill it, and the usual restart
+  resumes the item. A second hang on the same item drops it from every monitor's playlist until the daemon restarts,
+  with a notification (`Daemon.onHung`, `state.json` `dropped`), so a file mpv cannot decode does not hang it forever.
 - **Per file:** the daemon observes mpv's `path`; on each change it records the item as last shown, sets mpv's
   `contrast` to minus the item's stored dim (always, since mpv keeps it across files) and, for videos, sets
   `speed` to the stored value.
@@ -89,10 +93,10 @@ IPC socket) would break a wallpaper.
   with the library's reads them through `entryPath`. The copy (`src/library/reverse.js`, in `paths.bounce`,
   `~/.cache/backdrop/bounce/<sha256>.mp4`, named for the item's content) is made by the daemon (`daemon/Bounce.js`) when the item first plays and
   for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
-  in chunks of about 256 MiB of raw frames each, with VAAPI or else libx264, or libx264 alone where NVIDIA's
+  in chunks of about 256 MiB of raw frames each, cut by frame count and holding the video stream alone, with VAAPI or else libx264, or libx264 alone where NVIDIA's
   driver is loaded, whose VAAPI cannot encode (`defaultEncoders`; an NVENC encoder exists but waits on CUDA's start
   time, TODO.md), and the chunks are joined without
-  encoding again. Once a copy is ready the item's entries are swapped for the URL. The playing one switches about
+  encoding again; the joined copy is probed and kept only if it holds every frame joined. Once a copy is ready the item's entries are swapped for the URL. The playing one switches about
   100 ms before the end of its pass, where mpv would loop anyway (`loadfile <url> insert-next`, `playlist-next`,
   then the old entry removed), carrying its play time into the video duration; when the duration leaves no room for
   a whole bounce it waits for its next play. Purging the item deletes its copy; a replaced file (download

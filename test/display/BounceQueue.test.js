@@ -26,6 +26,8 @@ describe('Bounce (daemon)', () => {
       config, database: db, logger: silentLogger, stopping: false, screens: new Map(), load: { level: 'normal' },
       now: () => Date.now(), videoDuration: () => 600,
       enqueue: task => task(),
+      // Every cached copy plays unless a test says otherwise
+      probeCopy: async () => ({ codec: 'h264', pixFmt: 'yuv420p', frames: 10 }),
       reverse: (media, { signal }) => new Promise(resolve => {
         encodes.push({
           media, signal,
@@ -375,6 +377,18 @@ describe('Bounce (daemon)', () => {
     await fs.outputFile(path.join(dir, 'bounce', '2.mp4'), 'no such item');
     await bounce.begin();
     expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${media.sha256}.mp4`]);
+  });
+
+  it('removes copies that cannot be played on start, so they are made again', async () => {
+    const good = await video(1);
+    const broken = await video(2);
+    for (const media of [good, broken]) {
+      db.setBounce(media.id, true);
+      await fs.outputFile(path.join(dir, 'bounce', `${media.sha256}.mp4`), 'reversed');
+    }
+    daemon.probeCopy = async file => (file.includes(broken.sha256) ? { codec: 'h264', pixFmt: null, frames: 724 } : { codec: 'h264', pixFmt: 'yuv420p', frames: 10 });
+    await bounce.begin();
+    expect(await fs.readdir(path.join(dir, 'bounce'))).to.deep.equal([`${good.sha256}.mp4`]);
   });
 
   it('removes work an earlier daemon left on start', async () => {

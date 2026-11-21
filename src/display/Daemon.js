@@ -13,7 +13,7 @@ import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
 import { thumbnailFor } from '../library/thumbnail.js';
 import { CHECK_MS as OFFLOAD_CHECK_MS, OffloadUnavailable, RemoteEncoder } from '../offload/RemoteEncoder.js';
-import { NVIDIA_DRIVER, defaultEncoders, reverseVideo } from '../library/reverse.js';
+import { NVIDIA_DRIVER, defaultEncoders, probeVideo, reverseVideo } from '../library/reverse.js';
 import { smoothVideo } from '../library/smooth.js';
 import { canReadKernelLog, followKernelLog } from './kernelLog.js';
 import { entryPath, playsBounce } from './bounce.js';
@@ -162,6 +162,8 @@ export class Daemon {
     samplePalette = (media, monitor) => sampleMedia(media, monitor),
     // Bytes of GPU memory an mpv holds (src/display/gpu.js), null when unknown
     gpuMemory = pid => readGpuMemory(pid),
+    // A cached copy's video stream (probeVideo in src/library/reverse.js), for the start's check of the copies
+    probeCopy = file => probeVideo(file),
     // os.loadavg by default, for the load section
     loadavg,
     loadInterval = LOAD_INTERVAL_MS,
@@ -202,6 +204,7 @@ export class Daemon {
     this.now = now;
     this.readFile = readFile;
     this.gpuMemory = gpuMemory;
+    this.probeCopy = probeCopy;
     // Items already warned about for software decoding during this run
     this.softwareWarned = new Set();
     this.reconciling = null;

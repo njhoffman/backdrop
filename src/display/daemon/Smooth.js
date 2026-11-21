@@ -3,7 +3,7 @@ import { bounces, entryPath, isSmoothedUrl, neededSize } from '../bounce.js';
 import { probeMedia } from '../../library/probe.js';
 import { renameIdCopies } from '../../library/copies.js';
 import { OffloadUnavailable } from '../../offload/RemoteEncoder.js';
-import { listReverseWork } from '../../library/reverse.js';
+import { listReverseWork, removeBrokenCopies } from '../../library/reverse.js';
 import { MODE_KINDS } from '../Playlist.js';
 import { gpuTrouble, processName } from '../kernelLog.js';
 import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
@@ -148,6 +148,11 @@ export class Smooth {
     this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Smoothing gate check failed', { error: error.message })));
     await renameIdCopies(this.settings.paths.smooth, this.daemon.database, { logger: this.daemon.logger });
     await removeStaleSmoothWork(this.settings.paths.smooth);
+    // Before the playlists load, so no entry plays a copy removed here; a removed copy's recorded size goes with it
+    const broken = await removeBrokenCopies(await listSmoothed(this.settings.paths.smooth), { probe: this.daemon.probeCopy, logger: this.daemon.logger });
+    for (const copy of broken.filter(item => !item.reversed)) {
+      await fs.remove(smoothedSizePath({ sha256: copy.sha256, speed: copy.speed }, this.settings.paths.smooth)).catch(() => {});
+    }
     await this.recordSizes();
     await this.prune();
     await this.daemon.bounce.swap(null);

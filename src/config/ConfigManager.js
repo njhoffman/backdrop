@@ -221,6 +221,7 @@ export class ConfigManager {
         pexels: {
           api_key: '',
           per_page: 80,
+          max_pages: 0,
           image_min_size: 'large'
         }
       },

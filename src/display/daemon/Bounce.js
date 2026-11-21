@@ -3,7 +3,7 @@ import { refreshEntries } from '../Playlist.js';
 import { GATE_INTERVAL_MS, IdleGate } from '../IdleGate.js';
 import fs from 'fs-extra';
 import { renameIdCopies } from '../../library/copies.js';
-import { listReverseWork, listReversed, recordEncode, reversedPath, reversedReady, removeStaleWork } from '../../library/reverse.js';
+import { listReverseWork, listReversed, recordEncode, removeBrokenCopies, reversedPath, reversedReady, removeStaleWork } from '../../library/reverse.js';
 
 const GIGABYTE = 1024 ** 3;
 // What Daemon.reverseAnywhere returns when the other machine went away and the job may not run here
@@ -54,6 +54,8 @@ export class Bounce {
     this.daemon.every?.(GATE_INTERVAL_MS, () => this.tick().catch(error => this.daemon.logger.warn('Bounce gate check failed', { error: error.message })));
     await renameIdCopies(this.settings.paths.bounce, this.daemon.database, { logger: this.daemon.logger });
     await removeStaleWork(this.settings.paths.bounce);
+    // Before the playlists load, so no entry plays a copy removed here
+    await removeBrokenCopies(await listReversed(this.settings.paths.bounce), { probe: this.daemon.probeCopy, logger: this.daemon.logger });
     await this.prune();
   }
 

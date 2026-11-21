@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { promisify } from 'util';
+import { inOrder } from '../utils/pool.js';
 
 // A reversed copy of a video, which a bouncing video plays after the original (src/display/bounce.js).
 // ffmpeg's reverse filter holds every frame it is given, so the video is reversed in short chunks, each
@@ -259,6 +260,31 @@ export function copyProblem(video, frames = null) {
   if (!video.frames) return 'no frames';
   if (frames !== null && video.frames !== frames) return `${video.frames} frames where ${frames} were joined`;
   return null;
+}
+
+// Removes the copies ({ file }, as listReversed and listSmoothed give them) that cannot be played, so they are made
+// again; returns those removed. Copies are probed before they are put in place, but one made before 2.89.1, damaged
+// on disk or put there by hand is not, and mpv hangs on a copy no decoder takes. A copy ffprobe cannot read at all
+// (or no ffprobe) is kept: deleting on an error would empty the cache wherever ffprobe fails, and mpv fails to load
+// such a file rather than hanging, which drops its entry.
+export async function removeBrokenCopies(copies, { probe = probeVideo, logger, concurrency = 4 } = {}) {
+  const removed = [];
+  for await (const { item, result, error } of inOrder(copies, copy => probe(copy.file), { concurrency })) {
+    if (error) {
+      logger?.debug('Cannot probe a copy', { file: item.file, error: error.message.split('\n')[0] });
+      continue;
+    }
+    const problem = copyProblem(result);
+    if (!problem) continue;
+    try {
+      await fs.remove(item.file);
+      removed.push(item);
+      logger?.warn('Removed a copy that cannot be played', { file: item.file, problem });
+    } catch (removeError) {
+      logger?.warn('Failed to remove a copy that cannot be played', { file: item.file, error: removeError.message });
+    }
+  }
+  return removed;
 }
 
 // Work folders kept by stopped jobs: { key, file }, key the copy's name before the suffix ("<sha256>", or

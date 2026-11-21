@@ -3,6 +3,12 @@ import { targetResolution, positiveInteger, selectVariant, tooShort } from '../l
 import { out, fmt, icon, formatResolution } from '../utils/output.js';
 import { ask, input } from '../utils/prompts.js';
 
+// --max-pages: a whole number, 0 for no limit
+function pageLimit(value) {
+  if (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error('Max pages must be a whole number, 0 for no limit');
+  return Number(value);
+}
+
 export class SearchCommand {
   constructor(config, database, logger, { sources, monitors, input: inputPrompt = input } = {}) {
     this.config = config;
@@ -25,14 +31,17 @@ export class SearchCommand {
     query = query?.trim();
     if (!query) throw new Error('Search query cannot be empty');
     const source = this.sources.get(options.source ?? 'pexels');
-    const perPage = positiveInteger(options.perPage ?? this.config.get().sources[source.name]?.per_page ?? 80, 'Per-page', 80);
+    const settings = this.config.get().sources[source.name];
+    const perPage = positiveInteger(options.perPage ?? settings?.per_page ?? 80, 'Per-page', 80);
+    // 0 reads every page; each is one request against the source's quota
+    const maxPages = options.maxPages === undefined ? (settings?.max_pages ?? 0) : pageLimit(options.maxPages);
     const orientation = options.portrait ? 'portrait' : options.orientation;
     if (orientation && !['portrait', 'landscape', 'square'].includes(orientation)) throw new Error('Invalid orientation');
     if (options.minSize && !['large', 'medium', 'small'].includes(options.minSize)) throw new Error('Invalid minimum size');
     const target = await targetResolution(this.config, options.resolution, this.monitors);
     const params = { kind, perPage, orientation, minSize: options.minSize, color: options.color, target };
     const searchId = this.database.addSearch(source.name, query, params);
-    const summary = { searchId, fetched: 0, added: 0, updated: 0, duplicates: 0, filtered: 0, pages: 0, rateLimited: false };
+    const summary = { searchId, fetched: 0, added: 0, updated: 0, duplicates: 0, filtered: 0, pages: 0, rateLimited: false, capped: false };
     const filters = [orientation, options.minSize && `min ${options.minSize}`, options.color].filter(Boolean);
     out.info(`${icon('query')}Searching ${source.name} ${kind}s for ${fmt.bold(`"${query}"`)}`
       + fmt.dim(`  target ${formatResolution(target.width, target.height)}${filters.length ? `, ${filters.join(', ')}` : ''}`));
@@ -71,6 +80,11 @@ export class SearchCommand {
         throw new Error(`${source.name}: invalid next page`);
       }
       page = result.items.length ? (result.nextPage ?? null) : null;
+      if (page !== null && maxPages && summary.pages >= maxPages) {
+        summary.capped = true;
+        out.warn(`${source.name}: stopped after ${maxPages} ${maxPages === 1 ? 'page' : 'pages'} (max pages); more results remain`);
+        break;
+      }
     }
     const duplicates = summary.duplicates ? `, ${summary.duplicates} known duplicates` : '';
     out.success(`Search #${searchId}: ${fmt.bold(summary.added)} added, ${summary.updated} updated${duplicates}, `
