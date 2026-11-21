@@ -773,6 +773,8 @@ describe('Daemon', () => {
       expect(notifications.some(args => args.some(arg => /^Dropped #\d+ from the wallpaper/.test(arg)))).to.equal(true);
       await tick();
       expect(other.commands).to.deep.include(['playlist-remove', 1]);
+      // onHung does not wait for its state write: a tick is too short on a slow runner
+      await daemon.stateWrite;
       expect((await readState(tempDir)).dropped).to.deep.equal([hanging]);
 
       spawned[2].child.exit(null, 'SIGKILL');
