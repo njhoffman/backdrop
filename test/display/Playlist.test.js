@@ -6,8 +6,9 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
   modeProperties, loadPlaylist, syncPlaylist, appendToPlaylist, queueMatching, reshuffleOnWrap, randomOrder,
-  playbackLimits, validVideoDuration
+  playbackLimits, validVideoDuration, dropEntries
 } from '../../src/display/Playlist.js';
+import { bounceUrl } from '../../src/display/bounce.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
 import { prescaleFilter } from '../../src/display/prescale.js';
 
@@ -91,6 +92,14 @@ describe('Playlist', () => {
       db.addRating(skipped, 0);
 
       expect(eligibleMedia(db, 'video', MONITOR).map(m => m.id)).to.deep.equal([fresh, kept]);
+    });
+
+    it('leaves out the items the daemon dropped', () => {
+      const shown = add('video', 1);
+      const dropped = add('video', 2);
+      expect(eligibleMedia(db, 'video', MONITOR, { exclude: [dropped] }).map(m => m.id)).to.deep.equal([shown]);
+      expect(eligibleMedia(db, 'video', MONITOR, { exclude: new Set([dropped]) }).map(m => m.id)).to.deep.equal([shown]);
+      expect(eligibleMedia(db, 'video', MONITOR, { exclude: null })).to.have.length(2);
     });
   });
 
@@ -421,6 +430,24 @@ describe('Playlist', () => {
       const removed = new FakeMpvClient({ playlist: entries([6, 7, 8], 6) });
       expect(await reshuffleOnWrap(removed, 5)).to.equal(6);
       expect(removed.commands.every(cmd => cmd[0] === 'get_property')).to.be.true;
+    });
+  });
+
+  describe('dropEntries', () => {
+    it('removes every entry of a file, a bounce entry included, highest first', async () => {
+      const client = new FakeMpvClient({
+        playlist: [
+          { id: 1, filename: '/m/a.mp4' },
+          { id: 2, filename: bounceUrl('/m/a.mp4', '/c/a-reversed.mp4') },
+          { id: 3, filename: '/m/b.mp4', current: true },
+          { id: 4, filename: '/m/a.mp4' }
+        ]
+      });
+      expect(await dropEntries(client, '/m/a.mp4')).to.equal(3);
+      expect(client.commands.filter(command => command[0] === 'playlist-remove')).to.deep.equal([
+        ['playlist-remove', 3], ['playlist-remove', 1], ['playlist-remove', 0]
+      ]);
+      expect(await dropEntries(new FakeMpvClient(), '/m/a.mp4')).to.equal(0);
     });
   });
 });

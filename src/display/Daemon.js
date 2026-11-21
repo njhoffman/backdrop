@@ -7,7 +7,7 @@ import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
   getMode, displayMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, contrastFor, reshuffleOnWrap,
-  playbackLimits
+  playbackLimits, dropEntries
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
@@ -38,6 +38,8 @@ import { OutputWatcher } from './outputWatcher.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
+// Hangs on one item (mpv no longer answering while it plays) before the item is dropped for the run
+export const HANGS_TO_DROP = 2;
 const RESTART_DELAY_MS = 1000;
 // A started mpv with media to show that has not opened a file by then is killed, so the restart path tries again;
 // after a hotplug one once came up with no picture and never left that state
@@ -218,6 +220,9 @@ export class Daemon {
     // the latest ones, so a CLI waits for its own request rather than for any
     this.controlGeneration = 0;
     this.handledRequests = [];
+    // Hangs per media id this run, and the ids dropped after HANGS_TO_DROP of them (onHung)
+    this.hangs = new Map();
+    this.dropped = new Set();
     // --image-duration/--video-duration from next or menu (next-filters.json), over display.* until cleared
     this.durations = {};
     // Concerns kept in their own modules (src/display/daemon/), each given this daemon
@@ -564,7 +569,8 @@ export class Daemon {
 
       for (const screen of this.screens.values()) {
         const added = await appendToPlaylist(screen.client, {
-          database: this.database, config: this.config.get(), mode: this.screenMode(screen.monitor), monitor: screen.monitor, mediaIds: imported
+          database: this.database, config: this.config.get(), mode: this.screenMode(screen.monitor), monitor: screen.monitor, mediaIds: imported,
+          exclude: this.dropped
         });
         this.logger.info('Added imported media to playlist', { monitor: screen.monitor.name, added });
       }
@@ -651,7 +657,8 @@ export class Daemon {
       config: this.config.get(),
       mode,
       monitor: screen.monitor,
-      imageDuration: this.imageDuration()
+      imageDuration: this.imageDuration(),
+      exclude: this.dropped
     });
     if (!count) {
       this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
@@ -664,7 +671,7 @@ export class Daemon {
   async syncScreenPlaylist(screen) {
     const mode = this.screenMode(screen.monitor);
     const { removed, added, count } = await syncPlaylist(screen.client, {
-      database: this.database, config: this.config.get(), mode, monitor: screen.monitor
+      database: this.database, config: this.config.get(), mode, monitor: screen.monitor, exclude: this.dropped
     });
     this.logger.info('Playlist updated', { monitor: screen.monitor.name, removed, added });
     if (!count) this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
@@ -841,6 +848,30 @@ export class Daemon {
     }
   }
 
+  // mpv stopped answering IPC while it played screen.media (Health kills it next). A restart resumes the item, since
+  // one hang may be passing; the second on the same item drops it from every playlist until the daemon restarts,
+  // which a corrupt file needs, or the restart loads it again and hangs forever.
+  onHung(screen) {
+    const { media } = screen;
+    if (!media) return;
+    const hangs = (this.hangs.get(media.id) ?? 0) + 1;
+    this.hangs.set(media.id, hangs);
+    if (hangs < HANGS_TO_DROP || this.dropped.has(media.id)) return;
+    this.dropped.add(media.id);
+    this.logger.error('mpv keeps hanging on an item, dropped it until the daemon restarts', {
+      monitor: screen.monitor.name, mediaId: media.id, path: media.path, filename: screen.filename, hangs
+    });
+    notifyError(`Dropped #${media.id} from the wallpaper until the daemon restarts: mpv stopped responding on it ${hangs} times`, { logger: this.logger })
+      .catch(() => {});
+    for (const other of this.screens.values()) {
+      if (other === screen || !other.client) continue;
+      dropEntries(other.client, media.path).catch(error => {
+        this.logger.warn('Failed to drop a hanging item', { monitor: other.monitor.name, error: error.message });
+      });
+    }
+    this.writeState().catch(error => this.logger.warn('Failed to write state', { error: error.message }));
+  }
+
   async handleExit(screen, code, signal) {
     screen.client?.close();
     clearTimeout(screen.firstFileTimer);
@@ -937,7 +968,7 @@ export class Daemon {
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
       visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary(),
-      offload: this.offload.summary()
+      offload: this.offload.summary(), dropped: [...this.dropped]
     });
     await fs.rename(temporary, file);
   }

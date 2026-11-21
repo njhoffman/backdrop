@@ -5,7 +5,7 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, contrastFor, queueMatching
+  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, contrastFor, queueMatching, dropEntries
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -251,7 +251,7 @@ export class DisplayControl {
     }
     for (const monitor of wallpaperMonitors(state)) {
       counts[monitor.name] = await this.withClient(monitor, client => appendToPlaylist(client, {
-        database: this.database, config: this.config.get(), mode: this.monitorMode(monitor), monitor, mediaIds
+        database: this.database, config: this.config.get(), mode: this.monitorMode(monitor), monitor, mediaIds, exclude: state?.dropped
       }));
     }
     return counts;
@@ -263,14 +263,7 @@ export class DisplayControl {
     if (!media.path) return;
     const state = await this.state({ required: false });
     for (const monitor of wallpaperMonitors(state)) {
-      await this.withClient(monitor, async client => {
-        const playlist = await client.getProperty('playlist');
-        for (let index = playlist.length - 1; index >= 0; index--) {
-          if (entryPath(playlist[index].filename) === media.path) {
-            await client.command('playlist-remove', index);
-          }
-        }
-      });
+      await this.withClient(monitor, client => dropEntries(client, media.path));
     }
   }
 
@@ -296,7 +289,8 @@ export class DisplayControl {
         await loadPlaylist(client, {
           database: this.database, config: this.config.get(), mode: this.monitorMode(monitor),
           monitor, lastMediaId: current?.id,
-          imageDuration: await this.imageDuration()
+          imageDuration: await this.imageDuration(),
+          exclude: state?.dropped
         });
       });
     }
@@ -330,7 +324,8 @@ export class DisplayControl {
         config: this.config.get(),
         mode: shown,
         monitor,
-        imageDuration
+        imageDuration,
+        exclude: state?.dropped
       }));
     }
     return { mode, ...(hold && hold !== mode ? { held: hold } : {}), running: Boolean(state), counts };

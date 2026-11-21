@@ -7,6 +7,11 @@ import { promisify } from 'util';
 // ffmpeg's reverse filter holds every frame it is given, so the video is reversed in short chunks, each
 // read from its start (-ss before -i is frame accurate when re-encoding), and the chunks are joined in
 // reverse order without encoding again. The chunk length keeps the raw frames of one chunk near CHUNK_BYTES.
+// Chunks carry the video stream alone: ffmpeg 6.1 writes a timecode (tmcd) track from a source's timecode tag even
+// with -dn, and a chunk past the last frame (the container can run past it) then holds only that track. The concat
+// demuxer takes its streams from the first file, the last chunk, so such a chunk once made a copy every decoder
+// rejected and mpv hung on (2026-11-20). Chunks with no frames are left out, and the joined copy is probed before
+// it replaces anything.
 
 const execFileAsync = promisify(execFile);
 
@@ -116,7 +121,9 @@ function sameJob(a, b) {
 // signal aborted it. Work happens in reverseWorkPath: each finished chunk is kept there, so a job stopped by the load
 // or a daemon restart starts again at its first missing chunk, with the encoder it was using. A finished copy, or a
 // failure with every encoder, removes the folder.
-export async function reverseVideo(media, dir, { exec = run, logger, nice = true, signal, encoders = ENCODER_ORDER, now = Date.now } = {}) {
+export async function reverseVideo(media, dir, {
+  exec = run, probe = probeVideo, logger, nice = true, signal, encoders = ENCODER_ORDER, now = Date.now
+} = {}) {
   if (!media?.path || !(media.duration > 0) || !copyKey(media)) return null;
   const target = reversedPath(media, dir);
   const work = reverseWorkPath(media, dir);
@@ -156,19 +163,25 @@ export async function reverseVideo(media, dir, { exec = run, logger, nice = true
         // Written under another name and renamed, so a chunk cut short is never taken for a finished one
         const partial = path.join(work, `partial-${chunkName(index)}`);
         await ffmpeg(['-v', 'error', '-y', ...encoder.input, '-ss', String(start), '-t', String(chunk), '-i', media.path,
-          '-an', '-sn', '-dn', '-vf', encoder.filter, ...encoder.output, partial]);
+          '-map', '0:v:0', '-vf', encoder.filter, ...encoder.output, '-write_tmcd', '0', partial]);
         await fs.rename(partial, path.join(work, chunkName(index)));
       }
       if (signal?.aborted) {
         keepWork = true;
         return null;
       }
+      // A chunk that starts past the last frame holds none and is left out of the join
+      const videos = await Promise.all(starts.map((start, index) => probe(path.join(work, chunkName(index)))));
+      const kept = videos.flatMap((video, index) => (video?.frames > 0 ? [index] : []));
+      if (!kept.length) throw new Error('no chunk holds a frame');
       // Relative names resolve against the list's own folder
-      const list = starts.map((start, index) => `file '${chunkName(index)}'`).reverse().join('\n');
+      const list = kept.map(index => `file '${chunkName(index)}'`).reverse().join('\n');
       await fs.writeFile(path.join(work, 'chunks.txt'), `${list}\n`);
       const joined = path.join(work, 'reversed.mp4');
       await ffmpeg(['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'chunks.txt'),
-        '-c', 'copy', '-movflags', '+faststart', joined]);
+        '-map', '0:v:0', '-c', 'copy', '-movflags', '+faststart', joined]);
+      const problem = copyProblem(await probe(joined), kept.reduce((sum, index) => sum + videos[index].frames, 0));
+      if (problem) throw new Error(`the joined copy cannot be played: ${problem}`);
       await fs.rename(joined, target);
       logger?.info('Reversed video for bounce', {
         mediaId: media.id, encoder: name, chunks: starts.length, resumed: done.size, seconds: Math.round((now() - started) / 100) / 10
@@ -192,6 +205,27 @@ export async function reverseVideo(media, dir, { exec = run, logger, nice = true
       if (!keepWork) await fs.remove(work).catch(() => {});
     }
   }
+  return null;
+}
+
+// A file's first video stream as { codec, pixFmt, frames }, or null when it has none. frames is the container's count
+// (no decoding); pixFmt is null when ffprobe cannot tell it, as for a stream whose parameters are missing.
+export async function probeVideo(file, { exec = run } = {}) {
+  const output = await exec('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
+    'stream=codec_name,pix_fmt,nb_frames', '-of', 'json', file]);
+  const stream = JSON.parse(output || '{}').streams?.[0];
+  if (!stream) return null;
+  const pixFmt = stream.pix_fmt && stream.pix_fmt !== 'unknown' ? stream.pix_fmt : null;
+  return { codec: stream.codec_name ?? null, pixFmt, frames: Number(stream.nb_frames) || 0 };
+}
+
+// Why a made copy cannot be played (probeVideo's result), or null when it can; frames, when given, is the count it
+// must hold
+export function copyProblem(video, frames = null) {
+  if (!video) return 'no video stream';
+  if (!video.pixFmt) return 'the video stream has no pixel format';
+  if (!video.frames) return 'no frames';
+  if (frames !== null && video.frames !== frames) return `${video.frames} frames where ${frames} were joined`;
   return null;
 }
 

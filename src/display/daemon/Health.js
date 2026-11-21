@@ -29,7 +29,9 @@ export class Health {
         screen.healthFailures = (screen.healthFailures ?? 0) + 1;
         this.daemon.logger.warn('mpv health check failed', { monitor: screen.monitor.name, failures: screen.healthFailures, error: error.message });
         if (screen.healthFailures >= HEALTH_FAILURES && !this.daemon.stopping) {
-          this.daemon.logger.error('mpv is not responding, restarting', { monitor: screen.monitor.name });
+          this.daemon.logger.error('mpv is not responding, restarting', { monitor: screen.monitor.name, mediaId: screen.media?.id ?? null });
+          // Before the kill, so the restart's playlist leaves out an item dropped for hanging again
+          this.daemon.onHung?.(screen);
           this.daemon.killGroup(screen.child, 'SIGKILL');
         }
       } finally {

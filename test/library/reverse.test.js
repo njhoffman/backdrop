@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  ENCODERS, chunkSeconds, chunkStarts, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, chunkSeconds, chunkStarts, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -55,6 +55,14 @@ describe('reverse', () => {
       calls = [];
     });
 
+    // Ten frames per chunk, and the joined copy as many as the chunks the join was given hold
+    async function fakeProbe(file) {
+      if (path.basename(file) !== 'reversed.mp4') return { codec: 'h264', pixFmt: 'yuv420p', frames: 10 };
+      const list = await fs.readFile(path.join(path.dirname(file), 'chunks.txt'), 'utf8');
+      return { codec: 'h264', pixFmt: 'yuv420p', frames: 10 * list.trim().split('\n').length };
+    }
+    const reverse = (item, folder, options = {}) => reverseVideo(item, folder, { probe: fakeProbe, ...options });
+
     // Writes each ffmpeg output; fail(args) throws for the calls that should fail
     function fakeExec({ fail = () => false } = {}) {
       return async (file, args) => {
@@ -67,7 +75,7 @@ describe('reverse', () => {
 
     it('reverses each chunk at the lowest priority and joins them last chunk first', async () => {
       const bounceDir = path.join(dir, 'bounce');
-      const target = await reverseVideo(media, bounceDir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
+      const target = await reverse(media, bounceDir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
       expect(target).to.equal(reversedPath(media, bounceDir));
       expect(await fs.readFile(target, 'utf8')).to.equal('out');
       expect(calls).to.have.length(3);
@@ -85,19 +93,54 @@ describe('reverse', () => {
         if (args.includes('concat')) list = await fs.readFile(args[args.indexOf('-i') + 1], 'utf8');
         await fs.outputFile(args.at(-1), 'out');
       };
-      await reverseVideo(media, dir, { exec, encoders: ['x264'], nice: false });
+      await reverse(media, dir, { exec, encoders: ['x264'], nice: false });
       expect(list).to.equal("file 'c00001.mp4'\nfile 'c00000.mp4'\n");
     });
 
+    it('encodes the video stream alone, without the timecode track ffmpeg adds even with -dn', async () => {
+      await reverse(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
+      for (const call of calls) expect(call).to.include.members(['-map', '0:v:0']);
+      expect(calls[0].slice(calls[0].indexOf('-write_tmcd'), calls[0].indexOf('-write_tmcd') + 2)).to.deep.equal(['-write_tmcd', '0']);
+    });
+
+    it('leaves a chunk with no frames out of the join', async () => {
+      let list;
+      const exec = async (file, args) => {
+        if (args.includes('concat')) list = await fs.readFile(args[args.indexOf('-i') + 1], 'utf8');
+        await fs.outputFile(args.at(-1), 'out');
+      };
+      // The second chunk starts past the last frame: an mp4 with no stream (null) or no frames
+      for (const empty of [null, { codec: 'h264', pixFmt: 'yuv420p', frames: 0 }]) {
+        const probe = async file => (path.basename(file) === 'c00001.mp4' ? empty : fakeProbe(file));
+        expect(await reverseVideo(media, dir, { exec, probe, encoders: ['x264'], nice: false })).to.equal(reversedPath(media, dir));
+        expect(list).to.equal("file 'c00000.mp4'\n");
+        await fs.remove(reversedPath(media, dir));
+      }
+    });
+
+    it('keeps no copy the join made unplayable, and no copy when no chunk holds a frame', async () => {
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) };
+      const broken = async file => (path.basename(file) === 'reversed.mp4' ? { codec: 'h264', pixFmt: null, frames: 20 } : fakeProbe(file));
+      expect(await reverseVideo(media, dir, { exec: fakeExec(), probe: broken, logger, encoders: ['x264'] })).to.equal(null);
+      expect(await fs.pathExists(reversedPath(media, dir))).to.equal(false);
+      expect(warnings[0][1].error).to.equal('the joined copy cannot be played: the video stream has no pixel format');
+      expect(await fs.pathExists(reverseWorkPath(media, dir))).to.equal(false);
+
+      warnings.length = 0;
+      expect(await reverseVideo(media, dir, { exec: fakeExec(), probe: async () => null, logger, encoders: ['x264'] })).to.equal(null);
+      expect(warnings[0][1].error).to.equal('no chunk holds a frame');
+    });
+
     it('starts again with libx264 when VAAPI fails, and gives up when both do', async () => {
-      const target = await reverseVideo(media, dir, { exec: fakeExec({ fail: args => args.includes('h264_vaapi') }), logger: silentLogger });
+      const target = await reverse(media, dir, { exec: fakeExec({ fail: args => args.includes('h264_vaapi') }), logger: silentLogger });
       expect(target).to.equal(reversedPath(media, dir));
       expect(calls[0]).to.include('h264_vaapi');
       expect(calls.slice(1).every(call => !call.includes('h264_vaapi'))).to.equal(true);
 
       calls = [];
       await fs.remove(target);
-      expect(await reverseVideo(media, dir, { exec: fakeExec({ fail: () => true }), logger: silentLogger })).to.equal(null);
+      expect(await reverse(media, dir, { exec: fakeExec({ fail: () => true }), logger: silentLogger })).to.equal(null);
       expect(await fs.pathExists(target)).to.equal(false);
     });
 
@@ -110,7 +153,7 @@ describe('reverse', () => {
         await fs.move(media.path, path.join(dir, 'trash', 'clip.mp4'));
         throw new Error('ffmpeg failed: No such file or directory');
       };
-      expect(await reverseVideo(media, dir, { exec, logger })).to.equal(null);
+      expect(await reverse(media, dir, { exec, logger })).to.equal(null);
       expect(calls).to.have.length(1);
       expect(warnings).to.deep.equal([]);
       // Its work stays, for the job to resume from the new path
@@ -123,7 +166,7 @@ describe('reverse', () => {
         controller.abort();
         await fs.outputFile(args.at(-1), 'out');
       };
-      expect(await reverseVideo(media, dir, { exec, signal: controller.signal, encoders: ['x264'] })).to.equal(null);
+      expect(await reverse(media, dir, { exec, signal: controller.signal, encoders: ['x264'] })).to.equal(null);
       // No copy; the finished chunk stays for the next job
       expect(await fs.readdir(dir)).to.deep.equal([`${fakeSha(7)}.reverse.work`, 'media']);
     });
@@ -136,7 +179,7 @@ describe('reverse', () => {
         await inner(file, args);
         controller.abort();
       };
-      expect(await reverseVideo(media, dir, { exec, signal: controller.signal, encoders, logger: silentLogger })).to.equal(null);
+      expect(await reverse(media, dir, { exec, signal: controller.signal, encoders, logger: silentLogger })).to.equal(null);
     }
 
     it('keeps the finished chunks of a stopped job, and the next one carries on from them with the same encoder', async () => {
@@ -145,7 +188,7 @@ describe('reverse', () => {
       expect(work).to.equal(path.join(dir, `${fakeSha(7)}.reverse.work`));
       expect((await fs.readdir(work)).filter(name => name.endsWith('.mp4'))).to.deep.equal(['c00000.mp4']);
       calls = [];
-      expect(await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger })).to.equal(reversedPath(media, dir));
+      expect(await reverse(media, dir, { exec: fakeExec(), logger: silentLogger })).to.equal(reversedPath(media, dir));
       // Only the second chunk and the join; still VAAPI
       expect(calls).to.have.length(2);
       expect(calls[0]).to.include.members(['-ss', '2', 'h264_vaapi']);
@@ -157,13 +200,13 @@ describe('reverse', () => {
       // download --upgrade replaced the video
       await fs.outputFile(media.path, 'a larger video');
       calls = [];
-      await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
+      await reverse(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['x264'] });
       expect(calls).to.have.length(3);
       await fs.remove(reversedPath(media, dir));
       await stopAfterFirstChunk();
       calls = [];
       // The kept chunks used libx264, which this job may not use
-      await reverseVideo(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['vaapi'] });
+      await reverse(media, dir, { exec: fakeExec(), logger: silentLogger, encoders: ['vaapi'] });
       expect(calls).to.have.length(3);
     });
 
@@ -176,9 +219,33 @@ describe('reverse', () => {
     });
 
     it('skips items with no file or length', async () => {
-      expect(await reverseVideo({ ...media, path: null }, dir, { exec: fakeExec() })).to.equal(null);
-      expect(await reverseVideo({ ...media, duration: 0 }, dir, { exec: fakeExec() })).to.equal(null);
+      expect(await reverse({ ...media, path: null }, dir, { exec: fakeExec() })).to.equal(null);
+      expect(await reverse({ ...media, duration: 0 }, dir, { exec: fakeExec() })).to.equal(null);
       expect(calls).to.deep.equal([]);
+    });
+  });
+
+  describe('checking copies', () => {
+    it('reads the first video stream from ffprobe', async () => {
+      const exec = async (file, args) => {
+        expect(file).to.equal('ffprobe');
+        expect(args.at(-1)).to.equal('/copy.mp4');
+        return JSON.stringify({ streams: [{ codec_name: 'h264', pix_fmt: 'yuv420p', nb_frames: '724' }] });
+      };
+      expect(await probeVideo('/copy.mp4', { exec })).to.deep.equal({ codec: 'h264', pixFmt: 'yuv420p', frames: 724 });
+      expect(await probeVideo('/copy.mp4', { exec: async () => JSON.stringify({ streams: [{ codec_name: 'h264', pix_fmt: 'unknown' }] }) }))
+        .to.deep.equal({ codec: 'h264', pixFmt: null, frames: 0 });
+      expect(await probeVideo('/copy.mp4', { exec: async () => '{"streams":[]}' })).to.equal(null);
+    });
+
+    it('says why a copy cannot be played', () => {
+      const good = { codec: 'h264', pixFmt: 'yuv420p', frames: 48 };
+      expect(copyProblem(good)).to.equal(null);
+      expect(copyProblem(good, 48)).to.equal(null);
+      expect(copyProblem(null)).to.equal('no video stream');
+      expect(copyProblem({ ...good, pixFmt: null })).to.equal('the video stream has no pixel format');
+      expect(copyProblem({ ...good, frames: 0 })).to.equal('no frames');
+      expect(copyProblem(good, 50)).to.equal('48 frames where 50 were joined');
     });
   });
 
@@ -268,6 +335,21 @@ describe('reverse', () => {
         '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', video])).trim());
       expect(target).to.not.equal(null);
       expect(await frames(target)).to.equal(await frames(file));
+    });
+
+    // The copy that hung mpv (2026-11-20): a source with a timecode tag, whose recorded length runs past its last
+    // frame far enough for a chunk to start after it
+    it('makes a playable copy of a video with a timecode whose length runs past its last frame', async () => {
+      const file = path.join(dir, 'timecode.mp4');
+      execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=96x64:rate=24:duration=2',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-timecode', '00:01:42:23', file]);
+      const media = { id: 2, sha256: fakeSha(2), kind: 'video', path: file, duration: 2.03, width: 96, height: 64, fps: 24 };
+      expect(chunkStarts(media.duration, chunkSeconds(media), media.fps)).to.deep.equal([0, 2]);
+      const target = await reverseVideo(media, path.join(dir, 'bounce'), { encoders: ['x264'], nice: false, logger: silentLogger });
+      expect(target).to.not.equal(null);
+      expect(await probeVideo(target)).to.deep.equal({ codec: 'h264', pixFmt: 'yuv420p', frames: 48 });
+      const streams = JSON.parse(await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', target])).streams;
+      expect(streams.map(stream => stream.codec_type)).to.deep.equal(['video']);
     });
   });
 });

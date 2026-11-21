@@ -2,6 +2,7 @@ import { spawn as spawnProcess } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import readline from 'readline';
+import { copyProblem, probeVideo } from '../library/reverse.js';
 import { smoothedSizePath } from '../library/smooth.js';
 import { HEARTBEAT_MS, PROTOCOL, checkJob, inputName } from './protocol.js';
 
@@ -47,8 +48,9 @@ export function jobFor(kind, media, { size = null, target = null } = {}) {
 }
 
 export class RemoteEncoder {
-  constructor({ config, logger, spawn = spawnProcess, now = Date.now, ssh = 'ssh', rsync = 'rsync' }) {
+  constructor({ config, logger, spawn = spawnProcess, now = Date.now, ssh = 'ssh', rsync = 'rsync', probe = probeVideo }) {
     this.config = config;
+    this.probe = probe;
     this.logger = logger;
     this.spawn = spawn;
     this.now = now;
@@ -189,6 +191,18 @@ export class RemoteEncoder {
     if (signal?.aborted || download.code !== 0) {
       await fs.remove(partial).catch(() => {});
       if (!signal?.aborted) this.logger.warn('Offload copy could not be fetched', { host: host.name, file: outcome.file, error: download.stderr.trim().split('\n').at(-1) });
+      return null;
+    }
+    // A host on an older version does not check what it makes, so a copy is probed here before it replaces anything
+    let problem;
+    try {
+      problem = copyProblem(await this.probe(partial));
+    } catch (error) {
+      problem = error.message.split('\n')[0];
+    }
+    if (problem) {
+      await fs.remove(partial).catch(() => {});
+      this.logger.warn('Offload copy cannot be played', { host: host.name, kind: job.kind, mediaId: media.id, problem });
       return null;
     }
     await fs.rename(partial, target);

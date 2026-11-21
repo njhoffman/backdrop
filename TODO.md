@@ -305,6 +305,24 @@ Reviewed: 2026-11-15
       driver is loaded, the same probe `Daemon.js` uses for nvdec.
       Done in 2.87.0, partly: NVIDIA machines skip VAAPI (libx264 alone), and `ENCODERS.nvenc` exists but is not in
       `defaultEncoders`, since CUDA took about 19 s to start per ffmpeg on minerva (see the next item).
+- [x] **A corrupt reversed copy hung mpv in a restart loop.** (p1) [bug] From 2026-11-20 05:42 the wallpaper froze every
+      90 s: mpv 0.37 with nvdec deadlocked (main and vo threads in futex waits) on #245's bounce, the health check killed
+      it, and the restart resumed the same item. The reversed copy had no usable stream: ffmpeg 6.1 writes a tmcd track
+      from a timecode tag despite `-dn`, the container ran 0.04 s past the last frame so the last chunk (start 30.0 of
+      30.03) held only that track, and the concat demuxer took its streams from it, the first file joined.
+      Done (2.89.1): chunks are `-map 0:v:0 -write_tmcd 0`, chunks without frames are left out, the joined copy (and a
+      copy fetched from an offload host) is probed before it replaces anything (`probeVideo`, `copyProblem`), and a
+      second hang on one item drops it from every playlist for the run (`Daemon.onHung`, state.json `dropped`). A hang
+      while mpv loads the next entry still counts toward the item before it.
+- [ ] **Reversed copies repeat a frame at some chunk seams.** (p3) [bug] #245 (720 frames, 23.976 fps) reverses to
+      724: `-ss start -t chunk` with 2 s chunks does not fall on frame boundaries at 24000/1001, so a chunk can take the
+      frame the next one also takes. A held frame per few seams, barely visible, but the bounce is meant to be seamless.
+      Cut chunks by frame count instead (`-frames:v` from the start frame, as `smoothVideo` does), and assert the frame
+      count equals the source's in `reverseVideo` (`copyProblem` already takes the count).
+- [ ] **Smoothed copies made here are not probed.** (p3) [test] `smoothVideo` (`src/library/smooth.js`) joins its parts
+      with `-c copy` and renames the result into place unchecked. Its parts come from PNG frames, so the tmcd failure
+      behind the bounce hang cannot happen there, but a bad part would play as the same hang. Run `copyProblem` on the
+      joined copy before the rename, as `reverseVideo` does.
 - [ ] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
       (`nvidia-smi -q`, though `nvidia-persistenced` is active), and each ffmpeg spent about 19 s starting CUDA, against
       about 1 s for a 1080p libx264 chunk on 12 cores (2026-11-15). Enable it (`sudo nvidia-smi -pm 1`, or drop

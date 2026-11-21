@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.89.1] - 2026-11-20
+
+### Fixed
+
+- A video whose bounce copy came out broken froze the wallpaper every 90 seconds, and the rofi menu failed with
+  "mpv get_property timed out": mpv stopped responding on the copy, and every restart played the same video again.
+  Reversed copies of videos with a timecode track (common in Pexels downloads) are now made correctly, and a copy
+  that cannot be played is rejected instead of replacing anything, also when it comes from an offload host.
+- When mpv stops responding twice on the same item, the daemon drops that item from every monitor's playlist until it
+  restarts, and sends a notification, instead of loading it again after each restart.
+
 ## [2.89.0] - 2026-11-15
 
 ### Added

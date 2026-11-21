@@ -37,6 +37,9 @@ function fakeSpawn(respond) {
 
 const answer = (child, event) => child.stdout.write(`${JSON.stringify(event)}\n`);
 
+// Every fetched copy plays unless a test says otherwise
+const playable = async () => ({ codec: 'h264', pixFmt: 'yuv420p', frames: 10 });
+
 describe('RemoteEncoder', () => {
   let dir, config, media, logs;
 
@@ -79,7 +82,7 @@ describe('RemoteEncoder', () => {
 
   it('uses the first host that answers as a worker of this protocol', async () => {
     const { spawn, calls } = host();
-    const remote = new RemoteEncoder({ config, logger, spawn });
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn });
     expect(remote.available).to.equal(false);
     const found = await remote.check();
     expect(found).to.deep.equal({ name: 'minerva', dir: '/home/n/.cache/backdrop/worker', smooth: true, version: '2.88.0' });
@@ -100,14 +103,14 @@ describe('RemoteEncoder', () => {
       child.exit(0);
     });
     config.set('offload.hosts', ['minerva']);
-    const remote = new RemoteEncoder({ config, logger, spawn });
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn });
     expect(await remote.check()).to.equal(null);
     expect(logs[0][2].reason).to.include(`protocol ${PROTOCOL + 1}`);
   });
 
   it('uploads the source, runs the worker in a memory-limited scope with heartbeats, and fetches the copy into place', async () => {
     const { spawn, calls } = host();
-    const remote = new RemoteEncoder({ config, logger, spawn });
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn });
     await remote.check();
     const target = path.join(dir, 'bounce', `${media.sha256}.mp4`);
     expect(await remote.reverse(media, target)).to.equal(target);
@@ -125,9 +128,23 @@ describe('RemoteEncoder', () => {
     expect(await fs.pathExists(`${target}.remote.tmp`)).to.equal(false);
   });
 
+  it('keeps no fetched copy that cannot be played, as an older host may send', async () => {
+    const { spawn } = host();
+    const target = path.join(dir, 'bounce', `${media.sha256}.mp4`);
+    for (const probe of [async () => ({ codec: 'h264', pixFmt: null, frames: 724 }), async () => { throw new Error('ffprobe failed\nmore'); }]) {
+      logs.length = 0;
+      const remote = new RemoteEncoder({ config, logger, probe, spawn });
+      await remote.check();
+      expect(await remote.reverse(media, target)).to.equal(null);
+      expect(await fs.pathExists(target)).to.equal(false);
+      expect(await fs.pathExists(`${target}.remote.tmp`)).to.equal(false);
+      expect(logs.find(entry => entry[1] === 'Offload copy cannot be played')).to.exist;
+    }
+  });
+
   it('records a smoothed copy\'s size beside it', async () => {
     const { spawn, calls } = host({ job: child => answer(child, { event: 'done', file: `${fakeSha(7)}@0.5.mp4` }) });
-    const remote = new RemoteEncoder({ config, logger, spawn });
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn });
     await remote.check();
     const slowed = { ...media, speed: 0.5 };
     const target = path.join(dir, 'smooth', `${media.sha256}@0.5.mp4`);
@@ -138,7 +155,7 @@ describe('RemoteEncoder', () => {
 
   it('counts the host gone when the upload or the connection fails, and a failed job as just that', async () => {
     const target = path.join(dir, 'bounce', 'copy.mp4');
-    let remote = new RemoteEncoder({ config, logger, spawn: host({ upload: 12 }).spawn });
+    let remote = new RemoteEncoder({ config, logger, probe: playable, spawn: host({ upload: 12 }).spawn });
     await remote.check();
     let error = null;
     await remote.reverse(media, target).catch(caught => { error = caught; });
@@ -155,13 +172,13 @@ describe('RemoteEncoder', () => {
       child.exit(0);
     });
     config.set('offload.hosts', ['minerva']);
-    remote = new RemoteEncoder({ config, logger, spawn: unreachable.spawn });
+    remote = new RemoteEncoder({ config, logger, probe: playable, spawn: unreachable.spawn });
     await remote.check();
     error = null;
     await remote.reverse(media, target).catch(caught => { error = caught; });
     expect(error).to.be.instanceOf(OffloadUnavailable);
 
-    remote = new RemoteEncoder({ config, logger, spawn: host({ job: child => answer(child, { event: 'failed', code: 'encode', error: 'no encoder' }) }).spawn });
+    remote = new RemoteEncoder({ config, logger, probe: playable, spawn: host({ job: child => answer(child, { event: 'failed', code: 'encode', error: 'no encoder' }) }).spawn });
     await remote.check();
     expect(await remote.reverse(media, target)).to.equal(null);
     expect(remote.available).to.equal(true);
@@ -170,7 +187,7 @@ describe('RemoteEncoder', () => {
 
   it('kills the session when the job is stopped, which stops the worker there', async () => {
     const { spawn, calls } = host({ job: () => 'hang' });
-    const remote = new RemoteEncoder({ config, logger, spawn });
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn });
     await remote.check();
     const controller = new AbortController();
     const made = remote.reverse(media, path.join(dir, 'bounce', 'copy.mp4'), { signal: controller.signal });

@@ -77,13 +77,16 @@ export function otherMode(mode) {
 }
 
 // Media that fits the mode and is at least as large as the monitor, unless upscaling is allowed
-export function eligibleMedia(database, mode, monitor, { allowUpscale = false } = {}) {
+// exclude: ids the daemon dropped for this run (mpv hung on them, Daemon.onHung), listed in state.json `dropped`
+export function eligibleMedia(database, mode, monitor, { allowUpscale = false, exclude } = {}) {
   const filters = { kind: MODE_KINDS[mode], status: DISPLAY_STATUSES, downloaded: true };
   if (!allowUpscale) {
     filters.minWidth = monitor.width;
     filters.minHeight = monitor.height;
   }
-  return database.findMedia(filters);
+  const media = database.findMedia(filters);
+  const excluded = new Set(exclude ?? []);
+  return excluded.size ? media.filter(item => !excluded.has(item.id)) : media;
 }
 
 export function shuffle(items, random = Math.random) {
@@ -205,10 +208,10 @@ export function playbackLimits(media, timeout, elapsed = 0, position) {
 
 // Replaces the monitor's mpv playlist with the media for the mode; returns how many items were loaded
 // imageDuration overrides display.image_duration (one next or the menu set)
-export async function loadPlaylist(client, { database, config, mode, monitor, random, lastMediaId, imageDuration }) {
+export async function loadPlaylist(client, { database, config, mode, monitor, random, lastMediaId, imageDuration, exclude }) {
   const { display } = config;
   const media = orderPlaylist(
-    eligibleMedia(database, mode, monitor, { allowUpscale: display.allow_upscale }),
+    eligibleMedia(database, mode, monitor, { allowUpscale: display.allow_upscale, exclude }),
     lastMediaId ?? database.getSetting(lastMediaKey(mode, monitor.name)),
     random
   );
@@ -241,13 +244,27 @@ export async function removeFailedEntry(client, entryId) {
   return { filename: entryPath(playlist[index].filename), remaining: playlist.length - 1 };
 }
 
+// Removes every entry playing a library file (a bounce or smoothed entry included); removing the playing one advances
+// mpv, and removing the last leaves it idle. Returns how many were removed.
+export async function dropEntries(client, filePath) {
+  const playlist = await client.getProperty('playlist');
+  let removed = 0;
+  // Highest first, so the indexes still to remove do not shift
+  for (let index = playlist.length - 1; index >= 0; index--) {
+    if (entryPath(playlist[index].filename) !== filePath) continue;
+    await client.command('playlist-remove', index);
+    removed++;
+  }
+  return removed;
+}
+
 // Adds newly added media to a running playlist without interrupting what is playing;
 // append-play starts playback if the monitor was idle. Returns how many items were added.
-export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds }) {
+export async function appendToPlaylist(client, { database, config, mode, monitor, mediaIds, exclude }) {
   const wanted = new Set(mediaIds);
   if (!wanted.size) return 0;
   const existing = new Set((await client.getProperty('playlist')).map(entry => entryPath(entry.filename)));
-  const media = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale })
+  const media = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale, exclude })
     .filter(item => wanted.has(item.id) && !existing.has(item.path));
 
   for (const item of shuffle(media)) {
@@ -261,8 +278,8 @@ export async function appendToPlaylist(client, { database, config, mode, monitor
 // appended in shuffled order (the next wrap reshuffles them in). The playing entry stays when still eligible;
 // otherwise it is removed last, once the appends are in, and mpv moves on to the entry after it.
 // Returns { removed, added, count }, count being the eligible items now in the playlist.
-export async function syncPlaylist(client, { database, config, mode, monitor }) {
-  const eligible = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale });
+export async function syncPlaylist(client, { database, config, mode, monitor, exclude }) {
+  const eligible = eligibleMedia(database, mode, monitor, { allowUpscale: config.display.allow_upscale, exclude });
   const playlist = await client.getProperty('playlist');
   if (!eligible.length) {
     if (playlist.length) {

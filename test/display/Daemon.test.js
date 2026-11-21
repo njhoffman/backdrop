@@ -738,6 +738,48 @@ describe('Daemon', () => {
       await daemon.stop();
     });
 
+    it('drops an item from every playlist once mpv hangs on it a second time, until the daemon restarts', async () => {
+      notifications.length = 0;
+      const hanging = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/hangs.mp4', width: 2560, height: 1920 });
+      db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/fine.mp4', width: 2560, height: 1920 });
+      const daemon = makeDaemon();
+      await daemon.start();
+      const loaded = client => client.commands.filter(command => command[0] === 'loadfile').map(command => command[1]).sort();
+      const other = clients[1].client;
+      other.properties.playlist = [{ id: 1, filename: '/m/fine.mp4' }, { id: 2, filename: '/m/hangs.mp4', current: true }];
+
+      // Hangs while the item plays, twice in a row: killed for not answering
+      async function hang(client) {
+        client.emit('property-change', { name: 'path', data: '/m/hangs.mp4' });
+        await tick();
+        delete client.properties.pid;
+        await daemon.checkHealth();
+        await daemon.checkHealth();
+      }
+
+      await hang(clients[0].client);
+      expect(kills).to.have.length(1);
+      expect(daemon.dropped.size).to.equal(0);
+      spawned[0].child.exit(null, 'SIGKILL');
+      await launches(spawned, 3);
+      // One hang may pass: the restart still plays the item
+      const restarted = clients.at(-1).client;
+      expect(loaded(restarted)).to.deep.equal(['/m/fine.mp4', '/m/hangs.mp4']);
+
+      await hang(restarted);
+      expect(kills).to.have.length(2);
+      expect([...daemon.dropped]).to.deep.equal([hanging]);
+      expect(notifications.some(args => args.some(arg => /^Dropped #\d+ from the wallpaper/.test(arg)))).to.equal(true);
+      await tick();
+      expect(other.commands).to.deep.include(['playlist-remove', 1]);
+      expect((await readState(tempDir)).dropped).to.deep.equal([hanging]);
+
+      spawned[2].child.exit(null, 'SIGKILL');
+      await launches(spawned, 4);
+      expect(loaded(clients.at(-1).client)).to.deep.equal(['/m/fine.mp4']);
+      await daemon.stop();
+    });
+
     it('samples mpv CPU per monitor and charges only intervals an item played through', async () => {
       let clock = 0;
       let ticks = 0;
