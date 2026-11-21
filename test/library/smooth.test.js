@@ -3,11 +3,19 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  RifeTimeoutError, covers, listSmoothWork, rifeArgs, rifeTimeLimit, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo, smoothWorkPath, smoothedPath, smoothedReady,
+  RifeTimeoutError, covers, listSmoothWork, rifeArgs, rifeTimeLimit, listSmoothed, removeStaleSmoothWork, rifeModel, smoothFactor, smoothSize, smoothVideo as smoothVideoProbed, smoothWorkPath, smoothedPath, smoothedReady,
   smoothedSize, smoothedSizePath,
   smoothedReversedPath, stutters, wantsSmoothing
 } from '../../src/library/smooth.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
+
+// Ten frames a part, and the joined copy as many as the parts listed for the join
+async function fakeProbe(file) {
+  if (path.basename(file) !== 'smoothed.mp4') return { codec: 'h264', pixFmt: 'yuv420p', frames: 10 };
+  const list = await fs.readFile(path.join(path.dirname(file), 'parts.txt'), 'utf8');
+  return { codec: 'h264', pixFmt: 'yuv420p', frames: 10 * list.trim().split('\n').length };
+}
+const smoothVideo = (media, dir, options = {}) => smoothVideoProbed(media, dir, { probe: fakeProbe, ...options });
 
 const S3 = fakeSha(3);
 const S7 = fakeSha(7);
@@ -150,6 +158,19 @@ describe('smooth', () => {
       };
     }
 
+    it('keeps no joined copy that cannot be played', async () => {
+      const warnings = [];
+      const logger = { ...silentLogger, warn: (message, meta) => warnings.push([message, meta]) };
+      const probe = async file => (path.basename(file) === 'smoothed.mp4' ? { codec: 'h264', pixFmt: 'yuv420p', frames: 15 } : fakeProbe(file));
+      const copy = await smoothVideoProbed(media, dir, {
+        rife: '/opt/rife', size: { width: 640, height: 360 }, exec: fakeExec(), probe, nice: false, logger, encoders: ['x264'], target: 60
+      });
+      expect(copy).to.equal(null);
+      expect(await fs.pathExists(path.join(dir, `${S3}@0.5.mp4`))).to.equal(false);
+      expect(await fs.pathExists(path.join(dir, `${S3}@0.5.json`))).to.equal(false);
+      expect(warnings.map(([, meta]) => meta.error)).to.include('the joined copy cannot be played: 15 frames where 20 were joined');
+    });
+
     it('interpolates each chunk with the next one\'s first frame, drops that frame and joins the chunks', async () => {
       const exec = fakeExec({ taken: count => (count === 21 ? 21 : 5) });
       const copy = await smoothVideo(media, dir, {
@@ -159,7 +180,7 @@ describe('smooth', () => {
       expect(await fs.readJson(path.join(dir, `${S3}@0.5.json`))).to.deep.equal({ width: 640, height: 360 });
       const extracts = calls.filter(call => call[0] === 'ffmpeg' && call.some(arg => String(arg).endsWith('%06d.png')));
       // Chunk starts half a frame early so the seek lands on frames 0 and 20
-      expect(extracts.map(call => [call[call.indexOf('-ss') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['0', '21'], ['1.95', '20']]);
+      expect(extracts.map(call => [call[call.indexOf('-ss') + 1], call[call.indexOf('-frames:v') + 1]])).to.deep.equal([['0', '21'], ['1.975', '20']]);
       const rife = calls.filter(call => call[0] === '/opt/rife');
       // 10 fps at 0.5 shows 5 a second, so 60 needs a factor of 12: (21 - 1) * 12 + 1 and (5 - 1) * 12 + 1
       expect(rife.map(call => call[call.indexOf('-n') + 1])).to.deep.equal(['241', '49']);
@@ -208,7 +229,7 @@ describe('smooth', () => {
       const copy = await smoothVideo(media, dir, options(fakeExec()));
       expect(copy).to.equal(smoothedPath(media, dir));
       // Only the second chunk is extracted again; the join takes both
-      expect(extractions()).to.deep.equal(['1.95']);
+      expect(extractions()).to.deep.equal(['1.975']);
       expect(await fs.pathExists(work)).to.equal(false);
       // A file moved since (a rating) is the same source: same size and modification time
       await stopAfterFirstChunk();
@@ -217,7 +238,7 @@ describe('smooth', () => {
       media.path = moved;
       calls = [];
       await smoothVideo(media, dir, options(fakeExec()));
-      expect(extractions()).to.deep.equal(['1.95']);
+      expect(extractions()).to.deep.equal(['1.975']);
     });
 
     it('keeps its chunks and tries no other encoder when a rating moves the file mid-job', async () => {
@@ -241,7 +262,7 @@ describe('smooth', () => {
       media.path = moved;
       calls = [];
       expect(await smoothVideo(media, dir, options(fakeExec(), { encoders: ['vaapi', 'x264'] }))).to.equal(smoothedPath(media, dir));
-      expect(extractions()).to.deep.equal(['1.95']);
+      expect(extractions()).to.deep.equal(['1.975']);
     });
 
     it('starts afresh when the kept chunks were made another way, and resumes with the encoder they used', async () => {
@@ -249,14 +270,14 @@ describe('smooth', () => {
       calls = [];
       // Another size: the chunks no longer fit
       await smoothVideo(media, dir, options(fakeExec(), { size: { width: 320, height: 180 } }));
-      expect(extractions()).to.deep.equal(['0', '1.95']);
+      expect(extractions()).to.deep.equal(['0', '1.975']);
 
       // VAAPI failed before, so the kept chunks are libx264's: the next job goes on with libx264
       await fs.remove(smoothedPath(media, dir));
       await stopAfterFirstChunk({ encoders: ['x264'] });
       calls = [];
       await smoothVideo(media, dir, options(fakeExec(), { encoders: ['vaapi', 'x264'] }));
-      expect(extractions()).to.deep.equal(['1.95']);
+      expect(extractions()).to.deep.equal(['1.975']);
       expect(calls.some(call => call.includes('h264_vaapi'))).to.equal(false);
     });
 

@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { ENCODERS, ENCODER_ORDER, SHA256, copyKey, run } from './reverse.js';
+import { ENCODERS, ENCODER_ORDER, SEEK, SHA256, copyKey, copyProblem, probeVideo, run, seekTime } from './reverse.js';
 
 // Smoothed copies of slowed videos (display.smooth): RIFE (rife-ncnn-vulkan, on the CPU or display.smooth_gpu) makes the
 // frames in between, so a video slowed to a speed still shows display.smooth_fps frames a second. A copy has the same
@@ -134,7 +134,8 @@ export function smoothWorkPath(media, dir) {
 // source is its size and modification time, not its path, so a file a rating moved (renamed, same mtime) still matches.
 function jobOf(media, { size, factor, perChunk, total }) {
   const stat = fs.statSync(media.path);
-  return { source: { size: stat.size, mtimeMs: stat.mtimeMs }, size, factor, perChunk, total };
+  // seek: parts sought half a frame early (before 2.89.2) could start a frame early and are not resumed
+  return { source: { size: stat.size, mtimeMs: stat.mtimeMs }, size, factor, perChunk, total, seek: SEEK };
 }
 
 function sameJob(a, b) {
@@ -187,8 +188,8 @@ export function rifeTimeLimit({ frames, pixels, rate = null }) {
 // its first missing chunk, with the encoder it was using. A finished copy, or a failure with every encoder, removes the
 // folder. A RIFE chunk past timeLimit (rifeTimeLimit) is stopped and throws RifeTimeoutError, keeping the work.
 export async function smoothVideo(media, dir, {
-  rife, size, target = SMOOTH_FPS, gpu = SMOOTH_GPU, exec = run, logger, signal, encoders = ENCODER_ORDER, now = Date.now, nice = true,
-  timeLimit = rifeTimeLimit
+  rife, size, target = SMOOTH_FPS, gpu = SMOOTH_GPU, exec = run, probe = probeVideo, logger, signal, encoders = ENCODER_ORDER, now = Date.now,
+  nice = true, timeLimit = rifeTimeLimit
 } = {}) {
   if (!wantsSmoothing(media, target) || !rife || !size || !copyKey(media)) return null;
   const factor = smoothFactor(media.fps, media.speed, target);
@@ -214,11 +215,11 @@ export async function smoothVideo(media, dir, {
     const megapixels = (frames * size.width * size.height) / 1e6;
     if (megapixels > 0) rate = Math.max(rate ?? 0, seconds / megapixels);
   };
-  // Chunks start at frame numbers, sought half a frame early so the seek lands on that frame whatever the rate
+  // Chunks start at frame numbers (seekTime)
   const perChunk = Math.max(2, Math.round(CHUNK_SECONDS * media.fps));
   const total = Math.max(1, Math.round(media.duration * media.fps));
   const starts = [];
-  for (let frame = 0; frame < total; frame += perChunk) starts.push(Math.max(0, Math.round(((frame - 0.5) / media.fps) * 1e6) / 1e6));
+  for (let frame = 0; frame < total; frame += perChunk) starts.push(seekTime(frame, media.fps));
   const started = now();
   await fs.ensureDir(dir);
   let job;
@@ -292,6 +293,11 @@ export async function smoothVideo(media, dir, {
       const joined = path.join(work, 'smoothed.mp4');
       await command('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'parts.txt'),
         '-c', 'copy', '-movflags', '+faststart', joined]);
+      // Probed before it replaces anything, as reversed copies are: a copy no decoder takes hangs mpv (reverse.js)
+      const videos = await Promise.all(parts.map(part => probe(path.join(work, part))));
+      const frames = videos.reduce((sum, video) => sum + (video?.frames ?? 0), 0);
+      const problem = copyProblem(await probe(joined), frames);
+      if (problem) throw new Error(`the joined copy cannot be played: ${problem}`);
       const copy = smoothedPath(media, dir);
       await fs.rename(joined, copy);
       // After the copy, so a crash between leaves a copy without a size (probed again), never an old copy with the new size

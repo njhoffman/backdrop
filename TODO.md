@@ -314,15 +314,21 @@ Reviewed: 2026-11-15
       copy fetched from an offload host) is probed before it replaces anything (`probeVideo`, `copyProblem`), and a
       second hang on one item drops it from every playlist for the run (`Daemon.onHung`, state.json `dropped`). A hang
       while mpv loads the next entry still counts toward the item before it.
-- [ ] **Reversed copies repeat a frame at some chunk seams.** (p3) [bug] #245 (720 frames, 23.976 fps) reverses to
+- [x] **Reversed copies repeat a frame at some chunk seams.** (p3) [bug] #245 (720 frames, 23.976 fps) reverses to
       724: `-ss start -t chunk` with 2 s chunks does not fall on frame boundaries at 24000/1001, so a chunk can take the
       frame the next one also takes. A held frame per few seams, barely visible, but the bounce is meant to be seamless.
       Cut chunks by frame count instead (`-frames:v` from the start frame, as `smoothVideo` does), and assert the frame
       count equals the source's in `reverseVideo` (`copyProblem` already takes the count).
-- [ ] **Smoothed copies made here are not probed.** (p3) [test] `smoothVideo` (`src/library/smooth.js`) joins its parts
+      Done (2.89.2): chunks are cut by frame count (`chunkFrames`, `trim=end_frame` ahead of `reverse`). A second
+      cause turned up: the half-frame-early seek both copies used started each chunk on the frame before in videos muxed
+      with one tick a frame (timebase 1/30), a repeat and a loss at every seam, and in smoothed copies a step back.
+      `seekTime` seeks a quarter frame early for both. A count apart from the source's is logged, not refused, since
+      container counts can be wrong or missing. Copies made before stay as they were.
+- [x] **Smoothed copies made here are not probed.** (p3) [test] `smoothVideo` (`src/library/smooth.js`) joins its parts
       with `-c copy` and renames the result into place unchecked. Its parts come from PNG frames, so the tmcd failure
       behind the bounce hang cannot happen there, but a bad part would play as the same hang. Run `copyProblem` on the
       joined copy before the rename, as `reverseVideo` does.
+      Done (2.89.2): the joined copy must hold the frames of its parts.
 - [ ] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
       (`nvidia-smi -q`, though `nvidia-persistenced` is active), and each ffmpeg spent about 19 s starting CUDA, against
       about 1 s for a 1080p libx264 chunk on 12 cores (2026-11-15). Enable it (`sudo nvidia-smi -pm 1`, or drop

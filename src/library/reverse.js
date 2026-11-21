@@ -7,6 +7,8 @@ import { promisify } from 'util';
 // ffmpeg's reverse filter holds every frame it is given, so the video is reversed in short chunks, each
 // read from its start (-ss before -i is frame accurate when re-encoding), and the chunks are joined in
 // reverse order without encoding again. The chunk length keeps the raw frames of one chunk near CHUNK_BYTES.
+// Chunks are cut by frame number, as smoothVideo's parts are: a chunk of seconds at 24000/1001 ends between two
+// frames, and the next chunk took the frame on its boundary again (720 frames reversed to 724, 2026-11-20).
 // Chunks carry the video stream alone: ffmpeg 6.1 writes a timecode (tmcd) track from a source's timecode tag even
 // with -dn, and a chunk past the last frame (the container can run past it) then holds only that track. The concat
 // demuxer takes its streams from the first file, the last chunk, so such a chunk once made a copy every decoder
@@ -89,10 +91,28 @@ export function chunkSeconds(media) {
   return Math.min(MAX_CHUNK, Math.max(MIN_CHUNK, Math.floor(seconds * 100) / 100));
 }
 
-// Chunk start times; none starts within half a frame of the end, where it would hold no frame
+// Recorded in a job, so work kept from another way of seeking starts afresh
+export const SEEK = 'quarter-frame';
+
+// Frames per chunk of chunk seconds
+export function chunkFrames(chunk, fps = DEFAULT_FPS) {
+  return Math.max(1, Math.round(chunk * fps));
+}
+
+// The -ss (before -i) that starts a re-encode on a frame: a quarter frame early, so a rounded rate (23.976 for
+// 24000/1001) cannot move it off. Half a frame early, as both copies once sought, started on the frame before in a
+// video muxed with one timebase tick a frame (1/30, common from Pexels): the seek rounds to a tick, and the tie goes
+// down (2026-11-20, framemd5 of the frames taken).
+export function seekTime(frame, fps) {
+  return Math.max(0, Math.round(((frame - 0.25) / fps) * 1e6) / 1e6);
+}
+
+// Chunk start times: every chunkFrames-th frame of the round(duration * fps) the video holds
 export function chunkStarts(duration, chunk, fps = DEFAULT_FPS) {
+  const perChunk = chunkFrames(chunk, fps);
+  const total = Math.max(1, Math.round(duration * fps));
   const starts = [];
-  for (let index = 0; index * chunk < duration - 0.5 / fps; index++) starts.push(Math.round(index * chunk * 1e6) / 1e6);
+  for (let frame = 0; frame < total; frame += perChunk) starts.push(seekTime(frame, fps));
   return starts;
 }
 
@@ -108,9 +128,11 @@ export function reverseWorkPath(media, dir) {
 
 // What a work folder's chunks were made from; a job resumes only one that matches all but the encoder. The source is
 // its size and modification time, not its path, so a file a rating moved (renamed, same mtime) still matches.
-function jobOf(media, chunk, starts) {
+function jobOf(media, chunk, starts, perChunk) {
   const stat = fs.statSync(media.path);
-  return { source: { size: stat.size, mtimeMs: stat.mtimeMs }, chunk, chunks: starts.length };
+  // perChunk: chunks cut by frame count; work kept from chunks cut by seconds (before 2.89.2) has none and starts afresh.
+  // seek: how chunks were sought, so chunks one frame off (2.89.1) are not resumed either
+  return { source: { size: stat.size, mtimeMs: stat.mtimeMs }, chunk, chunks: starts.length, perChunk, seek: SEEK };
 }
 
 function sameJob(a, b) {
@@ -128,12 +150,14 @@ export async function reverseVideo(media, dir, {
   const target = reversedPath(media, dir);
   const work = reverseWorkPath(media, dir);
   const chunk = chunkSeconds(media);
-  const starts = chunkStarts(media.duration, chunk, media.fps || DEFAULT_FPS);
+  const fps = media.fps || DEFAULT_FPS;
+  const starts = chunkStarts(media.duration, chunk, fps);
+  const perChunk = chunkFrames(chunk, fps);
   const ffmpeg = args => (nice ? exec('nice', ['-n', '19', 'ffmpeg', ...args], { signal }) : exec('ffmpeg', args, { signal }));
   await fs.ensureDir(dir);
   let job;
   try {
-    job = jobOf(media, chunk, starts);
+    job = jobOf(media, chunk, starts, perChunk);
   } catch (error) {
     logger?.warn('Reverse encode failed', { mediaId: media.id, error: error.message });
     return null;
@@ -162,8 +186,9 @@ export async function reverseVideo(media, dir, {
         if (done.has(chunkName(index))) continue;
         // Written under another name and renamed, so a chunk cut short is never taken for a finished one
         const partial = path.join(work, `partial-${chunkName(index)}`);
-        await ffmpeg(['-v', 'error', '-y', ...encoder.input, '-ss', String(start), '-t', String(chunk), '-i', media.path,
-          '-map', '0:v:0', '-vf', encoder.filter, ...encoder.output, '-write_tmcd', '0', partial]);
+        // trim takes the chunk's frames before reverse holds them; -t, a frame longer, only bounds what is read
+        await ffmpeg(['-v', 'error', '-y', ...encoder.input, '-ss', String(start), '-t', String(Math.round(((perChunk + 1) / fps) * 1e6) / 1e6),
+          '-i', media.path, '-map', '0:v:0', '-vf', `trim=end_frame=${perChunk},${encoder.filter}`, ...encoder.output, '-write_tmcd', '0', partial]);
         await fs.rename(partial, path.join(work, chunkName(index)));
       }
       if (signal?.aborted) {
@@ -180,8 +205,15 @@ export async function reverseVideo(media, dir, {
       const joined = path.join(work, 'reversed.mp4');
       await ffmpeg(['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'chunks.txt'),
         '-map', '0:v:0', '-c', 'copy', '-movflags', '+faststart', joined]);
-      const problem = copyProblem(await probe(joined), kept.reduce((sum, index) => sum + videos[index].frames, 0));
+      const frames = kept.reduce((sum, index) => sum + videos[index].frames, 0);
+      const problem = copyProblem(await probe(joined), frames);
       if (problem) throw new Error(`the joined copy cannot be played: ${problem}`);
+      // A count apart from the source's plays, with a frame held or skipped at a seam; it is only reported, since a
+      // container's count can be off (none at all in Matroska)
+      const source = await probe(media.path).catch(() => null);
+      if (source?.frames && source.frames !== frames) {
+        logger?.warn('Reversed copy has another frame count than the video', { mediaId: media.id, frames, source: source.frames });
+      }
       await fs.rename(joined, target);
       logger?.info('Reversed video for bounce', {
         mediaId: media.id, encoder: name, chunks: starts.length, resumed: done.size, seconds: Math.round((now() - started) / 100) / 10

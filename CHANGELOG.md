@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.89.2] - 2026-11-20
+
+### Fixed
+
+- Bounces and smoothed videos no longer stutter at the joins between the pieces they are made in. Reversed copies
+  repeated a frame now and then (a 720-frame video came out at 724), and in videos with a coarse timebase, common from
+  Pexels, every piece of a reversed or smoothed copy started a frame early: a repeated and a lost frame at each join,
+  and a small step back in smoothed videos. Copies made from now on are frame exact; copies made before keep their
+  joins until they are made again.
+- A smoothed copy that cannot be played is rejected instead of replacing anything, as reversed copies already were.
+
 ## [2.89.1] - 2026-11-20
 
 ### Fixed

@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  ENCODERS, chunkSeconds, chunkStarts, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -38,10 +38,20 @@ describe('reverse', () => {
       expect(chunkSeconds({})).to.equal(1.43);
     });
 
-    it('covers the whole video without a chunk that starts at its last half frame', () => {
-      expect(chunkStarts(2, 0.5, 10)).to.deep.equal([0, 0.5, 1, 1.5]);
-      expect(chunkStarts(2.03, 0.5, 10)).to.deep.equal([0, 0.5, 1, 1.5]);
-      expect(chunkStarts(2.1, 0.5, 10)).to.deep.equal([0, 0.5, 1, 1.5, 2]);
+    it('starts chunks at every chunkFrames-th of the frames the video holds, a quarter frame early', () => {
+      expect(chunkFrames(0.5, 10)).to.equal(5);
+      expect(chunkFrames(0.01, 10)).to.equal(1);
+      expect(chunkStarts(2, 0.5, 10)).to.deep.equal([0, 0.475, 0.975, 1.475]);
+      // 20.3 frames are 20: no chunk past the last
+      expect(chunkStarts(2.03, 0.5, 10)).to.deep.equal([0, 0.475, 0.975, 1.475]);
+      expect(chunkStarts(2.1, 0.5, 10)).to.deep.equal([0, 0.475, 0.975, 1.475, 1.975]);
+    });
+
+    it('seeks a quarter frame before a frame, never before the start', () => {
+      expect(seekTime(0, 30)).to.equal(0);
+      expect(seekTime(48, 30)).to.equal(1.591667);
+      // 24000/1001 recorded as 23.976 is still within a quarter frame at frame 719
+      expect(Math.abs(seekTime(719, 23.976) - (719 - 0.25) * 1001 / 24000)).to.be.below(0.25 / 24);
     });
   });
 
@@ -80,8 +90,9 @@ describe('reverse', () => {
       expect(await fs.readFile(target, 'utf8')).to.equal('out');
       expect(calls).to.have.length(3);
       expect(calls[0].slice(0, 3)).to.deep.equal(['nice', '-n', '19']);
-      expect(calls[0]).to.include.members(['-ss', '0', '-t', '2', '-vf', 'reverse', 'libx264']);
-      expect(calls[1]).to.include.members(['-ss', '2']);
+      // 48 frames a chunk at 24 fps: the second starts at frame 48, and -t reads a frame more than trim keeps
+      expect(calls[0]).to.include.members(['-ss', '0', '-t', '2.041667', '-vf', 'trim=end_frame=48,reverse', 'libx264']);
+      expect(calls[1]).to.include.members(['-ss', '1.989583']);
       expect(calls[2]).to.include.members(['-f', 'concat', '-c', 'copy']);
       // The work folder is gone, the list went with it
       expect(await fs.readdir(bounceDir)).to.deep.equal([`${fakeSha(7)}.mp4`]);
@@ -191,7 +202,7 @@ describe('reverse', () => {
       expect(await reverse(media, dir, { exec: fakeExec(), logger: silentLogger })).to.equal(reversedPath(media, dir));
       // Only the second chunk and the join; still VAAPI
       expect(calls).to.have.length(2);
-      expect(calls[0]).to.include.members(['-ss', '2', 'h264_vaapi']);
+      expect(calls[0]).to.include.members(['-ss', '1.989583', 'h264_vaapi']);
       expect(await fs.pathExists(work)).to.equal(false);
     });
 
@@ -337,6 +348,34 @@ describe('reverse', () => {
       expect(await frames(target)).to.equal(await frames(file));
     });
 
+    // A copy is the video's frames in reverse, each once: no frame repeated or lost at a seam (24000/1001 at 2 s
+    // chunks used to end between frames, and seeking half a frame early started each chunk a frame early)
+    // Muxed with one timebase tick a frame (1/30), as Pexels videos often are, a seek half a frame early rounds to the
+    // frame before; 24000/1001 is recorded as 23.976
+    for (const [rate, fps, frames, timescale] of [['30', 30, 195, '30'], ['24000/1001', 23.976, 156, '24000']]) {
+      it(`reverses every frame exactly once across chunk seams at ${rate}`, async () => {
+        const file = path.join(dir, 'seams.mp4');
+        execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `testsrc2=size=96x64:rate=${rate}:duration=6.5`,
+          '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24', '-video_track_timescale', timescale, file]);
+        const hashes = async video => (await run('ffmpeg', ['-v', 'error', '-i', video, '-map', '0:v:0', '-f', 'framemd5', '-']))
+          .split('\n').filter(line => line && !line.startsWith('#')).map(line => line.split(',').at(-1).trim());
+        const source = await hashes(file);
+        expect(source).to.have.length(frames);
+        const media = { id: 3, sha256: fakeSha(3), kind: 'video', path: file, duration: frames / fps, width: 96, height: 64, fps };
+        expect(chunkStarts(media.duration, chunkSeconds(media), media.fps).length).to.be.above(2);
+        // Lossless, so the copy's frames are the source's bit for bit and can be matched by hash
+        ENCODERS.lossless = { input: [], filter: 'reverse', output: ['-c:v', 'libx264', '-qp', '0', '-pix_fmt', 'yuv420p'] };
+        try {
+          const target = await reverseVideo(media, path.join(dir, 'bounce'), { encoders: ['lossless'], nice: false, logger: silentLogger });
+          expect(target).to.not.equal(null);
+          expect(await hashes(target)).to.deep.equal([...source].reverse());
+        } finally {
+          delete ENCODERS.lossless;
+          await fs.remove(path.join(dir, 'bounce'));
+        }
+      });
+    }
+
     // The copy that hung mpv (2026-11-20): a source with a timecode tag, whose recorded length runs past its last
     // frame far enough for a chunk to start after it
     it('makes a playable copy of a video with a timecode whose length runs past its last frame', async () => {
@@ -344,7 +383,8 @@ describe('reverse', () => {
       execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=96x64:rate=24:duration=2',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-timecode', '00:01:42:23', file]);
       const media = { id: 2, sha256: fakeSha(2), kind: 'video', path: file, duration: 2.03, width: 96, height: 64, fps: 24 };
-      expect(chunkStarts(media.duration, chunkSeconds(media), media.fps)).to.deep.equal([0, 2]);
+      // 49 frames by the recorded length, 48 in the file: the second chunk starts past the last
+      expect(chunkStarts(media.duration, chunkSeconds(media), media.fps)).to.deep.equal([0, 1.989583]);
       const target = await reverseVideo(media, path.join(dir, 'bounce'), { encoders: ['x264'], nice: false, logger: silentLogger });
       expect(target).to.not.equal(null);
       expect(await probeVideo(target)).to.deep.equal({ codec: 'h264', pixFmt: 'yuv420p', frames: 48 });
