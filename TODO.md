@@ -873,6 +873,17 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       check through the daemon (a projectMSDL started from a shell stalled after loading its config, never opening audio).
       Done (2.84.1): `ProjectmVisualizer.command` sets `PULSE_LATENCY_MSEC` from `latency_ms`; through the daemon
       projectMSDL asks for 1323 frames at 44100 Hz (30 ms), the sink stays at 1024, no new xruns in 30 s.
+- [x] **Visualizer menu treats several instances as one.** (p2) [bug] Escape in an instance's menu left for the main
+      menu, its "turn off" turned the whole visualizer off (radial off took the lyrics with it), and a sleeve
+      instance's status printed its sent colors as `[object Object]`. Done (2.91.0): a top level with load, save and
+      reset, an own menu per instance with show/hide (`visible`), Escape back to the top, and load trying presets live.
+- [x] **Empty bars beside lyrics for a song on another device.** (p2) [bug] Spotify Connect playing on a phone
+      leaves sleeved with a song and lyrics but nothing in the local output, so GLava drew nothing. Done (2.91.0):
+      the built-in lyrics presets set `only_while_playing`, and in silence sleeve stays up while sleeved says a song
+      plays, so only GLava and projectM stop.
+- [ ] **A look of its own for a song on another device.** (p3) [feature] Beyond stopping the bars (2.91.0): a
+      setting naming a preset to switch to while sleeved says a song plays and the output is silent, as the
+      screensaver switches to `preset_without_lyrics`, for a layout that gives the lyrics the room the bars had.
 
 ## 10. Web interface
 

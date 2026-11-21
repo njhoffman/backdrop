@@ -178,6 +178,20 @@ describe('VisualizerManager', () => {
     expect(manager.entries.size).to.equal(0);
   });
 
+  it('stops and starts one instance the menu hides and shows, restarting no other', async () => {
+    config.set('visualizer.instances', [{ name: 'low' }, { name: 'ring', module: 'radial' }]);
+    await manager.configure();
+    await manager.sync();
+    expect(spawned).to.have.length(2);
+    await manager.setLive({ instance: 'ring', changes: { visible: false } });
+    expect([...manager.entries.keys()]).to.deep.equal(['DP-3\tlow']);
+    expect(spawned[0].child.exitCode).to.equal(null);
+    await manager.setLive({ instance: 'ring', changes: { visible: true } });
+    expect(spawned).to.have.length(3);
+    expect(spawned[2].args).to.include('ring');
+    await manager.stop();
+  });
+
   it('runs only while audio plays, stopping on silence and starting on sound', async () => {
     config.set('visualizer.only_while_playing', true);
     config.set('visualizer.silence_grace', 5);
@@ -525,6 +539,41 @@ describe('VisualizerManager', () => {
       await new Promise(setImmediate);
       expect(ctl[0]).to.deep.equal(['--instance', 'DP-3-main', '--reset', '--hide']);
       await silent.stop();
+    });
+
+    it('keeps the lyrics up in silence while sleeved says a song plays, as one on another device does', async () => {
+      config.set('visualizer.only_while_playing', true);
+      config.set('visualizer.instances', [{ name: 'lyrics', engine: 'sleeve' }, { name: 'bars', engine: 'glava', module: 'bars' }]);
+      let sleeved;
+      const manager = sleeveManager({
+        sleevedWatcher: options => { sleeved = options; return { start() {}, stop() {} }; },
+        // GLava's own adapter wants its shaders installed
+        create: (settings, instance, options) => (instance.engine === 'sleeve' ? createVisualizer(settings, instance, options) : {
+          instance, prepare: async () => {}, title: target => `${target.name}-${instance.name}`, command: () => ({ file: 'glava', args: [] })
+        })
+      });
+      await manager.configure();
+      await manager.sync();
+      sleeved.onMessage({ type: 'playback', playback: { state: 'playing' } });
+      ctl.length = 0;
+      await watchers[0].onChange(false);
+      await new Promise(setImmediate);
+      // The bars stop for the silence; the lyrics stay shown
+      expect([...manager.entries.keys()]).to.deep.equal(['DP-3\tlyrics']);
+      expect(ctl).to.deep.equal([]);
+      sleeved.onMessage({ type: 'playback', playback: { state: 'paused' } });
+      await new Promise(setImmediate);
+      expect(ctl).to.deep.equal([['--instance', 'DP-3-lyrics', '--hide']]);
+      sleeved.onMessage({ type: 'playback', playback: { state: 'playing' } });
+      sleeved.onClose();
+      await new Promise(setImmediate);
+      expect(ctl.slice(1)).to.deep.equal([['--instance', 'DP-3-lyrics', '--show'], ['--instance', 'DP-3-lyrics', '--hide']]);
+      // Sound brings the bars back and shows the lyrics whatever sleeved said
+      await watchers[0].onChange(true);
+      await new Promise(setImmediate);
+      expect(ctl.at(-1)).to.deep.equal(['--instance', 'DP-3-lyrics', '--show']);
+      expect(manager.entries.size).to.equal(2);
+      await manager.stop();
     });
 
     it('sends sleeved what it forgot when it comes back, and watches only while a sleeve instance can run', async () => {

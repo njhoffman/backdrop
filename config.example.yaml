@@ -50,7 +50,8 @@ visualizer:
   opacity: 0.8                       # whole visualizer over the wallpaper, 0 to 1 (bar color alpha blends the bars too)
   # Colors from the wallpaper under the visualizer, changed on every load (source: config keeps the module's colors)
   # palette: {source: wallpaper, pick: vivid, min_contrast: 3}  # pick: vivid, dominant or complement
-  only_while_playing: false          # stop it while the audio output is silent (pulseaudio only), start it on sound
+  only_while_playing: false          # stop it while the audio output is silent (pulseaudio only), start it on sound;
+                                     #   lyrics stay while a song plays elsewhere. The built-in lyrics presets turn it on
   silence_grace: 10                  # seconds of silence before it stops
   wallpaper_dim: 0                   # dim the wallpaper at least this far (0-100) while music plays; 0 is off
   preset: null                       # preset to start with: built-in subtle, ring, wave, party, or one of presets below
@@ -71,6 +72,7 @@ visualizer:
   #   - name: base
   #   - name: ring
   #     module: radial
+  #     visible: true                # false leaves it out of the look (the menu's hide)
   #     opacity: 1
   #     placement: {anchor: center, width: 40%, height: 60%}
   #     radial: {colors: ['#cc3333', '#ffcc66']}

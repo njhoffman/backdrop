@@ -114,7 +114,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   audio: pulseaudio        # pulseaudio or fifo
   source: auto             # GLava setsource: a sink or device, or the fifo path
   opacity: 0.8             # window opacity (_NET_WM_WINDOW_OPACITY), 0 to 1
-  only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only)
+  only_while_playing: false # stop the instances while the audio source is silent (audio: pulseaudio only); sleeve stays while a song plays. On in the built-in lyrics presets
   silence_grace: 10        # seconds of silence before they stop
   reference_height: 1440   # monitor height GLava's pixel sizes are meant for; they follow the window's height. null: exact pixels
   latency_ms: 30           # GLava's and projectM's capture latency (PULSE_LATENCY_MSEC); below ~22 it shrinks PipeWire's quantum and playback stutters. null: GLava's own
@@ -124,7 +124,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
                            #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-now
                            #   (src/visualizer/presets.js); cannot set enabled, preset or presets
-  instances: null          # [{name, engine, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];
+  instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];
                            #   the section's own instance settings are their defaults; list order = stacking order;
                            #   without it the section is one instance named main
   placement: {anchor: bottom, width: 100%, height: 25%, margin: 0}  # sizes in pixels or % of the monitor

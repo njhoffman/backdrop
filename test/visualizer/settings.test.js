@@ -257,7 +257,7 @@ describe('visualizer settings', () => {
 
     it('describes an instance as the menu shows it', () => {
       expect(instanceLook(section)).to.deep.equal({
-        module: 'bars', opacity: 0.8, anchor: 'bottom', palette: { source: 'config', pick: 'vivid', min_contrast: 3 },
+        module: 'bars', visible: true, opacity: 0.8, anchor: 'bottom', palette: { source: 'config', pick: 'vivid', min_contrast: 3 },
         amplify: 300, colors: ['#000000', '#33aacc'], colorOption: 'colors'
       });
       const ring = instanceLook(section, { preset: 'duo', live: { ring: { placement: { anchor: 'center' }, palette: { source: 'wallpaper' } } } }, 'ring');
@@ -265,12 +265,27 @@ describe('visualizer settings', () => {
       expect(ring.palette.source).to.equal('wallpaper');
       expect(ring.colors).to.deep.equal(['#cc3333', '#cca0a0']);
       expect(instanceLook({ module: 'wave' })).to.include({ amplify: 500, colorOption: 'color' });
+      expect(instanceLook(section, { live: { main: { visible: false } } })).to.include({ visible: false });
+    });
+
+    it('takes visible per instance, and nothing but true or false', () => {
+      const shown = visualizerSettings({ instances: [{ name: 'a' }, { name: 'b', visible: false }, { name: 'c', engine: 'sleeve', visible: false }] });
+      expect(shown.instances.map(item => item.visible)).to.deep.equal([true, false, false]);
+      expect(() => visualizerSettings({ instances: [{ name: 'a', visible: 'no' }] })).to.throw('visualizer.instances.a.visible must be');
+    });
+
+    it('runs the built-in looks with lyrics only while sound plays, except with audio: fifo', () => {
+      expect(visualizerSettings({}, { preset: 'lyrics-stage' }).onlyWhilePlaying).to.equal(true);
+      expect(visualizerSettings({}, { preset: 'ring' }).onlyWhilePlaying).to.equal(false);
+      expect(visualizerSettings({ audio: 'fifo' }, { preset: 'lyrics-stage' }).onlyWhilePlaying).to.equal(false);
+      // A preset of the user's own says for itself
+      expect(visualizerSettings({ presets: { 'lyrics-stage': { instances: [{ name: 'l', engine: 'sleeve' }] } } }, { preset: 'lyrics-stage' }).onlyWhilePlaying).to.equal(false);
     });
 
     it('gives projectM its frame rate and preset time, and no module or colors', () => {
       const section = { instances: [{ name: 'milk', engine: 'projectm', projectm: { fps: 24 } }] };
       expect(instanceLook(section, {}, 'milk')).to.deep.equal({
-        engine: 'projectm', module: 'projectm', projectm: { fps: 24, preset_duration: 30 }, opacity: 1, anchor: 'bottom',
+        engine: 'projectm', module: 'projectm', visible: true, projectm: { fps: 24, preset_duration: 30 }, opacity: 1, anchor: 'bottom',
         palette: { source: 'config', pick: 'vivid', min_contrast: 3 }, colors: [], colorOption: null
       });
     });

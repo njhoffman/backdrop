@@ -58,12 +58,13 @@ const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}
 // window property), how colors are picked from the wallpaper (palette.pick and min_contrast, sent over the
 // pipe) and wallpaper_dim, which running instances take as they are, and the preset names.
 function startSettings(settings) {
-  const { preset, presets, instances, wallpaperDim, wallpaper, ...shared } = settings;
+  // only_while_playing and an instance's visible start and stop instances (sync), restarting none
+  const { preset, presets, instances, wallpaperDim, wallpaper, onlyWhilePlaying, ...shared } = settings;
   return JSON.stringify({
     ...shared,
     // sleeve takes its look over `sleeve ctl display` (changedLook)
     // Piped colors go over stdin: only how many there are is fixed at the start
-    instances: instances.map(({ opacity, palette, sleeve, pipe, pipeDefine, defines, ...rest }) => ({
+    instances: instances.map(({ opacity, visible, palette, sleeve, pipe, pipeDefine, defines, ...rest }) => ({
       ...rest, palette: { source: palette.source }, pipe: pipe && Object.keys(pipe),
       defines: Object.fromEntries(Object.entries(defines).filter(([name]) => name !== pipeDefine)),
       ...(sleeve ? { sleeve: { command: sleeve.command, noSandbox: sleeve.noSandbox, mapBelow: sleeve.mapBelow } } : {})
@@ -127,6 +128,9 @@ export class VisualizerManager {
     this.live = {};
     this.prepared = false;
     this.audio = { watcher: null, playing: null };
+    // Whether sleeved says a song plays, from its playback messages: in silence (only_while_playing) sleeve stays
+    // shown while one does, since a song on another device plays nothing here for GLava but has lyrics
+    this.songPlaying = false;
     // One placement at a time per monitor, so instances starting together stack in order
     this.placing = new Map();
     this.stopping = false;
@@ -183,6 +187,11 @@ export class VisualizerManager {
     return Boolean(this.settings?.onlyWhilePlaying) && this.audio.playing === false;
   }
 
+  // Whether sleeve's pages show: always with sound, and in silence only while sleeved says a song plays
+  get sleeveShown() {
+    return !this.silenced || this.songPlaying;
+  }
+
   // How far to dim the wallpaper (0-100) while the visualizer is on and its audio source plays, else 0
   get musicDim() {
     const dim = this.settings?.wallpaperDim ?? 0;
@@ -206,7 +215,7 @@ export class VisualizerManager {
   // Root-window geometry for an instance on a monitor, or null when it does not run there now
   wanted(instance, monitor) {
     // sleeve hides for silence rather than stopping, since a start takes about 2 s
-    if (!this.active || this.suspended || (this.silenced && instance.engine !== 'sleeve')) return null;
+    if (!this.active || this.suspended || !instance.visible || (this.silenced && instance.engine !== 'sleeve')) return null;
     // The costliest by far, and the first to go under load
     if (instance.engine === 'projectm' && this.lightened) return null;
     const layout = layoutFor(instance, monitor.name);
@@ -303,9 +312,12 @@ export class VisualizerManager {
       }
     }
     await Promise.all([...this.monitors.keys()].map(name => this.recolor(name)));
-    // wallpaper_dim may have turned the audio watch on or off, or changed the dim
+    // wallpaper_dim or only_while_playing may have turned the audio watch on or off, or changed the dim
     await this.watchAudio();
     this.noteWallpaper();
+    // An instance shown or hidden, or only_while_playing turned, starts or stops instances
+    this.showSleeve();
+    await this.sync();
   }
 
   // After a saved change to the config file: takes it like a menu change when the running instances can,
@@ -375,7 +387,7 @@ export class VisualizerManager {
     if (!this.settings?.onlyWhilePlaying) return;
     this.logger.info(playing ? 'Audio playing, visualizer starts' : 'Audio silent, visualizer stops');
     try {
-      for (const entry of this.entries.values()) if (entry.instance.engine === 'sleeve') this.display(entry, { visible: playing });
+      this.showSleeve();
       await this.sync();
     } catch (error) {
       this.logger.error('Visualizer failed to follow the audio', { error: error.message });
@@ -409,10 +421,34 @@ export class VisualizerManager {
     const wanted = this.active && !this.stopping && (this.settings?.instances ?? []).some(instance => instance.engine === 'sleeve');
     if (!wanted) {
       this.sleeved?.stop();
+      this.songPlaying = false;
       return;
     }
-    this.sleeved ??= this.sleevedWatcher({ onHello: () => this.remindSleeved(), logger: this.logger });
+    this.sleeved ??= this.sleevedWatcher({
+      onHello: () => this.remindSleeved(), logger: this.logger,
+      onMessage: message => {
+        if (message?.type === 'playback') this.noteSong(message.playback?.state === 'playing');
+      },
+      onClose: () => this.noteSong(false)
+    });
     this.sleeved.start();
+  }
+
+  // sleeved said whether a song plays: in silence that shows or hides the lyrics
+  noteSong(playing) {
+    if (playing === this.songPlaying) return;
+    this.songPlaying = playing;
+    if (this.silenced) this.showSleeve();
+  }
+
+  // Shows or hides every running sleeve page for sleeveShown, when that changed since it was last told
+  showSleeve() {
+    const shown = this.sleeveShown;
+    for (const entry of this.entries.values()) {
+      if (entry.instance.engine !== 'sleeve' || entry.shown === shown) continue;
+      entry.shown = shown;
+      this.display(entry, { visible: shown });
+    }
   }
 
   // Sends sleeved what it should know of each running page: the look, which it forgets on a restart, and hidden for
@@ -420,7 +456,8 @@ export class VisualizerManager {
   remindSleeved() {
     for (const entry of this.entries.values()) {
       if (entry.instance.engine !== 'sleeve') continue;
-      this.display(entry, { look: this.shownLook(entry.instance.sleeve, entry), ...(this.silenced ? { visible: false } : {}) });
+      entry.shown = this.sleeveShown;
+      this.display(entry, { look: this.shownLook(entry.instance.sleeve, entry), ...(entry.shown ? {} : { visible: false }) });
     }
   }
 
@@ -489,7 +526,8 @@ export class VisualizerManager {
     // sleeved outlives its pages and remembers changes by their name, which would win over these start options
     if (instance.engine === 'sleeve') {
       const covered = this.lightened && instance.sleeve.background?.startsWith('cover');
-      this.display(entry, { reset: true, ...(this.silenced ? { visible: false } : {}), ...(covered ? { look: this.shownLook(instance.sleeve, entry) } : {}) });
+      entry.shown = this.sleeveShown;
+      this.display(entry, { reset: true, ...(entry.shown ? {} : { visible: false }), ...(covered ? { look: this.shownLook(instance.sleeve, entry) } : {}) });
     }
     if (instance.pipe) {
       // A piped value that never arrives stays unset: the wallpaper's colors when known, else the configured ones

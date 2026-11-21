@@ -25,7 +25,7 @@ function veil({ cycle = false } = {}) {
   ];
 }
 
-export const BUILTIN_PRESETS = {
+const PRESETS = {
   // Short, thin bars along the bottom, mostly see-through
   subtle: {
     opacity: 0.5,
@@ -127,3 +127,9 @@ export const BUILTIN_PRESETS = {
     ]
   }
 };
+
+// Every look with lyrics runs only while sound plays here, so a song playing on another device (Spotify Connect)
+// shows its lyrics with no empty bars beside them: GLava stops in silence while sleeve stays up for a song
+export const BUILTIN_PRESETS = Object.fromEntries(Object.entries(PRESETS).map(([name, preset]) => [
+  name, preset.instances?.some(instance => instance.engine === 'sleeve') ? { only_while_playing: true, ...preset } : preset
+]));

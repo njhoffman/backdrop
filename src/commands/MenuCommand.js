@@ -56,15 +56,13 @@ const ICONS = {
 // Keys every menu answers besides its buttons': q closes the menu from anywhere, Tab opens the monitor picker
 const QUIT_KEY = 'q';
 const MONITOR_KEY = 'Tab';
-// z opens the visualizer menu from the main one; i picks the instance it changes when there are several;
-// w turns the wallpaper on while it is off
+// z opens the visualizer menu from the main one; w turns the wallpaper on while it is off
 const VISUALIZER_KEY = 'z';
 const WALLPAPER_KEY = 'w';
 // o opens the web interface's Now playing page: the running `backdrop web`'s, or a new one started for it
 const WEB_KEY = 'o';
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
-const INSTANCE_KEY = 'i';
-// In the preset menu: delete a preset saved in the config
+// In the load menu: delete a preset saved in the config
 const DELETE_KEY = 'x';
 
 // Font Awesome glyphs for the visualizer menu: power, image, list, cube, adjust, volume, arrows, brush, undo, save
@@ -76,6 +74,13 @@ const OPACITIES = ['0.2', '0.4', '0.6', '0.8', '1', '-0.1', '+0.1'];
 const AMPLIFIES = ['100', '150', '200', '300', '400', '500', '-50', '+50'];
 const FPS_STEPS = ['15', '24', '30', '45', '60', '-5', '+5'];
 const PRESET_DURATIONS = ['10', '20', '30', '60', '120', '-10', '+10'];
+
+// The colors the daemon last sent an instance, as #rrggbb: GLava's values, or sleeve's background and the picture's
+// main colors ({ background, main: [{ color, share }] })
+export function sentShades(sent) {
+  return Object.values(sent).flatMap(value => (Array.isArray(value) ? value.map(item => item?.color) : [value]))
+    .filter(value => typeof value === 'string').map(value => value.slice(0, 7));
+}
 
 // A step value applied to current: an absolute value, or +/- a step, kept within min and max
 export function stepValue(value, current, { min = -Infinity, max = Infinity, digits = 2 } = {}) {
@@ -468,85 +473,46 @@ export class MenuCommand {
     return { monitor: monitors[picked].name };
   }
 
-  // The visualizer: on/off, the wallpaper under it on/off, and preset, module, opacity, amplify, position and
-  // colors of one instance, applied live through control requests (visualizer_set) and kept until the daemon
-  // restarts; reset drops them and save writes the look into the config as a preset. With several instances it asks which one first (i
-  // switches). Resolves like the other menus: { quit: true } for q, {} for Escape.
+  // The visualizer: on/off, the wallpaper under it on/off, load (a preset), reset and save, applied live through
+  // control requests (visualizer_set) and kept until the daemon restarts; save writes the look into the config as a
+  // preset. With one instance its settings (module, opacity, amplify, position, colors, or sleeve's and projectM's)
+  // sit in this menu; with several each instance has an entry opening its own menu, which can also hide it, and
+  // Escape there comes back here. Resolves like the other menus: { quit: true } for q, {} for Escape.
   async visualizerMenu(monitor) {
-    let instance = null;
     for (;;) {
       const state = await this.control.state();
       const visualizer = state.visualizer ?? {};
       const names = visualizer.instances?.length ? visualizer.instances : ['main'];
-      if (!names.includes(instance)) {
-        instance = names.length > 1 ? await this.instanceMenu(names, null) : names[0];
-        if (instance === null) return {};
-        if (instance.quit) return instance;
-      }
       const section = this.config.get().visualizer;
       const options = { preset: visualizer.preset ?? null, live: visualizer.live ?? {} };
-      const look = instanceLook(section, options, instance);
       const on = Boolean(visualizer.enabled);
       const wallpaper = state.wallpaper !== false;
       const item = await this.describe(monitor);
+      const single = names.length === 1;
+      const look = single ? instanceLook(section, options, names[0]) : null;
       const entries = [
         { icon: VISUALIZER_ICONS.power, label: on ? 'turn off' : 'turn on', caption: on ? 'on' : 'off', key: 'e', active: on,
           run: () => this.sendVisualizer(state, { visualizer: !on }) },
         // Turning the wallpaper off with the visualizer off would stop the daemon, so that is left to the CLI
         { icon: VISUALIZER_ICONS.wallpaper, label: wallpaper ? 'wallpaper off' : 'wallpaper on', caption: wallpaper ? 'wallpaper' : 'no wallpaper',
           key: 'w', active: wallpaper, disabled: wallpaper && !on, run: () => this.sendVisualizer(state, { wallpaper: !wallpaper }) },
-        { icon: VISUALIZER_ICONS.preset, label: 'preset ▸', caption: options.preset ?? 'preset', key: 'p', active: Boolean(options.preset),
+        ...(single ? this.instanceEntries(names[0], look) : names.map(name => {
+          const visible = instanceLook(section, options, name).visible;
+          return { icon: VISUALIZER_ICONS.instance, label: `${name} ▸`, caption: visible ? name : `${name} (hidden)`, active: visible,
+            run: () => this.instanceMenu(monitor, name) };
+        })),
+        { icon: VISUALIZER_ICONS.preset, label: 'load ▸', caption: options.preset ?? 'load', key: 'p', active: Boolean(options.preset),
           run: () => this.presetMenu(state, section, options.preset) },
-        ...(look.engine === 'sleeve' ? [
-          { icon: VISUALIZER_ICONS.module, label: 'now ▸', caption: look.sleeve.now, key: 'm',
-            run: () => this.pickMenu(state, instance, 'now', SLEEVE_NOW, look.sleeve.now, now => ({ sleeve: { now } })) },
-          { icon: VISUALIZER_ICONS.position, label: 'panel ▸', caption: look.sleeve.now_position, key: 'n',
-            run: () => this.pickMenu(state, instance, 'panel', SLEEVE_POSITIONS, look.sleeve.now_position, position => ({ sleeve: { now_position: position } })) },
-          { icon: VISUALIZER_ICONS.position, label: 'align ▸', caption: look.sleeve.lyrics_align, key: 'g',
-            run: () => this.pickMenu(state, instance, 'align', SLEEVE_ALIGNS, look.sleeve.lyrics_align, align => ({ sleeve: { lyrics_align: align } })) }
-        ] : look.engine === 'projectm' ? [
-          // projectM draws its own presets: its frame rate (its main cost) and how long each preset shows
-          { icon: VISUALIZER_ICONS.fps, label: 'fps ▸', caption: `fps ${look.projectm.fps}`, key: 'm',
-            run: () => this.visualizerStep(instance, 'fps', FPS_STEPS, current => current.projectm.fps,
-              (value, current) => ({ projectm: { fps: stepValue(value, current, { min: 1, digits: 0 }) } })) },
-          { icon: VISUALIZER_ICONS.duration, label: 'preset time ▸', caption: `${look.projectm.preset_duration}s each`, key: 'n',
-            run: () => this.visualizerStep(instance, 'duration', PRESET_DURATIONS, current => current.projectm.preset_duration,
-              (value, current) => ({ projectm: { preset_duration: stepValue(value, current, { min: 2, digits: 0 }) } })) }
-        ] : [
-          { icon: VISUALIZER_ICONS.module, label: 'module ▸', caption: look.module, key: 'm',
-            run: () => this.pickMenu(state, instance, 'module', MODULES, look.module, module => ({ module })) }
-        ]),
-        { icon: VISUALIZER_ICONS.opacity, label: 'opacity ▸', caption: `opacity ${look.opacity}`, key: 'o',
-          run: () => this.visualizerStep(instance, 'opacity', OPACITIES, current => current.opacity,
-            (value, current) => ({ opacity: stepValue(value, current, { min: 0.05, max: 1 }) })) },
-        ...(look.engine === 'sleeve' || look.engine === 'projectm' ? [] : [
-          { icon: VISUALIZER_ICONS.amplify, label: 'amplify ▸', caption: `amplify ${look.amplify}`, key: 'a',
-            run: () => this.visualizerStep(instance, 'amplify', AMPLIFIES, current => current.amplify,
-              (value, current, now) => ({ [now.module]: { amplify: stepValue(value, current, { min: 10, digits: 0 }) } })) }
-        ]),
-        { icon: VISUALIZER_ICONS.position, label: 'position ▸', caption: look.anchor, key: 'l',
-          run: () => this.pickMenu(state, instance, 'position', ANCHORS, look.anchor, anchor => ({ placement: { anchor } })) },
-        ...(look.engine === 'projectm' ? [] : [
-          { icon: VISUALIZER_ICONS.colors, label: 'colors ▸', caption: look.palette.source === 'wallpaper' ? `wall ${look.palette.pick}` : look.palette.source === 'cycle' ? 'cycling' : 'fixed colors',
-            key: 'c', active: look.palette.source === 'wallpaper', run: () => this.colorsMenu(instance) }
-        ]),
         { icon: VISUALIZER_ICONS.reset, label: 'reset', key: 'r', disabled: !Object.keys(options.live).length,
           run: () => this.sendVisualizer(state, { visualizer_reset: true }) },
         { icon: VISUALIZER_ICONS.save, label: 'save as preset', caption: 'save', key: 's', run: () => this.savePreset(state, section, options) }
       ];
-      const status = this.visualizerStatus(state, instance, look, options, names);
-      const keys = [QUIT_KEY, ...(names.length > 1 ? [INSTANCE_KEY] : [])];
+      const status = single ? this.visualizerStatus(state, names[0], look, options) : this.presetStatus(options);
       const message = visualizer.error ? `<b>visualizer off:</b> ${escapeMarkup(visualizer.error)}` : item.message;
-      const picked = await this.show({ prompt: 'visualizer', title: `visualizer  ·  ${instance}`, message, preview: item.preview,
-        status, entries, keys, columns: 5 });
+      const picked = await this.show({ prompt: 'visualizer', title: single ? `visualizer  ·  ${names[0]}` : 'visualizer', message, preview: item.preview,
+        status, entries, keys: [QUIT_KEY], columns: 5 });
       if (picked === null) return {};
       if (picked.key === QUIT_KEY) return { quit: true };
-      if (picked.key === INSTANCE_KEY) {
-        const chosen = await this.instanceMenu(names, instance);
-        if (chosen?.quit) return chosen;
-        if (chosen) instance = chosen;
-        continue;
-      }
       const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
       if (!entry || entry.disabled) continue;
       const result = await this.attempt(entry.run);
@@ -554,26 +520,89 @@ export class MenuCommand {
     }
   }
 
-  // Status lines: the instance when there are several, the preset, the colors the daemon last sent (with
-  // palette.source: wallpaper), and whether menu changes are in effect
-  visualizerStatus(state, instance, look, options, names) {
-    const field = (name, value) => `${name}  <b>${escapeMarkup(value)}</b>`;
-    const lines = [];
-    if (names.length > 1) lines.push(`${field('instance', instance)}  (${INSTANCE_KEY})`);
-    lines.push(field('preset', options.preset ?? 'none'));
-    const sent = state.monitors?.flatMap(monitor => monitor.visualizers ?? []).find(item => item.instance === instance)?.colors;
-    if (sent) lines.push(field('colors', Object.values(sent).map(value => value.slice(0, 7)).join(' to ')));
-    else if (look.colors.length) lines.push(field('colors', look.colors.join(' to ')));
-    if (options.live[instance]) lines.push(field('changed', 'until restart (r resets)'));
+  // One instance's own menu, with several: shown or hidden, then its settings; Escape goes back to the visualizer menu
+  async instanceMenu(monitor, instance) {
+    for (;;) {
+      const state = await this.control.state();
+      const visualizer = state.visualizer ?? {};
+      if (!(visualizer.instances ?? []).includes(instance)) return {};
+      const options = { preset: visualizer.preset ?? null, live: visualizer.live ?? {} };
+      const look = instanceLook(this.config.get().visualizer, options, instance);
+      const item = await this.describe(monitor);
+      const entries = [
+        { icon: VISUALIZER_ICONS.power, label: look.visible ? 'hide' : 'show', caption: look.visible ? 'shown' : 'hidden', key: 'e', active: look.visible,
+          run: () => this.changeVisualizer(instance, { visible: !look.visible }) },
+        ...this.instanceEntries(instance, look)
+      ];
+      const picked = await this.show({ prompt: instance, title: `visualizer  ·  ${instance}`, message: item.message, preview: item.preview,
+        status: this.visualizerStatus(state, instance, look, options), entries, keys: [QUIT_KEY], columns: 5 });
+      if (picked === null) return {};
+      if (picked.key === QUIT_KEY) return { quit: true };
+      const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
+      if (!entry || entry.disabled) continue;
+      const result = await this.attempt(entry.run);
+      if (result.quit) return result;
+    }
+  }
+
+  // An instance's settings for its engine: sleeve's now-playing panel and alignment, projectM's frame rate and
+  // preset time, or GLava's module and amplify; then opacity, position and colors
+  instanceEntries(instance, look) {
+    return [
+      ...(look.engine === 'sleeve' ? [
+        { icon: VISUALIZER_ICONS.module, label: 'now ▸', caption: look.sleeve.now, key: 'm',
+          run: () => this.pickMenu(instance, 'now', SLEEVE_NOW, look.sleeve.now, now => ({ sleeve: { now } })) },
+        { icon: VISUALIZER_ICONS.position, label: 'panel ▸', caption: look.sleeve.now_position, key: 'n',
+          run: () => this.pickMenu(instance, 'panel', SLEEVE_POSITIONS, look.sleeve.now_position, position => ({ sleeve: { now_position: position } })) },
+        { icon: VISUALIZER_ICONS.position, label: 'align ▸', caption: look.sleeve.lyrics_align, key: 'g',
+          run: () => this.pickMenu(instance, 'align', SLEEVE_ALIGNS, look.sleeve.lyrics_align, align => ({ sleeve: { lyrics_align: align } })) }
+      ] : look.engine === 'projectm' ? [
+        // projectM draws its own presets: its frame rate (its main cost) and how long each preset shows
+        { icon: VISUALIZER_ICONS.fps, label: 'fps ▸', caption: `fps ${look.projectm.fps}`, key: 'm',
+          run: () => this.visualizerStep(instance, 'fps', FPS_STEPS, current => current.projectm.fps,
+            (value, current) => ({ projectm: { fps: stepValue(value, current, { min: 1, digits: 0 }) } })) },
+        { icon: VISUALIZER_ICONS.duration, label: 'preset time ▸', caption: `${look.projectm.preset_duration}s each`, key: 'n',
+          run: () => this.visualizerStep(instance, 'duration', PRESET_DURATIONS, current => current.projectm.preset_duration,
+            (value, current) => ({ projectm: { preset_duration: stepValue(value, current, { min: 2, digits: 0 }) } })) }
+      ] : [
+        { icon: VISUALIZER_ICONS.module, label: 'module ▸', caption: look.module, key: 'm',
+          run: () => this.pickMenu(instance, 'module', MODULES, look.module, module => ({ module })) }
+      ]),
+      { icon: VISUALIZER_ICONS.opacity, label: 'opacity ▸', caption: `opacity ${look.opacity}`, key: 'o',
+        run: () => this.visualizerStep(instance, 'opacity', OPACITIES, current => current.opacity,
+          (value, current) => ({ opacity: stepValue(value, current, { min: 0.05, max: 1 }) })) },
+      ...(look.engine === 'sleeve' || look.engine === 'projectm' ? [] : [
+        { icon: VISUALIZER_ICONS.amplify, label: 'amplify ▸', caption: `amplify ${look.amplify}`, key: 'a',
+          run: () => this.visualizerStep(instance, 'amplify', AMPLIFIES, current => current.amplify,
+            (value, current, now) => ({ [now.module]: { amplify: stepValue(value, current, { min: 10, digits: 0 }) } })) }
+      ]),
+      { icon: VISUALIZER_ICONS.position, label: 'position ▸', caption: look.anchor, key: 'l',
+        run: () => this.pickMenu(instance, 'position', ANCHORS, look.anchor, anchor => ({ placement: { anchor } })) },
+      ...(look.engine === 'projectm' ? [] : [
+        { icon: VISUALIZER_ICONS.colors, label: 'colors ▸', caption: look.palette.source === 'wallpaper' ? `wall ${look.palette.pick}` : look.palette.source === 'cycle' ? 'cycling' : 'fixed colors',
+          key: 'c', active: look.palette.source === 'wallpaper', run: () => this.colorsMenu(instance) }
+      ])
+    ];
+  }
+
+  // The preset, and whether menu changes are in effect
+  presetStatus(options) {
+    const lines = [`preset  <b>${escapeMarkup(options.preset ?? 'none')}</b>`];
+    if (Object.keys(options.live).length) lines.push('changed  <b>until restart (r resets)</b>');
     return lines;
   }
 
-  async instanceMenu(names, current) {
-    const picked = await this.show({ prompt: 'instance', title: 'visualizer instance', message: escapeMarkup('The visualizer this menu changes'),
-      columns: names.length, entries: names.map(name => ({ icon: VISUALIZER_ICONS.instance, label: name, active: name === current })), keys: [QUIT_KEY] });
-    if (picked === null) return null;
-    if (picked.key === QUIT_KEY) return { quit: true };
-    return names[picked];
+  // Status lines for one instance: the preset, the colors the daemon last sent (with palette.source: wallpaper or
+  // cycle; sleeve's are the background under it and the picture's main colors), and whether menu changes are in effect
+  visualizerStatus(state, instance, look, options) {
+    const field = (name, value) => `${name}  <b>${escapeMarkup(value)}</b>`;
+    const lines = [field('preset', options.preset ?? 'none')];
+    const sent = state.monitors?.flatMap(monitor => monitor.visualizers ?? []).find(item => item.instance === instance)?.colors;
+    const shades = sent ? sentShades(sent) : [];
+    if (shades.length) lines.push(field('colors', shades.join(' to ')));
+    else if (look.colors.length) lines.push(field('colors', look.colors.join(' to ')));
+    if (options.live[instance]) lines.push(field('changed', 'until restart (r resets)'));
+    return lines;
   }
 
   // Sends a control request to the daemon and waits for it; a visualizer_set the daemon refused shows as an error
@@ -589,7 +618,7 @@ export class MenuCommand {
   }
 
   // One choice from values (modules, anchors), applied, then back to the visualizer menu
-  async pickMenu(state, instance, name, values, current, toChanges) {
+  async pickMenu(instance, name, values, current, toChanges) {
     const picked = await this.show({ prompt: name, title: `visualizer  ·  ${name}`, message: escapeMarkup(`${name}: ${current}`),
       columns: values.length, entries: values.map(value => ({ icon: VISUALIZER_ICONS[name === 'module' ? 'module' : 'position'], label: value, active: value === current })),
       keys: [QUIT_KEY] });
@@ -646,23 +675,37 @@ export class MenuCommand {
     }
   }
 
-  // x lists the presets saved in the config to delete one, when there is one besides the active
+  // Load: each pick switches to that preset at once and the list stays, to try the next; picking the preset in
+  // force again, or keep, keeps it, and Escape goes back to the preset in force on opening. x lists the presets
+  // saved in the config to delete one, when there is one besides the active.
   async presetMenu(state, section, active) {
     // The screensaver's own look only while it is on
     const reserved = this.visualizer.reserved(state);
     const names = Object.keys(presetsOf(section)).filter(name => !reserved.includes(name) || name === active);
     const values = [null, ...names];
-    const deletable = Object.keys(section.presets ?? {}).filter(name => name !== active && name !== section.preset);
-    const picked = await this.show({ prompt: 'preset', title: 'visualizer  ·  preset',
-      message: escapeMarkup(`preset: ${active ?? 'none'}${deletable.length ? `  (${DELETE_KEY} deletes a saved one)` : ''}`),
-      columns: Math.min(values.length, 5), entries: values.map(name => ({ icon: VISUALIZER_ICONS.preset, label: name ?? 'none', active: name === active })),
-      keys: [QUIT_KEY, ...(deletable.length ? [DELETE_KEY] : [])] });
-    if (picked === null) return {};
-    if (picked.key === QUIT_KEY) return { quit: true };
-    if (picked.key === DELETE_KEY) return this.deletePresetMenu(deletable);
-    if (values[picked] === active) return {};
-    await this.visualizer.setPreset(values[picked]);
-    return {};
+    let current = active;
+    for (;;) {
+      const tried = current !== active;
+      const deletable = Object.keys(section.presets ?? {}).filter(name => name !== current && name !== section.preset);
+      const entries = [
+        ...(tried ? [{ icon: VISUALIZER_ICONS.save, label: 'keep', caption: `keep ${current ?? 'none'}` }] : []),
+        ...values.map(name => ({ icon: VISUALIZER_ICONS.preset, label: name ?? 'none', active: name === current }))
+      ];
+      const hint = tried ? `trying ${current ?? 'none'}: pick it again or keep to keep it, Escape for ${active ?? 'none'}` : `preset: ${active ?? 'none'}`;
+      const picked = await this.show({ prompt: 'load', title: 'visualizer  ·  load a preset',
+        message: escapeMarkup(`${hint}${deletable.length ? `  (${DELETE_KEY} deletes a saved one)` : ''}`),
+        columns: Math.min(entries.length, 5), entries, keys: [QUIT_KEY, ...(deletable.length ? [DELETE_KEY] : [])] });
+      if (picked === null) {
+        if (tried) await this.visualizer.setPreset(active);
+        return {};
+      }
+      if (picked.key === QUIT_KEY) return { quit: true };
+      if (picked.key === DELETE_KEY) return this.deletePresetMenu(deletable);
+      const name = tried ? (picked === 0 ? current : values[picked - 1]) : values[picked];
+      if (name === current) return {};
+      await this.visualizer.setPreset(name);
+      current = name;
+    }
   }
 
   // A saved preset to delete, then a confirmation

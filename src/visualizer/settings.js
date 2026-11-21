@@ -23,7 +23,7 @@ const isObject = value => value !== null && typeof value === 'object' && !Array.
 // Settings shared by every instance, which an instance cannot set for itself
 const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
-const INSTANCE_KEYS = ['name', 'engine', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
+const INSTANCE_KEYS = ['name', 'engine', 'visible', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
 const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
 
@@ -406,6 +406,8 @@ function instance(raw, prefix) {
     return {
       name: raw.name,
       engine,
+      // false: kept out of the look without removing it (the visualizer menu's hide)
+      visible: boolean(`${prefix}visible`, raw.visible ?? true),
       module: 'lyrics',
       opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
       layout,
@@ -422,6 +424,8 @@ function instance(raw, prefix) {
     return {
       name: raw.name,
       engine,
+      // false: kept out of the look without removing it (the visualizer menu's hide)
+      visible: boolean(`${prefix}visible`, raw.visible ?? true),
       module: 'projectm',
       opacity: fraction(`${prefix}opacity`, raw.opacity ?? 1),
       layout,
@@ -450,6 +454,7 @@ function instance(raw, prefix) {
   return {
     name: raw.name,
     engine,
+    visible: boolean(`${prefix}visible`, raw.visible ?? true),
     module,
     // The window's opacity over the wallpaper, set as _NET_WM_WINDOW_OPACITY for the compositor
     opacity: fraction(`${prefix}opacity`, raw.opacity ?? 0.8),
@@ -528,7 +533,11 @@ function normalize(raw, prefix) {
 export function presetsOf(section = {}) {
   const own = section.presets ?? {};
   if (!isObject(own)) fail('presets', 'a mapping of preset names to settings', own);
-  return { ...BUILTIN_PRESETS, ...own };
+  // A built-in look with lyrics runs only while sound plays, which audio: fifo cannot tell
+  const builtin = section.audio === 'fifo'
+    ? Object.fromEntries(Object.entries(BUILTIN_PRESETS).map(([name, { only_while_playing: _, ...preset }]) => [name, preset]))
+    : BUILTIN_PRESETS;
+  return { ...builtin, ...own };
 }
 
 // Changes from the visualizer menu ({ instance name: settings }) laid over the section with its preset: over
@@ -583,7 +592,7 @@ export function instanceLook(section = {}, options = {}, name = 'main') {
   // projectM draws its own presets: no module, amplify or colors, but a frame rate and how long each preset shows
   if (engine === 'projectm') {
     return {
-      engine, module: 'projectm',
+      engine, module: 'projectm', visible: item.visible ?? true,
       projectm: { fps: item.projectm?.fps ?? 30, preset_duration: item.projectm?.preset_duration ?? 30 },
       opacity: item.opacity ?? 1,
       anchor: item.placement?.anchor ?? 'bottom',
@@ -598,6 +607,7 @@ export function instanceLook(section = {}, options = {}, name = 'main') {
   return {
     ...(engine === 'sleeve' ? { engine, sleeve: { now: 'lyrics', now_position: 'top-left', lyrics_align: 'left', ...item.sleeve } } : {}),
     module,
+    visible: item.visible ?? true,
     opacity: item.opacity ?? 0.8,
     anchor: item.placement?.anchor ?? 'bottom',
     palette: { source: 'config', pick: 'vivid', min_contrast: 3, ...item.palette },

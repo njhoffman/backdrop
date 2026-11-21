@@ -122,6 +122,12 @@ changes, so the file wins; other saves leave them, including a preset saved from
 
 ## Audio-only display
 
+Every built-in preset with a sleeve instance sets `only_while_playing` (`presets.js`; none with `audio: fifo`, which
+cannot be watched), so a song playing on another device, such as a phone over Spotify Connect, shows its lyrics with
+no empty bars beside them. In silence sleeve's pages stay shown while sleeved says a song plays (its `playback`
+messages, followed by the manager's `SleevedWatcher`) and hide when it says none does or goes away; GLava and
+projectM stop as before.
+
 With `only_while_playing`, `AudioWatcher` (`src/visualizer/audio.js`) runs `pactl subscribe` and, on sink,
 source or server events, reads the state of the output the visualizer listens to (`pactl get-default-sink` for
 `auto`, else the named sink or source). RUNNING starts the instances at once; anything else stops them after
@@ -208,10 +214,15 @@ refuses the request), so the plain desktop shows only what the section or its ow
 
 ## Menu
 
-`backdrop menu visualizer`, or `z` in the main menu, changes one instance live (`MenuCommand.visualizerMenu`):
-on/off and preset through the existing control requests, and module, opacity, amplify, position (anchor) and
-colors (palette source and pick, or a fixed swatch for the module's color option) as `{ visualizer_set: {
-instance, changes } }`. The manager keeps these changes by instance (`live`, in `state.json`'s visualizer
+`backdrop menu visualizer`, or `z` in the main menu, changes the visualizer live (`MenuCommand.visualizerMenu`):
+on/off, the wallpaper, load (a preset), reset and save for the whole look, and with one instance its settings in the
+same menu. With several, each instance has an entry opening its own menu (`instanceMenu`), where Escape comes back:
+show or hide that instance alone (its `visible`, false stopping it while the others run), and its module, opacity,
+amplify, position (anchor) and colors (palette source and pick, or a fixed swatch for the module's color option),
+or sleeve's and projectM's own settings, as `{ visualizer_set: { instance, changes } }`. Load switches to each preset
+picked at once and keeps the list open to try the next; picking the one in force again, or keep, keeps it, and
+Escape goes back to the preset in force on opening. A sleeve instance's status shows the colors last sent to it:
+the background under it and the picture's main colors. The manager keeps these changes by instance (`live`, in `state.json`'s visualizer
 summary) and lays them over the section after the active preset (`applyLive` in `settings.js`) until the daemon
 restarts; the menu checks each change against the section first, and the manager refuses one that does not
 check out, leaving the visualizer as it was. GLava reads its settings when it starts, so a change restarts the

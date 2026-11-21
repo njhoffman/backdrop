@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.91.0] - 2026-11-21
+
+### Added
+
+- The visualizer menu has a top level for the whole look (on/off, wallpaper, load, reset, save) and, with several
+  instances, an entry per instance opening its own menu, which can show or hide that instance alone. Escape there
+  comes back to the visualizer menu.
+- Load (formerly preset) tries each preset live: pick one to see it, pick it again or keep to keep it, and Escape
+  goes back to the preset you started with.
+- `visible` per visualizer instance: false leaves it out of the look while the others run.
+
+### Changed
+
+- The built-in presets with lyrics run their bars and rings only while sound plays here (`only_while_playing`), so a
+  song playing on another device, such as a phone over Spotify Connect, shows its lyrics without empty bars. In
+  silence the lyrics stay while sleeved says a song plays.
+
+### Fixed
+
+- A sleeve instance's colors in the visualizer menu showed as `[object Object]`.
+
 ## [2.90.0] - 2026-11-20
 
 ### Added

@@ -506,7 +506,7 @@ describe('MenuCommand', () => {
       const menu = shown[1];
       expect(menu.prompt).to.equal('visualizer');
       expect(menu.entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
-        ['on', 'wallpaper', 'preset', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'reset', 'save']);
+        ['on', 'wallpaper', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'load', 'reset', 'save']);
       expect(menu.entries.find(entry => entry.label === 'reset').disabled).to.equal(true);
       expect(menu.status).to.deep.equal(['preset  <b>none</b>', 'colors  <b>#33aacc</b>']);
       expect(shown[2].prompt).to.equal('backdrop');
@@ -556,9 +556,20 @@ describe('MenuCommand', () => {
     });
 
     it('turns it off and on, and switches presets', async () => {
-      picks = ['turn off', 'turn on', 'preset ▸', 'ring', 'preset ▸', 'none', null];
+      picks = ['turn off', 'turn on', 'load ▸', 'ring', 'ring', 'load ▸', 'none', 'keep', null];
       await open().open({ page: 'visualizer' });
       expect(requests).to.deep.equal([{ visualizer: false }, { visualizer: true }, { preset: 'ring' }, { preset: null }]);
+    });
+
+    it('tries presets live in load, going back to the one in force on Escape', async () => {
+      picks = ['load ▸', 'ring', 'wave', null, null];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([{ preset: 'ring' }, { preset: 'wave' }, { preset: null }]);
+      const loads = shown.filter(menu => menu.prompt === 'load');
+      expect(loads[0].entries[0].label).to.equal('none');
+      expect(loads[2].entries[0].caption).to.equal('keep wave');
+      expect(loads[2].message).to.include('trying wave');
+      expect(vis.preset).to.equal(null);
     });
 
     it('turns the wallpaper off and on, but not off while the visualizer is off', async () => {
@@ -611,9 +622,9 @@ describe('MenuCommand', () => {
     it('deletes a saved preset from the preset menu with x, after a confirmation', async () => {
       await fs.appendFile(configFile, '  presets:\n    evening:\n      opacity: 0.5\n');
       config.set('visualizer', { enabled: true, bars: { amplify: 300 }, presets: { evening: { opacity: 0.5 } } });
-      picks = ['preset ▸', { key: 'x' }, 'evening', 'keep it', 'preset ▸', { key: 'x' }, 'evening', 'delete', null];
+      picks = ['load ▸', { key: 'x' }, 'evening', 'keep it', 'load ▸', { key: 'x' }, 'evening', 'delete', null];
       await open().open({ page: 'visualizer' });
-      const presetMenu = shown.find(menu => menu.prompt === 'preset');
+      const presetMenu = shown.find(menu => menu.prompt === 'load');
       expect(presetMenu.keys).to.deep.equal(['q', 'x']);
       expect(shown.find(menu => menu.prompt === 'delete preset').entries.map(entry => entry.label)).to.deep.equal(['evening']);
       expect(await fs.readFile(configFile, 'utf8')).to.equal('visualizer:\n  enabled: true     # kept\n  bars: { amplify: 300 }\n');
@@ -625,21 +636,47 @@ describe('MenuCommand', () => {
       picks = ['fps ▸', '24', null, null];
       await open().open({ page: 'visualizer' });
       expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
-        ['on', 'wallpaper', 'preset', 'fps 30', '30s each', 'opacity 1', 'bottom', 'reset', 'save']);
+        ['on', 'wallpaper', 'fps 30', '30s each', 'opacity 1', 'bottom', 'load', 'reset', 'save']);
       expect(shown[0].status).to.deep.equal(['preset  <b>none</b>']);
       expect(requests[0]).to.deep.equal({ visualizer_set: { instance: 'main', changes: { projectm: { fps: 24 } } } });
     });
 
-    it('asks which instance to change when there are several, and i switches', async () => {
+    it('gives each of several instances its own menu, which Escape leaves for the visualizer menu', async () => {
       vis.instances = ['low', 'ring'];
       config.set('visualizer.instances', [{ name: 'low' }, { name: 'ring', module: 'radial' }]);
-      picks = ['ring', 'module ▸', 'wave', { key: 'i' }, 'low', null];
+      picks = ['ring ▸', 'module ▸', 'wave', null, 'low ▸', null, null];
       await open().open({ page: 'visualizer' });
-      expect(shown[0].prompt).to.equal('instance');
+      expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(['on', 'wallpaper', 'low', 'ring', 'load', 'reset', 'save']);
+      expect(shown[0].status).to.deep.equal(['preset  <b>none</b>']);
       expect(shown[1].title).to.equal('visualizer  ·  ring');
-      expect(shown[1].status[0]).to.equal('instance  <b>ring</b>  (i)');
+      expect(shown[1].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(['shown', 'radial', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors']);
       expect(requests).to.deep.equal([{ visualizer_set: { instance: 'ring', changes: { module: 'wave' } } }]);
-      expect(shown.at(-1).title).to.equal('visualizer  ·  low');
+      expect(shown.map(menu => menu.prompt)).to.deep.equal(['visualizer', 'ring', 'module', 'ring', 'visualizer', 'low', 'visualizer']);
+    });
+
+    it('hides and shows one instance of several, leaving the others and the visualizer on', async () => {
+      vis.instances = ['lyrics', 'ring'];
+      config.set('visualizer.instances', [{ name: 'lyrics', engine: 'sleeve' }, { name: 'ring', module: 'radial' }]);
+      picks = ['ring ▸', 'hide', null, 'ring ▸', 'show', null, null];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([
+        { visualizer_set: { instance: 'ring', changes: { visible: false } } },
+        { visualizer_set: { instance: 'ring', changes: { visible: true } } }
+      ]);
+      expect(shown[3].entries.find(entry => entry.label === 'ring ▸').caption).to.equal('ring (hidden)');
+      expect(vis.enabled).to.equal(true);
+    });
+
+    it('shows the colors last sent to a sleeve instance as colors', async () => {
+      vis.instances = ['lyrics', 'ring'];
+      config.set('visualizer.instances', [{ name: 'lyrics', engine: 'sleeve', palette: { source: 'wallpaper' } }, { name: 'ring', module: 'radial' }]);
+      const sent = { background: '#0a0f1a', main: [{ color: '#aabbcc', share: 0.6 }, { color: '#334455', share: 0.4 }] };
+      display.control.state = sinon.stub().callsFake(async () => ({
+        monitors: monitors.map(item => ({ ...item, visualizers: [{ instance: 'lyrics', colors: sent }] })), visualizer: vis
+      }));
+      picks = ['lyrics ▸', null, null];
+      await open().open({ page: 'visualizer' });
+      expect(shown[1].status).to.deep.equal(['preset  <b>none</b>', 'colors  <b>#0a0f1a to #aabbcc to #334455</b>']);
     });
   });
 });
