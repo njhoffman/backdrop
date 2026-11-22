@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-21
+
+### Changed
+
+- **Breaking:** `load.image_above`, `load.off_above` and `screensaver.max_load` are now loads per CPU (the load average
+  divided by the CPU count, as the bounce and smoothing gates already were), so one config means the same on any
+  machine. The defaults are 1.5 and 3 (12 and 24 on 8 CPUs). A config file with an absolute value over 8 (every file
+  backdrop wrote before had 12 and 24) is converted on load: the value is divided by this machine's CPU count, which
+  keeps its meaning here, and written back with a note. An absolute value of 8 or less cannot be told apart and is
+  read per CPU from now on; divide it by your CPU count (`nproc`). `status` shows the load per CPU and the CPU count.
+
+### Added
+
+- `backdrop restart` restarts the daemon and a running `backdrop web` on this version, keeping the wallpaper and
+  visualizer as they were and a preset switched live; `--if-stale` only touches ones on another version.
+  `just install` (which deploy runs after an update) ends with it when an X display is there, so an update takes
+  effect without a manual restart.
+- The daemon warns, and `doctor` says, when an offload host runs another backdrop version than this one.
+
 ## [2.94.3] - 2026-11-21
 
 ### Changed

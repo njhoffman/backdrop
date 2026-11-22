@@ -143,8 +143,8 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
 load:                      # see "System load" in docs/specs/main.md
   enabled: false
   window: 1                # the load average to read: 1, 5 or 15 minutes
-  image_above: 12          # videos become images over this; null skips the step
-  off_above: 24            # wallpaper and visualizer stop over this; must be above image_above; null skips it
+  image_above: 1.5         # videos become images over this load per CPU (12 on 8 CPUs); null skips the step
+  off_above: 3             # wallpaper and visualizer stop over this; must be above image_above; null skips it
   resume_ratio: 0.75       # recover under threshold x this
   sustain: 60              # time over a threshold before acting
   resume_after: 300        # time under it before each step back
@@ -152,7 +152,7 @@ load:                      # see "System load" in docs/specs/main.md
 screensaver:
   idle: false              # start by itself after idle_minutes without input (needs xprintidle); `backdrop screensaver` needs none of this
   idle_minutes: 10
-  max_load: null           # with idle, only under this load average (load.window); null for no limit
+  max_load: null           # with idle, only under this load per CPU (load.window); null for no limit
   preset: screensaver      # visualizer preset while on; screensaver-projectm adds projectM, null keeps the running one
   preset_without_lyrics: screensaver-instrumental  # the look while the song has no lyrics (sleeve says); null keeps preset
   next_on_song: true       # a media player starting another song (playerctl) changes the wallpaper on every monitor

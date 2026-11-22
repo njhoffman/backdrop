@@ -165,8 +165,8 @@ export class Daemon {
     gpuMemory = pid => readGpuMemory(pid),
     // A cached copy's video stream (probeVideo in src/library/reverse.js), for the start's check of the copies
     probeCopy = file => probeVideo(file),
-    // os.loadavg by default, for the load section
-    loadavg,
+    // os.loadavg and os.availableParallelism by default, for the load section and the idle gates
+    loadavg, cpus,
     loadInterval = LOAD_INTERVAL_MS,
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
     createVisualizer,
@@ -237,10 +237,10 @@ export class Daemon {
     this.health = new Health(this);
     this.dims = new Dims(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
-    this.load = new LoadShedding(this, { loadavg });
-    this.offload = offload ?? new RemoteEncoder({ config, logger, spawn: this.spawn, now });
-    this.bounce = new Bounce(this, { loadavg });
-    this.smoothing = new Smooth(this, { loadavg });
+    this.load = new LoadShedding(this, { loadavg, cpus });
+    this.offload = offload ?? new RemoteEncoder({ config, logger, spawn: this.spawn, now, version });
+    this.bounce = new Bounce(this, { loadavg, cpus });
+    this.smoothing = new Smooth(this, { loadavg, cpus });
     this.screensaver = new Screensaver(this);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();

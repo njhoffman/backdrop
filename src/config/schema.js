@@ -53,7 +53,12 @@ const strings = value => (Array.isArray(value) && value.every(item => typeof ite
 const list = value => (Array.isArray(value) ? value : fail('a list'));
 const color = value => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fail('a color such as "#33aacc"'));
 
-const threshold = value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a load above 0, or null for none'));
+// A load average per CPU (1.5 is 12 on 8 CPUs). Since 3.0.0; an absolute load from before (12, 24) is over the limit
+export const MAX_LOAD_PER_CPU = 8;
+// The settings that are loads per CPU since 3.0.0; ConfigManager converts an absolute one left in a config file
+export const LOAD_PER_CPU_KEYS = [['load', 'image_above'], ['load', 'off_above'], ['screensaver', 'max_load']];
+const threshold = value => (value === null || (typeof value === 'number' && value > 0 && value <= MAX_LOAD_PER_CPU) ? value
+  : fail(`a load per CPU above 0, up to ${MAX_LOAD_PER_CPU} (1.5 is 12 on 8 CPUs; divide a load from before 3.0.0 by the CPU count), or null for none`));
 const waitTime = value => (value === 0 || value === '0' ? 0 : seconds(value));
 
 // A check with what a form needs to know about its setting (src/services/ConfigService.js, the web Config page):
@@ -136,8 +141,8 @@ const SECTIONS = {
   load: {
     enabled: field(boolean, { kind: 'boolean', help: 'Lighten the display while the system load is high' }),
     window: field(oneOf([1, 5, 15]), { kind: 'choice', choices: [1, 5, 15], help: 'Load average read: over 1, 5 or 15 minutes' }),
-    image_above: field(threshold, { kind: 'number', min: 0, nullable: true, help: 'Load above which videos give way to images; empty for none' }),
-    off_above: field(threshold, { kind: 'number', min: 0, nullable: true, help: 'Load above which the wallpaper and visualizer stop; above image_above; empty for none' }),
+    image_above: field(threshold, { kind: 'number', min: 0, max: MAX_LOAD_PER_CPU, step: 0.1, nullable: true, help: 'Load per CPU above which videos give way to images; empty for none' }),
+    off_above: field(threshold, { kind: 'number', min: 0, max: MAX_LOAD_PER_CPU, step: 0.1, nullable: true, help: 'Load per CPU above which the wallpaper and visualizer stop; above image_above; empty for none' }),
     resume_ratio: field(value => (typeof value === 'number' && value > 0 && value <= 1 ? value : fail('a number above 0, up to 1')), {
       kind: 'number', min: 0, max: 1, step: 0.05, help: 'A level ends once the load falls below this share of its threshold'
     }),
@@ -147,8 +152,8 @@ const SECTIONS = {
   screensaver: {
     idle: field(boolean, { kind: 'boolean', help: 'Start the screensaver when the desktop has been idle' }),
     idle_minutes: field(positive, { kind: 'number', min: 0, step: 1, help: 'Idle minutes before it starts' }),
-    max_load: field(value => (value === null || (typeof value === 'number' && value > 0) ? value : fail('a number above 0, or null for no limit')), {
-      kind: 'number', min: 0, nullable: true, help: 'No idle start above this load; empty for no limit'
+    max_load: field(threshold, {
+      kind: 'number', min: 0, max: MAX_LOAD_PER_CPU, step: 0.1, nullable: true, help: 'No idle start above this load per CPU; empty for no limit'
     }),
     preset: field(value => (value === null || (typeof value === 'string' && value.trim()) ? value : fail('a preset name, or null to keep the running one')), {
       kind: 'text', nullable: true, help: 'Visualizer preset while it runs; empty keeps the running one'

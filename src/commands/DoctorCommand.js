@@ -156,7 +156,12 @@ export class DoctorCommand {
     if (state) {
       const behind = this.version && state.version && state.version !== this.version;
       add('daemon', 'daemon', behind ? 'warn' : 'ok', `running (pid ${state.pid}${state.version ? `, ${state.version}` : ''})`,
-        behind ? `it runs ${state.version}, the CLI is ${this.version}: backdrop stop, then backdrop start` : undefined);
+        behind ? `it runs ${state.version}, the CLI is ${this.version}: backdrop restart` : undefined);
+      const host = state.offload;
+      if (host?.stale) {
+        add('daemon', 'offload host', 'warn', `${host.host} runs backdrop ${host.version ?? 'of unknown version'}, this daemon ${state.version}`,
+          `deploy there (just install in its checkout) so it encodes with this version's settings`);
+      }
     } else if (await this.pathExists(statePath(runtime))) {
       add('daemon', 'daemon', 'warn', 'not running, but its state file is left from a daemon that did not stop', 'backdrop stop clears it');
     } else {

@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
 import { closestMatches } from '../utils/closest.js';
-import { validateConfig } from './schema.js';
+import { LOAD_PER_CPU_KEYS, MAX_LOAD_PER_CPU, validateConfig } from './schema.js';
 import { visualizerSettings } from '../visualizer/settings.js';
 
 const APP_NAME = 'backdrop';
@@ -179,6 +179,8 @@ function visualizerProblem(section) {
 export class ConfigManager {
   constructor(configPath = null) {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
+    // The CPU count loads are divided by (convertAbsoluteLoads); tests replace it
+    this.cpus = () => os.availableParallelism();
     this.config = null;
     this.userConfig = null;
     // True after initialize() wrote a new default file; the CLI reports it
@@ -291,8 +293,8 @@ export class ConfigManager {
       load: {
         enabled: false,
         window: 1,
-        image_above: 12,
-        off_above: 24,
+        image_above: 1.5,
+        off_above: 3,
         resume_ratio: 0.75,
         sustain: 60,
         resume_after: 300
@@ -344,7 +346,8 @@ export class ConfigManager {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf8');
       this.userConfig = YAML.parse(configContent) || {};
-      this.warnings = unknownKeys(this.userConfig, this.getDefaultConfig());
+      const converted = await this.convertAbsoluteLoads();
+      this.warnings = [...unknownKeys(this.userConfig, this.getDefaultConfig()), ...converted];
       const merged = deepMerge(this.getDefaultConfig(), this.userConfig);
       this.errors = validateConfig(merged);
       this.visualizerError = visualizerProblem(merged.visualizer);
@@ -353,6 +356,24 @@ export class ConfigManager {
     } catch (error) {
       throw new Error(`Failed to load config: ${error.message}`);
     }
+  }
+
+  // Before 3.0.0 the load thresholds were absolute load averages, and every config file backdrop wrote spelled out
+  // 12 and 24. One over the per-CPU limit can only be such a value: it is divided by this machine's CPU count, which
+  // keeps its meaning here, and written back into the file (setInFile keeps the rest). Returns a note for each.
+  async convertAbsoluteLoads() {
+    const notes = [];
+    for (const keys of LOAD_PER_CPU_KEYS) {
+      const section = this.userConfig?.[keys[0]];
+      const value = section?.[keys[1]];
+      if (typeof value !== 'number' || value <= MAX_LOAD_PER_CPU) continue;
+      const cpus = Math.max(1, this.cpus());
+      const perCpu = Math.round((value / cpus) * 100) / 100;
+      section[keys[1]] = perCpu;
+      const written = await this.setInFile(keys, perCpu).then(() => true, () => false);
+      notes.push(`${keys.join('.')} was the load ${value}; it is now a load per CPU, ${perCpu} on these ${cpus} CPUs${written ? ' (written to the config file)' : ''}`);
+    }
+    return notes;
   }
 
   // Re-reads the file and takes only one section from it, so a running daemon can apply that section

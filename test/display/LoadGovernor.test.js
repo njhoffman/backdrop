@@ -18,7 +18,7 @@ describe('LoadGovernor', () => {
     settings = { enabled: true, window: 1, image_above: 10, off_above: 20, resume_ratio: 0.5, sustain: 60, resume_after: 300 };
     load = 0;
     time = 0;
-    governor = new LoadGovernor({ settings: () => settings, loadavg: () => [load, load / 2, load / 4], now: () => time });
+    governor = new LoadGovernor({ settings: () => settings, loadavg: () => [load, load / 2, load / 4], cpus: 1, now: () => time });
   });
 
   it('ignores a burst shorter than sustain', () => {
@@ -135,9 +135,26 @@ describe('LoadGovernor', () => {
   it('summarizes the level and what ends it', () => {
     load = 15;
     governor.begin();
-    expect(governor.summary()).to.deep.equal({ level: 'image', value: 15, window: 1, limit: 10, resume_below: 5 });
+    expect(governor.summary()).to.deep.equal({ level: 'image', value: 15, cpus: 1, window: 1, limit: 10, resume_below: 5 });
     load = 1;
     governor.begin();
-    expect(governor.summary()).to.deep.equal({ level: 'normal', value: 1, window: 1, limit: 10, resume_below: null });
+    expect(governor.summary()).to.deep.equal({ level: 'normal', value: 1, cpus: 1, window: 1, limit: 10, resume_below: null });
+  });
+
+  it('reads the load per CPU, so one config means the same on any machine', () => {
+    settings = { ...settings, image_above: 1.5, off_above: 3 };
+    governor = new LoadGovernor({ settings: () => settings, loadavg: () => [load, load / 2, load / 4], cpus: 8, now: () => time });
+    // 12 on 8 CPUs is 1.5: not over; 13 is
+    load = 12;
+    expect(governor.begin()).to.equal('normal');
+    load = 13;
+    expect(governor.begin()).to.equal('image');
+    expect(governor.summary()).to.include({ value: 1.63, cpus: 8 });
+    load = 25;
+    expect(governor.begin()).to.equal('off');
+    // The 5-minute window divides the same way
+    settings = { ...settings, window: 5 };
+    load = 26;
+    expect(governor.read()).to.equal(13 / 8);
   });
 });

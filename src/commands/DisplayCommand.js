@@ -17,8 +17,9 @@ function colorText(colors) {
 }
 
 export class DisplayCommand {
-  constructor(config, database, logger, { service, ...options } = {}) {
+  constructor(config, database, logger, { service, version = null, ...options } = {}) {
     this.config = config;
+    this.version = version;
     this.database = database;
     this.logger = logger;
     this.service = service ?? new DisplayService({ config, database, logger, ...options });
@@ -110,10 +111,10 @@ export class DisplayCommand {
     ].join(', ');
   }
 
-  // e.g. "images only at 15.2, videos back under 9 (1 min average)"
-  describeLoad({ level, value, window, limit, resume_below: resume }) {
-    const load = Number(value).toFixed(1);
-    const average = `(${window} min average)`;
+  // e.g. "images only at 1.90 a CPU, videos back under 1.12 (1 min average, 8 CPUs)"
+  describeLoad({ level, value, window, limit, resume_below: resume, cpus }) {
+    const load = `${Number(value).toFixed(2)} a CPU`;
+    const average = `(${window} min average${cpus ? `, ${cpus} CPUs` : ''})`;
     if (level === 'off') return `${fmt.yellow(`off at ${load}`)}, back under ${resume} ${average}`;
     if (level === 'image') return `${fmt.yellow(`images only at ${load}`)}, videos back under ${resume} ${average}`;
     return `${load}, limit ${limit} ${average}`;
@@ -324,6 +325,18 @@ export class DisplayCommand {
   }
 
   // With the daemon running, the reload also shows what the target monitor now plays
+  // `backdrop restart [--if-stale]`: the daemon and a running `backdrop web` on this checkout's code
+  async restart(options = {}) {
+    const { daemon, web } = await this.service.restart({ ifStale: Boolean(options.ifStale), version: this.version });
+    const say = (name, outcome) => {
+      if (outcome === 'not-running') out.row(name, fmt.dim('not running'));
+      else if (outcome === 'current') out.row(name, `${fmt.dim('already on')} ${this.version}`);
+      else out.row(name, `${fmt.green('restarted')} ${outcome.from ? `${outcome.from} -> ` : ''}${this.version}`);
+    };
+    say('Daemon', daemon);
+    say('Web', web);
+  }
+
   // `backdrop playlist`: sets the playlist filter with --query/--tag/--keywords, drops it with --clear, and shows it
   // with neither; each monitor's count, and a warning for one the filter leaves empty (it plays everything)
   async playlist(options = {}) {

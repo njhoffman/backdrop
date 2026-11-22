@@ -78,7 +78,8 @@ export class WebCommand {
     });
     const port = await server.listen(wanted);
     await fs.ensureDir(this.config.get().paths.runtime, 0o700);
-    await fs.writeJson(this.infoPath, { pid: process.pid, port, token }, { mode: 0o600 });
+    // version: `backdrop restart --if-stale` restarts a server on an older one
+    await fs.writeJson(this.infoPath, { pid: process.pid, port, token, version: this.version }, { mode: 0o600 });
     if (port !== wanted) out.warn(`Port ${wanted} is taken; serving on ${port} instead`);
     out.success('Serving the web interface; open this address (it carries this run\'s token), Ctrl-C stops it:');
     // On its own line and unstyled, so it copies whole

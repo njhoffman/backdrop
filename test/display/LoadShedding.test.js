@@ -41,7 +41,7 @@ describe('Load shedding', () => {
       readStart: pid => `t${pid}`,
       reap: async () => [],
       now: () => time,
-      loadavg: () => [load, load, load]
+      loadavg: () => [load, load, load], cpus: 1
     });
   }
 

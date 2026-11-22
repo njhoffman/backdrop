@@ -19,6 +19,7 @@ npx mocha test/display/Playlist.test.js  # one file while iterating
 node src/index.js --help # run the CLI
 npm run man              # write share/man again after changing commands, options or config keys
 npm link                 # install the `backdrop` binary globally
+just install             # what deploy runs: npm ci, ~/.local/bin/backdrop -> src/index.js, then `backdrop restart --if-stale`
 ```
 
 To run the CLI without touching your real config or data, point the XDG variables at a scratch

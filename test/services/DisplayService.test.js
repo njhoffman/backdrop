@@ -117,6 +117,59 @@ describe('DisplayService', () => {
     expect((await service.prev({ monitor: 'DP-1' })).playing).to.equal(playing);
   });
 
+  describe('restart', () => {
+    it('restarts a daemon on another version with what it had on, its live preset, and a stale web server', async () => {
+      config.set('visualizer.enabled', true);
+      const sent = [];
+      const service = make({
+        exec: sinon.stub().rejects(new Error('inactive')), kill: sinon.stub(), timeout: 50,
+        sendRequest: async (runtime, current, change) => { sent.push(change); return current; }
+      });
+      const calls = [];
+      service.stop = sinon.stub().callsFake(async () => { calls.push('stop'); return { action: 'stopped' }; });
+      service.start = sinon.stub().callsFake(async options => { calls.push(['start', options]); return { action: 'started', state: { pid: 78 } }; });
+      const spawned = [];
+      service.spawnProcess = (file, args) => { spawned.push(args.slice(1)); return { unref() {}, on() {} }; };
+      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.0', wallpaper: false, visualizer: { enabled: true, preset: 'ring' } });
+      // A web.json from before versions were recorded counts as another version
+      await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't' });
+
+      const result = await service.restart({ ifStale: true, version: '2.94.3' });
+      // The wallpaper was off, so the parts are named; the live preset is switched to again
+      expect(calls).to.deep.equal(['stop', ['start', { wallpaper: false, visualizer: true }]]);
+      expect(sent).to.deep.equal([{ preset: 'ring' }]);
+      expect(result.daemon).to.deep.equal({ from: '2.94.0' });
+      expect(service.kill.firstCall.args).to.deep.equal([process.ppid, 'SIGTERM']);
+      expect(spawned).to.deep.equal([['web']]);
+      expect(result.web).to.deep.equal({ from: null });
+    });
+
+    it('restarts a web server through its systemd unit when that runs it, and starts a plain daemon plainly', async () => {
+      const exec = sinon.stub().resolves('');
+      const service = make({ exec, kill: sinon.stub(), sendRequest: sinon.stub() });
+      service.stop = sinon.stub().resolves({ action: 'stopped' });
+      service.start = sinon.stub().resolves({ action: 'started', state: { pid: 78 } });
+      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.0', wallpaper: true, visualizer: { enabled: false, preset: null } });
+      await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't', version: '2.94.0' });
+      await service.restart({ version: '2.94.3' });
+      expect(service.start.firstCall.args[0]).to.deep.equal({});
+      expect(exec.args).to.deep.equal([['systemctl', ['--user', 'is-active', '--quiet', 'backdrop-web.service']], ['systemctl', ['--user', 'restart', 'backdrop-web.service']]]);
+      expect(service.kill.called).to.be.false;
+      expect(service.sendRequest.called).to.be.false;
+    });
+
+    it('leaves a daemon and web server on this version alone with --if-stale, and says when none runs', async () => {
+      const service = make({ kill: sinon.stub() });
+      service.stop = sinon.stub();
+      expect(await service.restart({ ifStale: true, version: '2.94.3' })).to.deep.equal({ daemon: 'not-running', web: 'not-running' });
+      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.3' });
+      await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't', version: '2.94.3' });
+      expect(await service.restart({ ifStale: true, version: '2.94.3' })).to.deep.equal({ daemon: 'current', web: 'current' });
+      expect(service.stop.called).to.be.false;
+      expect(service.kill.called).to.be.false;
+    });
+  });
+
   describe('playlist', () => {
     const add = (id, name, kind = 'video') => db.addMedia({ kind, source: 'local', source_id: id, width: 1920, height: 1080, path: `/m/${id}`, original_name: name });
 

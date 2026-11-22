@@ -84,12 +84,13 @@ visualizer:
   glava: {shader_dir: auto, args: []}
 
 # Lighten up while the system is busy: videos become images, then the wallpaper and visualizer stop.
-# Thresholds are load averages as `uptime` shows them; set one to null to skip that step.
+# Thresholds are load averages per CPU: `uptime`'s number divided by the CPU count (nproc), so 1.5 is 12 on
+# 8 CPUs and 24 on 16. Set one to null to skip that step.
 load:
   enabled: false
   window: 1                          # the load average to read: 1, 5 or 15 minutes
-  image_above: 12                    # videos become images over this
-  off_above: 24                      # the wallpaper and visualizer stop over this; the daemon keeps running
+  image_above: 1.5                   # videos become images over this load per CPU
+  off_above: 3                       # the wallpaper and visualizer stop over this; the daemon keeps running
   resume_ratio: 0.75                 # recover under threshold x this
   sustain: 60                        # seconds over a threshold before acting
   resume_after: 300                  # seconds under it before each step back
@@ -97,7 +98,7 @@ load:
 screensaver:
   idle: false                        # start by itself after idle_minutes without input (needs xprintidle)
   idle_minutes: 10
-  max_load: null                     # with idle, only under this load average (load.window); null for no limit
+  max_load: null                     # with idle, only under this load per CPU (load.window); null for no limit
   preset: screensaver                # visualizer preset while on (screensaver-projectm adds projectM); null keeps the running one
   workspace: backdrop                # the empty i3 workspace to show, one per output
   on_enter: ['polybar-msg cmd hide'] # shell commands run on entering and leaving

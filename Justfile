@@ -20,6 +20,13 @@ install:
     fi
     ln -sfn "$src" "$dest"
     echo "$dest -> $src"
+    # A daemon or backdrop web on an older version keeps running it until restarted; without an X display (a deploy
+    # over ssh) a daemon could not start again, so it only says so then
+    if [[ -n "${DISPLAY:-}" ]]; then
+      "$dest" restart --if-stale || echo "install: restart failed; run backdrop restart" >&2
+    else
+      echo "install: no X display; run backdrop restart --if-stale from the desktop if the daemon runs"
+    fi
 
 # exit 1 when the link or the dependencies are missing (deploy reinstalls then)
 install-check:

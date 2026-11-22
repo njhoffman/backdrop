@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { readState } from '../display/Daemon.js';
+import { run } from '../display/Monitors.js';
 import { reapOrphans } from '../display/children.js';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
@@ -29,7 +30,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export class DisplayService {
   constructor({
     config, database, logger, control,
-    kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS,
+    kill = process.kill, spawnProcess = spawn, timeout = START_TIMEOUT_MS, exec = run, sendRequest = sendControl,
     reap = runtimeDir => reapOrphans(runtimeDir, { kill, logger })
   }) {
     this.config = config;
@@ -38,6 +39,8 @@ export class DisplayService {
     this.control = control ?? new DisplayControl({ config, database });
     this.kill = kill;
     this.spawnProcess = spawnProcess;
+    this.exec = exec;
+    this.sendRequest = sendRequest;
     this.timeout = timeout;
     this.reap = reap;
   }
@@ -101,6 +104,49 @@ export class DisplayService {
     this.kill(state.pid, 'SIGTERM');
     await this.waitForExit(state.pid);
     return { action: 'stopped' };
+  }
+
+  // Restarts the daemon and a running `backdrop web` on this checkout's code, so an update (`just install`) takes effect:
+  // the daemon with what it had on (wallpaper, visualizer) and a preset switched live, the web server where it ran
+  // (its systemd unit, or detached). ifStale: only those running another version than version (web.json without one
+  // counts as another). Returns { daemon, web }, each 'not-running', 'current', or { from } (the version it ran).
+  async restart({ ifStale = false, version = null } = {}) {
+    const result = { daemon: 'not-running', web: 'not-running' };
+    const state = await readState(this.runtimeDir);
+    if (state) result.daemon = ifStale && state.version === version ? 'current' : await this.restartDaemon(state);
+    const web = await readWebInfo(this.runtimeDir);
+    if (web) result.web = ifStale && web.version === version ? 'current' : await this.restartWeb(web);
+    return result;
+  }
+
+  async restartDaemon(state) {
+    const { visualizer: section = {} } = this.config.get();
+    const wallpaper = state.wallpaper !== false;
+    const visualizer = Boolean(state.visualizer?.enabled);
+    const preset = state.visualizer?.preset ?? null;
+    await this.stop({});
+    // Without parts the start gives the wallpaper and visualizer.enabled; others are named
+    const same = wallpaper && visualizer === Boolean(section.enabled);
+    const { state: started } = await this.start(same ? {} : { wallpaper, visualizer });
+    if (started && visualizer && preset !== (section.preset ?? null)) {
+      await this.sendRequest(this.runtimeDir, started, { preset }, { logfile: this.config.get().paths.logfile });
+    }
+    return { from: state.version ?? null };
+  }
+
+  async restartWeb(web) {
+    const unit = 'backdrop-web.service';
+    if (await this.exec('systemctl', ['--user', 'is-active', '--quiet', unit]).then(() => true, () => false)) {
+      await this.exec('systemctl', ['--user', 'restart', unit]);
+      return { from: web.version ?? null };
+    }
+    this.kill(web.pid, 'SIGTERM');
+    const deadline = Date.now() + this.timeout;
+    while (Date.now() < deadline && await readWebInfo(this.runtimeDir)) await sleep(100);
+    const child = this.spawnProcess(process.execPath, [ENTRY_POINT, 'web'], { detached: true, stdio: 'ignore' });
+    child.on?.('error', () => {});
+    child.unref();
+    return { from: web.version ?? null };
   }
 
   async waitForExit(pid) {

@@ -14,7 +14,7 @@ const errorsFor = (section, values) => validateConfig(config(section, values));
 describe('config schema', () => {
   describe('load', () => {
     it('takes durations, and null for a threshold', () => {
-      const merged = config('load', { sustain: '2m', resume_after: 0, image_above: null, off_above: 24 });
+      const merged = config('load', { sustain: '2m', resume_after: 0, image_above: null, off_above: 3 });
       expect(validateConfig(merged)).to.deep.equal([]);
       expect(merged.load).to.include({ sustain: 120, resume_after: 0, image_above: null });
     });
@@ -25,8 +25,16 @@ describe('config schema', () => {
       expect(errorsFor('load', { image_above: -1 })[0]).to.include('load.image_above must be');
     });
 
+    it('takes loads per CPU, refusing an absolute one from before 3.0.0 with how to convert it', () => {
+      expect(errorsFor('load', { image_above: 1.5, off_above: 3 })).to.deep.equal([]);
+      expect(errorsFor('load', { image_above: 12, off_above: 24 })[0]).to.include('load.image_above must be a load per CPU')
+        .and.include('divide a load from before 3.0.0 by the CPU count');
+      expect(errorsFor('screensaver', { max_load: 10 })[0]).to.include('screensaver.max_load must be a load per CPU');
+      expect(errorsFor('screensaver', { max_load: 2 })).to.deep.equal([]);
+    });
+
     it('requires off_above above image_above', () => {
-      expect(errorsFor('load', { image_above: 20, off_above: 10 })).to.deep.equal(['load.off_above must be above load.image_above, not 10 with 20']);
+      expect(errorsFor('load', { image_above: 2, off_above: 1 })).to.deep.equal(['load.off_above must be above load.image_above, not 1 with 2']);
     });
   });
 

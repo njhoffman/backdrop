@@ -123,7 +123,10 @@ describe('DoctorCommand', () => {
   it('reports the daemon: running behind the CLI, a stale state file, and processes a crash left', async () => {
     let checks = await doctor({ readStateFile: async () => ({ pid: 42, version: '2.30.0' }) }).run();
     expect(byName(checks, 'daemon')).to.include({ status: 'warn', detail: 'running (pid 42, 2.30.0)' });
-    expect(byName(checks, 'daemon').hint).to.include('it runs 2.30.0, the CLI is 2.32.0');
+    expect(byName(checks, 'daemon').hint).to.include('it runs 2.30.0, the CLI is 2.32.0').and.include('backdrop restart');
+    expect(byName(checks, 'offload host')).to.equal(undefined);
+    checks = await doctor({ readStateFile: async () => ({ pid: 42, version: '2.32.0', offload: { host: 'minerva', version: '2.30.0', stale: true } }) }).run();
+    expect(byName(checks, 'offload host')).to.include({ status: 'warn', detail: 'minerva runs backdrop 2.30.0, this daemon 2.32.0' });
 
     files.add(`${config.get().paths.runtime}/state.json`);
     checks = await doctor({ orphans: () => ({ daemon: 7, orphans: [{ command: 'xwinwrap', pid: 70 }] }) }).run();

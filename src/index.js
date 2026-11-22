@@ -107,7 +107,7 @@ class BackdropApp {
 
   // Commands are registered here as they are ported to the new config and database layer
   setupCommands() {
-    const display = new DisplayCommand(this.config, this.database, this.logger);
+    const display = new DisplayCommand(this.config, this.database, this.logger, { version });
     const importer = new ImportCommand(this.config, this.database, this.logger);
     const remover = new RemoveCommand(this.config, this.database, this.logger);
     const purger = new PurgeCommand(this.config, this.database, this.logger);
@@ -168,6 +168,12 @@ class BackdropApp {
       .command('stop')
       .description('Stop the display daemon, or with --wallpaper/--visualizer turn only that part off'))
       .action(this.action(options => display.stop(options)));
+
+    program
+      .command('restart')
+      .description('Restart the daemon and a running backdrop web on this version, keeping what was on')
+      .option('--if-stale', 'Only those running another version (just install runs this after an update)')
+      .action(this.action(options => display.restart(options)));
 
     program
       .command('status')

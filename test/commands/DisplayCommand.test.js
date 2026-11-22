@@ -133,7 +133,7 @@ describe('DisplayCommand', () => {
       setMode(db, 'video');
       setModeHold(db, 'image');
       await fs.writeJson(statePath(dir), {
-        pid: process.pid, wallpaper: true, monitors, load: { level: 'image', value: 15.24, window: 1, limit: 12, resume_below: 9 }
+        pid: process.pid, wallpaper: true, monitors, load: { level: 'image', value: 1.91, cpus: 8, window: 1, limit: 1.5, resume_below: 1.13 }
       });
       command.control = { current: async () => ({ path: null }) };
 
@@ -141,23 +141,23 @@ describe('DisplayCommand', () => {
 
       const text = lines.join('\n');
       expect(text).to.include('Mode: image (video held back by the system load)');
-      expect(text).to.include('Load: images only at 15.2, videos back under 9 (1 min average)');
+      expect(text).to.include('Load: images only at 1.91 a CPU, videos back under 1.13 (1 min average, 8 CPUs)');
 
       lines.length = 0;
       await command.status({ json: true });
       const status = JSON.parse(lines.at(-1));
       expect(status).to.include({ mode: 'image', chosen_mode: 'video' });
-      expect(status.daemon.load).to.include({ level: 'image', resume_below: 9 });
+      expect(status.daemon.load).to.include({ level: 'image', resume_below: 1.13 });
     });
 
     it('explains a wallpaper the load has off, apart from one turned off by hand', async () => {
       const off = monitors.map(monitor => ({ ...monitor, socket: null }));
-      const load = { level: 'off', value: 30, window: 1, limit: 24, resume_below: 18 };
+      const load = { level: 'off', value: 3.75, cpus: 8, window: 1, limit: 3, resume_below: 2.25 };
       await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors: off, load });
       await command.status();
       expect(lines.join('\n')).to.include('wallpaper off until the system load falls')
         .and.include('wallpaper off (held by load), visualizer off')
-        .and.include('Load: off at 30.0, back under 18');
+        .and.include('Load: off at 3.75 a CPU, back under 2.25');
 
       lines.length = 0;
       await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: false, monitors: off, load });
@@ -181,7 +181,7 @@ describe('DisplayCommand', () => {
     it('records a mode during off without asking mpv', async () => {
       await fs.writeJson(statePath(dir), {
         pid: process.pid, wallpaper: true, monitors: monitors.map(monitor => ({ ...monitor, socket: null })),
-        load: { level: 'off', value: 30, window: 1, limit: 24, resume_below: 18 }
+        load: { level: 'off', value: 3.75, cpus: 8, window: 1, limit: 3, resume_below: 2.25 }
       });
       setMode(db, 'image');
       setModeHold(db, 'image');
@@ -414,6 +414,20 @@ describe('DisplayCommand', () => {
       orphans = [];
       await command.stop();
       expect(lines.at(-1)).to.equal('Not running');
+    });
+  });
+
+  describe('restart', () => {
+    it('says what it restarted, from which version, and what was already current', async () => {
+      command = new DisplayCommand(config, db, silentLogger, { version: '3.0.0' });
+      command.service.restart = sinon.stub().resolves({ daemon: { from: '2.94.3' }, web: 'not-running' });
+      await command.restart({ ifStale: true });
+      expect(command.service.restart.firstCall.args[0]).to.deep.equal({ ifStale: true, version: '3.0.0' });
+      expect(lines).to.deep.equal(['Daemon: restarted 2.94.3 -> 3.0.0', 'Web: not running']);
+      lines.length = 0;
+      command.service.restart = sinon.stub().resolves({ daemon: 'current', web: { from: null } });
+      await command.restart({});
+      expect(lines).to.deep.equal(['Daemon: already on 3.0.0', 'Web: restarted 3.0.0']);
     });
   });
 

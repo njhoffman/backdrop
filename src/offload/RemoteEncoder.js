@@ -48,8 +48,10 @@ export function jobFor(kind, media, { size = null, target = null } = {}) {
 }
 
 export class RemoteEncoder {
-  constructor({ config, logger, spawn = spawnProcess, now = Date.now, ssh = 'ssh', rsync = 'rsync', probe = probeVideo }) {
+  // version: this backdrop's, compared with each host's hello so a host left on another one is reported
+  constructor({ config, logger, spawn = spawnProcess, now = Date.now, ssh = 'ssh', rsync = 'rsync', probe = probeVideo, version = null }) {
     this.config = config;
+    this.version = version;
     this.probe = probe;
     this.logger = logger;
     this.spawn = spawn;
@@ -81,7 +83,11 @@ export class RemoteEncoder {
 
   // For state.json: the host and whether it smooths, or null
   summary() {
-    return this.host ? { host: this.host.name, smooth: this.host.smooth, version: this.host.version } : null;
+    return this.host ? {
+      host: this.host.name, smooth: this.host.smooth, version: this.host.version,
+      // Whether the host runs another backdrop than this daemon
+      stale: Boolean(this.version && this.host.version !== this.version)
+    } : null;
   }
 
   // Runs file with args, resolving { code, stdout, stderr }; signal kills it
@@ -128,6 +134,14 @@ export class RemoteEncoder {
         const why = answer?.event === 'hello' ? `it speaks protocol ${answer.protocol}, this daemon ${PROTOCOL}` : (result.stderr.trim().split('\n').at(-1) || `exit ${result.code}`);
         if (before === name || this.checkedAt === null) this.logger.info('Offload host not available', { host: name, reason: why });
       }
+      // A host on another backdrop still works while the protocol matches, but runs that version's encoder settings;
+      // said once per host and version
+      const differs = found && this.version && found.version !== this.version;
+      const key = differs ? `${found.name}\t${found.version}` : null;
+      if (differs && key !== this.warnedVersion) {
+        this.logger.warn('Offload host runs another backdrop version; deploy there', { host: found.name, version: found.version, here: this.version });
+      }
+      this.warnedVersion = key;
       this.host = found;
       this.checkedAt = this.now();
       if ((found?.name ?? null) !== before) {

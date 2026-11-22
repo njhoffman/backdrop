@@ -28,7 +28,9 @@ in [legacy-pexels-cli.md](legacy-pexels-cli.md) as reference for porting. Open w
 
 ## System load
 
-With `load.enabled`, the daemon reads the load average every 15 s (`src/display/LoadGovernor.js`) and moves between
+With `load.enabled`, the daemon reads the load average per CPU (divided by `os.availableParallelism()`, as the bounce
+and smoothing gates do, so one config means the same on 4 cores and on 32; absolute values before 3.0.0) every 15 s
+(`src/display/LoadGovernor.js`) and moves between
 `normal`, `image` and `off` (`src/display/daemon/LoadShedding.js`). Load has to stay over a threshold for `sustain` before the
 level drops, and under threshold x `resume_ratio` for `resume_after` before it recovers, one step at a time. A daemon
 starting under load applies the level at once. Linux load averages count tasks waiting on disk as well as on the CPU.

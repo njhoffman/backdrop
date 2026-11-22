@@ -7,12 +7,13 @@ import { notifyMode, notifyLoad } from '../../utils/notify.js';
 // daemon.wallpaper and the visualizer's enabled state, which also decide whether the daemon has anything left to
 // run, so nothing here can stop the daemon or turn a part back on that was turned off by hand.
 export class LoadShedding {
-  constructor(daemon, { loadavg } = {}) {
+  constructor(daemon, { loadavg, cpus } = {}) {
     this.daemon = daemon;
     this.governor = new LoadGovernor({
       settings: () => daemon.config.get().load,
       now: () => daemon.now(),
-      ...(loadavg ? { loadavg } : {})
+      ...(loadavg ? { loadavg } : {}),
+      ...(cpus ? { cpus } : {})
     });
   }
 

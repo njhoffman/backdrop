@@ -97,6 +97,23 @@ describe('RemoteEncoder', () => {
     expect(remote.available).to.equal(false);
   });
 
+  it('warns once when a host runs another backdrop version, and reports it in the summary', async () => {
+    const { spawn } = host();
+    const remote = new RemoteEncoder({ config, logger, probe: playable, spawn, version: '2.94.3' });
+    await remote.check();
+    await remote.check();
+    const warned = logs.filter(([level, message]) => level === 'warn' && message.startsWith('Offload host runs another backdrop version'));
+    expect(warned).to.have.length(1);
+    expect(warned[0][2]).to.deep.equal({ host: 'minerva', version: '2.88.0', here: '2.94.3' });
+    expect(remote.summary()).to.include({ host: 'minerva', version: '2.88.0', stale: true });
+    // The same version: no warning, not stale
+    const same = new RemoteEncoder({ config, logger, probe: playable, spawn, version: '2.88.0' });
+    logs.length = 0;
+    await same.check();
+    expect(logs.filter(([level]) => level === 'warn')).to.deep.equal([]);
+    expect(same.summary().stale).to.equal(false);
+  });
+
   it('turns down a host of another protocol', async () => {
     const { spawn } = fakeSpawn((child) => {
       answer(child, { event: 'hello', protocol: PROTOCOL + 1, dir: '/w' });

@@ -6,7 +6,9 @@ const WINDOWS = { 1: 0, 5: 1, 15: 2 };
 
 const rank = level => LOAD_LEVELS.indexOf(level);
 
-// Decides from the load average what may be shown (the load section of the config). It knows nothing of mpv:
+// Decides from the load average what may be shown (the load section of the config). The load is read per CPU (the
+// average over os.availableParallelism()), like the bounce and smoothing gates, so one config means the same on 4
+// cores and on 32. It knows nothing of mpv:
 // the wallpaper follows it through src/display/daemon/LoadShedding.js, and the screensaver is to do the same.
 //
 // Load has to stay over a threshold for `sustain` seconds before the level drops, straight to the worst one
@@ -14,9 +16,10 @@ const rank = level => LOAD_LEVELS.indexOf(level);
 // `resume_after` seconds before the level recovers, one step at a time with the wait starting again at each
 // step, so a change that brings the load back up shows before the next one.
 export class LoadGovernor {
-  constructor({ settings, loadavg = os.loadavg, now = Date.now }) {
+  constructor({ settings, loadavg = os.loadavg, cpus = os.availableParallelism(), now = Date.now }) {
     this.settings = settings;
     this.loadavg = loadavg;
+    this.cpus = Math.max(1, cpus);
     this.now = now;
     this.level = 'normal';
     this.value = null;
@@ -34,8 +37,9 @@ export class LoadGovernor {
     return ['image', 'off'].filter(level => this.threshold(level) !== null && value > this.threshold(level));
   }
 
+  // The load average over the configured window, per CPU
   read() {
-    return this.loadavg()[WINDOWS[this.settings().window]];
+    return this.loadavg()[WINDOWS[this.settings().window]] / this.cpus;
   }
 
   // The level for the load right now, ignoring how long it has been there: for a start, or a switch to enabled
@@ -97,7 +101,9 @@ export class LoadGovernor {
     if (!settings.enabled) return null;
     return {
       level: this.level,
-      value: this.value,
+      // Per CPU, like the thresholds; cpus is what it is divided by
+      value: this.value === null ? null : Number(this.value.toFixed(2)),
+      cpus: this.cpus,
       window: settings.window,
       // The threshold that decides this level, and the one the load has to fall under to leave it
       limit: this.threshold(this.level === 'normal' ? 'image' : this.level) ?? this.threshold('off'),

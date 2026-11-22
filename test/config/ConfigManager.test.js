@@ -109,6 +109,38 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('loads from before 3.0.0', () => {
+    it('divides an absolute load threshold by the CPU count, writing it back and keeping the file\'s comments', async () => {
+      await fs.outputFile(configPath, '# mine\nload:\n  enabled: true  # on\n  image_above: 12\n  off_above: 24\nscreensaver:\n  max_load: 1.5\n');
+      const manager = new ConfigManager(configPath);
+      manager.cpus = () => 8;
+      await manager.loadConfig();
+      expect(manager.get().load).to.include({ image_above: 1.5, off_above: 3 });
+      // 1.5 is a load per CPU already and stays as written
+      expect(manager.get().screensaver.max_load).to.equal(1.5);
+      expect(manager.warnings).to.deep.equal([
+        'load.image_above was the load 12; it is now a load per CPU, 1.5 on these 8 CPUs (written to the config file)',
+        'load.off_above was the load 24; it is now a load per CPU, 3 on these 8 CPUs (written to the config file)'
+      ]);
+      const text = await fs.readFile(configPath, 'utf8');
+      expect(text).to.include('# mine').and.include('enabled: true  # on').and.include('image_above: 1.5').and.include('off_above: 3');
+      // Converted once: the next load has nothing to say
+      const again = new ConfigManager(configPath);
+      again.cpus = () => 8;
+      await again.loadConfig();
+      expect(again.warnings).to.deep.equal([]);
+    });
+
+    it('still refuses a value that stays over the limit after the division', async () => {
+      await fs.outputFile(configPath, 'load:\n  image_above: 12\n  off_above: 100\n');
+      const manager = new ConfigManager(configPath);
+      manager.cpus = () => 4;
+      let caught;
+      try { await manager.loadConfig(); } catch (error) { caught = error; }
+      expect(caught.message).to.include('load.off_above must be a load per CPU').and.include('not 25');
+    });
+  });
+
   describe('paths', () => {
     it('derives defaults from XDG directories', async () => {
       await configManager.initialize();

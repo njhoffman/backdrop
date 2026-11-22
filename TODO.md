@@ -254,10 +254,12 @@ Reviewed: 2026-11-20
       a missing input as a cancel, not an encoder failure.
       Done (2.75.2): `reverseVideo` and `smoothVideo` check for the input after a failure and stop quietly when it is gone;
       the daemon's jobs already queue the item again from its new path, and smoothing keeps its chunks to resume.
-- [ ] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
+- [x] **Load thresholds ignore the CPU count.** (p3) [feature] `load.image_above` (12) and `load.off_above` (24) are absolute,
       but a load average only means something relative to the number of CPUs: 12 is heavily overloaded on 4 and comfortable
       on 32. Allow per-CPU values (say `per_cpu: true`, using `os.availableParallelism()`) or document how to scale the defaults
       (`src/display/LoadGovernor.js`, `config.example.yaml`, `docs/specs/config.md`). `screensaver.max_load` reads the same value.
+      Done (v3.0.0): `load.image_above`/`off_above` and `screensaver.max_load` are loads per CPU (defaults 1.5 and 3,
+      today's 12 and 24 on 8 CPUs); an absolute value over 8 is refused with how to convert it.
 - [x] **The bounce and smoothing gates open together.** (p3) [perf] With `bounce_idle_load` and `smooth_idle_load` set alike,
       both `IdleGate`s open on the same reading, so a reverse encode (about 2.3 CPUs with VAAPI) and RIFE start together and
       their sum can cross one gate's stop load, closing it again. Each gate sees only the load, not the other job. Fix: let one
@@ -543,9 +545,6 @@ Reviewed: 2026-11-20
       `daemon/Dims.js`, the old methods forwarding; 895 and 1127 lines (954 and 1152 before).
 - [x] **CI jobs can hang on apt with no limit.** (p2) [chore] On 2026-11-05 the latest-Node job of the 2.50.7 run sat over 20 minutes in `Install integration test tools` while its 22.13 twin passed, and a GitHub job's default limit is 6 hours. Set `timeout-minutes` on the job and the install step, and pass apt `-o Acquire::Retries=3`.
       Done: 15 minutes for the job, 5 for the install, apt retries, no recommended packages, and a stalled install skips the integration tests rather than failing the run.
-- [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),
-      attach it to a GitHub release per `vX.Y.Z` tag, and document that mpv, xwinwrap, xrandr, xdotool and ffprobe are still external.
-      Check that `package.json` version lookup and any runtime file reads work from inside the bundle.
 - [x] **Rofi control menu.** (p2) [feature] `backdrop menu` (or a shipped script) opens rofi with the current item (name, rating, monitor) and actions:
       keep 1-3, skip, undo, next/prev, go-next, speed presets, mode toggle and monitor choice, then runs the matching command and shows errors via rofi or notify-send.
       Needs `--json` output for `current`, `status` and the lists (deferred here from the styling item); add an i3 keybinding example to `GETTING_STARTED.md`.
