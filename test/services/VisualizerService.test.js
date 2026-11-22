@@ -45,6 +45,7 @@ describe('VisualizerService', () => {
     });
     expect(view.none).to.deep.equal({ summary: 'bars bottom' });
     expect(view.choices.modules).to.include('radial');
+    expect(view.choices.sleeve.covers).to.deep.equal(['blurred', 'flow', 'swirl', 'sharp']);
     expect(view.choices.swatches.ocean).to.deep.equal(['#003a5c', '#33aacc']);
   });
 

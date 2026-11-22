@@ -143,7 +143,7 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
         none: { summary: 'bars bottom' },
         instances: [{ name: 'main', changed: false, sent: null, yaml: { settings: 'opacity: 0.8\n', live: '' },
           look: { module: 'bars', opacity: 0.8, anchor: 'bottom', palette: { source: 'config', pick: 'vivid' }, amplify: 200, colors: ['#000000', '#33aacc'], colorOption: 'colors' } }],
-        choices: { modules: ['bars', 'radial'], anchors: ['bottom', 'top'], picks: ['vivid'], swatches: { ocean: ['#003a5c', '#33aacc'] }, sleeve: { now: [], positions: [], aligns: [] } }
+        choices: { modules: ['bars', 'radial'], anchors: ['bottom', 'top'], picks: ['vivid'], swatches: { ocean: ['#003a5c', '#33aacc'] }, sleeve: { now: [], positions: [], aligns: [], covers: [] } }
       }),
       setPreset: sinon.stub().resolves()
     };

@@ -15,6 +15,22 @@ export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
 const SLEEVE_STYLE_NAME = /^--(?:art|flow|swirl)-[a-z][a-z0-9-]*$|^--lyrics-scrim(?:-[a-z][a-z0-9-]*)?$/;
 const SLEEVE_STYLE_COMPUTED = ['--art-layer-opacity', '--lyrics-scrim-alpha'];
 const SLEEVE_STYLE_VALUE = /^[a-z0-9 .,%()#+-]{0,100}$/i;
+// sleeve's cover looks by name (`sleeve.cover`): each sets every variable that makes the look, so a switch from one
+// to another leaves nothing of the first, and `style` lays over it. blurred is sleeve's own default.
+const BLURRED_COVER = { '--art-animation': 'none', '--art-size': '64', '--art-blur': '6', '--art-scale': '1.6', '--art-opacity': '0.6', '--art-dim': '0.45', '--art-saturation': '1.3' };
+export const SLEEVE_COVERS = {
+  blurred: BLURRED_COVER,
+  // The blurred cover warping slowly (WebGL)
+  flow: { ...BLURRED_COVER, '--art-animation': 'sleeve-art-flow' },
+  // Sunamu's background: two copies of the cover turning opposite ways, blended so their colors keep mixing, at
+  // Sunamu's own strength (no extra veil, its saturation)
+  swirl: { ...BLURRED_COVER, '--art-animation': 'sleeve-art-swirl', '--art-opacity': '1', '--art-dim': '0', '--art-saturation': '1.5' },
+  // The cover itself, sharp and still across the window; sleeve lays a scrim behind the lyrics over a busy one
+  sharp: { ...BLURRED_COVER, '--art-size': '512', '--art-blur': '0', '--art-scale': '1', '--art-opacity': '1', '--art-dim': '0.25' }
+};
+// Whether an instance's look (instanceLook) draws the cover, so that its cover can be picked: a veil or a
+// see-through page shows none
+export const coverShown = look => look.engine === 'sleeve' && /^cover(@|$)/.test(String(look.sleeve?.background ?? ''));
 export const MODULES = ['bars', 'graph', 'radial', 'circle', 'wave'];
 export const AUDIO_BACKENDS = ['pulseaudio', 'fifo'];
 export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
@@ -382,12 +398,16 @@ function sleeveStyle(key, raw) {
 function sleeveSettings(raw, prefix) {
   const key = `${prefix}sleeve`;
   if (!isObject(raw)) fail(key, 'a mapping', raw);
-  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'lyrics_area', 'now_area', 'background', 'style', 'map_below', 'no_sandbox', 'command'], 'sleeve settings');
+  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'lyrics_area', 'now_area', 'background', 'cover', 'style', 'map_below', 'no_sandbox', 'command'], 'sleeve settings');
+  const cover = raw.cover === undefined || raw.cover === null ? null : oneOf(`${key}.cover`, raw.cover, Object.keys(SLEEVE_COVERS));
+  const style = raw.style === undefined ? null : sleeveStyle(`${key}.style`, raw.style);
   return {
     lyricsArea: raw.lyrics_area === undefined ? null : area(`${key}.lyrics_area`, raw.lyrics_area),
     nowArea: raw.now_area === undefined ? null : area(`${key}.now_area`, raw.now_area),
     background: raw.background === undefined ? null : sleeveBackground(`${key}.background`, raw.background),
-    style: raw.style === undefined ? null : sleeveStyle(`${key}.style`, raw.style),
+    cover,
+    // The cover's variables with style's over them
+    style: cover ? { ...SLEEVE_COVERS[cover], ...style } : style,
     // null: on for a window filling its monitor, which would otherwise cover every other window until placed
     mapBelow: raw.map_below === undefined ? null : boolean(`${key}.map_below`, raw.map_below),
     now: raw.now === undefined ? null : oneOf(`${key}.now`, raw.now, SLEEVE_NOW),
@@ -680,7 +700,7 @@ export function instanceLook(section = {}, options = {}, name = 'main') {
   const { option, fallback } = PIPED_COLORS[module];
   const colors = item[module]?.[option] ?? fallback;
   return {
-    ...(engine === 'sleeve' ? { engine, sleeve: { now: 'lyrics', now_position: 'top-left', lyrics_align: 'left', ...item.sleeve } } : {}),
+    ...(engine === 'sleeve' ? { engine, sleeve: { now: 'lyrics', now_position: 'top-left', lyrics_align: 'left', cover: null, ...item.sleeve } } : {}),
     module,
     visible: item.visible ?? true,
     opacity: item.opacity ?? 0.8,

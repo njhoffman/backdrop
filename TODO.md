@@ -916,9 +916,11 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       `style.css` alone. Done (v3.1.0): `sleeve.style` passes sleeve's stylesheet variables (sleeve 0.46.0, contract
       in `docs/specs/sleeve.md`, Style); `lyrics-stage` shows the cover sharp, and `lyrics-cover` and `lyrics-swirl`
       (Sunamu's turning covers) are new.
-- [ ] **A menu control for sleeve's style.** (p3) [feature] `sleeve.style` is config only: the menu and the web
+- [x] **A menu control for sleeve's style.** (p3) [feature] `sleeve.style` is config only: the menu and the web
       Visualizer page cannot try a cover look (swirl or flow, sharp or blurred) without editing the config. A small
       choice of looks per sleeve instance, laid over the preset's style, would do.
+      Done (v3.2.0): `sleeve.cover` names a whole look (blurred, flow, swirl, sharp) with `style` laid over it; the
+      menu's `b` and the web page's Cover pick it live, only where the background is the cover.
 
 ## 10. Web interface
 

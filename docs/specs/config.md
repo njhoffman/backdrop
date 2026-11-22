@@ -108,7 +108,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   enabled: false
   engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance
   projectm: {}             # for engine: projectm: fps, preset_duration, preset_path, args, command
-  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background (a color, cover, or auto: a veil from the wallpaper), style (sleeve's --art-*, --flow-*, --swirl-*, --lyrics-scrim* variables; sleeve 0.46+), map_below, no_sandbox, command
+  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background (a color, cover, or auto: a veil from the wallpaper), cover (how a cover background is drawn: blurred, flow, swirl or sharp), style (sleeve's --art-*, --flow-*, --swirl-*, --lyrics-scrim* variables; sleeve 0.46+), map_below, no_sandbox, command
   monitors: all            # all, [names], or {name: true | false | {placement, rect}}
   module: bars             # bars, graph, radial, circle, wave
   audio: pulseaudio        # pulseaudio or fifo

@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { applyLive, instanceLook, layoutFor, lookAsPreset, presetInfo, presetSummary, presetsOf, resolveGeometry, visualizerSettings, enginesOf, resolveArea } from '../../src/visualizer/settings.js';
+import { SLEEVE_COVERS, applyLive, coverShown, instanceLook, layoutFor, lookAsPreset, presetInfo, presetSummary, presetsOf, resolveGeometry, visualizerSettings, enginesOf, resolveArea } from '../../src/visualizer/settings.js';
 import { BUILTIN_PRESETS } from '../../src/visualizer/presets.js';
 import { makeConfig } from '../helpers/fakes.js';
 
@@ -314,7 +314,7 @@ describe('visualizer settings', () => {
     it('takes the sleeve settings, leaving unset ones out', () => {
       const [item] = visualizerSettings({ engine: 'sleeve', sleeve: { now: 'full', lyrics_align: 'center', no_sandbox: true, command: '/opt/sleeve' } }).instances;
       expect(item.sleeve).to.deep.equal({
-        now: 'full', nowPosition: null, lyricsAlign: 'center', lyricsArea: null, nowArea: null, background: null, style: null, mapBelow: null, noSandbox: true, command: '/opt/sleeve'
+        now: 'full', nowPosition: null, lyricsAlign: 'center', lyricsArea: null, nowArea: null, background: null, cover: null, style: null, mapBelow: null, noSandbox: true, command: '/opt/sleeve'
       });
     });
 
@@ -333,7 +333,11 @@ describe('visualizer settings', () => {
     it('shows a sleeve instance\'s options in the menu\'s view, with what it starts from', () => {
       const look = instanceLook({ engine: 'sleeve', sleeve: { now: 'full' } });
       expect(look).to.include({ engine: 'sleeve' });
-      expect(look.sleeve).to.deep.equal({ now: 'full', now_position: 'top-left', lyrics_align: 'left' });
+      expect(look.sleeve).to.deep.equal({ now: 'full', now_position: 'top-left', lyrics_align: 'left', cover: null });
+      expect(coverShown(look)).to.equal(false);
+      for (const background of ['cover', 'cover@0.6']) expect(coverShown(instanceLook({ engine: 'sleeve', sleeve: { background } })), background).to.equal(true);
+      for (const background of ['auto', 'auto@0.5', 'transparent', '#000000']) expect(coverShown(instanceLook({ engine: 'sleeve', sleeve: { background } })), background).to.equal(false);
+      expect(coverShown(instanceLook({ module: 'bars' }))).to.equal(false);
     });
 
     it('reports the engines in use, through the chosen preset', () => {
@@ -394,6 +398,7 @@ describe('visualizer settings', () => {
         }
         expect(lyrics('lyrics-cover').instances).to.have.length(1);
         expect(lyrics('lyrics-swirl').sleeve.sleeve).to.include({ background: 'cover', lyricsAlign: 'center' });
+        expect(lyrics('lyrics-swirl').sleeve.sleeve).to.include({ cover: 'swirl' });
         expect(lyrics('lyrics-swirl').sleeve.sleeve.style).to.include({ '--art-animation': 'sleeve-art-swirl' });
         expect(lyrics('lyrics-swirl').instances.map(item => item.name)).to.deep.equal(['lyrics', 'wave']);
         for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl']) expect(visualizerSettings({ preset: name }).wallpaper, name).to.equal(false);
@@ -504,6 +509,18 @@ describe('visualizer settings', () => {
       for (const value of ['url(x)', '0; color: red', '"0"', 'a/b', true, null]) {
         expect(() => sleeve({ style: { '--art-blur': value } }), String(value)).to.throw('visualizer.sleeve.style.--art-blur must be');
       }
+    });
+
+    it('takes a cover look by name as its whole set of variables, with style laid over it', () => {
+      expect(sleeve({ cover: 'sharp' })).to.include({ cover: 'sharp' });
+      expect(sleeve({ cover: 'sharp' }).style).to.deep.equal(SLEEVE_COVERS.sharp);
+      expect(sleeve({ cover: 'swirl', style: { '--art-dim': 0.1, '--swirl-period': 30 } }).style)
+        .to.deep.equal({ ...SLEEVE_COVERS.swirl, '--art-dim': '0.1', '--swirl-period': '30' });
+      expect(sleeve({ cover: null }).style).to.equal(null);
+      // Every look sets the same names, so a switch leaves nothing of the one before
+      const names = Object.values(SLEEVE_COVERS).map(style => Object.keys(style).sort().join());
+      expect(new Set(names).size).to.equal(1);
+      expect(() => sleeve({ cover: 'spin' })).to.throw('visualizer.sleeve.cover must be blurred, flow, swirl, sharp');
     });
 
     it('rejects a background sleeve would refuse', () => {

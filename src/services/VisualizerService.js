@@ -6,7 +6,7 @@ import fs from 'fs-extra';
 import { presetShot, presetShotPath } from '../visualizer/PresetShots.js';
 import { BUILTIN_PRESETS } from '../visualizer/presets.js';
 import {
-  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetInfo, presetsOf, presetSummary, visualizerSettings
+  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_COVERS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetInfo, presetsOf, presetSummary, visualizerSettings
 } from '../visualizer/settings.js';
 
 // The running visualizer's look, its presets and live changes, for the rofi menu and the web interface's Visualizer page
@@ -88,7 +88,7 @@ export class VisualizerService {
       })),
       choices: {
         modules: MODULES, anchors: ANCHORS, picks: PALETTE_PICKS, swatches: SWATCHES,
-        sleeve: { now: SLEEVE_NOW, positions: SLEEVE_POSITIONS, aligns: SLEEVE_ALIGNS }
+        sleeve: { now: SLEEVE_NOW, positions: SLEEVE_POSITIONS, aligns: SLEEVE_ALIGNS, covers: Object.keys(SLEEVE_COVERS) }
       }
     };
   }

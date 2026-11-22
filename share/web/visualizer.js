@@ -16,6 +16,7 @@ function changesFor(setting, value, look) {
     case 'now': return { sleeve: { now: value } };
     case 'now_position': return { sleeve: { now_position: value } };
     case 'lyrics_align': return { sleeve: { lyrics_align: value } };
+    case 'cover': return { sleeve: { cover: value } };
     case 'fps': return { projectm: { fps: Number(value) } };
     case 'preset_duration': return { projectm: { preset_duration: Number(value) } };
     case 'source': return { palette: value === 'wallpaper' ? { source: 'wallpaper', pick: look.palette.pick } : { source: 'config' } };
@@ -114,6 +115,9 @@ function renderCard(card, { name, look, changed, sent, yaml }, { choices, runnin
     options(field('now'), choices.sleeve.now, look.sleeve.now);
     options(field('now_position'), choices.sleeve.positions, look.sleeve.now_position);
     options(field('lyrics_align'), choices.sleeve.aligns, look.sleeve.lyrics_align);
+    // Only where the background is the cover: a veil or a see-through page shows none
+    field('cover').closest('label').hidden = !/^cover(@|$)/.test(String(look.sleeve.background ?? ''));
+    options(field('cover'), choices.sleeve.covers, look.sleeve.cover ?? '');
   }
   field('opacity').value = String(look.opacity);
   card.querySelector('.opacity-value').textContent = String(look.opacity);

@@ -15,7 +15,7 @@ import { formatAdjustments } from '../utils/mediaView.js';
 import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
-import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, presetsOf, presetSummary } from '../visualizer/settings.js';
+import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_COVERS, SLEEVE_NOW, SLEEVE_POSITIONS, coverShown, instanceLook, presetsOf, presetSummary } from '../visualizer/settings.js';
 import { readState } from '../display/Daemon.js';
 import { readWebInfo, webAddress } from '../web/info.js';
 
@@ -612,7 +612,10 @@ export class MenuCommand {
         { icon: VISUALIZER_ICONS.position, label: 'panel ▸', caption: look.sleeve.now_position, key: 'n',
           run: () => this.pickMenu(instance, 'panel', SLEEVE_POSITIONS, look.sleeve.now_position, position => ({ sleeve: { now_position: position } })) },
         { icon: VISUALIZER_ICONS.position, label: 'align ▸', caption: look.sleeve.lyrics_align, key: 'g',
-          run: () => this.pickMenu(instance, 'align', SLEEVE_ALIGNS, look.sleeve.lyrics_align, align => ({ sleeve: { lyrics_align: align } })) }
+          run: () => this.pickMenu(instance, 'align', SLEEVE_ALIGNS, look.sleeve.lyrics_align, align => ({ sleeve: { lyrics_align: align } })) },
+        // How the cover is drawn, only where the background is the cover: a veil or a see-through page shows none
+        ...(coverShown(look) ? [{ icon: VISUALIZER_ICONS.module, label: 'cover ▸', caption: look.sleeve.cover ?? 'own', key: 'b',
+          run: () => this.pickMenu(instance, 'cover', Object.keys(SLEEVE_COVERS), look.sleeve.cover, cover => ({ sleeve: { cover } })) }] : [])
       ] : look.engine === 'projectm' ? [
         // projectM draws its own presets: its frame rate (its main cost) and how long each preset shows
         { icon: VISUALIZER_ICONS.fps, label: 'fps ▸', caption: `fps ${look.projectm.fps}`, key: 'm',

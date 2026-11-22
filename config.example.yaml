@@ -43,7 +43,8 @@ visualizer:
   # sleeve: {now: lyrics, now_position: top-left, lyrics_align: left}  # with engine: sleeve; left out, style.css decides
   # sleeve: {lyrics_area: 33%x100%+0+0, background: '#10203099'}       # placement fill and these make it the wallpaper layer (sleeve 0.36+): docs/specs/sleeve.md
   # sleeve: {lyrics_area: 33%x100%+0+0, background: auto}             # auto: a see-through veil tinted and weighted from the wallpaper
-  # sleeve: {background: cover, style: {--art-animation: sleeve-art-swirl, --art-size: 512}}   # sleeve's stylesheet variables (sleeve 0.46+)
+  # sleeve: {background: cover, cover: swirl}   # how the cover is drawn: blurred, flow, swirl or sharp (sleeve 0.46+)
+  # sleeve: {background: cover, cover: sharp, style: {--art-dim: 0.4}}   # sleeve's stylesheet variables, over the cover's
   monitors: all                      # all, a list [DP-3], or a mapping with per-monitor placement/rect: {DP-3: {placement: {anchor: top}}}
   module: bars                       # bars, graph, radial, circle or wave
   audio: pulseaudio                  # or fifo (source then defaults to /tmp/mpd.fifo)

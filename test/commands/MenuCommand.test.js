@@ -762,6 +762,23 @@ describe('MenuCommand', () => {
       expect(vis.enabled).to.equal(true);
     });
 
+    it('picks how sleeve draws the cover, only for an instance whose background is the cover', async () => {
+      vis.instances = ['lyrics', 'veiled'];
+      config.set('visualizer.instances', [
+        { name: 'lyrics', engine: 'sleeve', sleeve: { background: 'cover', cover: 'swirl' } },
+        { name: 'veiled', engine: 'sleeve', sleeve: { background: 'auto' } }
+      ]);
+      picks = ['lyrics ▸', 'cover ▸', 'sharp', null, 'veiled ▸', null, null];
+      await open().open({ page: 'visualizer' });
+      const labels = menu => menu.entries.map(entry => entry.label);
+      expect(shown[1].entries.find(entry => entry.label === 'cover ▸').caption).to.equal('swirl');
+      expect(shown[2].prompt).to.equal('cover');
+      expect(labels(shown[2])).to.deep.equal(['blurred', 'flow', 'swirl', 'sharp']);
+      expect(shown[2].entries.find(entry => entry.active).label).to.equal('swirl');
+      expect(requests).to.deep.equal([{ visualizer_set: { instance: 'lyrics', changes: { sleeve: { cover: 'sharp' } } } }]);
+      expect(labels(shown.find(menu => menu.prompt === 'veiled'))).to.not.include('cover ▸');
+    });
+
     it('shows the colors last sent to a sleeve instance as colors', async () => {
       vis.instances = ['lyrics', 'ring'];
       config.set('visualizer.instances', [{ name: 'lyrics', engine: 'sleeve', palette: { source: 'wallpaper' } }, { name: 'ring', module: 'radial' }]);

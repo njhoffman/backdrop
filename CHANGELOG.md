@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-22
+
+### Added
+
+- `visualizer.instances[].sleeve.cover`: how sleeve draws a `cover` background, by name: `blurred` (sleeve's default
+  wash), `flow` (the blurred cover warping slowly), `swirl` (two copies turning, as Sunamu drew it) or `sharp` (the
+  cover itself). Each sets the whole look, and `style` lays over it for fine-tuning.
+- The visualizer menu (`b`, cover) and the web Visualizer page (Cover) pick it live for a sleeve instance whose
+  background is the cover; save the preset to keep it.
+
+### Changed
+
+- `lyrics-stage`, `lyrics-cover` and `lyrics-swirl` use `cover: sharp` and `cover: swirl` instead of raw `style` maps,
+  so the menu shows their look and can switch it.
+
 ## [3.1.0] - 2026-11-22
 
 ### Added

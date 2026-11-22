@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import { createVisualizer } from '../../src/visualizer/index.js';
 import { VisualizerManager } from '../../src/visualizer/VisualizerManager.js';
+import { SLEEVE_COVERS } from '../../src/visualizer/settings.js';
 import { FakeChild, FakeMpvClient, makeConfig, silentLogger } from '../helpers/fakes.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -480,6 +481,21 @@ describe('VisualizerManager', () => {
 
       // Started with --now; a reset would go back to it, so only a restart can clear it
       expect(manager.runsWith({ ...manager.settings, instances: manager.settings.instances.map(item => ({ ...item, sleeve: { ...item.sleeve, now: null } })) })).to.equal(false);
+      await manager.stop();
+    });
+
+    it('switches the cover look over sleeve ctl without restarting, every variable of the new look sent', async () => {
+      config.set('visualizer.sleeve', { background: 'cover', cover: 'swirl' });
+      const manager = sleeveManager();
+      const exec = manager.exec;
+      manager.exec = async (file, args) => (args[0] === '--version' ? '0.47.0\n' : exec(file, args));
+      await manager.configure();
+      await manager.sync();
+      expect(spawned[0].args).to.include('--style=--art-animation=sleeve-art-swirl');
+      await manager.setLive({ instance: 'main', changes: { sleeve: { cover: 'sharp' } } });
+      expect(spawned).to.have.length(1);
+      const sent = ctl.at(-1).filter(arg => arg.startsWith('--style='));
+      expect(sent).to.have.members(Object.entries(SLEEVE_COVERS.sharp).map(([name, value]) => `--style=${name}=${value}`));
       await manager.stop();
     });
 
