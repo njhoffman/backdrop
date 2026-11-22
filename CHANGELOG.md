@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-11-22
+
+### Fixed
+
+- The screensaver's lyrics no longer stay hidden on entering while a song plays in silence (on another device, or
+  with nothing audible here). sleeved's greeting and the playing song arrive together, and backdrop's hide for the
+  first could reach sleeve after its show for the second; changes to a sleeve page now go out one at a time, in order.
+
 ## [3.0.1] - 2026-11-21
 
 ### Changed

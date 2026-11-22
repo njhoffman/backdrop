@@ -576,6 +576,31 @@ describe('VisualizerManager', () => {
       await manager.stop();
     });
 
+    it('hands sleeve ctl one change at a time, so the hide at hello cannot land after the show for the song', async () => {
+      config.set('visualizer.only_while_playing', true);
+      let sleeved;
+      const landed = [];
+      // The first call is the slowest, as a sleeve ctl process can be
+      const delays = [30, 0, 0];
+      const manager = sleeveManager({ sleevedWatcher: options => { sleeved = options; return { start() {}, stop() {} }; } });
+      await manager.configure();
+      await manager.sync();
+      await new Promise(setImmediate);
+      manager.audio.playing = false;
+      const exec = manager.exec;
+      manager.exec = async (file, args) => {
+        if (args[0] !== 'ctl') return exec(file, args);
+        await new Promise(resolve => setTimeout(resolve, delays.shift() ?? 0));
+        landed.push(args.at(-1));
+        return '';
+      };
+      sleeved.onHello();
+      sleeved.onMessage({ type: 'playback', playback: { state: 'playing' } });
+      await new Promise(resolve => setTimeout(resolve, 60));
+      expect(landed).to.deep.equal(['--hide', '--show']);
+      await manager.stop();
+    });
+
     it('sends sleeved what it forgot when it comes back, and watches only while a sleeve instance can run', async () => {
       config.set('visualizer.sleeve', { now: 'full' });
       let told;

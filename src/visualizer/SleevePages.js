@@ -98,13 +98,16 @@ export class SleevePages {
   }
 
   // Tells a running sleeve page about a change. In the background and best effort: without sleeved there is
-  // nothing on the page to change (status 2), and it starts with the start options when sleeved appears.
+  // nothing on the page to change (status 2), and it starts with the start options when sleeved appears. One at a
+  // time per page, in the order sent: sleeved's hello and the playing song arrive together, and a --hide from the
+  // first landing after the --show from the second would leave the lyrics hidden through the song.
   display(entry, change) {
     const { file, args } = entry.adapter.display(entry.monitor, change);
-    return Promise.resolve().then(() => this.manager.exec(file, args)).catch(error => {
+    entry.displaying = (entry.displaying ?? Promise.resolve()).then(() => this.manager.exec(file, args)).catch(error => {
       if (error.code === 2) this.manager.logger.debug('sleeved is not running', { instance: entry.instance.name });
       else this.manager.logger.warn('sleeve ctl display failed', { instance: entry.instance.name, error: error.message });
     });
+    return entry.displaying;
   }
 
   // Works out a sleeve `auto` background again; a list of what to wait for, empty when it stays as it is
