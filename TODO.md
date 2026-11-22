@@ -911,6 +911,14 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       keyed by the preset's name, so editing the preset in the config while it is in force leaves the old picture
       until the next switch. Key `PresetShots` on the look (`fileLook`) instead of the name.
       Done (v2.94.1): `PresetShots` keys a screenshot on the preset and the manager's `fileLook`.
+- [x] **sleeve's cover looks per preset.** (p2) [feature] `lyrics-stage` promised the cover as the background but showed a
+      wash of its colors (sleeve drew it at 64 px), and backdrop could not pick sleeve's look, which lived in the user's
+      `style.css` alone. Done (v3.1.0): `sleeve.style` passes sleeve's stylesheet variables (sleeve 0.46.0, contract
+      in `docs/specs/sleeve.md`, Style); `lyrics-stage` shows the cover sharp, and `lyrics-cover` and `lyrics-swirl`
+      (Sunamu's turning covers) are new.
+- [ ] **A menu control for sleeve's style.** (p3) [feature] `sleeve.style` is config only: the menu and the web
+      Visualizer page cannot try a cover look (swirl or flow, sharp or blurred) without editing the config. A small
+      choice of looks per sleeve instance, laid over the preset's style, would do.
 
 ## 10. Web interface
 

@@ -9,6 +9,12 @@ export const ENGINES = ['glava', 'sleeve', 'projectm'];
 export const SLEEVE_NOW = ['lyrics', 'minimal', 'full'];
 export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
 export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
+// The stylesheet variables sleeve (0.46.0) takes from `--style`, by its own rules (docs/specs/sleeve.md, Style): the
+// cover and its animation, and the scrim behind the lyrics, all but the two it works out itself; values that cannot
+// leave a CSS declaration or load anything
+const SLEEVE_STYLE_NAME = /^--(?:art|flow|swirl)-[a-z][a-z0-9-]*$|^--lyrics-scrim(?:-[a-z][a-z0-9-]*)?$/;
+const SLEEVE_STYLE_COMPUTED = ['--art-layer-opacity', '--lyrics-scrim-alpha'];
+const SLEEVE_STYLE_VALUE = /^[a-z0-9 .,%()#+-]{0,100}$/i;
 export const MODULES = ['bars', 'graph', 'radial', 'circle', 'wave'];
 export const AUDIO_BACKENDS = ['pulseaudio', 'fifo'];
 export const ANCHORS = ['bottom', 'top', 'left', 'right', 'center', 'fill'];
@@ -358,14 +364,30 @@ export function resolveArea(value, window) {
   };
 }
 
+// sleeve's style: { '--art-size': 512, ... }, numbers taken as their text
+function sleeveStyle(key, raw) {
+  if (!isObject(raw)) fail(key, 'a mapping of sleeve stylesheet variables', raw);
+  const style = {};
+  for (const [name, value] of Object.entries(raw)) {
+    const at = `${key}.${name}`;
+    if (!SLEEVE_STYLE_NAME.test(name) || SLEEVE_STYLE_COMPUTED.includes(name)) fail(at, 'a variable sleeve takes (--art-*, --flow-*, --swirl-* or --lyrics-scrim*)', name);
+    if (typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value))) fail(at, 'a string or a number', value);
+    const textValue = String(value).trim();
+    if (!SLEEVE_STYLE_VALUE.test(textValue) || /url\s*\(/i.test(textValue)) fail(at, 'letters, digits, spaces and . , % ( ) # + - only', value);
+    style[name] = textValue;
+  }
+  return Object.keys(style).length ? style : null;
+}
+
 function sleeveSettings(raw, prefix) {
   const key = `${prefix}sleeve`;
   if (!isObject(raw)) fail(key, 'a mapping', raw);
-  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'lyrics_area', 'now_area', 'background', 'map_below', 'no_sandbox', 'command'], 'sleeve settings');
+  knownKeys(key, raw, ['now', 'now_position', 'lyrics_align', 'lyrics_area', 'now_area', 'background', 'style', 'map_below', 'no_sandbox', 'command'], 'sleeve settings');
   return {
     lyricsArea: raw.lyrics_area === undefined ? null : area(`${key}.lyrics_area`, raw.lyrics_area),
     nowArea: raw.now_area === undefined ? null : area(`${key}.now_area`, raw.now_area),
     background: raw.background === undefined ? null : sleeveBackground(`${key}.background`, raw.background),
+    style: raw.style === undefined ? null : sleeveStyle(`${key}.style`, raw.style),
     // null: on for a window filling its monitor, which would otherwise cover every other window until placed
     mapBelow: raw.map_below === undefined ? null : boolean(`${key}.map_below`, raw.map_below),
     now: raw.now === undefined ? null : oneOf(`${key}.now`, raw.now, SLEEVE_NOW),

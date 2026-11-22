@@ -3,6 +3,8 @@ import { DEFAULT_VEIL, scaleVeil, veilStrength } from './palette.js';
 
 // The first sleeve with --lyrics-area, --now-area, --background and --map-below
 const LAYER_VERSION = [0, 36];
+// The first sleeve with --style; an older one is not sent it, since it only changes how the page looks
+const STYLE_VERSION = [0, 46];
 
 const atLeast = (version, [major, minor]) => {
   const [a, b] = version.split('.').map(Number);
@@ -18,6 +20,7 @@ export class SleeveVisualizer {
     this.instance = instance;
     this.exec = exec;
     this.layer = false;
+    this.styled = false;
   }
 
   title(monitor) {
@@ -30,6 +33,7 @@ export class SleeveVisualizer {
   async prepare() {
     const version = await Promise.resolve().then(() => this.exec(this.file, ['--version'])).then(text => text.trim(), () => null);
     this.layer = Boolean(version) && atLeast(version, LAYER_VERSION);
+    this.styled = Boolean(version) && atLeast(version, STYLE_VERSION);
     const { lyricsArea, nowArea, background, mapBelow } = this.instance.sleeve;
     if (version && !this.layer && (lyricsArea || nowArea || background || mapBelow)) {
       throw new Error(`visualizer.sleeve areas, background and map_below need sleeve ${LAYER_VERSION.join('.')}.0 or later (found ${version})`);
@@ -53,7 +57,7 @@ export class SleeveVisualizer {
   // geometry is absolute in the root window: { x, y, width, height }
   // veil: what an `auto` background is now at full strength, when known
   command(monitor, { x, y, width, height }, veil = null) {
-    const { now, nowPosition, lyricsAlign, lyricsArea, nowArea, noSandbox } = this.instance.sleeve;
+    const { now, nowPosition, lyricsAlign, lyricsArea, nowArea, style, noSandbox } = this.instance.sleeve;
     const strength = veilStrength(this.instance.sleeve.background);
     const background = strength === null ? this.instance.sleeve.background : scaleVeil(veil ?? DEFAULT_VEIL, strength);
     return {
@@ -67,6 +71,7 @@ export class SleeveVisualizer {
         ...(lyricsArea ? ['--lyrics-area', lyricsArea] : []),
         ...(nowArea ? ['--now-area', nowArea] : []),
         ...(background ? ['--background', background] : []),
+        ...(this.styled ? styleArgs(style) : []),
         ...(this.mapsBelow(monitor, { width, height }) ? ['--map-below'] : []),
         ...(noSandbox ? ['--no-sandbox'] : [])
       ]
@@ -92,8 +97,14 @@ export class SleeveVisualizer {
         ...(look?.lyricsArea ? ['--lyrics-area', look.lyricsArea] : []),
         ...(look?.nowArea ? ['--now-area', look.nowArea] : []),
         ...(look?.background ? ['--background', look.background] : []),
+        ...(this.styled ? styleArgs(look?.style) : []),
         ...(visible === undefined ? [] : [visible ? '--show' : '--hide'])
       ]
     };
   }
+}
+
+// sleeve's --style NAME=VALUE, once for each name; an empty value drops a name an earlier change set
+function styleArgs(style) {
+  return Object.entries(style ?? {}).flatMap(([name, value]) => [`--style=${name}=${value}`]);
 }

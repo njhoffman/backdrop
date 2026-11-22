@@ -25,6 +25,7 @@ sleeve shell --managed --geometry 2560x800+0+320 --title backdrop-visualizer-DP-
 | `--lyrics-align` | the lyrics' alignment; `left` by default |
 | `--lyrics-area`, `--now-area` | since 0.34.0: where each goes inside the window; see The wallpaper layer |
 | `--background` | since 0.35.0: what fills the window; see The wallpaper layer |
+| `--style NAME=VALUE` | since 0.46.0: one of sleeve's stylesheet variables, once for each; see Style |
 | `--map-below` | since 0.36.0: map the window at the bottom of the stack; see The wallpaper layer |
 | `--no-sandbox` | passed to Electron; see Requirements |
 
@@ -70,6 +71,7 @@ the text keeps its default colors and shadow. It does not read GLava's `fg = #rr
 ```sh
 sleeve ctl display --instance DP-3-lyrics --preset full --position bottom-left --align center
 sleeve ctl display --instance DP-3-lyrics --lyrics-area 33%x100%+0+0 --now-area 67%x100%+33%+0 --background '#10203099'
+sleeve ctl display --instance DP-3-lyrics --style=--art-animation=sleeve-art-swirl --style=--art-size=   # see Style
 sleeve ctl display --instance DP-3-lyrics --hide      # or --show; hides the lyrics and the panel, the background stays
 sleeve ctl display --instance DP-3-lyrics --reset     # back to its start options and style.css
 ```
@@ -143,10 +145,36 @@ the window: `33%x100%+0+0` is the left third, `67%x100%+33%+0` the rest. The def
 
 - The alpha is the background's alone: text and the panel stay solid. `_NET_WM_WINDOW_OPACITY` fades the whole window, so it cannot do this.
 - `cover` is the blurred treatment a window shows, not the plain picture, and follows the user's `--art-*` settings in their `style.css`,
-  `--art-animation: sleeve-art-flow` and its `--flow-*` included. backdrop has no options for those; they are the user's.
+  `--art-animation: sleeve-art-flow` and its `--flow-*` included, unless a `--style` (since 0.46.0) sets them for this page.
 - Without `--background`, the window is transparent under `--managed`, so nothing changes for an existing instance.
 - backdrop's `background: auto` stays on backdrop's side: it works out a veil from the wallpaper (`veilBackground` in `palette.js`) and only ever sends
   `#rrggbbaa`, with `#0a0f1a99` until it knows the wallpaper. `auto@0.5` is that veil with its alpha times 0.5 (any factor up to 1), for a look with no text to read over it. sleeve gets a new one over `sleeve ctl display` for most new wallpapers, so changing it has to stay cheap.
+
+### Style
+
+Since 0.46.0, `--style NAME=VALUE` on `sleeve shell` and `sleeve ctl display`, once for each name, and `style` over the socket
+(`{"style": {"--art-size": "512"}}`), set sleeve's stylesheet variables for one page, over the user's `style.css`:
+
+| Names | What they change |
+| --- | --- |
+| `--art-*` | the cover: `--art-animation` (`none`, `sleeve-art-flow`, `sleeve-art-swirl`, `sleeve-art-swirl-css`, `sleeve-art-drift`, `sleeve-art-breathe`), `--art-size` (the side it is drawn at, 16 to 1024), `--art-blur`, `--art-scale`, `--art-opacity`, `--art-dim`, `--art-saturation`, `--art-fade` |
+| `--flow-*` | `sleeve-art-flow`'s and the swirl's speed, resolution and frame rate, and the flow's bend |
+| `--swirl-*` | `sleeve-art-swirl`: `--swirl-period`, `--swirl-delay`, `--swirl-size`, `--swirl-brightness`, `--swirl-timing`, and `--swirl-blur` for the CSS version |
+| `--lyrics-scrim*` | the scrim behind the lyrics over a busy cover: `--lyrics-scrim` (`auto` or 0 to 1), `--lyrics-scrim-blur`, `--lyrics-scrim-edge` |
+
+`src/renderer/style.css` in sleeve lists each with its default. sleeve refuses (status 1 from `ctl`, 2 from `shell`) any other name,
+`--art-layer-opacity` and `--lyrics-scrim-alpha` (it works those out), and a value with anything but letters, digits, spaces and
+`. , % ( ) # + -`, `url(` among them, or over 100 characters. Pass `NAME=VALUE` joined to the flag (`--style=--art-size=512`) or after it.
+
+- A change merges with the page's earlier changes name by name; an empty value (`--style=--art-size=`) drops a name a change set. A name
+  given at the start stays under any change until the page restarts, as the other start options do.
+- `--art-size` and `--art-blur` apply when the cover is drawn: sleeve draws it again when a change sets either.
+- Over a sharp cover (a high `--art-size`, little `--art-blur`) sleeve lays a scrim behind the lyrics area and strengthens the text's
+  shadow by itself, as busy as the cover is; nothing for backdrop to do.
+- Cost: `sleeve-art-swirl` costs about what `sleeve-art-flow` does; `sleeve-art-swirl-css` costs far more and is for comparing the two.
+  A still sharp cover costs next to nothing. backdrop's still color at the load section's `image` level replaces the cover whatever its style.
+
+backdrop sends `style` (`visualizer.instances[].sleeve.style`) only to sleeve 0.46.0 or later; an older sleeve shows the page without it.
 
 ### Size
 

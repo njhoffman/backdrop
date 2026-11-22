@@ -106,7 +106,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-now', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-now', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -114,7 +114,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-now, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-cover, lyrics-swirl, lyrics-now, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -314,7 +314,7 @@ describe('visualizer settings', () => {
     it('takes the sleeve settings, leaving unset ones out', () => {
       const [item] = visualizerSettings({ engine: 'sleeve', sleeve: { now: 'full', lyrics_align: 'center', no_sandbox: true, command: '/opt/sleeve' } }).instances;
       expect(item.sleeve).to.deep.equal({
-        now: 'full', nowPosition: null, lyricsAlign: 'center', lyricsArea: null, nowArea: null, background: null, mapBelow: null, noSandbox: true, command: '/opt/sleeve'
+        now: 'full', nowPosition: null, lyricsAlign: 'center', lyricsArea: null, nowArea: null, background: null, style: null, mapBelow: null, noSandbox: true, command: '/opt/sleeve'
       });
     });
 
@@ -350,13 +350,13 @@ describe('visualizer settings', () => {
       };
 
       it('all run sleeve, solid, checking out', () => {
-        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now']) {
+        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-now']) {
           expect(lyrics(name).sleeve, name).to.include({ engine: 'sleeve', opacity: 1 });
         }
       });
 
       it('put sleeve lowest when it covers the monitor, so the visualizers show above it', () => {
-        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-now']) {
+        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-now']) {
           const { instances, sleeve } = lyrics(name);
           expect(instances[0], name).to.equal(sleeve);
           expect(sleeve.layout.placement.anchor, name).to.equal('fill');
@@ -365,7 +365,7 @@ describe('visualizer settings', () => {
 
       it('take wallpaper colors only where the wallpaper shows through', () => {
         for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend']) expect(lyrics(name).sleeve.palette.source, name).to.equal('wallpaper');
-        for (const name of ['lyrics-stage', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
+        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
       });
 
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
@@ -385,6 +385,18 @@ describe('visualizer settings', () => {
           expect(placed('ring'), name).to.deep.equal({ x: 990, y: 0, width: 2010, height: 750 });
           expect(placed('bars'), name).to.deep.equal({ x: 990, y: 750, width: 2010, height: 250 });
         }
+      });
+
+      it('show the cover sharp in lyrics-stage and lyrics-cover, and Sunamu\'s swirl in lyrics-swirl, over sleeve\'s style', () => {
+        for (const name of ['lyrics-stage', 'lyrics-cover']) {
+          expect(lyrics(name).sleeve.sleeve, name).to.include({ background: 'cover' });
+          expect(lyrics(name).sleeve.sleeve.style, name).to.include({ '--art-animation': 'none', '--art-size': '512', '--art-blur': '0' });
+        }
+        expect(lyrics('lyrics-cover').instances).to.have.length(1);
+        expect(lyrics('lyrics-swirl').sleeve.sleeve).to.include({ background: 'cover', lyricsAlign: 'center' });
+        expect(lyrics('lyrics-swirl').sleeve.sleeve.style).to.include({ '--art-animation': 'sleeve-art-swirl' });
+        expect(lyrics('lyrics-swirl').instances.map(item => item.name)).to.deep.equal(['lyrics', 'wave']);
+        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl']) expect(visualizerSettings({ preset: name }).wallpaper, name).to.equal(false);
       });
 
       it('give the screensaver the veil look with only its colors turning', () => {
@@ -479,6 +491,19 @@ describe('visualizer settings', () => {
         expect(() => sleeve({ lyrics_area: value }), String(value)).to.throw('visualizer.sleeve.lyrics_area must be an area');
       }
       expect(() => sleeve({ now_area: 'left' })).to.throw('visualizer.sleeve.now_area must be an area');
+    });
+
+    it('takes sleeve\'s stylesheet variables, numbers as their text, and refuses what sleeve would', () => {
+      expect(sleeve({}).style).to.equal(null);
+      expect(sleeve({ style: { '--art-size': 512, '--swirl-timing': 'cubic-bezier(0.4, 0, 0.6, 1)', '--lyrics-scrim': 'auto' } }).style)
+        .to.deep.equal({ '--art-size': '512', '--swirl-timing': 'cubic-bezier(0.4, 0, 0.6, 1)', '--lyrics-scrim': 'auto' });
+      expect(() => sleeve({ style: 'big' })).to.throw('visualizer.sleeve.style must be a mapping');
+      for (const name of ['--now-preset', '--lyrics-scrim-alpha', '--art-layer-opacity', 'art-size']) {
+        expect(() => sleeve({ style: { [name]: '1' } }), name).to.throw(`visualizer.sleeve.style.${name} must be a variable sleeve takes`);
+      }
+      for (const value of ['url(x)', '0; color: red', '"0"', 'a/b', true, null]) {
+        expect(() => sleeve({ style: { '--art-blur': value } }), String(value)).to.throw('visualizer.sleeve.style.--art-blur must be');
+      }
     });
 
     it('rejects a background sleeve would refuse', () => {

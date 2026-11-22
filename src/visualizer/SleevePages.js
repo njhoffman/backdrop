@@ -8,8 +8,18 @@ import { DEFAULT_VEIL, scaleVeil, veilStrength } from './palette.js';
 // What sleeve can change on a running page; an option set at its start and now unset cannot be, since a
 // reset goes back to the start options
 const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign', 'lyricsArea', 'nowArea', 'background'];
-export const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]);
-export const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key]);
+// style is a map that sleeve merges name by name: compared by its content, and each name a start option of its own
+const sameStyle = (from, to) => JSON.stringify(Object.entries(from ?? {}).sort()) === JSON.stringify(Object.entries(to ?? {}).sort());
+export const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]) || !sameStyle(from?.style, to?.style);
+export const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key])
+  || Object.keys(started?.style ?? {}).some(name => !next?.style?.[name]);
+// The style to send for a change from one look to the next: the next one's, and an empty value for each name it drops,
+// since sleeve keeps a name an earlier change set until told otherwise
+export function styleChange(from, to) {
+  const dropped = Object.keys(from ?? {}).filter(name => !(name in (to ?? {})));
+  const style = { ...Object.fromEntries(dropped.map(name => [name, ''])), ...to };
+  return Object.keys(style).length ? style : null;
+}
 
 // What a cover becomes while the system is loaded: a moving cover can cost a sixth of the GPU, a color a fraction of that
 const STILL_BACKGROUND = '#0a0f1a';

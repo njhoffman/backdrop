@@ -14,6 +14,13 @@ const VEIL_RING = { ...RING, radius: 230, width: 5, amplify: 450 };
 const SIDE_RECTS = { bars: { x: '33%', y: '75%', width: '67%', height: '25%' }, ring: { x: '33%', y: 0, width: '67%', height: '75%' } };
 // The bars' colors where they turn through the hues, blue to start with
 const CYCLE_BARS = { colors: ['#000000', '#33aacc'] };
+// sleeve's stylesheet variables (sleeve 0.46.0, `style`), over the user's style.css for these looks alone.
+// The cover itself, sharp and still across the window, the user's animation turned off for it; sleeve lays a scrim
+// behind the lyrics over a busy cover by itself
+const SHARP_COVER = { '--art-animation': 'none', '--art-size': 512, '--art-blur': 0, '--art-scale': 1, '--art-opacity': 1, '--art-dim': 0.25 };
+// Sunamu's background: two copies of the cover turning opposite ways, blended so their colors keep mixing, at
+// Sunamu's own strength (no extra veil, its saturation)
+const SWIRL = { '--art-animation': 'sleeve-art-swirl', '--art-opacity': 1, '--art-dim': 0, '--art-saturation': 1.5 };
 
 // The veil looks' instances: the wallpaper darkened under a see-through layer tinted from it, solid lyrics on it,
 // a ring beside them with bars below it. With cycle, the ring and bars turn through the hues together.
@@ -126,12 +133,29 @@ const PRESETS = {
   },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
-    description: 'The track\'s cover as the whole background, lyrics on the left, a ring and bars on the right',
+    description: 'The track\'s cover, sharp, as the whole background, lyrics on the left, a ring and bars on the right',
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover', style: SHARP_COVER } },
       { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars },
       { name: 'ring', module: 'radial', rect: SIDE_RECTS.ring, radial: RING }
+    ]
+  },
+  // The cover alone, sharp across the window, lyrics on the left over sleeve's scrim
+  'lyrics-cover': {
+    description: 'The track\'s cover, sharp, as the whole background, lyrics on the left and nothing else',
+    wallpaper: false,
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '40%x100%+0+0', background: 'cover', style: SHARP_COVER } }
+    ]
+  },
+  // Sunamu's moving background across the window, lyrics in the middle, a wave along the bottom
+  'lyrics-swirl': {
+    description: 'Two copies of the track\'s cover turning and blending as the whole background, lyrics in the middle, a wave along the bottom',
+    wallpaper: false,
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', style: SWIRL } },
+      { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom

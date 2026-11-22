@@ -92,6 +92,19 @@ describe('SleeveVisualizer', () => {
       expect(on.command(screen, { x: 0, y: 0, width: 100, height: 100 }).args).to.include('--map-below');
     });
 
+    it('passes the style at the start and over ctl, one --style each, only to a sleeve that knows it', async () => {
+      const style = { '--art-size': '512', '--art-animation': 'sleeve-art-swirl' };
+      const current = adapterFor({ style }, version('0.46.0'));
+      await current.prepare();
+      expect(current.command(monitor, geometry).args.slice(8)).to.deep.equal(['--style=--art-size=512', '--style=--art-animation=sleeve-art-swirl']);
+      expect(current.display(monitor, { look: { style: { '--art-size': '', '--art-blur': '0' } } }).args.slice(4))
+        .to.deep.equal(['--style=--art-size=', '--style=--art-blur=0']);
+      const old = adapterFor({ style }, version('0.45.0'));
+      await old.prepare();
+      expect(old.command(monitor, geometry).args.join(' ')).to.not.include('--style');
+      expect(old.display(monitor, { look: { style } }).args.join(' ')).to.not.include('--style');
+    });
+
     it('reports an older sleeve by name rather than letting it exit 2 on the option', async () => {
       for (const sleeve of [{ lyrics_area: '33%x100%+0+0' }, { now_area: '33%x100%+0+0' }, { background: 'cover' }, { map_below: true }]) {
         const failure = await adapterFor(sleeve, version('0.35.9')).prepare().catch(error => error.message);

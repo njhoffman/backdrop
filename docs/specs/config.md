@@ -108,7 +108,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   enabled: false
   engine: glava            # glava or sleeve (docs/specs/sleeve.md); also per instance
   projectm: {}             # for engine: projectm: fps, preset_duration, preset_path, args, command
-  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background (a color, cover, or auto: a veil from the wallpaper), map_below, no_sandbox, command
+  sleeve: {}               # for engine: sleeve: now, now_position, lyrics_align, lyrics_area, now_area, background (a color, cover, or auto: a veil from the wallpaper), style (sleeve's --art-*, --flow-*, --swirl-*, --lyrics-scrim* variables; sleeve 0.46+), map_below, no_sandbox, command
   monitors: all            # all, [names], or {name: true | false | {placement, rect}}
   module: bars             # bars, graph, radial, circle, wave
   audio: pulseaudio        # pulseaudio or fifo
@@ -123,7 +123,7 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
-                           #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-now
+                           #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-cover, lyrics-swirl, lyrics-now
                            #   (src/visualizer/presets.js); cannot set enabled, preset, presets or screenshots;
                            #   description: a line the menu and web page show
   instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];

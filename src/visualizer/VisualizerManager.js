@@ -5,7 +5,7 @@ import { ChannelSources, channelSource } from './channels.js';
 import { createVisualizer } from './index.js';
 import { turnHue, veilStrength } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
-import { SleevePages, changedLook, lostStartOption } from './SleevePages.js';
+import { SleevePages, changedLook, lostStartOption, styleChange } from './SleevePages.js';
 import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -287,7 +287,7 @@ export class VisualizerManager {
       if (instance.opacity !== entry.instance.opacity) changed.add(entry);
       if (instance.sleeve && changedLook(entry.instance.sleeve, instance.sleeve)) {
         if (veilStrength(instance.sleeve.background) !== null) entry.veil ??= this.veilFor(entry.monitor, entry.geometry, instance.sleeve.lyricsArea);
-        this.display(entry, { look: this.shownLook(instance.sleeve, entry) });
+        this.display(entry, { look: { ...this.shownLook(instance.sleeve, entry), style: styleChange(entry.instance.sleeve.style, instance.sleeve.style) } });
       }
       entry.instance = instance;
       entry.adapter.instance = instance;

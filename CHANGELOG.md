@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-22
+
+### Added
+
+- `lyrics-cover`: the track's cover, sharp, as the whole background, lyrics on the left and nothing else.
+- `lyrics-swirl`: two copies of the track's cover turning opposite ways and blending as the whole background, as
+  Sunamu drew it, lyrics in the middle and a wave along the bottom.
+- `visualizer.instances[].sleeve.style`: sleeve's stylesheet variables for that page (`--art-*`, `--flow-*`,
+  `--swirl-*`, `--lyrics-scrim*`), over your `~/.config/sleeve/style.css`; it needs sleeve 0.46.0, and an older
+  sleeve shows the page without it.
+
+### Changed
+
+- `lyrics-stage` shows the cover itself, sharp, instead of a blurred wash of its colors, with sleeve keeping the lyrics
+  readable over it (sleeve 0.46.0).
+
 ## [3.0.2] - 2026-11-22
 
 ### Fixed
