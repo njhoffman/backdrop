@@ -169,9 +169,12 @@ describe('mpv integration', function () {
       }
     });
 
-    await client.command('loadfile', missing[0], 'replace');
+    // Queued before anything plays: with replace, a fast failure of the first could empty the playlist before the
+    // appends arrived, leaving mpv idle (append does not start it), so the rest never played (seen on CI, 2.94.0)
+    await client.command('loadfile', missing[0], 'append');
     await client.command('loadfile', file, 'append');
     await client.command('loadfile', missing[1], 'append');
+    await client.command('playlist-play-index', 0);
 
     await waitFor(async () => (await client.getProperty('playlist-count')) === 1);
     await pending;

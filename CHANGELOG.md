@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.94.2] - 2026-11-21
+
+### Fixed
+
+- Two tests that failed now and then on slow machines (the mpv playlist error test and a connect retry timing check).
+
 ## [2.94.1] - 2026-11-21
 
 ### Changed

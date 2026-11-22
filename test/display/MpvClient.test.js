@@ -178,7 +178,8 @@ describe('MpvClient', () => {
     } catch (error) {
       expect(error.message).to.include(`Cannot connect to mpv at ${socketPath}`);
     }
-    expect(Date.now() - started).to.be.at.least(40);
+    // Two 20 ms waits; a timer can measure a millisecond short by Date.now (39 on CI, 2.92.0)
+    expect(Date.now() - started).to.be.at.least(38);
   });
 
   it('connects once the socket appears', async () => {
