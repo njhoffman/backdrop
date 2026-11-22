@@ -20,6 +20,11 @@ export function overlayPosition(value) {
   return String(value).replace(/\0/g, '').trim().toLowerCase() === 'below' ? 'below' : 'above';
 }
 
+// Whether two { x, y, width, height } rectangles share any pixel
+export function overlaps(a, b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
 function call(client, request, ...args) {
   return new Promise((resolve, reject) => {
     client[request](...args, (error, result) => (error ? reject(error) : resolve(result)));
@@ -114,6 +119,57 @@ export class X11 {
       return { window, position: overlayPosition(property.data.toString('latin1')) };
     }
     return null;
+  }
+
+  // The part of monitor ({ x, y, width, height }) that shows only backdrop's windows (own: top-level ids, the
+  // wallpaper, visualizers and overlays), for a screenshot of the look: the monitor less any dock (a bar marked
+  // _NET_WM_WINDOW_TYPE_DOCK) along its top or bottom edge, or null when any other window viewable above the lowest
+  // of own overlaps it, or when none of own is a top-level. Windows that vanish while being looked at are skipped.
+  async uncoveredArea(monitor, own) {
+    const { children } = await call(this.client, 'QueryTree', this.root);
+    const indexes = [...own].map(id => children.indexOf(id)).filter(index => index >= 0);
+    if (!indexes.length) return null;
+    const ownSet = new Set(own);
+    const dockAtoms = await this.dockAtoms();
+    let top = 0;
+    let bottom = 0;
+    for (const window of children.slice(Math.min(...indexes) + 1)) {
+      if (ownSet.has(window)) continue;
+      const attributes = await call(this.client, 'GetWindowAttributes', window).catch(() => null);
+      // 2 is IsViewable; an InputOnly window (class 2) draws nothing
+      if (!attributes || attributes.mapState !== 2 || attributes.klass === 2) continue;
+      const geometry = await call(this.client, 'GetGeometry', window).catch(() => null);
+      if (!geometry) continue;
+      const box = { x: geometry.xPos, y: geometry.yPos, width: geometry.width, height: geometry.height };
+      if (!overlaps(box, monitor)) continue;
+      if (!dockAtoms || !await this.isDock(window, dockAtoms)) return null;
+      if (box.y <= monitor.y) top = Math.max(top, box.y + box.height - monitor.y);
+      else if (box.y + box.height >= monitor.y + monitor.height) bottom = Math.max(bottom, monitor.y + monitor.height - box.y);
+      else return null;
+    }
+    const height = monitor.height - top - bottom;
+    return height > 0 ? { x: monitor.x, y: monitor.y + top, width: monitor.width, height } : null;
+  }
+
+  // The atoms for telling a dock, or null when no program ever created them
+  async dockAtoms() {
+    const type = await call(this.client, 'InternAtom', true, '_NET_WM_WINDOW_TYPE');
+    const dock = await call(this.client, 'InternAtom', true, '_NET_WM_WINDOW_TYPE_DOCK');
+    return type && dock ? { type, dock } : null;
+  }
+
+  // Whether a top-level window, or a direct child where a window manager's frame holds it, is a dock
+  async isDock(top, { type, dock }) {
+    const candidates = [top];
+    const tree = await call(this.client, 'QueryTree', top).catch(() => null);
+    if (tree) candidates.push(...tree.children);
+    for (const window of candidates) {
+      const property = await call(this.client, 'GetProperty', 0, window, type, ANY_PROPERTY_TYPE, 0, 16).catch(() => null);
+      const data = property?.data;
+      if (!data?.length) continue;
+      for (let offset = 0; offset + 4 <= data.length; offset += 4) if (data.readUInt32LE(offset) === dock) return true;
+    }
+    return false;
   }
 
   // WM_NAME of a window, or null

@@ -2,9 +2,11 @@ import YAML from 'yaml';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { reservedMessage, reservedPresets } from '../display/daemon/Screensaver.js';
+import fs from 'fs-extra';
+import { presetShot, presetShotPath } from '../visualizer/PresetShots.js';
 import { BUILTIN_PRESETS } from '../visualizer/presets.js';
 import {
-  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetsOf, visualizerSettings
+  ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, instanceRaw, lookAsPreset, presetInfo, presetsOf, presetSummary, visualizerSettings
 } from '../visualizer/settings.js';
 
 // The running visualizer's look, its presets and live changes, for the rofi menu and the web interface's Visualizer page
@@ -62,6 +64,7 @@ export class VisualizerService {
       : (Array.isArray(section.instances) && section.instances.length ? section.instances.map(item => item.name) : ['main']);
     const sent = name => state?.monitors?.flatMap(monitor => monitor.visualizers ?? []).find(item => item.instance === name)?.colors ?? null;
     const own = section.presets ?? {};
+    const details = await this.presetDetails();
     return {
       running: Boolean(state),
       enabled: state ? Boolean(state.visualizer?.enabled) : Boolean(section.enabled),
@@ -69,9 +72,14 @@ export class VisualizerService {
       wallpaper: state ? state.wallpaper !== false : null,
       preset: options.preset,
       // The screensaver's own look only while it is on (or still in force)
+      // Each with its description (or null), a summary made from its instances, and when its screenshot was taken
+      // (ms, or null: none yet), which /visualizer-shots/<name>.jpg serves
       presets: Object.keys(presetsOf(section)).filter(name => !this.reserved(state).includes(name) || name === options.preset).map(name => ({
-        name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in'
+        name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in',
+        description: details[name].description, summary: details[name].summary, screenshot: details[name].shot?.mtime ?? null
       })),
+      // What no preset looks like: the section's own settings
+      none: { summary: presetSummary(section, null) },
       changed: Object.keys(options.live).length > 0,
       // yaml: the instance's settings as they apply now and its live changes alone, for the page's Advanced box
       instances: names.map(name => ({
@@ -83,6 +91,15 @@ export class VisualizerService {
         sleeve: { now: SLEEVE_NOW, positions: SLEEVE_POSITIONS, aligns: SLEEVE_ALIGNS }
       }
     };
+  }
+
+  // Every preset's description (or null), summary and screenshot ({ path, mtime } or null), by name, for the menu
+  // and the page
+  async presetDetails() {
+    const dir = this.config.get().paths.thumbnails;
+    const entries = await Promise.all(Object.entries(presetInfo(this.section))
+      .map(async ([name, item]) => [name, { ...item, shot: await presetShot(dir, name) }]));
+    return Object.fromEntries(entries);
   }
 
   // Sends a control request and waits for it; a visualizer_set the daemon refused is an error
@@ -169,7 +186,12 @@ export class VisualizerService {
     const look = lookAsPreset(section, VisualizerService.options(state, section));
     // Checked as the daemon will read it
     visualizerSettings({ ...section, presets: { ...(section.presets ?? {}), [name]: look } }, { preset: name });
-    await this.config.setInFile(['visualizer', 'presets', name], look);
+    // Saving over the preset in force keeps its description; any other name gets the summary until one is written
+    const own = presetInfo(section)[name];
+    const description = name === VisualizerService.options(state, section).preset ? own?.description : null;
+    await this.config.setInFile(['visualizer', 'presets', name], description ? { description, ...look } : look);
+    // A screenshot of what the name looked like before no longer shows it
+    await fs.remove(presetShotPath(this.config.get().paths.thumbnails, name)).catch(() => {});
     await this.refresh();
     await this.send(state, { reload_config: true, visualizer_reset: true, preset: name });
     this.logger.info('Visualizer preset saved', { preset: name });
@@ -192,6 +214,7 @@ export class VisualizerService {
       throw Object.assign(new Error(`${name} is in use; switch to another preset first`), { status: 409 });
     }
     await this.config.removeInFile(['visualizer', 'presets', name]);
+    await fs.remove(presetShotPath(this.config.get().paths.thumbnails, name)).catch(() => {});
     await this.refresh();
     if (state) await this.send(state, { reload_config: true });
     this.logger.info('Visualizer preset deleted', { preset: name });

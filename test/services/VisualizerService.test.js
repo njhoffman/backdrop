@@ -40,9 +40,23 @@ describe('VisualizerService', () => {
     expect(view.instances[0]).to.include({ name: 'main', changed: false });
     expect(view.instances[0].look).to.include({ module: 'bars', opacity: 0.8 });
     expect(view.instances[0].sent).to.deep.equal({ fg: '#112233ff', fg2: '#445566ff' });
-    expect(view.presets.find(preset => preset.name === 'ring')).to.deep.equal({ name: 'ring', source: 'built in' });
+    expect(view.presets.find(preset => preset.name === 'ring')).to.deep.equal({
+      name: 'ring', source: 'built in', description: 'A radial ring in the middle of the screen', summary: 'radial center', screenshot: null
+    });
+    expect(view.none).to.deep.equal({ summary: 'bars bottom' });
     expect(view.choices.modules).to.include('radial');
     expect(view.choices.swatches.ocean).to.deep.equal(['#003a5c', '#33aacc']);
+  });
+
+  it('gives each preset its screenshot, when one was taken', async () => {
+    const config = makeConfig({ 'paths.runtime': dir, 'paths.thumbnails': path.join(dir, 'thumbs') });
+    await fs.outputFile(path.join(dir, 'thumbs', 'visualizer-ring.jpg'), 'jpeg');
+    const details = await make(config).presetDetails();
+    expect(details.ring.shot.path).to.equal(path.join(dir, 'thumbs', 'visualizer-ring.jpg'));
+    expect(details.ring.shot.mtime).to.be.a('number');
+    expect(details.wave.shot).to.equal(null);
+    const view = await make(config).describe();
+    expect(view.presets.find(preset => preset.name === 'ring').screenshot).to.equal(details.ring.shot.mtime);
   });
 
   it('describes the config\'s visualizer while the daemon is stopped, and refuses changes then', async () => {
@@ -143,6 +157,21 @@ describe('VisualizerService', () => {
       expect(await fs.readFile(file, 'utf8')).to.include('ring:');
     });
 
+    it('keeps the description when saving over the preset in force, and drops the old screenshot', async () => {
+      const service = make(config, { reload: true });
+      await fs.appendFile(file, '  presets:\n    dusk:\n      description: Dim bars\n      opacity: 0.3\n');
+      await service.refresh();
+      const shot = path.join(config.get().paths.thumbnails, 'visualizer-dusk.jpg');
+      await fs.outputFile(shot, 'jpeg');
+      state.visualizer.preset = 'dusk';
+      await service.savePreset('dusk', { replace: true });
+      expect(config.get().visualizer.presets.dusk).to.deep.equal({ description: 'Dim bars', opacity: 0.4 });
+      expect(await fs.pathExists(shot)).to.equal(false);
+      // Under another name the look is new, and has none
+      await service.savePreset('night');
+      expect(config.get().visualizer.presets.night).to.deep.equal({ opacity: 0.4 });
+    });
+
     it('deletes a saved preset, refusing built-in ones, unknown ones and the one in use', async () => {
       const service = make(config, { reload: true });
       await fs.appendFile(file, '  presets:\n    dusk:\n      opacity: 0.3\n    ring:\n      opacity: 0.5\n    calm:\n      opacity: 0.4\n');
@@ -166,7 +195,7 @@ describe('VisualizerService', () => {
       const service = make(config, { reload: true });
       await fs.appendFile(file, '  presets:\n    dusk:\n      opacity: 0.3\n');
       const view = await service.describe();
-      expect(view.presets.find(preset => preset.name === 'dusk')).to.deep.equal({ name: 'dusk', source: 'config' });
+      expect(view.presets.find(preset => preset.name === 'dusk')).to.deep.equal({ name: 'dusk', source: 'config', description: null, summary: 'bars bottom', screenshot: null });
     });
   });
 });

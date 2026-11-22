@@ -111,12 +111,13 @@ async function startXvfb(attempts = 3) {
     throw new Error(`rofi did not open a window: ${runs.at(-1)?.stderr.trim() ?? 'not started'}`);
   }
 
-  // Presses a key that ends this rofi run, again if a busy rofi had not yet taken the keyboard and missed it.
+  // Presses a key that ends this rofi run (several separated by spaces: 'Right i'), again if a busy rofi had not yet
+  // taken the keyboard and missed it.
   // Its window can outlive it for a moment and would pass for the next run's, so this waits for that too.
   async function pressUntilClosed(run, key) {
     const deadline = Date.now() + 15000;
     while (run.code === null && Date.now() < deadline) {
-      xdotool(['key', key]);
+      xdotool(['key', ...key.split(' ')]);
       for (let waited = 0; run.code === null && waited < 2000; waited += 50) await sleep(50);
     }
     if (run.code === null) throw new Error(`rofi did not close on ${key}`);
@@ -191,8 +192,8 @@ async function startXvfb(attempts = 3) {
 
   for (const [name, makeView] of [['panel', panelView], ['minimal', minimalView]]) {
     describe(`${name} view`, () => {
-      it('parses the theme strings and returns a bound key as { key }', async () => {
-        expect(await driven(makeView, ['2'])(menu())).to.deep.equal({ key: '2' });
+      it('parses the theme strings and returns a bound key as { key, index }, index the entry under the cursor', async () => {
+        expect(await driven(makeView, ['2'])(menu())).to.deep.equal({ key: '2', index: 0 });
         // Bound keys are the entries' (n 1 2 3 v p s u m d), then the menu's (q Tab), from exit code 10
         expect(runs.map(run => run.code)).to.deep.equal([12]);
         cleanStderr();
@@ -200,8 +201,8 @@ async function startXvfb(attempts = 3) {
 
       it('returns Tab and q as keys, Escape as null and Return as the selected index', async () => {
         const view = driven(makeView, ['Tab', 'q', 'Escape', 'Return']);
-        expect(await view(menu())).to.deep.equal({ key: 'Tab' });
-        expect(await view(menu())).to.deep.equal({ key: 'q' });
+        expect(await view(menu())).to.deep.equal({ key: 'Tab', index: 0 });
+        expect(await view(menu())).to.deep.equal({ key: 'q', index: 0 });
         expect(await view(menu())).to.equal(null);
         // -a marks keep 2 active; the selection starts on the first entry
         expect(await view(menu())).to.equal(0);
@@ -241,6 +242,43 @@ async function startXvfb(attempts = 3) {
       // v (14) opens speed, Return picks 0.4, Escape goes back, Tab (23, after q, z and o) the monitors, Escape back, q (20) quits
       expect(runs.map(run => run.code)).to.deep.equal([14, 0, 1, 23, 1, 20]);
       expect(display.speed.firstCall.args[0]).to.equal('0.4');
+      cleanStderr();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('draws the preset pictures and inspects one with its screenshot as a tall banner', async () => {
+    const runtime = path.join(dir, 'run-presets');
+    const thumbs = path.join(dir, 'thumbs');
+    await fs.ensureDir(runtime);
+    await fs.ensureDir(thumbs);
+    execFileSync('convert', ['-size', '960x540', 'gradient:#204060-#60a0c0', path.join(thumbs, 'visualizer-ring.jpg')]);
+    const db = new DatabaseManager();
+    db.initialize(':memory:');
+    try {
+      const monitors = [{ name: 'DP-1', width: 1920, height: 1080 }];
+      const visualizer = { enabled: true, error: null, preset: null, presets: ['subtle', 'ring'], instances: ['main'], live: {} };
+      const display = {
+        control: {
+          targetMonitor: async () => monitors[0],
+          selected: async () => ({ monitor: monitors[0], path: null, media: null, rating: null }),
+          state: async () => ({ monitors, visualizer })
+        }
+      };
+      const config = makeConfig({ 'paths.runtime': runtime, 'paths.thumbnails': thumbs, 'menu.workspace': false, 'visualizer.enabled': true });
+      // p opens load, Right Right i inspects ring (none, subtle, ring), Escape goes back to the pictures, Escape leaves
+      // load, Escape closes
+      const view = driven(panelView, ['p', 'Right Right i', 'Escape', 'Escape', 'Escape']);
+      const command = new MenuCommand(config, db, silentLogger, {
+        display, rating: {}, view, thumbnail: async () => null, workspace: async () => async () => {}, control: async () => ({ monitors, visualizer })
+      });
+      await command.open({ page: 'visualizer' });
+      // Visualizer keys: e w m o a l c p r s, then q, from 10; load's: q, i
+      expect(runs.map(run => run.code)).to.deep.equal([17, 11, 1, 1, 1]);
+      expect(runs[1].args).to.include('-show-icons');
+      expect(runs[2].args).to.include.members(['-selected-row', '2', 'preview { padding: 205px 0px; }']);
+      expect(runs[3].args).to.include('-show-icons');
       cleanStderr();
     } finally {
       db.close();

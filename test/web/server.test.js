@@ -270,6 +270,16 @@ describe('WebServer', () => {
       expect(await (await get('/api/visualizer')).json()).to.deep.equal({ running: true, preset: null });
     });
 
+    it('serves the presets\' screenshots from the thumbnail folder, and 404 for one not taken yet', async () => {
+      config.set('paths.thumbnails', path.join(dir, 'thumbs'));
+      await fs.outputFile(path.join(dir, 'thumbs', 'visualizer-ring.jpg'), 'ring jpeg');
+      const shot = await get('/visualizer-shots/ring.jpg?v=12');
+      expect(shot.headers.get('content-type')).to.equal('image/jpeg');
+      expect(await shot.text()).to.equal('ring jpeg');
+      expect((await get('/visualizer-shots/wave.jpg')).status).to.equal(404);
+      expect((await get('/visualizer-shots/..%2Fthumb.jpg')).status).to.equal(404);
+    });
+
     it('turns it on and off, changes an instance live, resets, and answers with the view', async () => {
       expect(await (await post('/api/visualizer/enabled', { on: false })).json()).to.deep.equal({ visualizer: { running: true, preset: null } });
       expect(visualizer.setEnabled.firstCall.args).to.deep.equal([false]);

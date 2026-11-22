@@ -1,5 +1,6 @@
 import { withX11 } from '../display/x11.js';
 import { AudioWatcher } from './audio.js';
+import { PresetShots } from './PresetShots.js';
 import { ChannelSources, channelSource } from './channels.js';
 import { createVisualizer } from './index.js';
 import { DEFAULT_VEIL, scaleVeil, turnHue, veilStrength } from './palette.js';
@@ -56,10 +57,10 @@ const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}
 
 // What GLava reads when it starts, so a change to it needs a restart. Left out: each instance's opacity (a
 // window property), how colors are picked from the wallpaper (palette.pick and min_contrast, sent over the
-// pipe) and wallpaper_dim, which running instances take as they are, and the preset names.
+// pipe), wallpaper_dim and screenshots, which running instances take as they are, and the preset names.
 function startSettings(settings) {
   // only_while_playing and an instance's visible start and stop instances (sync), restarting none
-  const { preset, presets, instances, wallpaperDim, wallpaper, onlyWhilePlaying, ...shared } = settings;
+  const { preset, presets, instances, wallpaperDim, wallpaper, onlyWhilePlaying, screenshots, ...shared } = settings;
   return JSON.stringify({
     ...shared,
     // sleeve takes its look over `sleeve ctl display` (changedLook)
@@ -92,7 +93,7 @@ export class VisualizerManager {
     settleDelay = SETTLE_MS, now = Date.now, create = createVisualizer,
     colorsFor = () => null, veilFor = () => null, pipeGap = PIPE_GAP_MS, onMusicDim = () => {}, onOverlays = () => {},
     sleevedWatcher = options => new SleevedWatcher(options), onWallpaper = () => {}, cycleStep = CYCLE_STEP_MS,
-    channelSources = options => new ChannelSources(options)
+    channelSources = options => new ChannelSources(options), presetShots = options => new PresetShots(options)
   }) {
     Object.assign(this, {
       config, logger, monitors, screens, spawn, kill, exec, x11, audioWatcher,
@@ -101,6 +102,8 @@ export class VisualizerManager {
     });
     // The one-speaker remap sources for instances with channel: left or right, and whether any were made
     this.channelSources = channelSources({ exec, logger });
+    // Screenshots of the preset in force, for the menu and the web page (visualizer.screenshots)
+    this.shots = presetShots({ manager: this, exec, logger, now });
     this.channelsMade = false;
     // Sends the turned colors of palette.source: cycle while an instance with it runs, turning from when the first
     // of them started, so a look that cycles starts at its configured colors
@@ -155,6 +158,7 @@ export class VisualizerManager {
     }
     await this.watchAudio();
     this.noteWallpaper();
+    this.shots.update();
   }
 
   // Whether the look in use leaves no use for the wallpaper (visualizer.wallpaper: false). An instance that cannot run
@@ -235,11 +239,13 @@ export class VisualizerManager {
       await this.stopAll();
       await this.watchAudio();
       this.noteWallpaper();
+      this.shots.update();
       return;
     }
     if (!this.prepared) await this.configure();
     else await this.watchAudio();
     this.noteWallpaper();
+    this.shots.update();
     await this.sync();
   }
 
@@ -318,6 +324,7 @@ export class VisualizerManager {
     // An instance shown or hidden, or only_while_playing turned, starts or stops instances
     this.showSleeve();
     await this.sync();
+    this.shots.update();
   }
 
   // After a saved change to the config file: takes it like a menu change when the running instances can,
@@ -356,7 +363,9 @@ export class VisualizerManager {
   async watchAudio() {
     const followsOutput = this.settings?.audio === 'pulseaudio' && (this.settings?.source ?? 'auto') === 'auto' &&
       this.oneSpeakerInstances(this.settings?.instances ?? []).length > 0;
-    const wanted = Boolean(this.settings?.onlyWhilePlaying || this.settings?.wallpaperDim || followsOutput) && this.active && !this.stopping;
+    // A preset's screenshot waits for sound, so the visualizer has something to draw
+    const shots = Boolean(this.settings?.screenshots && this.settings?.preset) && this.settings?.audio === 'pulseaudio';
+    const wanted = Boolean(this.settings?.onlyWhilePlaying || this.settings?.wallpaperDim || followsOutput || shots) && this.active && !this.stopping;
     const { source, silenceGrace } = this.settings ?? {};
     const current = this.audio.watcher;
     if (current && wanted && current.source === source && current.grace === silenceGrace * 1000) {
@@ -900,6 +909,7 @@ export class VisualizerManager {
 
   async stop() {
     this.stopping = true;
+    this.shots.stop();
     this.audio.watcher?.stop();
     this.noteMusicDim();
     await this.stopAll();

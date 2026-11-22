@@ -15,7 +15,7 @@ import { formatAdjustments } from '../utils/mediaView.js';
 import { formatSetting } from '../utils/output.js';
 import { enterWorkspace, workspaceName } from '../utils/workspace.js';
 import { sendControl } from '../display/control.js';
-import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, presetsOf } from '../visualizer/settings.js';
+import { ANCHORS, MODULES, PALETTE_PICKS, SLEEVE_ALIGNS, SLEEVE_NOW, SLEEVE_POSITIONS, instanceLook, presetsOf, presetSummary } from '../visualizer/settings.js';
 import { readState } from '../display/Daemon.js';
 import { readWebInfo, webAddress } from '../web/info.js';
 
@@ -35,6 +35,8 @@ function startWebServer() {
 
 export { MENU_STYLES } from '../config/schema.js';
 export const PANEL_THEME = fileURLToPath(new URL('../../share/rofi/backdrop-panel.rasi', import.meta.url));
+// The picture of a preset without a screenshot, once another has one: rofi leaves room for an icon on every button
+export const NO_SCREENSHOT = fileURLToPath(new URL('../../share/rofi/no-screenshot.svg', import.meta.url));
 
 // Wallpaper videos only ever play slowed down, so +0.1 stops at 1 (see stepMenu)
 const SPEEDS = ['0.4', '0.5', '0.65', '0.75', '0.85', '1', '1.25', '1.5', '2', '-0.1', '+0.1'];
@@ -64,6 +66,8 @@ const WEB_KEY = 'o';
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 // In the load menu: delete a preset saved in the config
 const DELETE_KEY = 'x';
+// In the load menu: show the preset under the cursor in full
+const INSPECT_KEY = 'i';
 
 // Font Awesome glyphs for the visualizer menu: power, image, list, cube, adjust, volume, arrows, brush, undo, save
 const VISUALIZER_ICONS = {
@@ -123,7 +127,8 @@ function runRofi(args, input, spawnProcess, keys = []) {
     child.on('close', code => {
       // rofi exits 1 when dismissed with Escape
       if (code === 1) resolve(null);
-      else if (code >= 10 && code < 10 + keys.length) resolve({ key: keys[code - 10] });
+      // rofi prints the entry under the cursor with a key too, for a key acting on it (the preset menu's inspect)
+      else if (code >= 10 && code < 10 + keys.length) resolve(/^\d+$/.test(output.trim()) ? { key: keys[code - 10], index: Number(output.trim()) } : { key: keys[code - 10] });
       else if (code === 0 && /^\d+$/.test(output.trim())) resolve(Number(output.trim()));
       else reject(new Error(`rofi exited with code ${code}`));
     });
@@ -138,7 +143,7 @@ function menuKeys(menu) {
 
 function activeArgs(menu) {
   const active = menu.entries.flatMap((entry, index) => (entry.active ? [index] : []));
-  return active.length ? ['-a', active.join(',')] : [];
+  return [...(active.length ? ['-a', active.join(',')] : []), ...(Number.isInteger(menu.selected) ? ['-selected-row', String(menu.selected)] : [])];
 }
 
 // A rasi string literal
@@ -158,7 +163,7 @@ function rasiMarkup(text) {
 export function minimalView(extraArgs = [], spawnProcess = spawn) {
   return menu => {
     const message = [menu.message, menu.status?.join('  ·  ')].filter(Boolean).join('\n');
-    const input = menu.entries.map(entry => [entry.icon, entry.key, entry.label].filter(Boolean).join('  ')).join('\n');
+    const input = menu.entries.map(entry => [entry.icon, entry.key, entry.label, entry.detail && `- ${entry.detail}`].filter(Boolean).join('  ')).join('\n');
     return runRofi([
       '-p', menu.prompt, ...(message ? ['-mesg', message] : []), ...activeArgs(menu), ...extraArgs
     ], `${input}\n`, spawnProcess, menuKeys(menu));
@@ -168,15 +173,29 @@ export function minimalView(extraArgs = [], spawnProcess = spawn) {
 // Buttons per row at most in submenus
 const PANEL_COLUMNS = 7;
 
-// A button's markup: a large icon over its key (dimmed) and caption. Highlighted buttons have a bold
-// caption, and ones that do not apply to the item are drawn faded. The icon is markup itself (a glyph, or
-// a colored swatch span), so it is not escaped.
+// A button's markup: a large icon over its key (dimmed) and caption, then a small dimmed detail line when it has one.
+// A button with an image (drawn by rofi as the entry's icon) has no glyph line. Highlighted buttons have a bold
+// caption, and ones that do not apply to the item are drawn faded. The icon is markup itself (a glyph, or a
+// colored swatch span), so it is not escaped.
 function buttonMarkup(entry) {
-  const caption = escapeMarkup(entry.caption ?? entry.label).replace(/\|/g, '¦');
+  const clean = text => escapeMarkup(text).replace(/\|/g, '¦');
+  const caption = clean(entry.caption ?? entry.label);
   const key = entry.key ? `<span alpha="55%">${escapeMarkup(entry.key)}</span>  ` : '';
-  const text = `<span font_size="x-large">${entry.icon || ' '}</span>\n${key}${entry.active ? `<b>${caption}</b>` : caption}`;
+  const glyph = entry.image ? '' : `<span font_size="x-large">${entry.icon || ' '}</span>\n`;
+  const detail = entry.detail ? `\n<span font_size="small" alpha="70%">${clean(entry.detail)}</span>` : '';
+  const text = `${glyph}${key}${entry.active ? `<b>${caption}</b>` : caption}${detail}`;
   return entry.disabled ? `<span alpha="35%">${text}</span>` : text;
 }
+
+// An entry's markup with its image as rofi's icon (a row option: \0icon\x1f<path>)
+function buttonRow(entry) {
+  return entry.image ? `${buttonMarkup(entry)}\0icon\x1f${entry.image}` : buttonMarkup(entry);
+}
+
+// How large rofi draws entry images: a 16:9 screenshot comes out 112x63
+const IMAGE_SIZE = '112px';
+// The banner's height with banner: 'tall', for a 16:9 picture across the window's 728 px: padding is half of it
+const TALL_BANNER = '205px';
 
 // A grid of buttons under a preview banner, titled with the item's file name, with the item's details and
 // the menu's status side by side. Entries hold a line break, so they are separated by | instead; three
@@ -185,13 +204,18 @@ export function panelView(extraArgs = [], spawnProcess = spawn, theme = PANEL_TH
   return menu => {
     const lines = Math.ceil(menu.entries.length / (menu.columns ?? PANEL_COLUMNS));
     const columns = Math.ceil(menu.entries.length / lines);
+    const images = menu.entries.some(entry => entry.image);
+    // A glyph or image, the key and caption, and a detail line when any button has one
+    const height = 3 + (menu.entries.some(entry => entry.detail) ? 1 : 0) - (images && menu.entries.every(entry => entry.image) ? 1 : 0);
     return runRofi([
-      '-markup-rows', '-sep', '|', '-eh', '3', '-theme', theme,
+      '-markup-rows', '-sep', '|', '-eh', String(height), '-theme', theme,
+      ...(images ? ['-show-icons', '-theme-str', `element-icon { size: ${IMAGE_SIZE}; }`] : []),
       '-theme-str', `listview { columns: ${columns}; lines: ${lines}; }`,
       '-theme-str', `textbox-status { content: ${rasiMarkup(menu.status?.join('\n') || ' ')}; }`,
       ...(menu.preview ? ['-theme-str', `preview { background-image: url(${rasiString(menu.preview)}, width); }`] : []),
+      ...(menu.banner === 'tall' ? ['-theme-str', `preview { padding: ${TALL_BANNER} 0px; }`] : []),
       '-p', menu.title ?? menu.prompt, '-mesg', menu.message || ' ', ...activeArgs(menu), ...extraArgs
-    ], menu.entries.map(buttonMarkup).join('|'), spawnProcess, menuKeys(menu));
+    ], menu.entries.map(buttonRow).join('|'), spawnProcess, menuKeys(menu));
   };
 }
 
@@ -207,8 +231,10 @@ async function done(action) {
   return warnings?.length ? { warnings } : {};
 }
 
-// Menus are built as { prompt, title, message, status, preview, entries: [{ icon, label, caption, key,
-// active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key } or null.
+// Menus are built as { prompt, title, message, status, preview, banner ('tall' for a 16:9 preview), selected (the row
+// to start on), entries: [{ icon, image (a picture for the panel's button), label, caption, detail (a small line
+// under it), key, active, disabled }], keys } and drawn by a view, which resolves to an entry index, { key, index }
+// (index: the entry under the cursor) or null.
 export class MenuCommand {
   constructor(config, database, logger, {
     display, rating, view, thumbnail = thumbnailFor, workspace = enterWorkspace, ask, control = sendControl,
@@ -676,36 +702,76 @@ export class MenuCommand {
   }
 
   // Load: each pick switches to that preset at once and the list stays, to try the next; picking the preset in
-  // force again, or keep, keeps it, and Escape goes back to the preset in force on opening. x lists the presets
-  // saved in the config to delete one, when there is one besides the active.
+  // force again, or keep, keeps it, and Escape goes back to the preset in force on opening. Each button shows the
+  // preset's screenshot (PresetShots.js) and description; i on one shows it in full, the screenshot as the banner
+  // and the grid without pictures, until Escape or i on it again. x lists the presets saved in the config to delete
+  // one, when there is one besides the active.
   async presetMenu(state, section, active) {
     // The screensaver's own look only while it is on
     const reserved = this.visualizer.reserved(state);
     const names = Object.keys(presetsOf(section)).filter(name => !reserved.includes(name) || name === active);
     const values = [null, ...names];
+    const details = await this.visualizer.presetDetails();
+    const none = { description: 'No preset: the visualizer section as the config file sets it', summary: presetSummary(section, null), shot: null };
+    const about = name => (name === null ? none : details[name] ?? { description: null, summary: null, shot: null });
+    // With no screenshot at all the buttons stay compact, without pictures
+    const pictures = values.some(name => about(name).shot);
     let current = active;
+    // The value under inspection (an index into values), or null for the grid of pictures
+    let inspected = null;
     for (;;) {
       const tried = current !== active;
+      const offset = tried ? 1 : 0;
       const deletable = Object.keys(section.presets ?? {}).filter(name => name !== current && name !== section.preset);
       const entries = [
         ...(tried ? [{ icon: VISUALIZER_ICONS.save, label: 'keep', caption: `keep ${current ?? 'none'}` }] : []),
-        ...values.map(name => ({ icon: VISUALIZER_ICONS.preset, label: name ?? 'none', active: name === current }))
+        ...values.map(name => {
+          const info = about(name);
+          return {
+            icon: VISUALIZER_ICONS.preset, label: name ?? 'none', active: name === current,
+            ...(inspected === null ? { detail: info.description ?? info.summary ?? undefined, ...(pictures ? { image: info.shot?.path ?? NO_SCREENSHOT } : {}) } : {})
+          };
+        })
       ];
       const hint = tried ? `trying ${current ?? 'none'}: pick it again or keep to keep it, Escape for ${active ?? 'none'}` : `preset: ${active ?? 'none'}`;
-      const picked = await this.show({ prompt: 'load', title: 'visualizer  ·  load a preset',
-        message: escapeMarkup(`${hint}${deletable.length ? `  (${DELETE_KEY} deletes a saved one)` : ''}`),
-        columns: Math.min(entries.length, 5), entries, keys: [QUIT_KEY, ...(deletable.length ? [DELETE_KEY] : [])] });
+      const keys = `${INSPECT_KEY} shows the one under the cursor${deletable.length ? `, ${DELETE_KEY} deletes a saved one` : ''}`;
+      const menu = { prompt: 'load', title: 'visualizer  ·  load a preset', message: escapeMarkup(`${hint}  (${keys})`),
+        columns: Math.min(entries.length, 5), entries, keys: [QUIT_KEY, INSPECT_KEY, ...(deletable.length ? [DELETE_KEY] : [])] };
+      if (inspected !== null) Object.assign(menu, this.inspection(values[inspected], about(values[inspected]), hint), { selected: inspected + offset });
+      const picked = await this.show(menu);
       if (picked === null) {
+        if (inspected !== null) {
+          inspected = null;
+          continue;
+        }
         if (tried) await this.visualizer.setPreset(active);
         return {};
       }
       if (picked.key === QUIT_KEY) return { quit: true };
       if (picked.key === DELETE_KEY) return this.deletePresetMenu(deletable);
-      const name = tried ? (picked === 0 ? current : values[picked - 1]) : values[picked];
+      if (picked.key === INSPECT_KEY) {
+        const index = Number.isInteger(picked.index) ? picked.index - offset : -1;
+        if (index >= 0) inspected = index === inspected ? null : index;
+        continue;
+      }
+      const index = picked - offset;
+      const name = tried && picked === 0 ? current : values[index];
       if (name === current) return {};
       await this.visualizer.setPreset(name);
       current = name;
+      // An inspection follows the pick, so what is tried is what is described
+      if (inspected !== null) inspected = values.indexOf(name);
     }
+  }
+
+  // The preset menu's inspection of one preset: its name, description and summary as the message, its screenshot
+  // as a banner tall enough for all of it
+  inspection(name, info, hint) {
+    const lines = [`<b>${escapeMarkup(name ?? 'none')}</b>  ${escapeMarkup(info.description ?? info.summary ?? '')}`];
+    if (info.description && info.summary) lines.push(`<span alpha="70%">${escapeMarkup(info.summary)}</span>`);
+    if (!info.shot) lines.push(`<span alpha="70%">${escapeMarkup(name === null ? 'No screenshot of no preset' : 'No screenshot yet: one is taken after 30 s of it with sound, on a monitor no window covers')}</span>`);
+    lines.push(escapeMarkup(`${hint}  (${INSPECT_KEY} or Escape for the pictures)`));
+    return { title: `visualizer  ·  ${name ?? 'none'}`, message: lines.join('\n'), ...(info.shot ? { preview: info.shot.path, banner: 'tall' } : {}) };
   }
 
   // A saved preset to delete, then a confirmation

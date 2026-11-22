@@ -114,6 +114,28 @@ used at start; `backdrop visualizer preset <name>` switches the running daemon t
 request until it restarts, and the switch survives config reloads. Every preset is checked when the section is,
 so a mistake in one shows before it is used.
 
+A preset can carry a `description`, a line of text the menu and the web page show (`presetInfo` in `settings.js`);
+it is taken out before the preset is laid over the section (`presetsOf`), so it is no setting. Every built-in preset
+has one. A preset without one shows a summary made from its instances over the section (`presetSummary`: what each
+draws and where, `bars bottom · radial center`, a repeat counted, `no wallpaper` for a look that hides it). Saving
+the look over the preset in force keeps its description; under another name the new preset has none.
+
+### Screenshots
+
+With `screenshots: true` (the default; a shared key, so no preset sets it), the daemon keeps a picture of each preset
+for the menu and the web page (`PresetShots.js`, owned by the manager). It looks every 5 s; once the same preset has
+been in force for 30 s with no menu changes over it, the system load not stopping it, sound playing (watched for this
+alone when nothing else watches it; with `audio: fifo`, which cannot be watched, sound counts as playing) and an
+instance running with its window found, it grabs a monitor with ffmpeg's `x11grab` at the lowest CPU priority, scaled
+to 960 px wide, as `visualizer-<preset>.jpg` in the thumbnail folder. A grab records whatever is drawn, so only a
+monitor that nothing but backdrop's own windows covers is taken (`X11.uncoveredArea`): the wallpaper, the instances
+and the overlays are its own, and every other viewable window above the lowest of them that overlaps the monitor
+blocks it, except a dock (`_NET_WM_WINDOW_TYPE_DOCK`, found on the window or inside a window manager's frame) along
+the top or bottom edge, whose strip is cropped off. With i3 that is an empty workspace; an open rofi menu or a
+notification blocks it too. While every monitor is covered it looks again every 30 s. Each preset switch takes one
+picture, replacing the last, so pictures follow the wallpapers in use; a pause in the sound takes none again. Saving
+over a preset or deleting it removes its picture. No preset (`none`) has none.
+
 Colors set in the config are piped to GLava like the wallpaper's, so changing a swatch needs no restart; a module with no colors set keeps its shader's own, and a raw `#define` for them stays in the shader.
 
 To build a preset live, add one to `visualizer.presets`, pick it (`backdrop visualizer preset scratch`, or `p` in the menu), and edit it: each save applies at once, a mistake
@@ -221,7 +243,13 @@ show or hide that instance alone (its `visible`, false stopping it while the oth
 amplify, position (anchor) and colors (palette source and pick, or a fixed swatch for the module's color option),
 or sleeve's and projectM's own settings, as `{ visualizer_set: { instance, changes } }`. Load switches to each preset
 picked at once and keeps the list open to try the next; picking the one in force again, or keep, keeps it, and
-Escape goes back to the preset in force on opening. A sleeve instance's status shows the colors last sent to it:
+Escape goes back to the preset in force on opening. Each load button shows the preset's screenshot as rofi's
+entry icon (`-show-icons`; once any preset has one, the others show `share/rofi/no-screenshot.svg`, since rofi leaves
+room for an icon on every button) and its description, or summary, on a small line under the name. rofi reports
+no change of focus, so `i` shows the preset under the cursor in full instead: the views return `{ key, index }` for a
+bound key, and the menu draws again with that entry selected (`-selected-row`), its name, description and summary as
+the message, its screenshot as a 728x410 banner, and the buttons without pictures, until Escape or `i` on it again;
+a pick meanwhile keeps describing what is tried. A sleeve instance's status shows the colors last sent to it:
 the background under it and the picture's main colors. The manager keeps these changes by instance (`live`, in `state.json`'s visualizer
 summary) and lays them over the section after the active preset (`applyLive` in `settings.js`) until the daemon
 restarts; the menu checks each change against the section first, and the manager refuses one that does not

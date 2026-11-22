@@ -3,6 +3,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { thumbnailFor } from '../library/thumbnail.js';
+import { presetShot } from '../visualizer/PresetShots.js';
 import { mediaJson, playingJson } from '../utils/mediaView.js';
 import { refusal, sessionCookie } from './auth.js';
 import { EventHub } from './events.js';
@@ -170,6 +171,7 @@ export class WebServer {
       }],
       ['GET', /^\/static\/([\w.-]+)$/, (request, match, response) => this.staticFile(response, match[1])],
       ['GET', /^\/thumbs\/(\d+)\.jpg$/, (request, match, response) => this.thumbnailFile(response, Number(match[1]))],
+      ['GET', /^\/visualizer-shots\/([\w-]+)\.jpg$/, (request, match, response) => this.presetShotFile(response, match[1])],
       ['GET', /^\/api\/state$/, () => this.snapshot()],
       ['GET', /^\/api\/events$/, async (request, match, response) => {
         await this.hub.add(response);
@@ -338,6 +340,15 @@ export class WebServer {
     if (!content) throw new HttpError(404, 'Not found');
     response.writeHead(200, { ...SECURITY_HEADERS, 'content-type': type, 'cache-control': 'no-cache' });
     response.end(content);
+    return { streamed: true };
+  }
+
+  // A visualizer preset's screenshot (PresetShots.js); the page asks with ?v=<when it was taken>, so it can be kept
+  async presetShotFile(response, name) {
+    const shot = await presetShot(this.config.get().paths.thumbnails, name);
+    if (!shot) throw new HttpError(404, 'No screenshot of this preset yet');
+    response.writeHead(200, { ...SECURITY_HEADERS, 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400' });
+    fs.createReadStream(shot.path).pipe(response);
     return { streamed: true };
   }
 

@@ -1,5 +1,6 @@
 import { expect } from 'chai';
-import { applyLive, instanceLook, layoutFor, lookAsPreset, resolveGeometry, visualizerSettings, enginesOf, resolveArea } from '../../src/visualizer/settings.js';
+import { applyLive, instanceLook, layoutFor, lookAsPreset, presetInfo, presetSummary, presetsOf, resolveGeometry, visualizerSettings, enginesOf, resolveArea } from '../../src/visualizer/settings.js';
+import { BUILTIN_PRESETS } from '../../src/visualizer/presets.js';
 import { makeConfig } from '../helpers/fakes.js';
 
 describe('visualizer settings', () => {
@@ -422,6 +423,45 @@ describe('visualizer settings', () => {
     it('ships a preset with lyrics above the bars', () => {
       const { instances } = visualizerSettings({ preset: 'lyrics' });
       expect(instances.map(item => item.engine)).to.deep.equal(['glava', 'sleeve']);
+    });
+  });
+
+  describe('preset descriptions', () => {
+    it('gives every built-in preset a description', () => {
+      for (const [name, info] of Object.entries(presetInfo({}))) expect(info.description, name).to.be.a('string').and.not.empty;
+    });
+
+    it('takes a description out of the settings a preset lays over the section, checking it is text', () => {
+      const section = { presets: { dusk: { description: 'Dim bars', opacity: 0.3 } } };
+      expect(presetsOf(section).dusk).to.deep.equal({ opacity: 0.3 });
+      expect(visualizerSettings(section, { preset: 'dusk' }).instances[0].opacity).to.equal(0.3);
+      expect(presetInfo(section).dusk).to.deep.equal({ description: 'Dim bars', summary: 'bars bottom' });
+      expect(() => visualizerSettings({ presets: { dusk: { description: 3 } } })).to.throw('visualizer.presets.dusk.description must be a line of text');
+      // A blank one counts as none
+      expect(presetInfo({ presets: { dusk: { description: ' ' } } }).dusk.description).to.equal(null);
+    });
+
+    it('sums a preset up from its instances, counting repeats, for one without a description', () => {
+      expect(presetSummary({}, 'party')).to.equal('bars bottom · radial center');
+      expect(presetSummary({}, 'screensaver-instrumental')).to.equal('lyrics fill · bars area · radial area ×2');
+      expect(presetSummary({}, 'lyrics-stage')).to.equal('lyrics fill · bars area · radial area · no wallpaper');
+      // A preset without instances takes the section's placement and module
+      expect(presetSummary({ module: 'wave', placement: { anchor: 'top' }, presets: { calm: { opacity: 0.2 } } }, 'calm')).to.equal('wave top');
+      expect(presetSummary({ module: 'radial' }, null)).to.equal('radial bottom');
+      expect(presetSummary({}, 'missing')).to.equal(null);
+    });
+
+    it('keeps descriptions out of what the presets lay over the section', () => {
+      for (const name of Object.keys(BUILTIN_PRESETS)) expect(presetsOf({})[name]).to.not.have.property('description');
+    });
+  });
+
+  describe('screenshots', () => {
+    it('is on unless the section turns it off, and no preset can set it', () => {
+      expect(visualizerSettings({}).screenshots).to.equal(true);
+      expect(visualizerSettings({ screenshots: false }).screenshots).to.equal(false);
+      expect(() => visualizerSettings({ screenshots: 'yes' })).to.throw('visualizer.screenshots must be true or false');
+      expect(() => visualizerSettings({ presets: { calm: { screenshots: false } } })).to.throw('visualizer.presets.calm.screenshots must be left out of a preset');
     });
   });
 

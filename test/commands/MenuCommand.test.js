@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { MenuCommand, minimalView, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
+import { MenuCommand, minimalView, NO_SCREENSHOT, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { setMode, setModeHold } from '../../src/display/Playlist.js';
 import { readNextFilters } from '../../src/display/nextFilters.js';
@@ -36,11 +36,13 @@ describe('MenuCommand', () => {
     rating = { keep: sinon.stub().resolves(), skip: sinon.stub().resolves(), undo: sinon.stub().resolves() };
     shown = [];
     picks = [];
-    // Picks entries by label, or a { key }, in order; null is Escape, and running out of picks quits
+    // Picks entries by label, or a { key }, in order; null is Escape, { inspect: label } presses i on that entry, and
+    // running out of picks quits
     const view = async menu => {
       shown.push(menu);
       if (!picks.length) return { key: 'q' };
       const pick = picks.shift();
+      if (pick?.inspect) return { key: 'i', index: menu.entries.findIndex(entry => entry.label === pick.inspect) };
       if (pick === null || typeof pick === 'object') return pick;
       const index = menu.entries.findIndex(entry => entry.label === pick);
       if (index === -1) throw new Error(`no entry ${pick} in ${menu.entries.map(entry => entry.label).join(', ')}`);
@@ -369,6 +371,31 @@ describe('MenuCommand', () => {
       expect(await fs.pathExists(PANEL_THEME)).to.be.true;
     });
 
+    it('panel: pictures as rofi icons, detail lines, the row to start on and a tall banner', async () => {
+      const { spawn, calls } = fakeSpawn(0, '0\n');
+      await panelView([], spawn)({
+        prompt: 'load', message: 'm', selected: 1, banner: 'tall', preview: '/t/ring.jpg',
+        entries: [{ icon: 'P', label: 'none', detail: 'No preset' }, { icon: 'P', label: 'ring', image: '/t/ring.jpg', detail: 'A ring | here' }]
+      });
+      const { args } = calls[0];
+      expect(args).to.include.members(['-show-icons', 'element-icon { size: 112px; }', 'preview { padding: 205px 0px; }', '-selected-row', '1']);
+      expect(args[args.indexOf('-eh') + 1]).to.equal('4');
+      expect(calls[0].input()).to.equal('<span font_size="x-large">P</span>\nnone\n<span font_size="small" alpha="70%">No preset</span>|'
+        + 'ring\n<span font_size="small" alpha="70%">A ring ¦ here</span>\0icon\x1f/t/ring.jpg');
+      // Without pictures or details, as before
+      const plain = fakeSpawn(0, '0\n');
+      await panelView([], plain.spawn)(menu);
+      expect(plain.calls[0].args).to.not.include('-show-icons');
+      expect(plain.calls[0].args[plain.calls[0].args.indexOf('-eh') + 1]).to.equal('3');
+      const minimal = fakeSpawn(0, '0\n');
+      await minimalView([], minimal.spawn)({ prompt: 'load', entries: [{ icon: 'P', label: 'ring', detail: 'A ring' }] });
+      expect(minimal.calls[0].input()).to.equal('P  ring  - A ring\n');
+    });
+
+    it('returns the entry under the cursor with a pressed key', async () => {
+      expect(await panelView([], fakeSpawn(11, '4\n').spawn)(menu)).to.deep.equal({ key: '0', index: 4 });
+    });
+
     it('returns a pressed key, null when dismissed, and fails when rofi is missing or errors', async () => {
       expect(await panelView([], fakeSpawn(10).spawn)(menu)).to.deep.equal({ key: '1' });
       expect(await panelView([], fakeSpawn(13).spawn)(menu)).to.deep.equal({ key: 'Tab' });
@@ -572,6 +599,46 @@ describe('MenuCommand', () => {
       expect(vis.preset).to.equal(null);
     });
 
+    it('shows each preset\'s screenshot and description in load, and one in full with i', async () => {
+      const thumbs = path.join(runtime, 'thumbs');
+      config.set('paths.thumbnails', thumbs);
+      await fs.outputFile(path.join(thumbs, 'visualizer-ring.jpg'), 'jpeg');
+      config.set('visualizer.presets', { calm: { opacity: 0.3 } });
+      picks = ['load ▸', { inspect: 'ring' }, { inspect: 'wave' }, 'wave', null, null, null];
+      await open().open({ page: 'visualizer' });
+      const [grid, ring, wave, tried, back] = shown.filter(menu => menu.prompt === 'load');
+      const entry = (menu, label) => menu.entries.find(item => item.label === label);
+      expect(entry(grid, 'ring')).to.include({ image: path.join(thumbs, 'visualizer-ring.jpg'), detail: 'A radial ring in the middle of the screen' });
+      // Once one has a screenshot, the others show a stand-in, since rofi leaves room for a picture on every button
+      expect(entry(grid, 'wave').image).to.equal(NO_SCREENSHOT);
+      // Without a description, the summary
+      expect(entry(grid, 'calm').detail).to.equal('bars bottom');
+      expect(entry(grid, 'none').detail).to.equal('No preset: the visualizer section as the config file sets it');
+      expect(grid.message).to.include('i shows the one under the cursor');
+      // In full: the screenshot as a tall banner, the grid without pictures, the cursor kept on it
+      expect(ring).to.include({ title: 'visualizer  ·  ring', preview: path.join(thumbs, 'visualizer-ring.jpg'), banner: 'tall', selected: grid.entries.indexOf(entry(grid, 'ring')) });
+      expect(ring.message).to.include('<b>ring</b>  A radial ring in the middle of the screen').and.include('radial center');
+      expect(entry(ring, 'ring')).to.not.have.property('image');
+      expect(wave).to.not.have.property('preview');
+      expect(wave.message).to.include('No screenshot yet');
+      // A pick while inspecting tries it and keeps describing what is tried, the cursor following past keep
+      expect(requests).to.deep.equal([{ preset: 'wave' }, { preset: null }]);
+      expect(tried.title).to.equal('visualizer  ·  wave');
+      expect(tried.selected).to.equal(tried.entries.indexOf(entry(tried, 'wave')));
+      // Escape leaves the inspection for the pictures first, then the menu, going back to the preset in force
+      expect(back.title).to.equal('visualizer  ·  load a preset');
+      expect(entry(back, 'ring').image).to.equal(path.join(thumbs, 'visualizer-ring.jpg'));
+    });
+
+    it('keeps the load buttons without pictures while no preset has a screenshot', async () => {
+      config.set('paths.thumbnails', path.join(runtime, 'empty'));
+      picks = ['load ▸', null, null];
+      await open().open({ page: 'visualizer' });
+      const load = shown.find(menu => menu.prompt === 'load');
+      expect(load.entries.filter(item => item.image)).to.deep.equal([]);
+      expect(load.entries.find(item => item.label === 'ring').detail).to.equal('A radial ring in the middle of the screen');
+    });
+
     it('turns the wallpaper off and on, but not off while the visualizer is off', async () => {
       const sendWallpaper = async (runtimeDir, state, change) => {
         requests.push(change);
@@ -625,7 +692,7 @@ describe('MenuCommand', () => {
       picks = ['load ▸', { key: 'x' }, 'evening', 'keep it', 'load ▸', { key: 'x' }, 'evening', 'delete', null];
       await open().open({ page: 'visualizer' });
       const presetMenu = shown.find(menu => menu.prompt === 'load');
-      expect(presetMenu.keys).to.deep.equal(['q', 'x']);
+      expect(presetMenu.keys).to.deep.equal(['q', 'i', 'x']);
       expect(shown.find(menu => menu.prompt === 'delete preset').entries.map(entry => entry.label)).to.deep.equal(['evening']);
       expect(await fs.readFile(configFile, 'utf8')).to.equal('visualizer:\n  enabled: true     # kept\n  bars: { amplify: 300 }\n');
       expect(requests).to.deep.equal([{ reload_config: true }]);

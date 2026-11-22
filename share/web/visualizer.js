@@ -57,6 +57,7 @@ function render(next) {
   preset.replaceChildren(new Option('None', ''), ...next.presets.map(({ name, source }) => new Option(`${name} (${source})`, name)));
   preset.value = next.preset ?? '';
   preset.disabled = !next.running;
+  renderGallery(next);
   $('#reset').disabled = !next.running || !next.changed;
   // Only presets the config saves can go, and not the one in use
   const deletable = next.presets.filter(({ name, source }) => source.startsWith('config') && name !== next.preset);
@@ -189,7 +190,49 @@ function bindCard(card) {
   });
 }
 
+// One card per preset (and none): its screenshot or a stand-in, name, and description or summary; the one in force is
+// pressed, and a click switches to another
+function presetCard({ name, description, summary, screenshot }, next) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'preset-card';
+  card.dataset.preset = name ?? '';
+  card.setAttribute('aria-pressed', String((name ?? null) === (next.preset ?? null)));
+  card.disabled = !next.running;
+  const picture = document.createElement('div');
+  picture.className = 'preset-shot';
+  if (screenshot) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.src = `/visualizer-shots/${encodeURIComponent(name)}.jpg?v=${screenshot}`;
+    picture.append(image);
+  } else {
+    picture.textContent = name === null ? 'the section\'s own look' : 'no screenshot yet';
+  }
+  const title = document.createElement('strong');
+  title.textContent = name ?? 'none';
+  const text = document.createElement('span');
+  text.className = 'muted small';
+  text.textContent = description ?? summary ?? '';
+  card.append(picture, title, text);
+  if (description && summary) card.title = summary;
+  return card;
+}
+
+function renderGallery(next) {
+  const none = { name: null, description: 'No preset: the visualizer section as the config file sets it', summary: next.none?.summary ?? null, screenshot: null };
+  $('#gallery').replaceChildren(...[none, ...next.presets].map(preset => presetCard(preset, next)));
+}
+
 function bindPage() {
+  $('#gallery').addEventListener('click', event => {
+    const card = event.target.closest('.preset-card');
+    if (!card || card.getAttribute('aria-pressed') === 'true') return;
+    act(async () => {
+      render((await post('/api/visualizer/preset', { name: card.dataset.preset || null })).visualizer);
+    }, card);
+  });
   $('#enabled').addEventListener('change', event => act(async () => {
     render((await post('/api/visualizer/enabled', { on: event.target.checked })).visualizer);
   }));

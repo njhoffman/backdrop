@@ -135,7 +135,8 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 | `PATCH /api/media/:id` *built* | `{ speed?, dim?, bounce? }` as the commands take them; applied at once on a monitor playing the item, stored either way: `{ item }` |
 | `POST /api/media/:id/play` *built* | `{ monitor }`: plays the item there now when that monitor's playlist has it (its mode and size decide), as `next` with it as the only match |
 | `GET /thumbs/:id.jpg` *built* | The cached thumbnail, made on demand (`thumbnailFor`, one at a time, at the lowest priority) |
-| `GET /api/visualizer` *built* | `VisualizerService.describe`: `{ running, enabled, error, wallpaper, preset, presets: [{ name, source }], changed, instances: [{ name, look, changed, sent }], choices }`, the config's preset while the daemon is stopped |
+| `GET /api/visualizer` *built* | `VisualizerService.describe`: `{ running, enabled, error, wallpaper, preset, presets: [{ name, source, description, summary, screenshot }], none: { summary }, changed, instances: [{ name, look, changed, sent }], choices }`, the config's preset while the daemon is stopped; `screenshot` is when the preset's picture was taken (ms) or null |
+| `GET /visualizer-shots/:name.jpg` *built* | A preset's screenshot (`PresetShots.js`), 404 until one is taken; the page adds `?v=<screenshot>` so a new one is fetched |
 | `POST /api/visualizer/enabled` *built* | `{ on }`: turns the visualizer on or off |
 | `POST /api/visualizer/live` *built* | `{ instance, changes }`: one instance's change as visualizer settings (`{ opacity: 0.6 }`, `{ placement: { anchor: 'top' } }`), checked against the section, kept until the daemon restarts (a `visualizer_set` control request); `DELETE` drops every change |
 | `POST /api/visualizer/preset` *built* | `{ name }`, null for none |
@@ -153,7 +154,8 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 2. **Library**: a thumbnail grid with filters, paged (thumbnails of items never played are made as they scroll
    into view); a drawer with the item's details, rating, adjustments and "play next on ...".
 3. **Visualizer**: per instance, the look's settings as form controls applied live; presets to load, save and
-   delete.
+   delete, and a gallery of them, each card with its screenshot (or a stand-in), name and description (or summary),
+   the one in force pressed and a click loading another.
 4. **Config**: a form per section, each field with its default and a "needs a restart" mark.
 5. **Status**: load level, screensaver, playback cost by kind and decoder, the bounce cache, and `doctor`'s
    checks.

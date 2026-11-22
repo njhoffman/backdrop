@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.92.0] - 2026-11-21
+
+### Added
+
+- The visualizer menu's load grid shows each preset's screenshot and a short description. Press `i` on a preset to
+  see it in full: its description and summary, with its screenshot as a large banner. `i` or Escape goes back to the
+  pictures.
+- The daemon takes a screenshot of a visualizer preset after 30 seconds of it with sound playing, on a monitor that no
+  window covers (dock bars such as polybar are cropped off), and refreshes it on each later switch to that preset.
+  `visualizer.screenshots: false` turns this off.
+- Presets can have a `description`; every built-in one has one. A preset without one shows a summary made from its
+  instances, such as `bars bottom · radial center`.
+- The web Visualizer page has a gallery of presets with their screenshots and descriptions; click one to load it.
+
 ## [2.91.0] - 2026-11-21
 
 ### Added

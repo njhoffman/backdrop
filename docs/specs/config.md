@@ -119,11 +119,13 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   reference_height: 1440   # monitor height GLava's pixel sizes are meant for; they follow the window's height. null: exact pixels
   latency_ms: 30           # GLava's and projectM's capture latency (PULSE_LATENCY_MSEC); below ~22 it shrinks PipeWire's quantum and playback stutters. null: GLava's own
   wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
+  screenshots: true        # a screenshot of each preset after 30 s of it with sound, on a monitor no window covers (menu, web page)
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
                            #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-now
-                           #   (src/visualizer/presets.js); cannot set enabled, preset or presets
+                           #   (src/visualizer/presets.js); cannot set enabled, preset, presets or screenshots;
+                           #   description: a line the menu and web page show
   instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];
                            #   the section's own instance settings are their defaults; list order = stacking order;
                            #   without it the section is one instance named main

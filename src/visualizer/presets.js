@@ -1,5 +1,6 @@
 // Presets backdrop ships. A preset is laid over the visualizer section (objects merge, lists replace), so it
-// can change any setting, including the instance list. visualizer.presets can override these by name.
+// can change any setting, including the instance list. visualizer.presets can override these by name. Each
+// description is shown by the menu and the web page, and taken out before the preset is laid over the section.
 const WALLPAPER_COLORS = { source: 'wallpaper' };
 // The hue of the configured colors turning once every 90 seconds, a few times a song, the same for every instance with it
 const CYCLE_COLORS = { source: 'cycle', cycle: '90s' };
@@ -28,12 +29,14 @@ function veil({ cycle = false } = {}) {
 const PRESETS = {
   // Short, thin bars along the bottom, mostly see-through
   subtle: {
+    description: 'Short, thin bars along the bottom, mostly see-through',
     opacity: 0.5,
     placement: { anchor: 'bottom', width: '100%', height: '15%' },
     instances: [{ name: 'main', module: 'bars', bars: { width: 8, gap: 2, amplify: 150 } }]
   },
   // A radial ring in the middle of the screen
   ring: {
+    description: 'A radial ring in the middle of the screen',
     instances: [{
       name: 'ring', module: 'radial', placement: { anchor: 'center', width: '50%', height: '80%' },
       radial: { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] }
@@ -41,10 +44,12 @@ const PRESETS = {
   },
   // A thin wave across the whole screen
   wave: {
+    description: 'A thin wave across the whole screen',
     instances: [{ name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'fill' }, wave: { color: '#33aacc', max_thickness: 4 } }]
   },
   // Bars along the bottom with a ring above them
   party: {
+    description: 'Bars along the bottom with a red and gold ring above them',
     instances: [
       { name: 'base', module: 'bars', placement: { anchor: 'bottom', height: '25%' } },
       {
@@ -56,6 +61,7 @@ const PRESETS = {
   // The presets below use sleeve's synced lyrics (docs/specs/sleeve.md); list order is stacking order, first lowest.
   // Over the wallpaper, the text colored from what is behind it. Lyrics above bars along the bottom
   lyrics: {
+    description: 'Synced lyrics in the middle, colored from the wallpaper, above bars along the bottom',
     instances: [
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } },
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '100%', height: '60%' } }
@@ -63,19 +69,25 @@ const PRESETS = {
   },
   // Only lyrics, with the wallpaper clear around them
   'lyrics-only': {
+    description: 'Only synced lyrics, with the wallpaper clear around them',
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '70%', height: '70%' } }]
   },
   // Lyrics down the left third, bars along the bottom of the rest
   'lyrics-side': {
+    description: 'Lyrics down the left third, bars along the bottom of the rest',
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'left', width: '33%', height: '100%' } },
       { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars }
     ]
   },
   // The wallpaper darkened under a see-through layer tinted from it, solid lyrics on it, a ring beside them with bars below it
-  'lyrics-veil': { instances: veil() },
+  'lyrics-veil': {
+    description: 'The wallpaper darkened under a tinted veil, a now-playing strip over lyrics on the left, a ring and bars beside them',
+    instances: veil()
+  },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
   'lyrics-blend': {
+    description: 'The track\'s cover blended over the wallpaper, lyrics in the middle, bars along the bottom',
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6' } },
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
@@ -83,13 +95,17 @@ const PRESETS = {
   },
   // The screensaver's own (screensaver.preset): the wallpaper under a veil, lyrics, a ring and bars, the ring and
   // bars blue to start with and turning through the hues together
-  screensaver: { instances: veil({ cycle: true }) },
+  screensaver: {
+    description: 'The screensaver\'s look: the lyrics veil, its ring and bars turning through the hues together',
+    instances: veil({ cycle: true })
+  },
   // The screensaver's look for a song without lyrics (screensaver.preset_without_lyrics): the same veil and
   // now-playing panel as the screensaver's own, its lyrics area empty, under bars across the whole width and a ring
   // over each half, the left one following the left speaker and the right one the right, below the panel's strip,
   // turning colors with the bars as the screensaver's own preset does. With no text to read, the veil is half as
   // strong, darkening the wallpaper somewhat
   'screensaver-instrumental': {
+    description: 'The screensaver\'s look for a song without lyrics: a lighter veil, bars across the width and a ring for each speaker',
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { ...VEIL_LYRICS, background: 'auto@0.5' } },
       { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: CYCLE_BARS },
@@ -100,6 +116,7 @@ const PRESETS = {
   // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it
   // gives way at the load section's image level
   'screensaver-projectm': {
+    description: 'projectM as the whole background, lyrics on the left and bars beside them; very demanding',
     wallpaper: false,
     instances: [
       { name: 'projectm', engine: 'projectm', placement: { anchor: 'fill' } },
@@ -109,6 +126,7 @@ const PRESETS = {
   },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
+    description: 'The track\'s cover as the whole background, lyrics on the left, a ring and bars on the right',
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover' } },
@@ -118,6 +136,7 @@ const PRESETS = {
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {
+    description: 'The track\'s cover as the whole background, the full now-playing panel on the left, lyrics on the right, a wave along the bottom',
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {

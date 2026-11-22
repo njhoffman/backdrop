@@ -86,7 +86,7 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
   this.timeout(60000);
   const token = 'browser-test-token-0123456789';
   const monitor = { name: 'DP-1', width: 1920, height: 1080 };
-  let dir, db, config, server, browser, launching, base, display, id, errors;
+  let dir, db, config, server, browser, launching, base, display, visualizer, id, errors;
 
   before(async () => {
     launching = chromium.launch({
@@ -111,7 +111,9 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-browser-'));
-    config = makeConfig({ 'paths.runtime': dir });
+    config = makeConfig({ 'paths.runtime': dir, 'paths.thumbnails': path.join(dir, 'thumbs') });
+    // A 16x9 JPEG as the ring preset's screenshot, which the Visualizer page's gallery loads
+    await fs.outputFile(path.join(dir, 'thumbs', 'visualizer-ring.jpg'), Buffer.from('/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABMAAEBAAAAAAAAAAAAAAAAAAAABgEBAQAAAAAAAAAAAAAAAAAABQYQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAJABADASIAAhEAAxEA/9oADAMBAAIRAxEAPwCbAUQF/9k=', 'base64'));
     db = new DatabaseManager();
     db.initialize(':memory:');
     id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'ocean.mp4', path: '/m/ocean.mp4', width: 1920, height: 1080, duration: 12 });
@@ -132,14 +134,17 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
       list: sinon.stub().returns({ total: 1, page: 1, pages: 1, per_page: 48, items: [item] }),
       facets: sinon.stub().returns({ tags: [{ tag: 'ocean', count: 1 }], queries: [] })
     };
-    const visualizer = {
+    visualizer = {
       describe: sinon.stub().resolves({
         running: true, enabled: true, error: null, wallpaper: true, preset: null, changed: false,
-        presets: [{ name: 'ring', source: 'built in' }],
+        presets: [{ name: 'ring', source: 'built in', description: 'A ring', summary: 'radial center', screenshot: 1 },
+          { name: 'wave', source: 'built in', description: null, summary: 'wave fill', screenshot: null }],
+        none: { summary: 'bars bottom' },
         instances: [{ name: 'main', changed: false, sent: null, yaml: { settings: 'opacity: 0.8\n', live: '' },
           look: { module: 'bars', opacity: 0.8, anchor: 'bottom', palette: { source: 'config', pick: 'vivid' }, amplify: 200, colors: ['#000000', '#33aacc'], colorOption: 'colors' } }],
         choices: { modules: ['bars', 'radial'], anchors: ['bottom', 'top'], picks: ['vivid'], swatches: { ocean: ['#003a5c', '#33aacc'] }, sleeve: { now: [], positions: [], aligns: [] } }
-      })
+      }),
+      setPreset: sinon.stub().resolves()
     };
     const settings = {
       describe: sinon.stub().resolves({ path: '/home/me/.config/backdrop/config.yaml', errors: [], warnings: [], fields: [
@@ -212,6 +217,14 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     await page.waitForSelector('.instance .instance-name');
     expect(await page.textContent('.instance-name')).to.equal('main');
     expect(await page.$$eval('.swatch .dot', dots => dots.map(dot => dot.style.background))).to.have.length(2);
+    // The presets with their screenshots and descriptions, the one in force pressed
+    await page.waitForFunction(() => document.querySelector('.preset-shot img')?.complete);
+    expect(await page.$$eval('.preset-card', cards => cards.map(card => [card.querySelector('strong').textContent, card.querySelector('.small').textContent, card.getAttribute('aria-pressed')])))
+      .to.deep.equal([['none', 'No preset: the visualizer section as the config file sets it', 'true'], ['ring', 'A ring', 'false'], ['wave', 'wave fill', 'false']]);
+    expect(await page.$eval('.preset-shot img', image => image.naturalWidth)).to.equal(16);
+    await page.click('.preset-card[data-preset="wave"]');
+    await page.waitForFunction(() => !document.querySelector('.preset-card.busy'));
+    expect(visualizer.setPreset.firstCall.args).to.deep.equal(['wave']);
     await within('closing a page', page.close());
 
     page = await open('/config');

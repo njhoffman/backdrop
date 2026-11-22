@@ -885,6 +885,16 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       setting naming a preset to switch to while sleeved says a song plays and the output is silent, as the
       screensaver switches to `preset_without_lyrics`, for a layout that gives the lyrics the room the bars had.
 
+- [x] **Preset pictures and descriptions.** (p2) [feature] The load menu shows each preset's screenshot and
+      description, `i` shows one in full; the daemon takes screenshots after 30 s of a preset with sound on an
+      uncovered monitor (`PresetShots.js`, `X11.uncoveredArea`); the web Visualizer page has a gallery (2.92.0).
+- [ ] **Preset screenshots on the real desktop.** (p2) [test] Only Xvfb and fakes have run them. Leave a preset on an
+      empty i3 workspace with music for 30 s and check `visualizer-<preset>.jpg` in the thumbnail folder: polybar
+      cropped, picom's transparency as shown, nothing else in it.
+- [ ] **A preset edited in force keeps its old screenshot.** (p3) [feature] A screenshot is taken once per switch,
+      keyed by the preset's name, so editing the preset in the config while it is in force leaves the old picture
+      until the next switch. Key `PresetShots` on the look (`fileLook`) instead of the name.
+
 ## 10. Web interface
 
 A local HTML interface for what the CLI and the rofi menu do now: the library, what each monitor plays, visualizer

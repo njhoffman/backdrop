@@ -21,11 +21,11 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms'];
+const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms', 'screenshots'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
 const INSTANCE_KEYS = ['name', 'engine', 'visible', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
-const PRESET_EXCLUDED = ['enabled', 'preset', 'presets'];
+const PRESET_EXCLUDED = ['enabled', 'preset', 'presets', 'screenshots'];
 
 // Objects merge recursively; lists and scalars from the override replace the base
 export function deepMerge(base, override) {
@@ -496,6 +496,8 @@ function normalize(raw, prefix) {
     // The capture latency GLava's streams ask for (PULSE_LATENCY_MSEC): its own 128-frame request pulls the
     // whole PipeWire graph down to a 5 ms quantum, which stutters playback; null or 0 leaves its request alone
     latencyMs: raw.latency_ms === null ? null : integer(`${prefix}latency_ms`, raw.latency_ms ?? 30, { max: 1000 }) || null,
+    // Screenshots of each preset in use for the menu and the web page (PresetShots.js)
+    screenshots: boolean(`${prefix}screenshots`, raw.screenshots ?? true),
     glava: {
       // auto: the first of ~/.local/etc/xdg/glava, /usr/local/etc/xdg/glava and /etc/xdg/glava with the module
       shaderDir: text(`${prefix}glava.shader_dir`, glava.shader_dir ?? 'auto', 'a path or auto'),
@@ -529,8 +531,9 @@ function normalize(raw, prefix) {
   return settings;
 }
 
-// The section's presets, the built-in ones first so the section's can replace them by name
-export function presetsOf(section = {}) {
+// The section's presets as written, the built-in ones first so the section's can replace them by name, each with
+// its description
+function describedPresets(section = {}) {
   const own = section.presets ?? {};
   if (!isObject(own)) fail('presets', 'a mapping of preset names to settings', own);
   // A built-in look with lyrics runs only while sound plays, which audio: fifo cannot tell
@@ -538,6 +541,56 @@ export function presetsOf(section = {}) {
     ? Object.fromEntries(Object.entries(BUILTIN_PRESETS).map(([name, { only_while_playing: _, ...preset }]) => [name, preset]))
     : BUILTIN_PRESETS;
   return { ...builtin, ...own };
+}
+
+// The section's presets as they lay over it: without their descriptions, which only the menu and web page show
+export function presetsOf(section = {}) {
+  return Object.fromEntries(Object.entries(describedPresets(section)).map(([name, preset]) => {
+    if (!isObject(preset) || preset.description === undefined) return [name, preset];
+    const { description: _, ...settings } = preset;
+    return [name, settings];
+  }));
+}
+
+// What each part of a look draws, for a preset without a description
+function partName(item, raw) {
+  const engine = item.engine ?? raw.engine ?? 'glava';
+  if (engine === 'sleeve') return 'lyrics';
+  if (engine === 'projectm') return 'projectM';
+  return item.module ?? raw.module ?? 'bars';
+}
+
+// A preset in a few words, made from its instances laid over the section: "bars bottom · lyrics center", with
+// "no wallpaper" for a look that hides it; null for one that does not check out
+export function presetSummary(section = {}, name) {
+  try {
+    const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));
+    const preset = name === null ? {} : presetsOf(section)[name];
+    if (!isObject(preset)) return null;
+    const raw = deepMerge(base, preset);
+    const items = Array.isArray(raw.instances) ? raw.instances : [raw];
+    const parts = items.filter(isObject).map(item => {
+      const where = item.rect ? 'area' : item.placement?.anchor ?? (raw.instances ? raw.placement?.anchor : null) ?? 'bottom';
+      return `${partName(item, raw)} ${where}`;
+    });
+    // The same part twice reads as one with a count: "radial area ×2"
+    const counted = [...new Set(parts)].map(part => {
+      const count = parts.filter(other => other === part).length;
+      return count > 1 ? `${part} ×${count}` : part;
+    });
+    if (raw.wallpaper === false) counted.push('no wallpaper');
+    return counted.join(' · ') || null;
+  } catch {
+    return null;
+  }
+}
+
+// Each preset's description and summary, by name: { description (its own, or null), summary }
+export function presetInfo(section = {}) {
+  return Object.fromEntries(Object.entries(describedPresets(section)).map(([name, preset]) => [name, {
+    description: isObject(preset) && typeof preset.description === 'string' ? preset.description.trim() || null : null,
+    summary: presetSummary(section, name)
+  }]));
 }
 
 // Changes from the visualizer menu ({ instance name: settings }) laid over the section with its preset: over
@@ -637,10 +690,11 @@ export function visualizerSettings(section = {}, { preset, live } = {}) {
   const base = Object.fromEntries(Object.entries(section).filter(([key]) => key !== 'presets' && key !== 'preset'));
   const presets = presetsOf(section);
   const settings = normalize(base, '');
-  for (const [name, value] of Object.entries(presets)) {
+  for (const [name, value] of Object.entries(describedPresets(section))) {
     if (!isObject(value)) fail(`presets.${name}`, 'a mapping of visualizer settings', value);
+    if (value.description !== undefined && typeof value.description !== 'string') fail(`presets.${name}.description`, 'a line of text', value.description);
     for (const key of PRESET_EXCLUDED) if (value[key] !== undefined) fail(`presets.${name}.${key}`, 'left out of a preset', value[key]);
-    normalize(deepMerge(base, value), `presets.${name}.`);
+    normalize(deepMerge(base, presets[name]), `presets.${name}.`);
   }
   const active = preset !== undefined ? preset : section.preset ?? null;
   if (active === null) {
