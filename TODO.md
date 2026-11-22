@@ -161,6 +161,10 @@ Reviewed: 2026-11-20
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
 
+- [ ] **Stand-in daemons write state.json non-atomically.** (p3) [test] `test/services/DisplayService.test.js:48` and
+  `test/commands/DisplayCommand.test.js:316` answer with `fs.writeJson(statePath)`, which truncates first; a poll
+  reading the empty file sees no daemon. Same race that failed `nextFilters` on CI (fixed in 3.3.1 with temp + rename).
+  Suggested: a `writeStateAtomic(dir, state)` helper in `test/helpers/fakes.js`, used by all three.
 - [ ] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
       the wait is over, so the restart path tries again` failed once in a full run on 2026-11-22 (expected no kill, got
       `[-1001, 'SIGKILL']`) and passed three runs of `test/display/Daemon.test.js` alone. Likely a fixed wait racing the

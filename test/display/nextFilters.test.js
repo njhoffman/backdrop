@@ -52,10 +52,14 @@ describe('nextFilters', () => {
 
   it('stores durations apart from the filters and tells the daemon when they change', async () => {
     const signals = [];
-    // The daemon answers a control request by moving its state's control counter
+    // The daemon answers a control request by moving its state's control counter. It writes atomically like
+    // the real daemon: a reader catching a truncated state.json sees no daemon, ending the wait early and
+    // reading the stored filters as another daemon's (failed on CI, Node 22.13)
     const kill = (pid, signal) => {
       signals.push(signal);
-      setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, monitors: [], control: signals.length }), 5);
+      const state = { pid: process.pid, monitors: [], control: signals.length };
+      const temporary = `${statePath(dir)}.${signals.length}.tmp`;
+      setTimeout(() => fs.writeJson(temporary, state).then(() => fs.rename(temporary, statePath(dir))), 5);
     };
     await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [], control: 0 });
     const persist = options => resolveNextFilters(dir, options, { persist: true, kill, timeout: 1000 });
