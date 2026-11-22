@@ -538,7 +538,9 @@ Reviewed: 2026-11-20
       Done, along with the screensaver settings in `docs/specs/config.md`.
 - [x] **Small cleanups.** (p3) [chore] `hex` is defined in both `palette.js` and `daemon/WallpaperColors.js`. `fs-extra` (11.3.0 to 11.4.1) and `winston` (3.17.0 to 3.19.0) have minor updates; `npm audit` is clean.
       Done (2.82.0): one `hex` in `src/visualizer/palette.js`; every dependency on its latest minor release.
-- [ ] **Daemon.js and VisualizerManager.js keep growing.** (p3) [refactor] 1039 and 906 lines on 2026-11-14 (943 and 796 before). Sleeve's display and veil handling could move out of the manager as `daemon/` did; split from the small cleanups.
+- [x] **Daemon.js and VisualizerManager.js keep growing.** (p3) [refactor] 1039 and 906 lines on 2026-11-14 (943 and 796 before). Sleeve's display and veil handling could move out of the manager as `daemon/` did; split from the small cleanups.
+      Done (v2.94.3): sleeve's page handling moved to `src/visualizer/SleevePages.js` and the dims and music dim fade to
+      `daemon/Dims.js`, the old methods forwarding; 895 and 1127 lines (954 and 1152 before).
 - [x] **CI jobs can hang on apt with no limit.** (p2) [chore] On 2026-11-05 the latest-Node job of the 2.50.7 run sat over 20 minutes in `Install integration test tools` while its 22.13 twin passed, and a GitHub job's default limit is 6 hours. Set `timeout-minutes` on the job and the install step, and pass apt `-o Acquire::Retries=3`.
       Done: 15 minutes for the job, 5 for the install, apt retries, no recommended packages, and a stalled install skips the integration tests rather than failing the run.
 - [ ] **Release binary.** (p3) [chore] Build a single executable with Node's SEA (bundle `src/` and dependencies with esbuild first; `node:sqlite` is built in),

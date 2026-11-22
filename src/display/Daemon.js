@@ -32,6 +32,7 @@ import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
 import { Health } from './daemon/Health.js';
+import { DIM_FADE_MS, Dims } from './daemon/Dims.js';
 import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
 import { LoadShedding } from './daemon/LoadShedding.js';
 import { OutputWatcher } from './outputWatcher.js';
@@ -44,10 +45,6 @@ const RESTART_DELAY_MS = 1000;
 // A started mpv with media to show that has not opened a file by then is killed, so the restart path tries again;
 // after a hotplug one once came up with no picture and never left that state
 const FIRST_FILE_TIMEOUT_MS = 15_000;
-// The music dim (visualizer.wallpaper_dim) fades in and out over this long, in DIM_FADE_STEPS contrast changes; mpv
-// has no fade for contrast, and each step is one IPC set
-const DIM_FADE_MS = 500;
-const DIM_FADE_STEPS = 10;
 // mpv answers nothing while it sets up video, which a slow GPU or decoder probe can stretch to several seconds
 const MPV_COMMAND_TIMEOUT_MS = 15_000;
 const STOP_GRACE_MS = 2000;
@@ -238,6 +235,7 @@ export class Daemon {
     this.configChanges = new ConfigChanges(this);
     this.wallpaperColors = new WallpaperColors(this);
     this.health = new Health(this);
+    this.dims = new Dims(this);
     this.importWatcher = new ImportWatcher(this, { settle: importSettle });
     this.load = new LoadShedding(this, { loadavg });
     this.offload = offload ?? new RemoteEncoder({ config, logger, spawn: this.spawn, now });
@@ -701,40 +699,17 @@ export class Daemon {
     this.notePlaylistFallback(screen, mode);
   }
 
-  // The dim an item shows with: its own, or visualizer.wallpaper_dim while music plays if that is more
+  // Each wallpaper's dim and the music dim's fade (daemon/Dims.js)
   shownDim(media) {
-    return Math.max(media?.dim ?? 0, this.visualizers.musicDim ?? 0);
+    return this.dims.shownDim(media);
   }
 
-  // Sets every wallpaper's contrast again when the music dim changes, with each item's dim read again
-  // (`backdrop dim` may have changed it since it loaded), fading to it (fadeContrast)
-  async applyDims() {
-    if (this.stopping) return;
-    await Promise.all([...this.screens.values()].map(async screen => {
-      if (!screen.client || !screen.media) return;
-      screen.media = this.database.getMedia(screen.media.id) ?? screen.media;
-      try {
-        await this.fadeContrast(screen, contrastFor(this.shownDim(screen.media)));
-      } catch (error) {
-        this.logger.warn('Failed to set contrast', { monitor: screen.monitor.name, error: error.message });
-      }
-    }));
-    await this.writeState();
+  applyDims() {
+    return this.dims.applyDims();
   }
 
-  // Steps a wallpaper's contrast from where mpv has it to target over dimFade ms. A later fade, or a load setting the
-  // contrast at once, ends this one where it is.
-  async fadeContrast(screen, target) {
-    const fade = {};
-    screen.fade = fade;
-    const from = screen.contrast ?? await screen.client.getProperty('contrast').catch(() => target);
-    const steps = this.dimFade > 0 && typeof from === 'number' && from !== target ? DIM_FADE_STEPS : 1;
-    for (let step = 1; step <= steps; step++) {
-      if (screen.fade !== fade || this.stopping) return;
-      await screen.client.setProperty('contrast', step === steps ? target : Math.round(from + (target - from) * step / steps));
-      if (step < steps) await sleep(this.dimFade / steps);
-    }
-    if (screen.fade === fade) screen.fade = null;
+  fadeContrast(screen, target) {
+    return this.dims.fadeContrast(screen, target);
   }
 
   // mpv's contrast changed (a load, the music dim, or `backdrop dim`): visualizer colors from the wallpaper

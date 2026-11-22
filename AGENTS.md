@@ -82,7 +82,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   Styling, symbols, the version line and progress bars appear only on a terminal; piped output stays plain.
   Tests run with `configureOutput({ interactive: false })` from `test/helpers/setup.js`.
 - **Display** (`src/display/`) - `Daemon` keeps its own concerns in `src/display/daemon/` (`ControlRequests`,
-  `ConfigChanges`, `WallpaperColors`, `Health`, `ImportWatcher`): classes given the daemon, whose state stays on it, with the daemon's
+  `ConfigChanges`, `WallpaperColors`, `Health`, `ImportWatcher`, `Dims`): classes given the daemon, whose state stays on it, with the daemon's
   methods forwarding to them; runtime file paths are in `runtimeFiles.js`. It records every child it spawns in `children.json` (`src/display/children.js`,
   pid, process group and `/proc` start time) so `start` and `stop` can end what a crashed daemon left running;
   it runs one xwinwrap+mpv per monitor and writes `state.json` to the
@@ -131,7 +131,8 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   running setting and notifying on a mistake; it restarts the visualizer when its section changed and applies other
   settings by kind (`LIVE_SETTINGS`: taken in, durations, playlist reload, monitors, imports), notifying for ones
   that need a restart.
-  `PresetShots.js` (the manager's `shots`) keeps a screenshot of each preset after 30 s of it with sound, grabbing only a
+  `SleevePages.js` (the manager's `sleeve`) holds sleeve's page handling: `sleeve ctl display`, the veil, the still
+  cover under load and showing the lyrics in silence. `PresetShots.js` (the manager's `shots`) keeps a screenshot of each preset after 30 s of it with sound, grabbing only a
   monitor nothing but backdrop's windows covers (`X11.uncoveredArea`, docks cropped); presets carry an optional
   `description` (`presetInfo`, taken out by `presetsOf`), and the menu's load grid and the web page show both.
   With `palette.source: wallpaper` (`palette.js`) the daemon samples each load and the manager pipes `fg`/`fg2` colors to

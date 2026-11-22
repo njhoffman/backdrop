@@ -3,8 +3,9 @@ import { AudioWatcher } from './audio.js';
 import { PresetShots } from './PresetShots.js';
 import { ChannelSources, channelSource } from './channels.js';
 import { createVisualizer } from './index.js';
-import { DEFAULT_VEIL, scaleVeil, turnHue, veilStrength } from './palette.js';
+import { turnHue, veilStrength } from './palette.js';
 import { SleevedWatcher } from './sleeved.js';
+import { SleevePages, changedLook, lostStartOption } from './SleevePages.js';
 import { deepMerge, fileLook, layoutFor, resolveGeometry, visualizerSettings } from './settings.js';
 
 const RESTART_WINDOW_MS = 60_000;
@@ -38,19 +39,6 @@ export function onMonitor(geometry, monitor) {
   const cx = geometry.x + geometry.width / 2;
   const cy = geometry.y + geometry.height / 2;
   return cx >= monitor.x && cx < monitor.x + monitor.width && cy >= monitor.y && cy < monitor.y + monitor.height;
-}
-
-// What sleeve can change on a running page; an option set at its start and now unset cannot be, since a
-// reset goes back to the start options
-const SLEEVE_LOOK = ['now', 'nowPosition', 'lyricsAlign', 'lyricsArea', 'nowArea', 'background'];
-const changedLook = (from, to) => SLEEVE_LOOK.some(key => from?.[key] !== to?.[key]);
-const lostStartOption = (started, next) => SLEEVE_LOOK.some(key => started?.[key] && !next?.[key]);
-// What a cover becomes while the system is loaded: a moving cover can cost a sixth of the GPU, a color a fraction of that
-const STILL_BACKGROUND = '#0a0f1a';
-function stillBackground(background) {
-  const blend = /^cover@(.+)$/.exec(background ?? '');
-  if (blend) return `${STILL_BACKGROUND}${Math.round(Number(blend[1]) * 255).toString(16).padStart(2, '0')}`;
-  return background === 'cover' ? STILL_BACKGROUND : background;
 }
 
 const entryKey = (monitorName, instanceName) => `${monitorName}\t${instanceName}`;
@@ -102,6 +90,8 @@ export class VisualizerManager {
     });
     // The one-speaker remap sources for instances with channel: left or right, and whether any were made
     this.channelSources = channelSources({ exec, logger });
+    // sleeve's pages: their look, veil and showing (SleevePages.js)
+    this.sleeve = new SleevePages(this);
     // Screenshots of the preset in force, for the menu and the web page (visualizer.screenshots)
     this.shots = presetShots({ manager: this, exec, logger, now });
     this.channelsMade = false;
@@ -253,18 +243,13 @@ export class VisualizerManager {
   async setLightened(on) {
     if (on === this.lightened) return;
     this.lightened = on;
-    for (const entry of this.entries.values()) {
-      const background = entry.instance.sleeve?.background;
-      if (background?.startsWith('cover')) this.display(entry, { look: { background: on ? stillBackground(background) : background } });
-    }
+    this.sleeve.lighten(on);
     if (this.settings?.instances.some(instance => instance.engine === 'projectm')) await this.sync();
   }
 
-  // An instance's sleeve settings as they should show now
+  // An instance's sleeve settings as they should show now (SleevePages)
   shownLook(sleeve, entry) {
-    const strength = veilStrength(sleeve.background);
-    if (strength !== null) return { ...sleeve, background: scaleVeil(entry.veil ?? DEFAULT_VEIL, strength) };
-    return this.lightened ? { ...sleeve, background: stillBackground(sleeve.background) } : sleeve;
+    return this.sleeve.shownLook(sleeve, entry);
   }
 
   // Lays the visualizer menu's changes for one instance over the others it made ({ instance, changes }), or
@@ -425,49 +410,21 @@ export class VisualizerManager {
     return instances.filter(instance => instance.channel && instance.channel !== 'both');
   }
 
-  // Watches sleeved while a sleeve instance can run: when it restarts it has forgotten what it was told
+  // sleeved's side of sleeve's pages (SleevePages): watching it, a song playing elsewhere, showing and reminding
   watchSleeved() {
-    const wanted = this.active && !this.stopping && (this.settings?.instances ?? []).some(instance => instance.engine === 'sleeve');
-    if (!wanted) {
-      this.sleeved?.stop();
-      this.songPlaying = false;
-      return;
-    }
-    this.sleeved ??= this.sleevedWatcher({
-      onHello: () => this.remindSleeved(), logger: this.logger,
-      onMessage: message => {
-        if (message?.type === 'playback') this.noteSong(message.playback?.state === 'playing');
-      },
-      onClose: () => this.noteSong(false)
-    });
-    this.sleeved.start();
+    this.sleeve.watch();
   }
 
-  // sleeved said whether a song plays: in silence that shows or hides the lyrics
   noteSong(playing) {
-    if (playing === this.songPlaying) return;
-    this.songPlaying = playing;
-    if (this.silenced) this.showSleeve();
+    this.sleeve.noteSong(playing);
   }
 
-  // Shows or hides every running sleeve page for sleeveShown, when that changed since it was last told
   showSleeve() {
-    const shown = this.sleeveShown;
-    for (const entry of this.entries.values()) {
-      if (entry.instance.engine !== 'sleeve' || entry.shown === shown) continue;
-      entry.shown = shown;
-      this.display(entry, { visible: shown });
-    }
+    this.sleeve.show();
   }
 
-  // Sends sleeved what it should know of each running page: the look, which it forgets on a restart, and hidden for
-  // silence. Harmless when it has forgotten nothing, as at the first hello.
   remindSleeved() {
-    for (const entry of this.entries.values()) {
-      if (entry.instance.engine !== 'sleeve') continue;
-      entry.shown = this.sleeveShown;
-      this.display(entry, { look: this.shownLook(entry.instance.sleeve, entry), ...(entry.shown ? {} : { visible: false }) });
-    }
+    this.sleeve.remind();
   }
 
   // Stops instances whose monitor is gone or moved, or that the settings or silence no longer want, then
@@ -532,12 +489,7 @@ export class VisualizerManager {
       colors: null, writing: Promise.resolve(), startedLook: instance.sleeve ?? null, veil
     };
     this.entries.set(entry.key, entry);
-    // sleeved outlives its pages and remembers changes by their name, which would win over these start options
-    if (instance.engine === 'sleeve') {
-      const covered = this.lightened && instance.sleeve.background?.startsWith('cover');
-      entry.shown = this.sleeveShown;
-      this.display(entry, { reset: true, ...(entry.shown ? {} : { visible: false }), ...(covered ? { look: this.shownLook(instance.sleeve, entry) } : {}) });
-    }
+    if (instance.engine === 'sleeve') this.sleeve.started(entry);
     if (instance.pipe) {
       // A piped value that never arrives stays unset: the wallpaper's colors when known, else the configured ones
       child.stdin?.on('error', () => {});
@@ -558,14 +510,9 @@ export class VisualizerManager {
     return entry;
   }
 
-  // Tells a running sleeve page about a change. In the background and best effort: without sleeved there is
-  // nothing on the page to change (status 2), and it starts with the start options when sleeved appears.
+  // Tells a running sleeve page about a change (SleevePages)
   display(entry, change) {
-    const { file, args } = entry.adapter.display(entry.monitor, change);
-    return Promise.resolve().then(() => this.exec(file, args)).catch(error => {
-      if (error.code === 2) this.logger.debug('sleeved is not running', { instance: entry.instance.name });
-      else this.logger.warn('sleeve ctl display failed', { instance: entry.instance.name, error: error.message });
-    });
+    return this.sleeve.display(entry, change);
   }
 
   // Writes colors to an instance's stdin, after any earlier writes; resolves once written. An adapter's
@@ -637,15 +584,9 @@ export class VisualizerManager {
     return Promise.all(changed);
   }
 
-  // Works out a sleeve `auto` background again; a list of what to wait for, empty when it stays as it is
+  // Works out a sleeve `auto` background again (SleevePages); a list of what to wait for
   reveil(entry) {
-    const strength = veilStrength(entry.instance.sleeve?.background);
-    if (strength === null) return [];
-    const veil = this.veilFor(entry.monitor, entry.geometry, entry.instance.sleeve.lyricsArea);
-    if (!veil || veil === entry.veil) return [];
-    entry.veil = veil;
-    this.logger.info('Visualizer veil', { monitor: entry.monitor.name, instance: entry.instance.name, veil });
-    return [this.display(entry, { look: { background: scaleVeil(veil, strength) } })];
+    return this.sleeve.reveil(entry);
   }
 
   // Whether an instance or an overlay on the monitor takes its colors from the wallpaper (overlays always do)

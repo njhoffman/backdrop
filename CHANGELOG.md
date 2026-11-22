@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.94.3] - 2026-11-21
+
+### Changed
+
+- Internal: sleeve's page handling and the wallpaper dims moved into their own modules; nothing changes in use.
+
 ## [2.94.2] - 2026-11-21
 
 ### Fixed
