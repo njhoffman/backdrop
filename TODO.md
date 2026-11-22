@@ -279,6 +279,9 @@ Reviewed: 2026-11-20
       mpv's own output is not kept. Fix: give each screen an mpv log (`--log-file` under the runtime dir, last lines copied into the
       warning on exit), find why a geometry change kills it (playlist built for 1440p? the `smooth`/`bounce` work files?), and
       check after a restart that a frame arrives, retrying or notifying when none does (`src/display/Daemon.js` `handleExit`).
+      Update 2026-11-21: v2.74.0 (after this) keeps mpv's last output (`outputTail`) in the exit warnings and kills and
+      restarts an mpv that opens no file within 15 s, so the next one says why it exited. Still open: the cause, which
+      needs a hotplug to reproduce, and an mpv that opens a file but draws no frame.
 - [x] **The monitor poll makes X re-read every monitor's EDID every 5 s.** (p2) [perf] `reconcileMonitors` runs
       `xrandr --listactivemonitors` every `MONITOR_POLL_MS` (5000); without `--current` xrandr asks the server to re-probe
       every connector, a DDC read of each EDID that blocks the X server (about 140 ms a call here, 2 reads with a laptop
@@ -752,8 +755,9 @@ the renderer, behind an adapter; the reasoning is in `docs/specs/visualizer.md`.
       the picks can lose contrast until the next load. Recolor when the daemon sees a dim change (DisplayControl sets it
       over mpv directly, so the daemon would need a control request or to observe mpv's `brightness`).
       Done in 2.38.0: the daemon observes mpv's `brightness`, recolors on a change, and checks contrast against it.
-- [ ] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches mpv's `contrast` in one step when music starts or
+- [x] **Fade the music dim.** (p3) [feature] `wallpaper_dim` switches mpv's `contrast` in one step when music starts or
       stops; stepping it over half a second or so would look smoother (mpv has no fade for it).
+      Done (v2.94.1): `Daemon.fadeContrast` steps mpv's contrast ten times over 500 ms; a load sets the new item's at once.
 - [x] **The stacking test's later cases do not exercise the restack.** (p3) [test] In
       `test/display/stacking.integration.test.js` the mpv-restart and wallpaper off/on cases pass even with the restack
       disabled, because a new xwinwrap lowers itself below the visualizer. Have the stand-in lower itself again whenever a
@@ -902,9 +906,10 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
 - [ ] **Preset screenshots on the real desktop.** (p2) [test] Only Xvfb and fakes have run them. Leave a preset on an
       empty i3 workspace with music for 30 s and check `visualizer-<preset>.jpg` in the thumbnail folder: polybar
       cropped, picom's transparency as shown, nothing else in it.
-- [ ] **A preset edited in force keeps its old screenshot.** (p3) [feature] A screenshot is taken once per switch,
+- [x] **A preset edited in force keeps its old screenshot.** (p3) [feature] A screenshot is taken once per switch,
       keyed by the preset's name, so editing the preset in the config while it is in force leaves the old picture
       until the next switch. Key `PresetShots` on the look (`fileLook`) instead of the name.
+      Done (v2.94.1): `PresetShots` keys a screenshot on the preset and the manager's `fileLook`.
 
 ## 10. Web interface
 
@@ -968,7 +973,7 @@ ratings with it. Media is not synced: either machine can fetch and encode again.
 - [ ] **The worker fetches Pexels sources itself.** (p3) [perf] Off the LAN, uploading each video from the laptop is
       the slow part of an offloaded job. For a Pexels item the job could carry the chosen variant's URL and the
       worker download it (`src/offload/worker.js`), falling back to the upload for local imports.
-- [ ] **Rating sync.** (p2) [feature] Schema v11: a host id per database and a change log keyed by (host, sequence)
+- [ ] **Rating sync.** (p2) [feature] Schema v12 (v11 went to import retry): a host id per database and a change log keyed by (host, sequence)
       for ratings, undo events and per-item attributes (speed, bounce; dim stays per machine). Peers exchange entries
       after each host's high-water mark (`ssh minerva backdrop sync --serve`); ratings merge as a set union, attributes
       last writer wins. Items match on (source, source_id), or sha256 for local imports; verdicts for media a machine

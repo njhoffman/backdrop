@@ -132,8 +132,8 @@ monitor that nothing but backdrop's own windows covers is taken (`X11.uncoveredA
 and the overlays are its own, and every other viewable window above the lowest of them that overlaps the monitor
 blocks it, except a dock (`_NET_WM_WINDOW_TYPE_DOCK`, found on the window or inside a window manager's frame) along
 the top or bottom edge, whose strip is cropped off. With i3 that is an empty workspace; an open rofi menu or a
-notification blocks it too. While every monitor is covered it looks again every 30 s. Each preset switch takes one
-picture, replacing the last, so pictures follow the wallpapers in use; a pause in the sound takes none again. Saving
+notification blocks it too. While every monitor is covered it looks again every 30 s. Each preset switch, and each edit to the preset in force
+in the config file (its `fileLook` changes), takes one picture, replacing the last, so pictures follow the wallpapers in use; a pause in the sound takes none again. Saving
 over a preset or deleting it removes its picture. No preset (`none`) has none.
 
 Colors set in the config are piped to GLava like the wallpaper's, so changing a swatch needs no restart; a module with no colors set keeps its shader's own, and a raw `#define` for them stays in the shader.
@@ -161,7 +161,8 @@ daemon does not stop for it when the wallpaper is off. When the state cannot be 
 sound, so the bars stand out without changing their colors. It is a floor: each monitor shows the stronger of its
 item's own dim and `wallpaper_dim` (`Daemon.shownDim`), and goes back to the item's dim, read again from the
 database, `silence_grace` seconds after the sound stops or when the visualizer turns off. The manager reports the
-change (`musicDim`, also in `state.json`'s visualizer summary) and the daemon sets each mpv's `contrast`;
+change (`musicDim`, also in `state.json`'s visualizer summary) and the daemon fades each mpv's `contrast` to it over
+half a second in ten steps (`fadeContrast`; mpv has no fade for it), a load setting the new item's contrast at once;
 `backdrop dim` stores the item's dim and shows the stronger of the two the same way. A dim is set as mpv's `contrast`, which scales every channel like a black veil over the picture (`--contrast=-25` shows `64,128,200` as `48,96,150`; `--brightness=-25` would show `0,64,136`), checked with mpv 0.40 on software GL. It needs no
 `only_while_playing`: the watcher runs for either, and only `only_while_playing` stops the instances. The daemon
 observes mpv's `contrast`, so colors from the wallpaper are checked for contrast against what shows after any

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.94.1] - 2026-11-21
+
+### Changed
+
+- The music dim (`visualizer.wallpaper_dim`) fades in and out over half a second instead of switching at once.
+- Editing the visualizer preset in force in the config file takes a new screenshot of it after 30 seconds, as
+  switching to it does.
+
 ## [2.94.0] - 2026-11-21
 
 ### Added

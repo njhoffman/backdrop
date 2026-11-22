@@ -5,7 +5,8 @@ import path from 'path';
 // has been in force for DELAY_MS with sound playing, no menu changes over it and the visualizer showing, the daemon
 // grabs a monitor that nothing but backdrop's own windows covers (dock bars cropped off) and keeps it as
 // visualizer-<preset>.jpg in the thumbnail folder. A monitor covered at that point is looked at again every
-// DELAY_MS for as long as the conditions hold; each preset switch takes one screenshot, replacing the last.
+// DELAY_MS for as long as the conditions hold; each preset switch, or edit of the preset in force in the config
+// file, takes one screenshot, replacing the last.
 
 export const DELAY_MS = 30000;
 const TICK_MS = 5000;
@@ -75,8 +76,15 @@ export class PresetShots {
     return [...this.manager.monitors.keys()].filter(name => names.has(name));
   }
 
+  // What a screenshot shows: the preset and its look as the file sets it (the manager's fileLook), so editing the
+  // preset in force takes another, as a switch does
+  lookKey(preset) {
+    return preset ? `${preset}\n${this.manager.look ?? ''}` : null;
+  }
+
   async check() {
-    const key = this.current();
+    const preset = this.current();
+    const key = this.lookKey(preset);
     const time = this.now();
     if (key !== this.key) {
       Object.assign(this, { key, since: time, nextTry: time + this.delay });
@@ -86,7 +94,7 @@ export class PresetShots {
     if (!key || this.taken === key || this.busy || time < this.nextTry) return false;
     this.busy = true;
     try {
-      const done = await this.capture(key);
+      const done = await this.capture(preset);
       if (done) this.taken = key;
       else this.nextTry = this.now() + this.delay;
       return done;
@@ -118,8 +126,8 @@ export class PresetShots {
         continue;
       }
       if (!area) continue;
-      // The preset may have changed while the windows were looked at
-      if (this.current() !== preset) return false;
+      // The preset or its look may have changed while the windows were looked at
+      if (this.current() !== preset || this.lookKey(preset) !== this.key) return false;
       return this.grab(preset, name, area);
     }
     this.logger.debug('Every monitor is covered, no preset screenshot yet', { preset });

@@ -64,6 +64,8 @@ describe('Daemon', () => {
       gpuMemory: async () => null,
       probeCopy: async () => ({ codec: 'h264', pixFmt: 'yuv420p', frames: 10 }),
       monitorInterval: 0,
+      // The music dim at once; the fade has its own test
+      dimFade: 0,
       // Tests that watch the config file pass their own
       watch: null, watchOutputs: null,
       purgeInterval: 0,
@@ -1691,6 +1693,32 @@ describe('Daemon', () => {
       visualizers.musicDim = 0;
       await daemon.applyDims();
       expect(client.properties.contrast).to.equal(-5);
+    });
+
+    it('fades the music dim in steps, and a load ends the fade with the item\'s contrast at once', async () => {
+      await daemon.stop();
+      daemon = makeDaemon({ visualizers, dimFade: 40 });
+      await daemon.start();
+      db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/a.png' });
+      const { client } = clients.at(-1);
+      clients.at(-1).client.emit('property-change', { event: 'property-change', name: 'path', data: '/m/a.png' });
+      await tick();
+      const sets = [];
+      const set = client.setProperty.bind(client);
+      client.setProperty = async (name, value) => { if (name === 'contrast') sets.push(value); return set(name, value); };
+      visualizers.musicDim = 30;
+      await daemon.applyDims();
+      expect(sets).to.deep.equal([-3, -6, -9, -12, -15, -18, -21, -24, -27, -30]);
+      // Fading back out, a load cuts in: its own contrast, and no step of the fade after it
+      sets.length = 0;
+      visualizers.musicDim = 0;
+      const fading = daemon.applyDims();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      client.emit('property-change', { event: 'property-change', name: 'path', data: '/m/a.png' });
+      await tick();
+      await fading;
+      expect(sets.at(-1)).to.equal(0);
+      expect(sets.length).to.be.below(10);
     });
 
     it('observes mpv\'s contrast', async () => {

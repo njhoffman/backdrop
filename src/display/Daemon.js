@@ -44,6 +44,10 @@ const RESTART_DELAY_MS = 1000;
 // A started mpv with media to show that has not opened a file by then is killed, so the restart path tries again;
 // after a hotplug one once came up with no picture and never left that state
 const FIRST_FILE_TIMEOUT_MS = 15_000;
+// The music dim (visualizer.wallpaper_dim) fades in and out over this long, in DIM_FADE_STEPS contrast changes; mpv
+// has no fade for contrast, and each step is one IPC set
+const DIM_FADE_MS = 500;
+const DIM_FADE_STEPS = 10;
 // mpv answers nothing while it sets up video, which a slow GPU or decoder probe can stretch to several seconds
 const MPV_COMMAND_TIMEOUT_MS = 15_000;
 const STOP_GRACE_MS = 2000;
@@ -136,7 +140,7 @@ export class Daemon {
   constructor({
     config, database, logger,
     spawn = spawnProcess, exec = run, connect = MpvClient.connect, kill = process.kill,
-    restartDelay = RESTART_DELAY_MS, firstFileTimeout = FIRST_FILE_TIMEOUT_MS, stopGrace = STOP_GRACE_MS,
+    restartDelay = RESTART_DELAY_MS, firstFileTimeout = FIRST_FILE_TIMEOUT_MS, stopGrace = STOP_GRACE_MS, dimFade = DIM_FADE_MS,
     healthInterval = HEALTH_INTERVAL_MS, purgeInterval = PURGE_INTERVAL_MS, importProgressInterval = IMPORT_PROGRESS_MS,
     monitorInterval = MONITOR_POLL_MS, now = Date.now, readFile,
     importer = new Importer({ config, database, logger }),
@@ -194,6 +198,7 @@ export class Daemon {
     this.kill = kill;
     this.restartDelay = restartDelay;
     this.firstFileTimeout = firstFileTimeout;
+    this.dimFade = dimFade;
     this.stopGrace = stopGrace;
     this.importer = importer;
     this.importing = Promise.resolve();
@@ -702,19 +707,34 @@ export class Daemon {
   }
 
   // Sets every wallpaper's contrast again when the music dim changes, with each item's dim read again
-  // (`backdrop dim` may have changed it since it loaded)
+  // (`backdrop dim` may have changed it since it loaded), fading to it (fadeContrast)
   async applyDims() {
     if (this.stopping) return;
     await Promise.all([...this.screens.values()].map(async screen => {
       if (!screen.client || !screen.media) return;
       screen.media = this.database.getMedia(screen.media.id) ?? screen.media;
       try {
-        await screen.client.setProperty('contrast', contrastFor(this.shownDim(screen.media)));
+        await this.fadeContrast(screen, contrastFor(this.shownDim(screen.media)));
       } catch (error) {
         this.logger.warn('Failed to set contrast', { monitor: screen.monitor.name, error: error.message });
       }
     }));
     await this.writeState();
+  }
+
+  // Steps a wallpaper's contrast from where mpv has it to target over dimFade ms. A later fade, or a load setting the
+  // contrast at once, ends this one where it is.
+  async fadeContrast(screen, target) {
+    const fade = {};
+    screen.fade = fade;
+    const from = screen.contrast ?? await screen.client.getProperty('contrast').catch(() => target);
+    const steps = this.dimFade > 0 && typeof from === 'number' && from !== target ? DIM_FADE_STEPS : 1;
+    for (let step = 1; step <= steps; step++) {
+      if (screen.fade !== fade || this.stopping) return;
+      await screen.client.setProperty('contrast', step === steps ? target : Math.round(from + (target - from) * step / steps));
+      if (step < steps) await sleep(this.dimFade / steps);
+    }
+    if (screen.fade === fade) screen.fade = null;
   }
 
   // mpv's contrast changed (a load, the music dim, or `backdrop dim`): visualizer colors from the wallpaper
@@ -744,6 +764,8 @@ export class Daemon {
     // A switch to the bounce at the end of a pass (daemon/Bounce.js) goes on counting from the replaced entry's load
     const carried = this.bounce.carried(screen, media);
     screen.loadedAt = carried ?? this.now();
+    // A new item takes its contrast at once, ending a fade of the music dim
+    screen.fade = null;
     try {
       await screen.client.setProperty('contrast', contrastFor(this.shownDim(media)));
     } catch (error) {

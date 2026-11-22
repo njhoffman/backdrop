@@ -134,6 +134,23 @@ describe('PresetShots', () => {
     expect(grabs()).to.have.length(3);
   });
 
+  it('takes the preset in force again once its look changes in the file, as a switch does', async () => {
+    manager.look = '{"opacity":0.5}';
+    await shots.check();
+    time = 30000;
+    expect(await shots.check()).to.equal(true);
+    time = 60000;
+    expect(await shots.check()).to.equal(false);
+    // Edited in the config while in force: the 30 s start again, then another screenshot
+    manager.look = '{"opacity":0.8}';
+    expect(await shots.check()).to.equal(false);
+    time = 89999;
+    expect(await shots.check()).to.equal(false);
+    time = 90000;
+    expect(await shots.check()).to.equal(true);
+    expect(grabs()).to.have.length(2);
+  });
+
   it('takes none without a preset, with screenshots off, or with no instance window found', async () => {
     const tryAt = async () => {
       await shots.check();
