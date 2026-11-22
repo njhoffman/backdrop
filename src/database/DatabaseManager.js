@@ -637,12 +637,28 @@ export class DatabaseManager {
     return { byQuery: new Map(rows.map(row => [row.query, row.count])), total };
   }
 
-  // The most common tags of downloaded items, as [{ tag, count }], most common first (the library page's filter)
-  getTagCounts(limit = 100) {
+  // The most common tags of downloaded items, as [{ tag, count }], most common first (the library page's filter,
+  // `backdrop tags`, stats). limit null for all; prefix: only tags starting with it; kinds and statuses narrow the
+  // items counted (the playable ones: status ['new', 'kept'])
+  getTagCounts(limit = 100, { prefix, kinds, statuses } = {}) {
+    const conditions = ['m.path IS NOT NULL'];
+    const params = [];
+    if (prefix) {
+      conditions.push("t.tag LIKE ? ESCAPE '\\'");
+      params.push(`${String(prefix).toLowerCase().replace(/[\\%_]/g, '\\$&')}%`);
+    }
+    if (kinds?.length) {
+      conditions.push(`m.kind IN (${kinds.map(() => '?').join(', ')})`);
+      params.push(...kinds);
+    }
+    if (statuses?.length) {
+      conditions.push(`m.status IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
     return this.db.prepare(`
       SELECT t.tag, COUNT(*) AS count FROM media_tags t JOIN media m ON m.id = t.media_id
-      WHERE m.path IS NOT NULL GROUP BY t.tag ORDER BY count DESC, t.tag LIMIT ?
-    `).all(limit).map(row => ({ tag: row.tag, count: Number(row.count) }));
+      WHERE ${conditions.join(' AND ')} GROUP BY t.tag ORDER BY count DESC, t.tag${limit === null ? '' : ' LIMIT ?'}
+    `).all(...params, ...(limit === null ? [] : [limit])).map(row => ({ tag: row.tag, count: Number(row.count) }));
   }
 
   // Distinct queries of every saved search, oldest first

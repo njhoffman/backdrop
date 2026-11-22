@@ -1,6 +1,6 @@
 import { Daemon, readState } from '../display/Daemon.js';
 import { readNextFilters } from '../display/nextFilters.js';
-import { getMode, getChosenMode, displayMode, eligibleMedia } from '../display/Playlist.js';
+import { getMode, getChosenMode, displayMode, describePlaylistFilter, getPlaylistFilter, playlistMatch } from '../display/Playlist.js';
 import { DisplayService } from '../services/DisplayService.js';
 import { readWebInfo, webAddress } from '../web/info.js';
 import { bounceState } from '../display/bounce.js';
@@ -128,6 +128,8 @@ export class DisplayCommand {
     const chosen = getChosenMode(this.database);
     const shown = getMode(this.database);
     out.row('Mode', `${fmt.cyan(shown)}${shown === chosen ? '' : fmt.dim(` (${chosen} held back by the system load)`)}`);
+    const filter = getPlaylistFilter(this.database);
+    if (filter) out.row('Playlist', `${describePlaylistFilter(filter)} ${fmt.dim('(backdrop playlist --clear for everything)')}`);
     for (const warning of this.config.warnings ?? []) out.row('Config', fmt.yellow(warning));
     // Without the token: `backdrop web --open` opens it with one
     const web = await readWebInfo(this.runtimeDir);
@@ -169,12 +171,14 @@ export class DisplayCommand {
       }
       const mode = displayMode(this.database, monitor, { allowUpscale });
       const { path, media } = await this.control.current(monitor.name).catch(() => ({}));
-      const eligible = eligibleMedia(this.database, mode, monitor, { allowUpscale }).length;
-      const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s eligible`];
+      const { media: eligibleItems, fallback } = playlistMatch(this.database, mode, monitor, { allowUpscale, exclude: state.dropped });
+      const eligible = eligibleItems.length;
+      const details = [formatResolution(monitor.width, monitor.height), `${eligible} ${mode}s ${filter && !fallback ? 'in the playlist' : 'eligible'}`];
       // Recent average from the daemon's samples, once it has two
       if (Number.isFinite(monitor.cpu)) details.push(`cpu ${formatCpu(monitor.cpu)}${monitor.hwdec ? ` ${formatDecoder(monitor.hwdec)}` : ''}`);
       if (Number.isFinite(monitor.gpuMemory)) details.push(`gpu ${formatBytes(monitor.gpuMemory)}`);
       out.print(`  ${icon('monitor')}${fmt.bold(monitor.name)} ${fmt.dim(details.join(', '))}`);
+      if (fallback) out.field('info', fmt.yellow(`the playlist matches no ${mode} for this monitor; playing every ${mode}`));
       for (const item of monitor.visualizers ?? (monitor.visualizer ? [monitor.visualizer] : [])) out.field('info', this.describeVisualizer(item));
       for (const overlay of monitor.overlays ?? []) out.field('info', this.describeOverlay(overlay));
       if (!path) {
@@ -320,6 +324,24 @@ export class DisplayCommand {
   }
 
   // With the daemon running, the reload also shows what the target monitor now plays
+  // `backdrop playlist`: sets the playlist filter with --query/--tag/--keywords, drops it with --clear, and shows it
+  // with neither; each monitor's count, and a warning for one the filter leaves empty (it plays everything)
+  async playlist(options = {}) {
+    const { filter, changed, running, monitors } = await this.service.playlist(options);
+    if (wantsJson(options)) {
+      out.json({ filter, monitors });
+      return;
+    }
+    out.row('Playlist', filter ? describePlaylistFilter(filter) : fmt.dim(changed ? 'everything (filter cleared)' : 'everything (no filter)'));
+    if (!running) {
+      out.detail(changed ? 'The daemon is not running; its next start plays this playlist' : 'The daemon is not running');
+      return;
+    }
+    for (const [name, { count, fallback }] of Object.entries(monitors)) {
+      out.print(`  ${fmt.bold(name)}: ${fallback ? fmt.yellow(`nothing matches here; playing all ${count} eligible items`) : `${count} items`}`);
+    }
+  }
+
   async mode(requested, options = {}) {
     const { mode, held, counts, running, playing } = await this.service.mode(requested, options);
     // --json: the new mode and what the target monitor now plays, or a null monitor when stopped

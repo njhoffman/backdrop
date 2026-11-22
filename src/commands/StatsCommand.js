@@ -41,6 +41,7 @@ export class StatsCommand {
       this.resolutions(data.resolutions);
       this.sources(data.sources);
       this.queries(data.queries);
+      this.tags(data.tags);
       this.activity(data.recent);
       this.storage(data.storage);
       this.monitors(data.monitors);
@@ -103,6 +104,12 @@ export class StatsCommand {
       rows.push([`${icon('query')}"${row.query}"`, row.results, row.downloaded, fmt.green(row.kept)]);
     }
     this.section('Top searches', rows, { align: ['l', 'r', 'r', 'r'] });
+  }
+
+  tags(tags) {
+    if (!tags?.length) return;
+    const rows = [[fmt.dim('tag'), fmt.dim('items')], ...tags.map(row => [row.tag, row.count])];
+    this.section('Top tags (new and kept; backdrop tags for more)', rows, { align: ['l', 'r'] });
   }
 
   activity(recent) {

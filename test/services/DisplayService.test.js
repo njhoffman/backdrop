@@ -117,6 +117,56 @@ describe('DisplayService', () => {
     expect((await service.prev({ monitor: 'DP-1' })).playing).to.equal(playing);
   });
 
+  describe('playlist', () => {
+    const add = (id, name, kind = 'video') => db.addMedia({ kind, source: 'local', source_id: id, width: 1920, height: 1080, path: `/m/${id}`, original_name: name });
+
+    it('refuses an unknown query, a filter that matches nothing, and filters with --clear', async () => {
+      add(1, 'ocean.mp4');
+      const service = make();
+      service.control = { playlist: sinon.stub(), state: async () => null };
+      let caught;
+      try { await service.playlist({ query: ['nothing searched'] }); } catch (error) { caught = error; }
+      expect(caught.message).to.include('No search used the query "nothing searched"');
+      try { await service.playlist({ tag: ['forest'] }); } catch (error) { caught = error; }
+      expect(caught.message).to.equal('No item to show matches tags forest');
+      try { await service.playlist({ tag: ['ocean'], clear: true }); } catch (error) { caught = error; }
+      expect(caught.message).to.equal('Give filters or --clear, not both');
+      expect(service.control.playlist.called).to.be.false;
+    });
+
+    it('sets and clears the filter through the control, and reports it without changing anything', async () => {
+      add(1, 'ocean night.mp4');
+      add(2, 'forest.mp4');
+      const service = make();
+      service.control = {
+        playlist: sinon.stub().callsFake(async filter => ({ filter, running: true, monitors: { 'DP-1': { count: 1, fallback: false } } })),
+        state: async () => ({ monitors: [monitor], dropped: [] })
+      };
+      expect(await service.playlist({ tag: ['ocean', 'night'] })).to.deep.include({ changed: true, filter: { query: undefined, tag: ['ocean', 'night'], keywords: undefined } });
+      expect(await service.playlist({ clear: true })).to.deep.include({ changed: true, filter: null });
+      // With neither, what is stored, and what each monitor would play
+      db.setSetting('playlist_filter', { tag: ['forest'] });
+      expect(await service.playlist({})).to.deep.equal({ filter: { tag: ['forest'] }, changed: false, running: true, monitors: { 'DP-1': { count: 1, fallback: false } } });
+      db.setSetting('playlist_filter', { tag: ['ocean'] });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 3, width: 1920, height: 1080, path: '/m/3', original_name: 'desert.jpg' });
+      db.setSetting('mode', 'image');
+      expect((await service.playlist({})).monitors).to.deep.equal({ 'DP-1': { count: 1, fallback: true } });
+      expect(service.control.playlist.callCount).to.equal(2);
+    });
+
+    it('shows the filter and each monitor\'s fallback in the status', async () => {
+      add(1, 'ocean.mp4');
+      add(2, 'forest.mp4');
+      db.setSetting('playlist_filter', { tag: ['ocean'] });
+      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitor, socket: null }] });
+      const service = make();
+      service.control.current = async () => ({});
+      const status = await service.status();
+      expect(status.playlist).to.deep.equal({ tag: ['ocean'] });
+      expect(status.monitors[0]).to.include({ eligible: 1, playlist_fallback: false });
+    });
+  });
+
   it('gives the status as data while the daemon is stopped', async () => {
     const status = await make().status();
     expect(status.daemon).to.include({ running: false, pid: null });

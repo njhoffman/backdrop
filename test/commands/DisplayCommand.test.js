@@ -66,6 +66,20 @@ describe('DisplayCommand', () => {
       expect(text).to.include('No videos at least 3840x2160').and.include('display.allow_upscale');
     });
 
+    it('shows the playlist filter, counts within it, and a monitor it leaves empty', async () => {
+      addVideo(1, 1920, 1080, { original_name: 'ocean.mp4' });
+      addVideo(2, 3840, 2160, { original_name: 'forest.mp4' });
+      db.setSetting('playlist_filter', { tag: ['ocean'] });
+      command.control = { current: async () => ({ path: null }) };
+      await command.status();
+      const text = lines.join('\n');
+      expect(text).to.include('Playlist: tags ocean (backdrop playlist --clear for everything)');
+      // DP-1 holds only the match; the ocean video is too small for DP-2, so it plays everything
+      expect(text).to.include('DP-1 1920x1080, 1 videos in the playlist');
+      expect(text).to.include('DP-2 3840x2160, 1 videos eligible');
+      expect(text).to.include('the playlist matches no video for this monitor; playing every video');
+    });
+
     it('shows whether the screensaver is on, what started it and since when', async () => {
       const since = new Date(2026, 10, 10, 14, 46).getTime();
       await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, screensaver: { active: true, trigger: 'idle', since } });
@@ -259,7 +273,7 @@ describe('DisplayCommand', () => {
       await command.mode('image', { json: true });
       expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', monitor: null, item: null });
       await command.status({ json: true });
-      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], screensaver: null, smoothing: null, web: null, config_warnings: [] });
+      expect(JSON.parse(lines.at(-1))).to.deep.equal({ mode: 'image', chosen_mode: 'image', playlist: null, daemon: { running: false, pid: null, wallpaper: null, visualizer: null, compositor: null, load: null, wallpaper_hidden: false }, monitors: [], screensaver: null, smoothing: null, web: null, config_warnings: [] });
 
       config.warnings = ['Unknown config key "displya"; closest: "display"'];
       await command.status({ json: true });
@@ -400,6 +414,32 @@ describe('DisplayCommand', () => {
       orphans = [];
       await command.stop();
       expect(lines.at(-1)).to.equal('Not running');
+    });
+  });
+
+  describe('playlist', () => {
+    it('sets, shows and clears the filter, warning about a monitor it leaves empty', async () => {
+      addVideo(1, 3840, 2160, { original_name: 'ocean.mp4' });
+      command.service.control = {
+        state: async () => ({ monitors }),
+        playlist: async filter => ({ filter, running: true, monitors: { 'DP-1': { count: 0, fallback: true }, 'DP-2': { count: 1, fallback: false } } })
+      };
+      await command.playlist({ tag: ['ocean'] });
+      expect(lines).to.deep.equal(['Playlist: tags ocean', '  DP-1: nothing matches here; playing all 0 eligible items', '  DP-2: 1 items']);
+      lines.length = 0;
+      await command.playlist({ clear: true });
+      expect(lines[0]).to.equal('Playlist: everything (filter cleared)');
+      lines.length = 0;
+      await command.playlist({ json: true });
+      expect(JSON.parse(lines.join(''))).to.deep.equal({ filter: null, monitors: { 'DP-1': { count: 1, fallback: false }, 'DP-2': { count: 1, fallback: false } } });
+    });
+
+    it('says the next start plays it while the daemon is stopped', async () => {
+      addVideo(1, 3840, 2160, { original_name: 'ocean.mp4' });
+      await fs.remove(statePath(dir));
+      await command.playlist({ tag: ['ocean'] });
+      expect(lines.join('\n')).to.include('Playlist: tags ocean').and.include('its next start plays this playlist');
+      expect(db.getSetting('playlist_filter')).to.deep.equal({ tag: ['ocean'] });
     });
   });
 

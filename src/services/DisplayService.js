@@ -5,7 +5,9 @@ import { reapOrphans } from '../display/children.js';
 import { sendControl } from '../display/control.js';
 import { DisplayControl } from '../display/DisplayControl.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
-import { getMode, getChosenMode, displayMode, eligibleMedia, randomOrder } from '../display/Playlist.js';
+import {
+  getMode, getChosenMode, displayMode, randomOrder, countPlaylistMatches, describePlaylistFilter, getPlaylistFilter, playlistMatch
+} from '../display/Playlist.js';
 import { matchFilters, matchingMedia } from '../library/match.js';
 import { formatDecoder } from '../utils/output.js';
 import { readWebInfo } from '../web/info.js';
@@ -141,9 +143,12 @@ export class DisplayService {
     const monitors = [];
     for (const monitor of state?.monitors ?? []) {
       const { media, rating } = await this.control.current(monitor.name).catch(() => ({}));
+      const playlist = playlistMatch(this.database, displayMode(this.database, monitor, { allowUpscale }), monitor, { allowUpscale, exclude: state.dropped });
       monitors.push({
         name: monitor.name, width: monitor.width, height: monitor.height,
-        eligible: eligibleMedia(this.database, displayMode(this.database, monitor, { allowUpscale }), monitor, { allowUpscale }).length,
+        eligible: playlist.media.length,
+        // The playlist filter matched nothing this monitor can show, so it plays every eligible item
+        playlist_fallback: playlist.fallback,
         cpu_percent: Number.isFinite(monitor.cpu) ? Math.round(monitor.cpu * 10) / 10 : null,
         decoder: formatDecoder(monitor.hwdec) || null,
         gpu_memory_bytes: Number.isFinite(monitor.gpuMemory) ? monitor.gpuMemory : null,
@@ -170,7 +175,9 @@ export class DisplayService {
     const smoothing = state?.smoothing ?? null;
     const info = await readWebInfo(this.runtimeDir);
     const web = info ? { pid: info.pid, port: info.port } : null;
-    return { mode, chosen_mode: getChosenMode(this.database), daemon, monitors, screensaver, smoothing, web, config_warnings: this.config.warnings ?? [] };
+    // The playlist filter (`backdrop playlist`): { query, tag, keywords }, or null
+    const playlist = getPlaylistFilter(this.database);
+    return { mode, chosen_mode: getChosenMode(this.database), playlist, daemon, monitors, screensaver, smoothing, web, config_warnings: this.config.warnings ?? [] };
   }
 
   // What options.monitor (or the monitor under the pointer) plays: { monitor, path, media, rating }
@@ -249,5 +256,29 @@ export class DisplayService {
     const { mode, held, counts } = playing?.result ?? await this.control.mode(requested);
     if (playing) await this.announce(playing);
     return { mode, held, counts, running: Boolean(running), playing };
+  }
+
+  // The playlist filter (`backdrop playlist`): with --query/--tag/--keywords sets it, with clear drops it, and with
+  // neither only reports it. A query no search used, or a filter that matches no displayable item at all, is refused
+  // before anything changes. Returns { filter, changed, running, monitors: { name: { count, fallback } } }; monitors
+  // are reloaded only on a change, and without one hold what each would play (count, fallback) now.
+  async playlist(options = {}) {
+    const given = ['query', 'tag', 'keywords'].some(key => options[key]?.length);
+    if (given && options.clear) throw new Error('Give filters or --clear, not both');
+    if (given) {
+      matchFilters(this.database, options);
+      const filter = { query: options.query, tag: options.tag, keywords: options.keywords };
+      if (!countPlaylistMatches(this.database, filter)) throw new Error(`No item to show matches ${describePlaylistFilter(filter)}`);
+      return { ...(await this.control.playlist(filter)), changed: true };
+    }
+    if (options.clear) return { ...(await this.control.playlist(null)), changed: true };
+    const state = await this.control.state({ required: false });
+    const { allow_upscale: allowUpscale } = this.config.get().display;
+    const monitors = {};
+    for (const monitor of state?.monitors ?? []) {
+      const { media, fallback } = playlistMatch(this.database, displayMode(this.database, monitor, { allowUpscale }), monitor, { allowUpscale, exclude: state.dropped });
+      monitors[monitor.name] = { count: media.length, fallback };
+    }
+    return { filter: getPlaylistFilter(this.database), changed: false, running: Boolean(state), monitors };
   }
 }

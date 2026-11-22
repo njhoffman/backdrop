@@ -67,6 +67,12 @@ IPC socket) would break a wallpaper.
 - **Modes:** `video` (videos and GIFs, each looping until `next`) or `image` (slideshow every
   `display.image_duration` seconds). Only one mode plays at a time, on all monitors. `backdrop mode` toggles,
   `backdrop mode video|image` sets it; the mode is stored in the database and survives restarts.
+- **Playlist filter:** `backdrop playlist --tag/--query/--keywords` narrows every monitor's playlist to the matching
+  items (tags and keywords all match, queries any, as in the lists), stored in the database (`playlist_filter`) until
+  `--clear`. It applies inside `eligibleMedia` (`playlistMatch`), so loads, syncs after a rating and reshuffles all
+  follow it; a filter matching no playable item at all is refused. Where it leaves a monitor nothing for its mode and
+  size, that monitor plays every eligible item, and the daemon notifies once (`notePlaylistFallback`); `status`, the
+  menu's status and the web Now page show the filter. `next --tag` then jumps within the filtered playlist.
 - **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), loaded
   with one `loadfile` per item (since 2.42.0; before, an `<output>.m3u` and `loadlist`), so each oversized image
   carries its own prescale. The item last shown in the mode on that monitor goes first, so

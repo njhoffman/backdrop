@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { readState } from '../display/Daemon.js';
-import { MODES, eligibleMedia } from '../display/Playlist.js';
+import { DISPLAY_STATUSES, MODES, eligibleMedia } from '../display/Playlist.js';
 
 // What `backdrop stats` shows, as data, for the CLI (StatsCommand prints it, or --json) and the web interface's Status
 // page: the library by kind and status, ratings, resolutions, sources, searches, recent activity, storage, what each
@@ -10,6 +10,7 @@ import { MODES, eligibleMedia } from '../display/Playlist.js';
 export const KINDS = ['video', 'gif', 'image'];
 const RESOLUTION_BUCKETS = ['8K', '4K', '1440p', '1080p', 'smaller', 'unknown'];
 export const RECENT_DAYS = 7;
+const TOP_TAGS = 10;
 
 // Files and bytes under a directory; a missing directory counts as empty
 export async function directoryUsage(dir) {
@@ -57,6 +58,8 @@ export class StatsService {
       resolutions: this.resolutions(detail),
       sources: detail.sources,
       queries: detail.queries,
+      // The ten most common tags of the items that can play (new and kept), [{ tag, count }]
+      tags: this.database.getTagCounts(TOP_TAGS, { statuses: DISPLAY_STATUSES }),
       recent: { days: RECENT_DAYS, ...detail.recent, searches_all_time: stats.searches, duplicates: stats.duplicates },
       storage: await this.storage(),
       monitors: await this.monitors(),
@@ -114,7 +117,7 @@ export class StatsService {
     const { allow_upscale: allowUpscale } = this.config.get().display;
     return state.monitors.map(monitor => ({
       name: monitor.name, width: monitor.width, height: monitor.height,
-      eligible: Object.fromEntries(MODES.map(mode => [mode, eligibleMedia(this.database, mode, monitor, { allowUpscale }).length]))
+      eligible: Object.fromEntries(MODES.map(mode => [mode, eligibleMedia(this.database, mode, monitor, { allowUpscale, filter: null }).length]))
     }));
   }
 

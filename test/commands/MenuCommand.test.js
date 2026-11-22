@@ -135,6 +135,13 @@ describe('MenuCommand', () => {
     expect(await readNextFilters(runtime)).to.deep.equal({ tag: ['sky'] });
   });
 
+  it('shows the playlist filter in the status, apart from next\'s filters', async () => {
+    db.setSetting('playlist_filter', { tag: ['ocean'], query: ['sea'] });
+    picks = [{ key: 'q' }];
+    await command.open();
+    expect(shown[0].status[1]).to.equal('playlist  <b>tags ocean · query "sea"</b>');
+  });
+
   it('clears the monitor picked with Tab, giving the first its windows back', async () => {
     const order = [];
     const leaves = name => async () => { order.push(`leave ${name}`); };

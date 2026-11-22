@@ -120,9 +120,9 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     const item = { id, kind: 'video', file: 'ocean.mp4', width: 1920, height: 1080, duration: 12, fps: 30, speed: 1, dim: 0, bounce: null,
       status: 'new', rating: null, tags: ['ocean'], queries: [], playback: null, author: null, page_url: null, source: 'local' };
     const status = {
-      mode: 'video', chosen_mode: 'video',
+      mode: 'video', chosen_mode: 'video', playlist: { tag: ['ocean', 'night'] },
       daemon: { running: true, pid: 4242, wallpaper: true, visualizer: false, compositor: null, load: null, wallpaper_hidden: false },
-      monitors: [{ ...monitor, eligible: 1, cpu_percent: 4.2, decoder: 'vaapi', gpu_memory_bytes: null, visualizer: null, visualizers: [], overlays: [], playing: item }],
+      monitors: [{ ...monitor, eligible: 1, playlist_fallback: true, cpu_percent: 4.2, decoder: 'vaapi', gpu_memory_bytes: null, visualizer: null, visualizers: [], overlays: [], playing: item }],
       screensaver: { active: false }, web: null, config_warnings: []
     };
     display = {
@@ -198,6 +198,9 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     expect(await page.textContent('.card .monitor-name')).to.equal('DP-1');
     expect(await page.textContent('.card .item-title')).to.include('ocean.mp4');
     expect(await page.textContent('#daemon')).to.equal('running, pid 4242');
+    // The playlist filter, and the monitor it leaves empty
+    expect(await page.isVisible('#playlist-field')).to.equal(true);
+    expect(await page.textContent('#playlist')).to.equal('tags ocean, night (nothing matches on DP-1, which play everything)');
     // The address bar lost the token
     expect(new URL(page.url()).search).to.equal('');
     await page.click('button[data-action="next"]');

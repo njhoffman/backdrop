@@ -20,6 +20,7 @@ import { RatingCommand } from './commands/RatingCommand.js';
 import { SearchCommand } from './commands/SearchCommand.js';
 import { DownloadCommand } from './commands/DownloadCommand.js';
 import { ListCommand } from './commands/ListCommand.js';
+import { TagsCommand } from './commands/TagsCommand.js';
 import { StatsCommand } from './commands/StatsCommand.js';
 import { CompletionCommand, SHELLS } from './commands/CompletionCommand.js';
 import { SystemdCommand } from './commands/SystemdCommand.js';
@@ -119,6 +120,7 @@ class BackdropApp {
     const download = new DownloadCommand(this.config, this.database, this.logger);
     const list = new ListCommand(this.config, this.database, this.logger);
     const stats = new StatsCommand(this.config, this.database, this.logger);
+    const tags = new TagsCommand(this.config, this.database);
     const completion = new CompletionCommand(this.config, this.database, this.logger);
     const systemd = new SystemdCommand(this.config, this.database, this.logger);
     const doctor = new DoctorCommand(this.config, this.database, this.logger, { version });
@@ -289,6 +291,22 @@ class BackdropApp {
       .option(...monitorOption)
       .option(...lineOption).option(...jsonOption)
       .action(this.action((mode, options) => display.mode(mode, options)));
+
+    program.command('tags')
+      .description('List the tags of downloaded items with how many items carry each, most used first')
+      .argument('[prefix]', 'Only tags starting with this')
+      .option('--all', 'Count skipped items too (default: the new and kept ones that can play)')
+      .option('--kind <kind>', 'Only video (with GIFs) or image items')
+      .option('--limit <n>', `How many tags to list; 0 for all (default ${50})`)
+      .option(...jsonOption)
+      .action(this.action((prefix, options) => tags.run(prefix, options)));
+
+    program.command('playlist')
+      .description('Play only the items matching tags or searches, until cleared; without options show the filter')
+      .option(...tagOption).option(...queryOption).option(...keywordsOption)
+      .option('--clear', 'Drop the filter and play everything eligible again')
+      .option(...jsonOption)
+      .action(this.action(options => display.playlist(options)));
 
     program.command('keep')
       .description('Keep the current item with a rating from 1 to 3')

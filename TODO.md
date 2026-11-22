@@ -406,10 +406,17 @@ Reviewed: 2026-11-20
       Done (v2.33.2): since v2.2.0 a lost race was already recorded as a duplicate and its copy removed; what remained was the
       doubled hashing and copying and a used `local-<n>` number. `import.lock` beside the media directory (pid and start time,
       so a crashed holder is taken over) now runs one import at a time: `backdrop import` waits, the daemon skips.
-- [ ] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
+- [x] **Tag-based playlists and search.** (p2) [feature] `media_tags` (schema v7) is filled from file names, page slugs
       and descriptions, and lists filter with `--tag`. Since v2.17.0 `pending`, `download` and `next` also take `--tag`
       and `--query` (`src/library/match.js`), but `next` only jumps once. Next: show tag counts in `stats`, add a `tags`
       command listing them, and let the daemon or screensaver play a playlist built from tags (e.g. `backdrop mode video --tag ocean`).
+      Done (v2.93.0): `backdrop playlist --tag/--query/--keywords` stores a filter (`playlist_filter`) that `eligibleMedia`
+      applies to every playlist until `--clear`, falling back to everything (with a notification) on a monitor it leaves
+      empty; `backdrop tags` lists tags with counts; `stats` shows the top ten. Screensaver playlists remain in section 7.
+- [ ] **Set the playlist from the menu and web page.** (p3) [feature] `backdrop playlist` is CLI-only; the menu and the
+      web Now page only show the filter. The web Library page already filters by tag and query, so a "Play these"
+      button there could set the same filter (a `POST /api/playlist` calling `DisplayService.playlist`), and the menu
+      could offer the most used tags (`getTagCounts`) as a submenu.
 - [x] **No shell completion for `--query` values.** (p3) [feature] `--query` must match a saved search exactly, so completing
       it from `searches` (a helper like the monitors one in `src/commands/CompletionCommand.js`, reading the database or a
       `backdrop queries` listing) would save typing and typos; `--tag` could complete from `media_tags` the same way.

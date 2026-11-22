@@ -6,7 +6,8 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import {
   MODES, getMode, setMode, otherMode, modeOfKind, lastMediaKey, eligibleMedia, shuffle, orderPlaylist,
   modeProperties, loadPlaylist, syncPlaylist, appendToPlaylist, queueMatching, reshuffleOnWrap, randomOrder,
-  playbackLimits, validVideoDuration, dropEntries
+  playbackLimits, validVideoDuration, dropEntries, getPlaylistFilter, setPlaylistFilter, describePlaylistFilter, playlistMatch,
+  countPlaylistMatches, PLAYLIST_FILTER
 } from '../../src/display/Playlist.js';
 import { bounceUrl } from '../../src/display/bounce.js';
 import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
@@ -56,6 +57,61 @@ describe('Playlist', () => {
 
     it('keys the last item by mode and monitor', () => {
       expect(lastMediaKey('video', 'DP-3')).to.equal('last_media:video:DP-3');
+    });
+  });
+
+  describe('playlist filter', () => {
+    const named = (kind, id, name, options = {}) => db.addMedia({
+      kind, source: 'local', source_id: id, width: 2560, height: 1440, path: `/m/${id}`, original_name: name, ...options
+    });
+
+    it('is stored until cleared, keeping only the filter keys with values', () => {
+      expect(getPlaylistFilter(db)).to.equal(null);
+      setPlaylistFilter(db, { tag: ['ocean'], query: [], keywords: undefined, random: true });
+      expect(getPlaylistFilter(db)).to.deep.equal({ tag: ['ocean'] });
+      setPlaylistFilter(db, null);
+      expect(getPlaylistFilter(db)).to.equal(null);
+      // A corrupt stored value counts as none
+      db.setSetting(PLAYLIST_FILTER, 'ocean');
+      expect(getPlaylistFilter(db)).to.equal(null);
+    });
+
+    it('describes itself in a few words', () => {
+      expect(describePlaylistFilter({ tag: ['ocean', 'night'], query: ['sea'], keywords: ['blue'] })).to.equal('tags ocean, night · query "sea" · words blue');
+      expect(describePlaylistFilter(null)).to.equal(null);
+    });
+
+    it('narrows every playlist to items with all its tags', () => {
+      const both = named('video', 1, 'ocean night.mp4');
+      named('video', 2, 'ocean day.mp4');
+      named('image', 3, 'ocean night.jpg');
+      setPlaylistFilter(db, { tag: ['ocean', 'night'] });
+      expect(playlistMatch(db, 'video', MONITOR)).to.deep.include({ filter: { tag: ['ocean', 'night'] }, fallback: false });
+      expect(eligibleMedia(db, 'video', MONITOR).map(m => m.id)).to.deep.equal([both]);
+      // A dropped item counts as gone: with the only match dropped, the filter falls back
+      expect(playlistMatch(db, 'video', MONITOR, { exclude: [both] })).to.deep.include({ fallback: true });
+      expect(eligibleMedia(db, 'video', MONITOR, { exclude: [both] })).to.have.length(1);
+      // filter: null looks past it
+      expect(eligibleMedia(db, 'video', MONITOR, { filter: null })).to.have.length(2);
+    });
+
+    it('falls back to every eligible item where it matches nothing', () => {
+      const video = named('video', 1, 'forest.mp4');
+      named('video', 2, 'ocean.mp4', { width: 1280, height: 720 });
+      setPlaylistFilter(db, { tag: ['ocean'] });
+      const match = playlistMatch(db, 'video', MONITOR);
+      expect(match.fallback).to.equal(true);
+      expect(match.media.map(m => m.id)).to.deep.equal([video]);
+      // Upscaling lets the small one in
+      expect(playlistMatch(db, 'video', MONITOR, { allowUpscale: true }).fallback).to.equal(false);
+    });
+
+    it('counts the playable items a filter matches, of any kind and size', () => {
+      named('image', 1, 'ocean.jpg', { width: 640, height: 480 });
+      const skipped = named('video', 2, 'ocean.mp4');
+      db.addRating(skipped, 0, '1920x1080');
+      expect(countPlaylistMatches(db, { tag: ['ocean'] })).to.equal(1);
+      expect(countPlaylistMatches(db, { tag: ['forest'] })).to.equal(0);
     });
   });
 

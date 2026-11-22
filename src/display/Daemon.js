@@ -7,7 +7,7 @@ import { MpvClient } from './MpvClient.js';
 import { listMonitors, selectMonitors, missingMonitors, geometry, run } from './Monitors.js';
 import {
   getMode, displayMode, lastMediaKey, loadPlaylist, syncPlaylist, appendToPlaylist, modeOfKind, removeFailedEntry, contrastFor, reshuffleOnWrap,
-  playbackLimits, dropEntries
+  playbackLimits, dropEntries, playlistMatch, describePlaylistFilter
 } from './Playlist.js';
 import { Importer } from '../library/Importer.js';
 import { purgeTrash } from '../library/purge.js';
@@ -19,7 +19,7 @@ import { canReadKernelLog, followKernelLog } from './kernelLog.js';
 import { entryPath, playsBounce } from './bounce.js';
 import { Bounce, UNAVAILABLE } from './daemon/Bounce.js';
 import { Smooth } from './daemon/Smooth.js';
-import { notifyMode, notifyPlaying, notifyError } from '../utils/notify.js';
+import { notifyMode, notifyPlaying, notifyError, notifyLoad } from '../utils/notify.js';
 import { outputTail } from './outputTail.js';
 import { VisualizerManager, formatGeometry } from '../visualizer/VisualizerManager.js';
 import { sampleMedia } from '../visualizer/palette.js';
@@ -666,7 +666,22 @@ export class Daemon {
     if (!count) {
       this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
     }
+    this.notePlaylistFallback(screen, mode);
     return count;
+  }
+
+  // Tells once, by notification, when the playlist filter (`backdrop playlist`) matches nothing a monitor can show in
+  // its mode, so it plays every eligible item; again only after that changes (another filter or mode, or a match)
+  notePlaylistFallback(screen, mode) {
+    const { allow_upscale: allowUpscale } = this.config.get().display;
+    const { filter, fallback } = playlistMatch(this.database, mode, screen.monitor, { allowUpscale, exclude: this.dropped });
+    const key = fallback ? `${mode}\t${JSON.stringify(filter)}` : null;
+    if (key === screen.playlistFallback) return;
+    screen.playlistFallback = key;
+    if (!key) return;
+    const message = `The playlist (${describePlaylistFilter(filter)}) has no ${mode}s for ${screen.monitor.name}; playing every ${mode}`;
+    this.logger.warn('Playlist filter matches nothing here, playing everything', { monitor: screen.monitor.name, mode, filter });
+    notifyLoad(message, { logger: this.logger });
   }
 
   // After an eligibility change: the playlist follows what is eligible now, keeping the item on screen
@@ -678,6 +693,7 @@ export class Daemon {
     });
     this.logger.info('Playlist updated', { monitor: screen.monitor.name, removed, added });
     if (!count) this.logger.warn('No media to show', { monitor: screen.monitor.name, mode });
+    this.notePlaylistFallback(screen, mode);
   }
 
   // The dim an item shows with: its own, or visualizer.wallpaper_dim while music plays if that is more

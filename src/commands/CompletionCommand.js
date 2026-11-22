@@ -32,6 +32,8 @@ function valueSpecs(sources) {
     '--min-rating': { words: ['1', '2', '3'] },
     '--playlist': { files: 'm3u' },
     'mode:mode': { words: ['video', 'image', 'toggle'] },
+    'tags:prefix': { helper: 'tags', lines: true },
+    'tags:--kind': { words: ['video', 'image'] },
     'keep:rating': { words: ['1', '2', '3'] },
     'speed:value': { words: ['reset', '0.5', '0.8', '1', '+0.1', '-0.1'] },
     'dim:value': { words: ['reset', '0', '20', '40', '+10', '-10'] },

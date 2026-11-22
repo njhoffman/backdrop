@@ -215,6 +215,18 @@ describe('DatabaseManager', () => {
       expect(db.getTagCounts()).to.deep.equal([{ tag: 'ocean', count: 2 }, { tag: 'night', count: 1 }]);
       expect(db.getTagCounts(1)).to.deep.equal([{ tag: 'ocean', count: 2 }]);
     });
+
+    it('narrows the counts by prefix, kind and status, and lists every tag with no limit', () => {
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, original_name: 'ocean night.mp4', path: '/m/1.mp4' });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 2, original_name: 'ocean oak.jpg', path: '/m/2.jpg' });
+      const skipped = db.addMedia({ kind: 'video', source: 'local', source_id: 3, original_name: 'ocean.mp4', path: '/m/3.mp4' });
+      db.addRating(skipped, 0, '1920x1080');
+      expect(db.getTagCounts(null, { prefix: 'o' })).to.deep.equal([{ tag: 'ocean', count: 3 }, { tag: 'oak', count: 1 }]);
+      expect(db.getTagCounts(null, { kinds: ['image'] })).to.deep.equal([{ tag: 'oak', count: 1 }, { tag: 'ocean', count: 1 }]);
+      expect(db.getTagCounts(null, { statuses: ['new', 'kept'] }).find(row => row.tag === 'ocean').count).to.equal(2);
+      // LIKE's wildcards in a prefix are taken literally
+      expect(db.getTagCounts(null, { prefix: '%' })).to.deep.equal([]);
+    });
   });
 
   describe('bounce', () => {

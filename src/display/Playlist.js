@@ -76,17 +76,73 @@ export function otherMode(mode) {
   return mode === 'video' ? 'image' : 'video';
 }
 
-// Media that fits the mode and is at least as large as the monitor, unless upscaling is allowed
-// exclude: ids the daemon dropped for this run (mpv hung on them, Daemon.onHung), listed in state.json `dropped`
-export function eligibleMedia(database, mode, monitor, { allowUpscale = false, exclude } = {}) {
+// The playlist filter (`backdrop playlist`): { query, tag, keywords } as the options give them, kept in the database until
+// cleared, so it outlasts the daemon like the chosen mode. Queries match a saved search exactly (any of them), tags
+// and keywords must all match, as in the lists. null when none is set.
+export const PLAYLIST_FILTER = 'playlist_filter';
+const FILTER_KEYS = ['query', 'tag', 'keywords'];
+
+export function getPlaylistFilter(database) {
+  const stored = database.getSetting(PLAYLIST_FILTER, null);
+  if (!stored || typeof stored !== 'object') return null;
+  const filter = Object.fromEntries(FILTER_KEYS.filter(key => Array.isArray(stored[key]) && stored[key].length).map(key => [key, stored[key]]));
+  return Object.keys(filter).length ? filter : null;
+}
+
+export function setPlaylistFilter(database, filter) {
+  const kept = filter ? Object.fromEntries(FILTER_KEYS.filter(key => filter[key]?.length).map(key => [key, filter[key]])) : {};
+  database.setSetting(PLAYLIST_FILTER, Object.keys(kept).length ? kept : null);
+}
+
+// The filter in a few words: tags ocean, night · query "sea" · words blue
+export function describePlaylistFilter(filter) {
+  if (!filter) return null;
+  return [
+    filter.tag?.length && `tags ${filter.tag.join(', ')}`,
+    filter.query?.length && `query ${filter.query.map(query => `"${query}"`).join(', ')}`,
+    filter.keywords?.length && `words ${filter.keywords.join(', ')}`
+  ].filter(Boolean).join(' · ');
+}
+
+// The playlist filter as findMedia filters
+function findFilters(filter) {
+  return {
+    ...(filter?.query?.length ? { queries: filter.query } : {}),
+    ...(filter?.tag?.length ? { tags: filter.tag } : {}),
+    ...(filter?.keywords?.length ? { keywords: filter.keywords } : {})
+  };
+}
+
+// What a monitor's playlist holds: media that fits the mode, at least as large as the monitor unless upscaling is
+// allowed, and matching the playlist filter. A filter that leaves nothing for the monitor falls back to every
+// eligible item, since a blank screen is worse than the whole library. Returns { media, filter (null without one),
+// fallback (whether the filter matched nothing here) }. exclude: ids the daemon dropped for this run (mpv hung on them,
+// Daemon.onHung), listed in state.json `dropped`; filter: one to use instead of the stored one (null for none).
+export function playlistMatch(database, mode, monitor, { allowUpscale = false, exclude, filter = getPlaylistFilter(database) } = {}) {
   const filters = { kind: MODE_KINDS[mode], status: DISPLAY_STATUSES, downloaded: true };
   if (!allowUpscale) {
     filters.minWidth = monitor.width;
     filters.minHeight = monitor.height;
   }
-  const media = database.findMedia(filters);
   const excluded = new Set(exclude ?? []);
-  return excluded.size ? media.filter(item => !excluded.has(item.id)) : media;
+  const find = extra => {
+    const media = database.findMedia({ ...filters, ...extra });
+    return excluded.size ? media.filter(item => !excluded.has(item.id)) : media;
+  };
+  if (!filter) return { media: find({}), filter: null, fallback: false };
+  const matching = find(findFilters(filter));
+  if (matching.length) return { media: matching, filter, fallback: false };
+  return { media: find({}), filter, fallback: true };
+}
+
+// The media a monitor's playlist holds (playlistMatch)
+export function eligibleMedia(database, mode, monitor, options = {}) {
+  return playlistMatch(database, mode, monitor, options).media;
+}
+
+// How many displayable items of any kind and size a filter matches, to refuse one that matches nothing at all
+export function countPlaylistMatches(database, filter) {
+  return database.findMedia({ ...findFilters(filter), status: DISPLAY_STATUSES, downloaded: true }).length;
 }
 
 export function shuffle(items, random = Math.random) {

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { DisplayService } from '../services/DisplayService.js';
 import { RatingService } from '../services/RatingService.js';
 import { PRESET_NAME, SWATCHES, VisualizerService } from '../services/VisualizerService.js';
-import { MODE_KINDS, getChosenMode, getModeHold, otherMode, randomOrder } from '../display/Playlist.js';
+import { MODE_KINDS, describePlaylistFilter, getChosenMode, getModeHold, getPlaylistFilter, otherMode, randomOrder } from '../display/Playlist.js';
 import { bounceState, bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
@@ -382,6 +382,8 @@ export class MenuCommand {
     const random = randomOrder(this.config.get().display, filters.random);
     const field = (name, value) => `${name}  <b>${escapeMarkup(value)}</b>`;
     const lines = [field('random', random ? 'on' : 'off')];
+    const playlist = describePlaylistFilter(getPlaylistFilter(this.database));
+    if (playlist) lines.push(field('playlist', playlist));
     if (filters.query?.length) lines.push(field('query', filters.query.map(query => `"${query}"`).join(', ')));
     if (filters.tag?.length) lines.push(field('tags', filters.tag.join(', ')));
     if (filters.keywords?.length) lines.push(field('words', filters.keywords.join(', ')));

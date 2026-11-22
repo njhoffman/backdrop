@@ -68,6 +68,8 @@ backdrop next | prev        # on the monitor under the pointer (or --monitor DP-
 backdrop next --tag ocean   # jump to a matching item; the filter sticks for later nexts (also --query, --keywords)
 backdrop next --video-duration 2m  # play videos about 2 minutes (also --image-duration), until --clear
 backdrop next --clear       # drop the filters, order and durations earlier nexts left in effect
+backdrop playlist --tag ocean  # play only items with every tag, until --clear (also --query, --keywords)
+backdrop tags               # the tags with how many items carry each, most used first (tags oce for a prefix)
 backdrop speed 0.8          # also +0.1, -0.1, reset; remembered for that video
 backdrop bounce on          # play the video backwards at its end and forwards again (off, toggle, reset)
 backdrop web --open         # the web interface on 127.0.0.1:7737 until Ctrl-C, opened in the browser
@@ -178,7 +180,9 @@ If a monitor named in `display.monitors` is not connected, the daemon starts on 
 and picks it up when it appears; downloads are sized for the connected ones.
 
 Media is tagged with words from its file name (local imports), its source page and description. Tags show
-under each item and filter lists with `--tag`; `--keywords` matches them too.
+under each item and filter lists with `--tag`; `--keywords` matches them too. `backdrop tags` lists them with how
+many items carry each, and `backdrop playlist --tag ocean` keeps the wallpaper to matching items until `--clear`;
+a monitor the filter leaves nothing for (too small, or the wrong mode) plays everything and says so.
 
 `--query`, `--tag` and `--keywords` work the same on `pending`, `download` (and `--upgrade`), the lists and
 `next`. `--query` takes one or more saved search queries, each quoted, and matches them exactly apart from

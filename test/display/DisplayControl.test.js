@@ -329,6 +329,26 @@ describe('DisplayControl', () => {
       });
     });
 
+    describe('playlist', () => {
+      it('stores the filter and loads each monitor\'s playlist again, resuming what it showed', async () => {
+        db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/o.mp4', width: 4000, height: 4000, original_name: 'ocean.mp4' });
+        db.addMedia({ kind: 'video', source: 'local', source_id: 2, path: '/m/f.mp4', width: 4000, height: 4000, original_name: 'forest.mp4' });
+        clientFor('DP-1').properties.path = '/m/o.mp4';
+        const result = await control.playlist({ tag: ['ocean'] });
+        expect(result).to.deep.equal({ filter: { tag: ['ocean'] }, running: true, monitors: { 'DP-1': { count: 1, fallback: false }, 'HDMI-1': { count: 1, fallback: false } } });
+        expect(clientFor('DP-1').commands.filter(cmd => cmd[0] === 'loadfile').map(cmd => cmd[1])).to.deep.equal(['/m/o.mp4']);
+        // Cleared: everything again
+        expect((await control.playlist(null)).monitors['DP-1'].count).to.equal(2);
+        expect(db.getSetting('playlist_filter')).to.equal(null);
+      });
+
+      it('reports a monitor the filter leaves empty, which plays everything', async () => {
+        db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/f.mp4', width: 4000, height: 4000, original_name: 'forest.mp4' });
+        db.addMedia({ kind: 'image', source: 'local', source_id: 2, path: '/m/o.jpg', width: 4000, height: 4000, original_name: 'ocean.jpg' });
+        expect((await control.playlist({ tag: ['ocean'] })).monitors['DP-1']).to.deep.equal({ count: 1, fallback: true });
+      });
+    });
+
     describe('appendMedia', () => {
       it('appends to every monitor in the current mode', async () => {
         const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/v.mp4', width: 4000, height: 4000 });

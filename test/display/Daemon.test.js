@@ -93,6 +93,27 @@ describe('Daemon', () => {
     await fs.remove(tempDir);
   });
 
+  describe('playlist filter', () => {
+    it('notifies once when the filter leaves a monitor nothing, which plays everything, and again after a change', async () => {
+      notifications.length = 0;
+      const daemon = makeDaemon();
+      const screen = { monitor: { name: 'DP-1', width: 1920, height: 1080 } };
+      db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/f.mp4', width: 1920, height: 1080, original_name: 'forest.mp4' });
+      db.addMedia({ kind: 'image', source: 'local', source_id: 2, path: '/m/o.jpg', width: 1920, height: 1080, original_name: 'ocean.jpg' });
+      daemon.notePlaylistFallback(screen, 'video');
+      expect(notifications).to.have.length(0);
+      db.setSetting('playlist_filter', { tag: ['ocean'] });
+      daemon.notePlaylistFallback(screen, 'video');
+      daemon.notePlaylistFallback(screen, 'video');
+      expect(notifications).to.have.length(1);
+      expect(notifications[0].at(-1)).to.equal('The playlist (tags ocean) has no videos for DP-1; playing every video');
+      // Matching again resets it, so a later fallback tells again
+      daemon.notePlaylistFallback(screen, 'image');
+      daemon.notePlaylistFallback(screen, 'video');
+      expect(notifications).to.have.length(2);
+    });
+  });
+
   describe('buildCommand', () => {
     it('wraps mpv in xwinwrap at the monitor geometry with its own socket and no user config', () => {
       const { file, args } = buildCommand(

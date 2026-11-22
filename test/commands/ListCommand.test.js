@@ -175,10 +175,21 @@ describe('ListCommand and StatsCommand', () => {
     console.log.resetHistory();
     await new StatsCommand(config, db, silentLogger).showStats({ json: true });
     const json = JSON.parse(console.log.args.at(-1)[0]);
-    expect(Object.keys(json).sort()).to.deep.equal(['library', 'monitors', 'playback', 'queries', 'quota', 'ratings', 'recent', 'resolutions', 'sources', 'storage']);
+    expect(Object.keys(json).sort()).to.deep.equal(['library', 'monitors', 'playback', 'queries', 'quota', 'ratings', 'recent', 'resolutions', 'sources', 'storage', 'tags']);
     expect(json.library.total).to.include({ total: 1, kept: 1 });
     expect(json.ratings.byRating).to.deep.equal([0, 0, 1, 0]);
     expect(json).to.not.have.property('raw');
+  });
+
+  it('lists the top tags of the items that can play', async () => {
+    db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/1.jpg', original_name: 'ocean night.jpg' });
+    db.addMedia({ kind: 'image', source: 'local', source_id: 2, path: '/m/2.jpg', original_name: 'ocean.jpg' });
+    db.addRating(db.addMedia({ kind: 'image', source: 'local', source_id: 3, path: '/m/3.jpg', original_name: 'storm.jpg' }), 0);
+    console.log.resetHistory();
+    await new StatsCommand(config, db, silentLogger).showStats();
+    const text = console.log.args.map(args => args[0] ?? '').join('\n');
+    expect(text).to.include('Top tags (new and kept; backdrop tags for more)\n  tag    items\n  ocean      2\n  night      1');
+    expect(text).to.not.include('storm');
   });
 
   it('counts files and bytes under a directory, treating a missing one as empty', async () => {

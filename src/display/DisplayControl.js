@@ -5,7 +5,8 @@ import { MpvClient } from './MpvClient.js';
 import { pointerMonitor, run } from './Monitors.js';
 import { readState } from './Daemon.js';
 import {
-  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, contrastFor, queueMatching, dropEntries
+  MODE_KINDS, MODES, getMode, getChosenMode, getModeHold, displayMode, setMode, otherMode, loadPlaylist, appendToPlaylist, contrastFor, queueMatching, dropEntries,
+  getPlaylistFilter, setPlaylistFilter, playlistMatch
 } from './Playlist.js';
 
 const SPEED_STEP = /^([+-])(\d*\.?\d+)$/;
@@ -329,5 +330,29 @@ export class DisplayControl {
       }));
     }
     return { mode, ...(hold && hold !== mode ? { held: hold } : {}), running: Boolean(state), counts };
+  }
+
+  // Sets the playlist filter (`backdrop playlist`; null clears it) and loads every showing monitor's playlist again,
+  // resuming the item it showed when that is still in it. Returns { filter, running, monitors: { name: { count,
+  // fallback } } }, fallback when the filter matched nothing that monitor can show, so it plays everything.
+  async playlist(filter) {
+    const state = await this.state({ required: false });
+    setPlaylistFilter(this.database, filter);
+    const stored = getPlaylistFilter(this.database);
+    const { allow_upscale: allowUpscale } = this.config.get().display;
+    const monitors = {};
+    for (const monitor of wallpaperMonitors(state)) {
+      const mode = this.monitorMode(monitor);
+      const { fallback } = playlistMatch(this.database, mode, monitor, { allowUpscale, exclude: state?.dropped });
+      const imageDuration = await this.imageDuration();
+      const count = await this.withClient(monitor, async client => {
+        const current = this.database.getMediaByPath(entryPath(await client.getProperty('path').catch(() => null)));
+        return loadPlaylist(client, {
+          database: this.database, config: this.config.get(), mode, monitor, lastMediaId: current?.id, imageDuration, exclude: state?.dropped
+        });
+      });
+      monitors[monitor.name] = { count, fallback };
+    }
+    return { filter: stored, running: Boolean(state), monitors };
   }
 }

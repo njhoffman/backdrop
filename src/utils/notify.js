@@ -128,7 +128,7 @@ export async function notifyError(message, { logger } = {}) {
   }
 }
 
-// The daemon changing what it shows for the system load
+// The daemon changing what it shows for the system load, or playing everything when the playlist filter matches nothing
 export async function notifyLoad(message, { logger } = {}) {
   try {
     await settings.exec('notify-send', ['--app-name=backdrop', `--icon=${APP_ICON}`, 'backdrop', escapeMarkup(message)]);

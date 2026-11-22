@@ -27,6 +27,18 @@ function render(next) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === status.chosen_mode));
   }
   $('#held').textContent = status.mode !== status.chosen_mode ? `showing ${status.mode}s while the system load is high` : '';
+  // The playlist filter (`backdrop playlist`), and the monitors it leaves empty, which play everything
+  const filter = status.playlist;
+  $('#playlist-field').hidden = !filter;
+  if (filter) {
+    const parts = [
+      filter.tag?.length && `tags ${filter.tag.join(', ')}`,
+      filter.query?.length && `query ${filter.query.map(query => `"${query}"`).join(', ')}`,
+      filter.keywords?.length && `words ${filter.keywords.join(', ')}`
+    ].filter(Boolean);
+    const empty = status.monitors.filter(monitor => monitor.playlist_fallback).map(monitor => monitor.name);
+    $('#playlist').textContent = `${parts.join(' · ')}${empty.length ? ` (nothing matches on ${empty.join(', ')}, which play everything)` : ''}`;
+  }
   $('#wallpaper').checked = Boolean(daemon.wallpaper);
   $('#visualizer').checked = Boolean(daemon.visualizer);
   $('#wallpaper').disabled = $('#visualizer').disabled = !daemon.running;

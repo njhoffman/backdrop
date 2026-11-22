@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.93.0] - 2026-11-21
+
+### Added
+
+- `backdrop playlist --tag ocean` keeps the wallpaper to items with every tag given (also `--query` and `--keywords`,
+  as in the lists) until `backdrop playlist --clear`; it lasts across daemon restarts. A filter that matches nothing
+  is refused. A monitor it leaves with nothing to show, too small for the matches or in the other mode, plays
+  everything instead and says so in a notification, `status` and the web page. `backdrop playlist` alone shows the
+  filter and each monitor's count.
+- `backdrop tags [prefix]` lists the tags with how many items carry each, most used first (`--kind`, `--all` to count
+  skipped items, `--limit`, `--json`); shell completion offers tags for the prefix.
+- `backdrop stats` shows the top ten tags (also in `stats --json`).
+- `backdrop status`, the menu's status line and the web Now page show the playlist filter.
+
 ## [2.92.0] - 2026-11-21
 
 ### Added
