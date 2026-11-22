@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-21
+
+### Changed
+
+- CI runs on the current checkout and setup-node actions (v7), which run on Node 24; Node 20 actions are deprecated.
+
 ## [3.0.0] - 2026-11-21
 
 ### Changed
