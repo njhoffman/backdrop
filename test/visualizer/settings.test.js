@@ -391,11 +391,14 @@ describe('visualizer settings', () => {
         }
       });
 
-      it('show the cover sharp in lyrics-stage and lyrics-cover, and Sunamu\'s swirl in lyrics-swirl, over sleeve\'s style', () => {
-        for (const name of ['lyrics-stage', 'lyrics-cover']) {
-          expect(lyrics(name).sleeve.sleeve, name).to.include({ background: 'cover' });
-          expect(lyrics(name).sleeve.sleeve.style, name).to.include({ '--art-animation': 'none', '--art-size': '512', '--art-blur': '0' });
-        }
+      it('show the cover sharp in lyrics-stage, whole in lyrics-cover, and Sunamu\'s swirl in lyrics-swirl, over sleeve\'s style', () => {
+        expect(lyrics('lyrics-stage').sleeve.sleeve).to.include({ background: 'cover' });
+        expect(lyrics('lyrics-stage').sleeve.sleeve.style).to.include({ '--art-animation': 'none', '--art-size': '512', '--art-blur': '0' });
+        // The whole cover beside the lyrics, over the user's look until one is picked, and kept over a picked one
+        expect(lyrics('lyrics-cover').sleeve.sleeve).to.include({ background: 'cover', lyricsArea: '40%x100%+0+0', cover: null });
+        expect(lyrics('lyrics-cover').sleeve.sleeve.style).to.deep.equal({ '--art-fit': 'contain' });
+        const picked = visualizerSettings({}, { preset: 'lyrics-cover', live: { lyrics: { sleeve: { cover: 'swirl' } } } }).instances.find(item => item.engine === 'sleeve');
+        expect(picked.sleeve.style).to.include({ '--art-animation': 'sleeve-art-swirl', '--art-fit': 'contain' });
         expect(lyrics('lyrics-cover').instances).to.have.length(1);
         expect(lyrics('lyrics-swirl').sleeve.sleeve).to.include({ background: 'cover', lyricsAlign: 'center' });
         expect(lyrics('lyrics-swirl').sleeve.sleeve).to.include({ cover: 'swirl' });

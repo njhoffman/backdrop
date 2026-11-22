@@ -161,6 +161,10 @@ Reviewed: 2026-11-20
       (`test/display/Daemon.test.js:484`), so a busy machine counts 6 launches instead of 7: seen once at a load around 16 on 2026-11-04, 8 of 8 passes alone. Wait for
       the next spawn instead of sleeping. Done: it waits for each launch.
 
+- [ ] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
+      the wait is over, so the restart path tries again` failed once in a full run on 2026-11-22 (expected no kill, got
+      `[-1001, 'SIGKILL']`) and passed three runs of `test/display/Daemon.test.js` alone. Likely a fixed wait racing the
+      kill timer, as in the restart-limit test above; wait on the event instead.
 - [x] **rofi cannot open the test's Xvfb display.** (p3) [test] In a full run on 2026-11-07 (load about 5) three tests in `test/commands/menu.integration.test.js` failed with `Failed to open display: :1` from rofi, before any window,
       though Xvfb had reported `:1` through `-displayfd`; the file passed 2 of 2 alone right after. Wait until a client can connect (`xdpyinfo`, or retry rofi's first start) before the tests begin.
       Done in two steps. First `startXvfb` waited until `xdotool getdisplaygeometry` connects, which did not stop it: the next failure was one rofi run in the middle of the file, with the runs before and after it fine on the same display, so a single connection fails under load rather than the server being missing. `driven()` now starts a view again (up to three times) when its rofi exits with `Failed to open display` before opening a window, dropping the failed run from the checks.
@@ -911,6 +915,9 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       keyed by the preset's name, so editing the preset in the config while it is in force leaves the old picture
       until the next switch. Key `PresetShots` on the look (`fileLook`) instead of the name.
       Done (v2.94.1): `PresetShots` keys a screenshot on the preset and the manager's `fileLook`.
+- [x] **The whole cover in lyrics-cover.** (p3) [feature] `lyrics-cover` cropped a square cover to the screen, losing
+      about 44% of its height. Done (v3.3.0): sleeve 0.48.0's `--art-fit: contain` puts the whole cover beside the
+      lyrics, by `style` over the cover look, so a look picked in the menu keeps it.
 - [x] **sleeve's cover looks per preset.** (p2) [feature] `lyrics-stage` promised the cover as the background but showed a
       wash of its colors (sleeve drew it at 64 px), and backdrop could not pick sleeve's look, which lived in the user's
       `style.css` alone. Done (v3.1.0): `sleeve.style` passes sleeve's stylesheet variables (sleeve 0.46.0, contract

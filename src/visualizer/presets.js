@@ -133,12 +133,13 @@ const PRESETS = {
       { name: 'ring', module: 'radial', rect: SIDE_RECTS.ring, radial: RING }
     ]
   },
-  // The cover alone, sharp across the window, lyrics on the left over sleeve's scrim
+  // Lyrics on the left, the whole cover sharp beside them (sleeve 0.48.0's --art-fit), over whichever cover look is
+  // picked (the user's own until one is), since style lays over the cover's variables
   'lyrics-cover': {
-    description: 'The track\'s cover, sharp, as the whole background, lyrics on the left and nothing else',
+    description: 'The whole track\'s cover, sharp, beside lyrics on the left, over its colors as the background',
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '40%x100%+0+0', background: 'cover', cover: 'sharp' } }
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '40%x100%+0+0', background: 'cover', style: { '--art-fit': 'contain' } } }
     ]
   },
   // Sunamu's moving background across the window, lyrics in the middle, a wave along the bottom

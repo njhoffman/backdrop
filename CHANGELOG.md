@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-22
+
+### Changed
+
+- `lyrics-cover` shows the whole cover, sharp and uncropped, beside the lyrics on the left, over the cover's colors
+  as the background (your own look, or the one picked in the menu), instead of a crop of it filling the screen. It
+  needs sleeve 0.48.0; an older sleeve shows only the background.
+
 ## [3.2.0] - 2026-11-22
 
 ### Added
