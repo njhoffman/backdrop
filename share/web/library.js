@@ -183,6 +183,18 @@ function bindDetails() {
   dialog.addEventListener('close', () => { open = null; });
 }
 
+// The tag, search and words filters as the API takes them, or null (with a toast) when none is set
+function matchBody() {
+  const filters = filtersFromForm();
+  const body = {};
+  if (filters.tag) body.tag = filters.tag.split(/[,\s]+/).filter(Boolean);
+  if (filters.query) body.query = [filters.query];
+  if (filters.keywords) body.keywords = filters.keywords.split(/\s+/).filter(Boolean);
+  if (Object.keys(body).length) return body;
+  toast('Set a tag, search or words first', true);
+  return null;
+}
+
 function bindFilters() {
   const form = $('#filters');
   let typing;
@@ -197,16 +209,18 @@ function bindFilters() {
   $('#prev-page').addEventListener('click', () => { page -= 1; load(); });
   $('#next-page').addEventListener('click', () => { page += 1; load(); });
   window.addEventListener('popstate', () => { formFromAddress(); load({ push: false }); });
+  $('#play-these').addEventListener('click', () => {
+    const body = matchBody();
+    if (!body) return;
+    act(async () => {
+      const { monitors } = await post('/api/playlist', body);
+      const empty = Object.entries(monitors).filter(([, monitor]) => monitor.fallback).map(([name]) => name);
+      toast(`Playlist set${empty.length ? `; nothing matches on ${empty.join(', ')}, which play everything` : ''}`);
+    });
+  });
   $('#next-matching').addEventListener('click', () => {
-    const filters = filtersFromForm();
-    const body = {};
-    if (filters.tag) body.tag = filters.tag.split(/[,\s]+/).filter(Boolean);
-    if (filters.query) body.query = [filters.query];
-    if (filters.keywords) body.keywords = filters.keywords.split(/\s+/).filter(Boolean);
-    if (!Object.keys(body).length) {
-      toast('Set a tag, search or words first', true);
-      return;
-    }
+    const body = matchBody();
+    if (!body) return;
     const monitor = $('#next-monitor').value;
     act(async () => {
       const { item } = await post(`/api/monitors/${encodeURIComponent(monitor)}/next`, body);

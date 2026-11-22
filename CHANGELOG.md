@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.94.0] - 2026-11-21
+
+### Added
+
+- `t` in the menu makes one of your 20 most used tags the playlist, or everything again; the status line shows which.
+- The web Library page has "Play these as the playlist", which plays only items with its tag, search and words on
+  every monitor, and the Now page's Playlist line has a Clear button.
+- `backdrop import --retry` checks files once recorded as unsupported, too small or failed again.
+
+### Changed
+
+- Import checks an unsupported file again by itself after FFmpeg changes version, so an upgrade that can read it (an
+  animated WebP with FFmpeg 8) imports it; files recorded before this version are checked once more. A file once too
+  small is imported once `library.min_width`/`min_height` let it in. `doctor` mentions this for animated WebP.
+
 ## [2.93.0] - 2026-11-21
 
 ### Added

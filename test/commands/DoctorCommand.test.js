@@ -149,7 +149,7 @@ describe('DoctorCommand', () => {
     const checks = await doctor().run();
 
     expect(byName(checks, 'animated WebP')).to.include({ status: 'warn', detail: '1 not imported: FFmpeg cannot decode them (a.webp)' });
-    expect(byName(checks, 'animated WebP').hint).to.include('magick a.webp a.gif');
+    expect(byName(checks, 'animated WebP').hint).to.include('magick a.webp a.gif').and.include('FFmpeg 8');
   });
 
   it('reports the bounce cache against its limit, warning when the daemon left it well over', async () => {

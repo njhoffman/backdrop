@@ -282,7 +282,7 @@ export class DoctorCommand {
     if (!files.length) return;
     const shown = files.slice(0, MISSING_SHOWN).map(file => path.basename(file)).join(', ');
     add('library', 'animated WebP', 'warn', `${files.length} not imported: FFmpeg cannot decode them (${shown}${files.length > MISSING_SHOWN ? ', ...' : ''})`,
-      'convert each to GIF beside it (magick a.webp a.gif); the next import picks the GIF up');
+      'upgrade to FFmpeg 8, and the next import checks them again by itself; or convert each to GIF beside it (magick a.webp a.gif)');
   }
 
   // What the sleeve engine needs that shows without starting it; a shell not installed or a blocked sandbox only

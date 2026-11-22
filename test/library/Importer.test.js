@@ -23,8 +23,11 @@ describe('Importer', () => {
   let db;
   let config;
   let importer;
+  // The FFmpeg version the importer reads at the start of each run
+  let ffmpeg;
 
   beforeEach(async () => {
+    ffmpeg = '7.1';
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-import-'));
     source = path.join(tempDir, 'source');
     await fs.ensureDir(source);
@@ -34,7 +37,7 @@ describe('Importer', () => {
       'paths.media': path.join(tempDir, 'library', 'media'),
       'paths.trash': path.join(tempDir, 'library', 'trash')
     });
-    importer = new Importer({ config, database: db, logger: silentLogger, probe: fakeProbe });
+    importer = new Importer({ config, database: db, logger: silentLogger, probe: fakeProbe, probeVersion: async () => ffmpeg });
   });
 
   afterEach(async () => {
@@ -322,6 +325,76 @@ describe('Importer', () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     const later = await run({ settle: 1 });
     expect(later.imported).to.have.length(1);
+  });
+
+  describe('checking unchanged files again', () => {
+    let probed;
+    beforeEach(() => {
+      probed = [];
+      const probe = importer.probe;
+      importer.probe = async file => { probed.push(path.basename(file)); return probe(file); };
+    });
+
+    it('probes an unsupported file again after an FFmpeg upgrade, recording the version, and only once', async () => {
+      const file = await write('a.webp', 'animated');
+      await run();
+      expect(db.getImportedFile(file)).to.include({ status: 'unsupported', ffprobe_version: '7.1' });
+      // Same FFmpeg: left alone
+      expect((await run()).unchanged).to.equal(1);
+      // FFmpeg 8 reads it now; the file has not changed, so its recorded hash is reused
+      ffmpeg = '8.0';
+      importer.probe = async name => { probed.push(path.basename(name)); return { kind: 'gif', width: 2560, height: 1440, duration: 3 }; };
+      const summary = await run();
+      expect(summary.imported).to.have.length(1);
+      expect(db.getImportedFile(file)).to.include({ status: 'imported', ffprobe_version: '8.0' });
+      expect(probed).to.deep.equal(['a.webp', 'a.webp']);
+      expect((await run()).unchanged).to.equal(1);
+    });
+
+    it('takes an unsupported file recorded before versions were, and ignores a version ffprobe did not give', async () => {
+      const file = await write('a.webp', 'animated');
+      await run();
+      db.db.prepare('UPDATE imported_files SET ffprobe_version = NULL').run();
+      ffmpeg = null;
+      expect((await run()).unchanged).to.equal(1);
+      ffmpeg = '7.1';
+      expect((await run()).unsupported).to.equal(1);
+      expect(db.getImportedFile(file).ffprobe_version).to.equal('7.1');
+    });
+
+    it('lets a too small file in once the minimum size allows it', async () => {
+      const file = await write('tiny.jpg', 'image 1280x720');
+      await run();
+      expect(db.getImportedFile(file)).to.include({ status: 'too_small', detail: '1280x720' });
+      expect((await run()).unchanged).to.equal(1);
+      config.set('library.min_width', 1280);
+      config.set('library.min_height', 720);
+      expect((await run()).imported).to.have.length(1);
+    });
+
+    it('checks unsupported, too small and failed files again with retry, but not imported or duplicate ones', async function () {
+      // root reads a file whatever its mode, so nothing fails
+      if (process.getuid?.() === 0) this.skip();
+      await write('bad.webp', 'animated');
+      await write('tiny.jpg', 'image 320x240');
+      await write('good.jpg', 'image 2560x1440');
+      await write('copy.jpg', 'image 2560x1440');
+      // Unreadable: hashing it fails, which records failed
+      const broken = await write('broken.jpg', 'image 2560x1440');
+      await fs.chmod(broken, 0o000);
+      await run();
+      expect(db.getImportedFile(broken).status).to.equal('failed');
+      probed.length = 0;
+      expect((await run()).unchanged).to.equal(5);
+      expect(probed).to.deep.equal([]);
+      const summary = await run({ retry: true });
+      expect(probed.sort()).to.deep.equal(['bad.webp', 'tiny.jpg']);
+      // The unreadable one is read again too (its hash first, so the probe never sees it), and fails again
+      expect(summary).to.include({ unchanged: 2, unsupported: 1, tooSmall: 1, failed: 1 });
+      await fs.chmod(broken, 0o644);
+      expect((await run({ retry: true })).imported).to.have.length(0);
+      expect(db.getImportedFile(broken).status).to.equal('duplicate');
+    });
   });
 
   it('records why a file is unsupported when the probe says', async () => {

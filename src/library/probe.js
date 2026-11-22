@@ -85,6 +85,16 @@ export async function probeMedia(file, exec = run, header = readHeader) {
   return animated ? { ...info, kind: 'gif' } : info;
 }
 
+// The installed FFmpeg's version as `ffprobe -version` gives it ("8.0", "7.1.1", "n7.1-12-g..."), or null when
+// ffprobe does not answer; the importer records it with each file, to probe an unsupported one again after an upgrade
+export async function ffprobeVersion(exec = run) {
+  try {
+    return /^ffprobe version (\S+)/m.exec(await exec('ffprobe', ['-version']))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Long side against the larger minimum, short side against the smaller, so portrait media
 // is held to the same standard as landscape
 export function meetsMinimum({ width, height }, minWidth, minHeight) {

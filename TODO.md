@@ -393,9 +393,11 @@ Reviewed: 2026-11-20
       Done (v2.34.1): the premise was wrong. FFmpeg 7.1 reports a 0x0 picture, so these were rejected as `unsupported` ("no picture
       stream"), and mpv 0.40 cannot play them either. Now the VP8X animation flag gives the reason, `doctor` lists the files with a
       conversion hint, and an FFmpeg that decodes them (probe succeeds) imports them as `gif`.
-- [ ] **Unsupported imports are never retried.** (p3) [feature] `imported_files` keeps `unsupported` with the file's size and mtime,
+- [x] **Unsupported imports are never retried.** (p3) [feature] `imported_files` keeps `unsupported` with the file's size and mtime,
       so an unchanged file is skipped even after an FFmpeg upgrade could read it (animated WebP with FFmpeg 8). `backdrop import --retry`
       (or `rescan`) could clear those records, or the record could note the ffprobe version it was checked with.
+      Done (v2.94.0): schema v11 records the FFmpeg version per file; an unsupported file is probed again once it changes, a too
+      small one once the minimum lets it in, and `import --retry` checks unsupported, too small and failed ones again.
 - [x] **Import progress for large first runs.** (p3) [feature] The first scan hashes and copies everything; the daemon logs only a summary at the end. Log periodic progress, and show a running count in `backdrop import`.
       Done: the daemon logs the file total and progress every 30s; `backdrop import` shows a progress bar.
 - [x] **Edit rating during playback.** (p2) [feature] `keep N` changes the effective current rating for imported items;
@@ -413,10 +415,12 @@ Reviewed: 2026-11-20
       Done (v2.93.0): `backdrop playlist --tag/--query/--keywords` stores a filter (`playlist_filter`) that `eligibleMedia`
       applies to every playlist until `--clear`, falling back to everything (with a notification) on a monitor it leaves
       empty; `backdrop tags` lists tags with counts; `stats` shows the top ten. Screensaver playlists remain in section 7.
-- [ ] **Set the playlist from the menu and web page.** (p3) [feature] `backdrop playlist` is CLI-only; the menu and the
+- [x] **Set the playlist from the menu and web page.** (p3) [feature] `backdrop playlist` is CLI-only; the menu and the
       web Now page only show the filter. The web Library page already filters by tag and query, so a "Play these"
       button there could set the same filter (a `POST /api/playlist` calling `DisplayService.playlist`), and the menu
       could offer the most used tags (`getTagCounts`) as a submenu.
+      Done (v2.94.0): `t` in the menu (the 20 most used tags, or everything), "Play these as the playlist" on the web
+      Library page (`POST /api/playlist`), and Clear on the Now page.
 - [x] **No shell completion for `--query` values.** (p3) [feature] `--query` must match a saved search exactly, so completing
       it from `searches` (a helper like the monitors one in `src/commands/CompletionCommand.js`, reading the database or a
       `backdrop queries` listing) would save typing and typos; `--tag` could complete from `media_tags` the same way.

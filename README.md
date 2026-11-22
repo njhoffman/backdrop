@@ -82,6 +82,7 @@ backdrop current --line     # one aligned line; tab-separated when piped
 backdrop current --json     # JSON for scripts (also status, the lists and navigation commands)
 backdrop import             # copy library.import_dirs into the library (also runs on every daemon start)
 backdrop import ~/walls     # or specific folders
+backdrop import --retry     # check files once unsupported, too small or failed again (an FFmpeg upgrade does it by itself)
 backdrop keep 3             # rate the current item on the monitor under the pointer
 backdrop keep 3 --next      # rate it, then play the next item
 backdrop skip               # move it to trash and advance all monitors playing it
@@ -102,6 +103,7 @@ backdrop list-images --line | fzf --delimiter '\t' --with-nth 1..9  # one line p
 backdrop list-videos --header | fzf --header-lines=1 --delimiter '\t'  # with column names
 backdrop menu               # rofi panel for the item under the pointer, with keys: n 1 2 3 v / p s u m d, q quits
 backdrop menu --tag ocean   # sets the filter like next does (also --query, --no-random)
+                            #   t in the menu makes one of the most used tags the playlist, or everything again
 backdrop menu visualizer    # the visualizer menu (also z in the menu): load and save presets, each instance's look, show/hide
 backdrop stats              # library, ratings, resolutions, sources, searches, storage and quota; works offline (--json)
 backdrop remove --current   # permanently delete the playing library item (original import is preserved)

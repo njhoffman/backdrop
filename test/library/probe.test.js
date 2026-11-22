@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
-import { parseProbe, parseFrameRate, probeMedia, meetsMinimum, isAnimatedWebp, UnsupportedMedia, ANIMATED_WEBP } from '../../src/library/probe.js';
+import { parseProbe, parseFrameRate, probeMedia, meetsMinimum, ffprobeVersion, isAnimatedWebp, UnsupportedMedia, ANIMATED_WEBP } from '../../src/library/probe.js';
 
 const probeJson = (stream, format) => ({ streams: stream ? [stream] : [], format });
 
@@ -97,6 +97,19 @@ describe('probe', () => {
       expect(await probeMedia('/a.webp', exec(null), read)).to.be.null;
       expect(await probeMedia('/a.png', exec(still), read)).to.deep.equal(still);
       expect(reads).to.equal(2);
+    });
+  });
+
+  describe('ffprobeVersion', () => {
+    it('reads the version from ffprobe -version, or null when it does not answer', async () => {
+      const answer = text => async (file, args) => {
+        expect([file, args]).to.deep.equal(['ffprobe', ['-version']]);
+        return text;
+      };
+      expect(await ffprobeVersion(answer('ffprobe version 8.0 Copyright (c) 2007-2025 the FFmpeg developers\nbuilt with gcc'))).to.equal('8.0');
+      expect(await ffprobeVersion(answer('ffprobe version n7.1-12-gabc Copyright'))).to.equal('n7.1-12-gabc');
+      expect(await ffprobeVersion(answer('something else'))).to.equal(null);
+      expect(await ffprobeVersion(async () => { throw new Error('ENOENT'); })).to.equal(null);
     });
   });
 

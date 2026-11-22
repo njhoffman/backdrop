@@ -128,7 +128,8 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     display = {
       status: sinon.stub().resolves(status),
       durations: sinon.stub().resolves({ image: { seconds: 300, set: false }, video: { seconds: 600, set: false } }),
-      next: sinon.stub().resolves({ playing: { monitor, path: '/m/ocean.mp4', media: db.getMedia(id), rating: null } })
+      next: sinon.stub().resolves({ playing: { monitor, path: '/m/ocean.mp4', media: db.getMedia(id), rating: null } }),
+      playlist: sinon.stub().resolves({ filter: null, monitors: { 'DP-1': { count: 1, fallback: false } } })
     };
     const library = {
       list: sinon.stub().returns({ total: 1, page: 1, pages: 1, per_page: 48, items: [item] }),
@@ -201,6 +202,9 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     // The playlist filter, and the monitor it leaves empty
     expect(await page.isVisible('#playlist-field')).to.equal(true);
     expect(await page.textContent('#playlist')).to.equal('tags ocean, night (nothing matches on DP-1, which play everything)');
+    await page.click('#clear-playlist');
+    await page.waitForFunction(() => document.querySelector('.toast')?.textContent.includes('Playlist cleared'));
+    expect(display.playlist.lastCall.args[0]).to.deep.equal({ clear: true });
     // The address bar lost the token
     expect(new URL(page.url()).search).to.equal('');
     await page.click('button[data-action="next"]');
@@ -214,6 +218,11 @@ const NO_BUS = 'unix:path=/nonexistent/backdrop-test-bus';
     let page = await open('/library');
     await page.waitForSelector('.tile');
     expect(await page.textContent('#count')).to.equal('1-1 of 1 items');
+    // The tag filter as the playlist
+    await page.fill('input[name="tag"]', 'ocean night');
+    await page.click('#play-these');
+    await page.waitForFunction(() => document.querySelector('.toast')?.textContent.startsWith('Playlist set'));
+    expect(display.playlist.lastCall.args[0]).to.deep.equal({ tag: ['ocean', 'night'] });
     await within('closing a page', page.close());
 
     page = await open('/visualizer');

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { DisplayService } from '../services/DisplayService.js';
 import { RatingService } from '../services/RatingService.js';
 import { PRESET_NAME, SWATCHES, VisualizerService } from '../services/VisualizerService.js';
-import { MODE_KINDS, describePlaylistFilter, getChosenMode, getModeHold, getPlaylistFilter, otherMode, randomOrder } from '../display/Playlist.js';
+import { DISPLAY_STATUSES, MODE_KINDS, describePlaylistFilter, getChosenMode, getModeHold, getPlaylistFilter, otherMode, randomOrder } from '../display/Playlist.js';
 import { bounceState, bounces } from '../display/bounce.js';
 import { readNextFilters, resolveNextFilters } from '../display/nextFilters.js';
 import { matchFilters } from '../library/match.js';
@@ -52,7 +52,9 @@ const ICONS = {
   keep: '★', skip: '', undo: '', prev: '', next: '', random: '',
   speed: '', dim: '', video: '', image: '', monitor: '',
   // Arrows both ways: forwards to the end, then backwards (U+F0EC, Font Awesome's exchange)
-  bounce: '\u{f0ec}'
+  bounce: '\u{f0ec}',
+  // Font Awesome's tag and its list
+  tag: '\u{f02b}', everything: '\u{f03a}'
 };
 
 // Keys every menu answers besides its buttons': q closes the menu from anywhere, Tab opens the monitor picker
@@ -63,6 +65,9 @@ const VISUALIZER_KEY = 'z';
 const WALLPAPER_KEY = 'w';
 // o opens the web interface's Now playing page: the running `backdrop web`'s, or a new one started for it
 const WEB_KEY = 'o';
+// t opens the playlist menu: the most used tags, one of which becomes the playlist
+const PLAYLIST_KEY = 't';
+const PLAYLIST_TAGS = 20;
 const ENTRY_POINT = fileURLToPath(new URL('../index.js', import.meta.url));
 // In the load menu: delete a preset saved in the config
 const DELETE_KEY = 'x';
@@ -382,8 +387,7 @@ export class MenuCommand {
     const random = randomOrder(this.config.get().display, filters.random);
     const field = (name, value) => `${name}  <b>${escapeMarkup(value)}</b>`;
     const lines = [field('random', random ? 'on' : 'off')];
-    const playlist = describePlaylistFilter(getPlaylistFilter(this.database));
-    if (playlist) lines.push(field('playlist', playlist));
+    lines.push(`${field('playlist', describePlaylistFilter(getPlaylistFilter(this.database)) ?? 'everything')}  (${PLAYLIST_KEY})`);
     if (filters.query?.length) lines.push(field('query', filters.query.map(query => `"${query}"`).join(', ')));
     if (filters.tag?.length) lines.push(field('tags', filters.tag.join(', ')));
     if (filters.keywords?.length) lines.push(field('words', filters.keywords.join(', ')));
@@ -443,7 +447,7 @@ export class MenuCommand {
       { icon: ICONS.dim, label: 'dim ▸', caption: media?.dim ? `dim ${media.dim}` : 'dim', key: 'd',
         disabled: !media, active: Boolean(media?.dim), run: () => this.stepMenu(monitor, 'dim', DIMS) }
     ];
-    const keys = [QUIT_KEY, VISUALIZER_KEY, WEB_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : []), ...(off ? [WALLPAPER_KEY] : [])];
+    const keys = [QUIT_KEY, VISUALIZER_KEY, WEB_KEY, ...(monitors.length > 1 ? [MONITOR_KEY] : []), ...(off ? [WALLPAPER_KEY] : []), PLAYLIST_KEY];
 
     const picked = await this.show({ prompt: 'backdrop', title: item.title, message: item.message, preview: item.preview,
       status: await this.status(monitor, monitors), entries, keys, columns: MAIN_COLUMNS });
@@ -452,6 +456,7 @@ export class MenuCommand {
     if (picked.key === VISUALIZER_KEY) return this.attempt(() => this.visualizerMenu(monitor));
     if (picked.key === WALLPAPER_KEY) return this.attempt(() => done(this.display.start({ wallpaper: true })));
     if (picked.key === WEB_KEY) return this.attempt(() => this.openWeb());
+    if (picked.key === PLAYLIST_KEY) return this.attempt(() => this.playlistMenu());
     const entry = picked.key ? entries.find(candidate => candidate.key === picked.key) : entries[picked];
     if (!entry || entry.disabled) return {};
     return this.attempt(entry.run);
@@ -488,6 +493,30 @@ export class MenuCommand {
   step(kind, value, current) {
     if (kind !== 'speed' || value !== '+0.1') return value;
     return Math.round(current * 100) + 10 > MAX_STEP_SPEED * 100 ? String(MAX_STEP_SPEED) : value;
+  }
+
+  // The playlist (`backdrop playlist`): everything, or one of the most used tags of the items that can play, each
+  // with its count; a pick sets it and goes back to the main menu. A filter set elsewhere with more than one tag, a
+  // query or words shows in the message, and picking a tag replaces it. A monitor the tag leaves empty plays
+  // everything, which a notification says.
+  async playlistMenu() {
+    const filter = getPlaylistFilter(this.database);
+    const single = filter && !filter.query && !filter.keywords && filter.tag?.length === 1 ? filter.tag[0] : null;
+    const tags = this.database.getTagCounts(PLAYLIST_TAGS, { statuses: DISPLAY_STATUSES });
+    const entries = [
+      { icon: ICONS.everything, label: 'everything', active: !filter },
+      ...tags.map(({ tag, count }) => ({ icon: ICONS.tag, label: tag, caption: `${tag}  ${count}`, active: tag === single }))
+    ];
+    const message = escapeMarkup(`playlist: ${describePlaylistFilter(filter) ?? 'everything'}  (a tag plays only items with it; backdrop playlist combines them)`);
+    const picked = await this.show({ prompt: 'playlist', title: 'playlist  ·  play only one tag', message,
+      columns: Math.min(entries.length, 5), entries, keys: [QUIT_KEY] });
+    if (picked === null) return {};
+    if (picked.key === QUIT_KEY) return { quit: true };
+    const tag = picked === 0 ? null : tags[picked - 1].tag;
+    if (tag === null ? !filter : tag === single) return {};
+    const { monitors } = await this.display.playlist(tag === null ? { clear: true } : { tag: [tag] });
+    const empty = Object.entries(monitors).filter(([, monitor]) => monitor.fallback).map(([name]) => name);
+    return empty.length ? { warnings: [`Nothing tagged ${tag} fits ${empty.join(', ')}, which play everything`] } : {};
   }
 
   async monitorMenu(current) {

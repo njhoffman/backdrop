@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { tagsFor } from '../library/tags.js';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 export const IMPORT_STATUSES = ['imported', 'duplicate', 'too_small', 'unsupported', 'failed'];
 export const MEDIA_KINDS = ['image', 'video', 'gif'];
 export const MEDIA_STATUSES = ['new', 'kept', 'skipped'];
@@ -145,6 +145,9 @@ const MIGRATIONS = [`
 `, `
   -- Whether a video plays backwards at its end and forwards again: 1 or 0 for the item, NULL follows display.video_loop
   ALTER TABLE media ADD COLUMN bounce INTEGER;
+`, `
+  -- The FFmpeg version a source file was probed with, so an unsupported one is probed again after an upgrade
+  ALTER TABLE imported_files ADD COLUMN ffprobe_version TEXT;
 `];
 
 export function orientationOf(resolution) {
@@ -698,18 +701,18 @@ export class DatabaseManager {
     return this.db.prepare('SELECT * FROM imported_files WHERE detail = ? ORDER BY source_path').all(detail);
   }
 
-  recordImportedFile({ source_path, size, mtime_ms, sha256 = null, media_id = null, status, detail = null }) {
+  recordImportedFile({ source_path, size, mtime_ms, sha256 = null, media_id = null, status, detail = null, ffprobe_version = null }) {
     if (!IMPORT_STATUSES.includes(status)) {
       throw new Error(`Invalid import status: ${status}`);
     }
     this.db.prepare(`
-      INSERT INTO imported_files (source_path, size, mtime_ms, sha256, media_id, status, detail)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO imported_files (source_path, size, mtime_ms, sha256, media_id, status, detail, ffprobe_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (source_path) DO UPDATE SET
         size = excluded.size, mtime_ms = excluded.mtime_ms, sha256 = excluded.sha256,
         media_id = excluded.media_id, status = excluded.status, detail = excluded.detail,
-        checked_at = CURRENT_TIMESTAMP
-    `).run(source_path, size, Math.trunc(mtime_ms), sha256, media_id, status, detail);
+        ffprobe_version = excluded.ffprobe_version, checked_at = CURRENT_TIMESTAMP
+    `).run(source_path, size, Math.trunc(mtime_ms), sha256, media_id, status, detail, ffprobe_version);
   }
 
   getStats() {

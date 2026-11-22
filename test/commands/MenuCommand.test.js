@@ -73,7 +73,7 @@ describe('MenuCommand', () => {
     // Nerd Font glyphs are private-use characters that editors can drop silently
     expect(shown[0].entries.every(entry => /[\u2605\uf000-\uf8ff]/.test(entry.icon))).to.be.true;
     expect(shown[0]).to.include({ title: 'ocean-waves.mp4', preview: '/cache/thumbnails/1.jpg', columns: 5 });
-    expect(shown[0].keys).to.deep.equal(['q', 'z', 'o', 'Tab']);
+    expect(shown[0].keys).to.deep.equal(['q', 'z', 'o', 'Tab', 't']);
     expect(shown[0].message).to.equal(
       `#${playing.media.id}  video  <b>3840x2160</b>\n<b>0:18</b> · 25 fps · ★★☆ · DP-1\nocean, waves\n<b>speed 0.8</b>`);
     expect(flagged(shown[0], 'active')).to.deep.equal(['keep 2', 'speed ▸']);
@@ -120,14 +120,14 @@ describe('MenuCommand', () => {
     display.next.callsFake(async () => fs.writeJson(path.join(runtime, 'next-filters.json'), { pid: process.pid, tag: ['sky'] }));
     await command.open({ random: false, query: ['ocean waves'], tag: ['sunset', 'sea'] });
     expect(shown[0].status).to.deep.equal([
-      'random  <b>off</b>', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)'
+      'random  <b>off</b>', 'playlist  <b>everything</b>  (t)', 'query  <b>"ocean waves"</b>', 'tags  <b>sunset, sea</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)'
     ]);
     // display.order defaults to random
-    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'tags  <b>sky</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)']);
+    expect(shown[1].status).to.deep.equal(['random  <b>on</b>', 'playlist  <b>everything</b>  (t)', 'tags  <b>sky</b>', 'visualizer  <b>menu</b>  (z)', 'web  <b>off</b>  (o opens it)', 'monitor  <b>DP-1</b>  (Tab)']);
 
     // Opening without any keeps what is stored; a mistyped query fails before anything is stored
     await command.open();
-    expect(shown.at(-1).status[1]).to.equal('tags  <b>sky</b>');
+    expect(shown.at(-1).status[2]).to.equal('tags  <b>sky</b>');
     let caught;
     try { await command.open({ query: ['ocean'] }); } catch (error) { caught = error; }
     expect(caught.message).to.include('No search used the query "ocean"');
@@ -135,11 +135,32 @@ describe('MenuCommand', () => {
     expect(await readNextFilters(runtime)).to.deep.equal({ tag: ['sky'] });
   });
 
+  it('sets the playlist to one of the most used tags with t, or back to everything, warning about an empty monitor', async () => {
+    for (const [id, name] of [[2, 'ocean night.mp4'], [3, 'ocean.mp4'], [4, 'forest.mp4']]) {
+      db.addMedia({ kind: 'video', source: 'local', source_id: id, path: `/m/${id}.mp4`, original_name: name, width: 3840, height: 2160 });
+    }
+    display.playlist = sinon.stub().callsFake(async options => {
+      db.setSetting('playlist_filter', options.clear ? null : options);
+      return { monitors: { 'DP-1': { count: 1, fallback: options.tag?.[0] === 'night' } } };
+    });
+    picks = [{ key: 't' }, 'ocean', { key: 't' }, 'ocean', { key: 't' }, 'night', { key: 't' }, 'everything', { key: 'q' }];
+    await command.open();
+    const menus = shown.filter(menu => menu.prompt === 'playlist');
+    expect(menus[0].entries.map(entry => entry.caption ?? entry.label).slice(0, 3)).to.deep.equal(['everything', 'ocean  3', 'forest  1']);
+    expect(menus[0].entries[0].active).to.equal(true);
+    expect(menus[1].entries.find(entry => entry.label === 'ocean').active).to.equal(true);
+    expect(menus[1].message).to.include('playlist: tags ocean');
+    // Picking the tag in force again changes nothing
+    expect(display.playlist.args.map(([options]) => options)).to.deep.equal([{ tag: ['ocean'] }, { tag: ['night'] }, { clear: true }]);
+    expect(notifications.at(-1).at(-1)).to.include('Nothing tagged night fits DP-1, which play everything');
+    expect(shown.at(-1).status[1]).to.equal('playlist  <b>everything</b>  (t)');
+  });
+
   it('shows the playlist filter in the status, apart from next\'s filters', async () => {
     db.setSetting('playlist_filter', { tag: ['ocean'], query: ['sea'] });
     picks = [{ key: 'q' }];
     await command.open();
-    expect(shown[0].status[1]).to.equal('playlist  <b>tags ocean · query "sea"</b>');
+    expect(shown[0].status[1]).to.equal('playlist  <b>tags ocean · query "sea"</b>  (t)');
   });
 
   it('clears the monitor picked with Tab, giving the first its windows back', async () => {
@@ -280,7 +301,7 @@ describe('MenuCommand', () => {
     display.control.state.resolves({ monitors: [monitors[0]] });
     picks = [];
     await command.open({ stay: true });
-    expect(shown.at(-1).keys).to.deep.equal(['q', 'z', 'o']);
+    expect(shown.at(-1).keys).to.deep.equal(['q', 'z', 'o', 't']);
     expect(shown.at(-1).status.some(line => line.includes('monitor'))).to.be.false;
   });
 

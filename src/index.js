@@ -249,7 +249,8 @@ class BackdropApp {
       .command('import')
       .description('Copy approved local media into the library (default: library.import_dirs)')
       .argument('[dirs...]', 'Directories to import from')
-      .action(this.action(dirs => importer.import(dirs)));
+      .option('--retry', 'Check files once recorded as unsupported, too small or failed again, though unchanged')
+      .action(this.action((dirs, options) => importer.import(dirs, options)));
 
     program
       .command('remove')

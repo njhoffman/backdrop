@@ -99,7 +99,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('PRAGMA user_version = 4'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('ALTER TABLE imported_files DROP COLUMN ffprobe_version'); first.db.exec('PRAGMA user_version = 4'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(id).dim).to.equal(0);
         second.setDim(id, 40);
@@ -115,7 +115,7 @@ describe('DatabaseManager', () => {
           tags: ['Waves crashing on rocks'], original_name: 'remote-1.mp4' }));
         const local = first.addMedia({ kind: 'image', source: 'local', source_id: 1, original_name: 'MistyForest_4k-2160p.JPG' });
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('PRAGMA user_version = 6'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('ALTER TABLE imported_files DROP COLUMN ffprobe_version'); first.db.exec('PRAGMA user_version = 6'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getMedia(remote).fps).to.be.null;
         expect(second.getTags(remote)).to.deep.equal(['aerial', 'ocean', 'waves', 'crashing', 'rocks']);
@@ -143,7 +143,7 @@ describe('DatabaseManager', () => {
         first.db.exec('ALTER TABLE media DROP COLUMN dim');
         first.db.exec('ALTER TABLE media DROP COLUMN duplicate_of');
         first.db.exec('ALTER TABLE media DROP COLUMN fps'); first.db.exec('DROP TABLE media_tags');
-        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('PRAGMA user_version = 3'); first.close();
+        first.db.exec('DROP TABLE playback_stats'); first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('ALTER TABLE imported_files DROP COLUMN ffprobe_version'); first.db.exec('PRAGMA user_version = 3'); first.close();
         const second = new DatabaseManager(); second.initialize(dbPath);
         expect(second.getLatestRating(id)).to.include({ rating: 2, previous_path: null, rated_path: null });
         second.addRating(id, 0, '1920x1080', { previousPath: '/media/a.mp4', ratedPath: '/trash/a.mp4' });
@@ -179,7 +179,7 @@ describe('DatabaseManager', () => {
       first.addRating(purged, 0, null); first.updateMedia(purged, { path: null });
       const kept = first.addMedia(video({ source_id: 2, path: '/m/k.mp4' }));
       first.addRating(kept, 2, null);
-      first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('PRAGMA user_version = 8'); first.close();
+      first.db.exec('ALTER TABLE ratings DROP COLUMN final'); first.db.exec('ALTER TABLE media DROP COLUMN bounce'); first.db.exec('ALTER TABLE imported_files DROP COLUMN ffprobe_version'); first.db.exec('PRAGMA user_version = 8'); first.close();
       const second = new DatabaseManager(); second.initialize(dbPath);
       expect(second.getLastRating().media_id).to.equal(kept);
       second.close();

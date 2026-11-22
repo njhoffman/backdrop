@@ -152,6 +152,10 @@ function bindPage() {
       toast('Durations set until next --clear or a daemon restart');
     });
   });
+  $('#clear-playlist').addEventListener('click', () => act(async () => {
+    await post('/api/playlist', { clear: true });
+    toast('Playlist cleared: everything eligible plays again');
+  }));
   $('#clear-durations').addEventListener('click', () => act(async () => {
     await post('/api/durations', { reset: true });
     toast('Durations back to display.image_duration and display.video_duration');

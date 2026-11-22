@@ -125,6 +125,7 @@ sketch for the later steps. Every built changing route sends a snapshot to the p
 | `POST /api/monitors/:monitor/speed` `dim` `bounce` *built* | `{ value }` as the commands take it (`0.8`, `+10`, `on`, `reset`) |
 | `POST /api/undo` *built* | Undoes the last rating: `{ action: none \| undone, item, warnings }` |
 | `POST /api/mode` *built* | `{ mode: video \| image \| toggle, monitor? }`: `{ mode, held }` |
+| `POST /api/playlist` *built* | `{ tag?, query?, keywords? }` (lists of strings) or `{ clear: true }`, as `backdrop playlist`: `{ filter, monitors: { name: { count, fallback } } }`; the Library page's "Play these as the playlist" sends its tag, search and words, and the Now page's Playlist line has Clear |
 | `POST /api/daemon` *built* | `{ running: true \| false }`: starts or stops the daemon |
 | `POST /api/parts` *built* | `{ wallpaper?, visualizer? }`, each true or false, as `start`/`stop --wallpaper`/`--visualizer`; a part turned on starts a stopped daemon |
 | `POST /api/durations` *built* | `{ image?, video? }` as times (`90`, `5m`), or `{ clear: true }`, which also drops next's filters (as `next --clear`) |

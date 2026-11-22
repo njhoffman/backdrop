@@ -221,6 +221,16 @@ export class WebServer {
         const result = await this.display.mode(this.text(mode, 'mode'), { monitor });
         return { ...changed, mode: result.mode, held: result.held ?? null };
       }],
+      // The playlist filter (`backdrop playlist`): { tag, query, keywords } (lists of strings) sets it, { clear: true }
+      // drops it; answers { filter, monitors: { name: { count, fallback } } }
+      ['POST', /^\/api\/playlist$/, async request => {
+        const body = await this.body(request);
+        const options = body.clear === true ? { clear: true } : {};
+        for (const key of ['query', 'tag', 'keywords']) if (body[key] !== undefined) options[key] = this.strings(body[key], key);
+        if (!options.clear && !['query', 'tag', 'keywords'].some(key => options[key]?.length)) throw new HttpError(400, 'Give a tag, query or keywords, or clear');
+        const { filter, monitors } = await this.display.playlist(options);
+        return { ...changed, filter, monitors };
+      }],
       ['POST', /^\/api\/daemon$/, async request => {
         const { running } = await this.body(request);
         if (typeof running !== 'boolean') throw new HttpError(400, 'Give running as true or false');

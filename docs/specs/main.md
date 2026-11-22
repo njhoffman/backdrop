@@ -72,7 +72,8 @@ IPC socket) would break a wallpaper.
   `--clear`. It applies inside `eligibleMedia` (`playlistMatch`), so loads, syncs after a rating and reshuffles all
   follow it; a filter matching no playable item at all is refused. Where it leaves a monitor nothing for its mode and
   size, that monitor plays every eligible item, and the daemon notifies once (`notePlaylistFallback`); `status`, the
-  menu's status and the web Now page show the filter. `next --tag` then jumps within the filtered playlist.
+  menu's status and the web Now page show the filter. The menu's `t` makes one of the 20 most used tags the filter, or
+  clears it; the web Library page's "Play these as the playlist" sets its tag, search and words, and the Now page clears it. `next --tag` then jumps within the filtered playlist.
 - **Playlist:** shuffled eligible media (status `new` or `kept`, downloaded, at least the monitor's size), loaded
   with one `loadfile` per item (since 2.42.0; before, an `<output>.m3u` and `loadlist`), so each oversized image
   carries its own prescale. The item last shown in the mode on that monitor goes first, so
@@ -197,7 +198,12 @@ IPC socket) would break a wallpaper.
 5. Local import (`backdrop import [dirs...]`, and on every daemon start for `library.import_dirs`):
    - Walks the directories recursively, skipping hidden paths, non-media extensions and backdrop's own
      `media/` and `trash/`.
-   - Skips files whose size and mtime match the last attempt (`imported_files`), so rescans only stat files.
+   - Skips files whose size and mtime match the last attempt (`imported_files`), so rescans only stat files,
+     except three kinds checked again (`Importer.recheck`, reusing the recorded hash): an unsupported file probed
+     with another FFmpeg than this run's (`ffprobe -version`, recorded per file since schema v11; one recorded
+     before counts as another), so an upgrade that can read it (animated WebP with FFmpeg 8) imports it by itself;
+     a too_small file whose recorded size the library's minimum now lets in; and with `import --retry`, every
+     unsupported, too_small or failed one.
    - Hashes the rest (SHA-256); known content is recorded as a duplicate.
    - Probes with ffprobe for kind (image, gif, video), dimensions (rotation-corrected) and duration; files
      without a picture are unsupported, files below the minimum are too_small.

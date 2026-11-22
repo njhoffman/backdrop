@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs-extra';
 import path from 'path';
 import { pipeline } from 'stream/promises';
-import { MEDIA_EXTENSIONS, probeMedia, meetsMinimum, UnsupportedMedia } from './probe.js';
+import { MEDIA_EXTENSIONS, ffprobeVersion, probeMedia, meetsMinimum, UnsupportedMedia } from './probe.js';
 import { inOrder } from '../utils/pool.js';
 import { ImportLock, importLockPath } from './importLock.js';
 
@@ -22,6 +22,9 @@ function isInside(file, dir) {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+// Outcomes `import --retry` checks again although the file is unchanged
+export const RETRIED_STATUSES = ['unsupported', 'too_small', 'failed'];
+
 function emptySummary() {
   return { locked: false, scanned: 0, unchanged: 0, recent: 0, imported: [], duplicates: 0, tooSmall: 0, unsupported: 0, failed: 0 };
 }
@@ -29,11 +32,14 @@ function emptySummary() {
 // Copies approved local media into the library as local-<n>.<ext>, kept with the default rating.
 // Each source file's size and mtime are recorded, so unchanged files are skipped on later runs.
 export class Importer {
-  constructor({ config, database, logger, probe = probeMedia, lock }) {
+  constructor({ config, database, logger, probe = probeMedia, probeVersion = ffprobeVersion, lock }) {
     this.config = config;
     this.database = database;
     this.logger = logger;
     this.probe = probe;
+    this.probeVersion = probeVersion;
+    // The FFmpeg version of the run in progress (null when ffprobe does not say), recorded with each file
+    this.version = null;
     this.lock = lock ?? new ImportLock(importLockPath(config));
   }
 
@@ -84,12 +90,14 @@ export class Importer {
     }
   }
 
-  async importLocked(dirs, { resolution = null, shouldStop = () => false, onStart = () => {}, onFile = () => {}, concurrency = IMPORT_CONCURRENCY, settle = 0 } = {}) {
+  // retry: probe files recorded as unsupported, too small or failed again although they are unchanged
+  async importLocked(dirs, { resolution = null, shouldStop = () => false, onStart = () => {}, onFile = () => {}, concurrency = IMPORT_CONCURRENCY, settle = 0, retry = false } = {}) {
     const summary = emptySummary();
+    this.version = await this.probeVersion();
     const files = await this.findFiles(dirs);
     onStart(files.length);
 
-    for await (const { item: file, result, error } of inOrder(files, file => this.prepare(file, { settle }), { concurrency, shouldStop })) {
+    for await (const { item: file, result, error } of inOrder(files, file => this.prepare(file, { settle, retry }), { concurrency, shouldStop })) {
       if (shouldStop()) {
         break;
       }
@@ -120,18 +128,34 @@ export class Importer {
     return this.commit(file, prepared, resolution);
   }
 
-  // The part that can run for several files at once: reads only, writes nothing
-  async prepare(file, { settle = 0 } = {}) {
+  // Whether an unchanged file's record is worth another look: any unsupported, too small or failed one with retry; an
+  // unsupported one probed with another FFmpeg (or before versions were recorded); a too small one the library's
+  // minimum size now lets in
+  recheck(known, { retry = false } = {}) {
+    if (retry && RETRIED_STATUSES.includes(known.status)) return true;
+    if (known.status === 'unsupported') return Boolean(this.version) && known.ffprobe_version !== this.version;
+    if (known.status === 'too_small') {
+      const size = /^(\d+)x(\d+)$/.exec(known.detail ?? '');
+      const { min_width: minWidth, min_height: minHeight } = this.config.get().library;
+      return Boolean(size) && meetsMinimum({ width: Number(size[1]), height: Number(size[2]) }, minWidth, minHeight);
+    }
+    return false;
+  }
+
+  // The part that can run for several files at once: reads only, writes nothing. An unchanged file checked again
+  // keeps its recorded hash, which cannot have changed with its size and mtime.
+  async prepare(file, { settle = 0, retry = false } = {}) {
     const stat = await fs.stat(file);
     const known = this.database.getImportedFile(file);
-    if (known && known.size === stat.size && known.mtime_ms === Math.trunc(stat.mtimeMs)) {
+    const same = known && known.size === stat.size && known.mtime_ms === Math.trunc(stat.mtimeMs);
+    if (same && !this.recheck(known, { retry })) {
       return { stat, unchanged: known };
     }
     // ctime also moves when a copy that keeps the original mtime (cp -p) sets it at the end
     if (settle && Date.now() - Math.max(stat.mtimeMs, stat.ctimeMs) < settle) {
       return { stat, recent: true };
     }
-    const sha256 = await hashFile(file);
+    const sha256 = (same && known.sha256) || await hashFile(file);
     let reason = null;
     const info = await this.probe(file).catch(error => {
       if (error instanceof UnsupportedMedia) reason = error.message;
@@ -141,7 +165,7 @@ export class Importer {
   }
 
   record(file, stat, fields) {
-    this.database.recordImportedFile({ source_path: file, size: stat.size, mtime_ms: stat.mtimeMs, ...fields });
+    this.database.recordImportedFile({ source_path: file, size: stat.size, mtime_ms: stat.mtimeMs, ffprobe_version: this.version, ...fields });
     return { status: fields.status, mediaId: fields.media_id ?? null, detail: fields.detail ?? null };
   }
 

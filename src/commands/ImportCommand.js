@@ -34,7 +34,8 @@ export class ImportCommand {
     }
   }
 
-  async import(dirs = []) {
+  // retry: check files recorded as unsupported, too small or failed again (Importer.recheck)
+  async import(dirs = [], { retry = false } = {}) {
     const targets = dirs.length
       ? dirs.map(dir => path.resolve(this.config.expandPath(dir)))
       : this.config.get().library.import_dirs;
@@ -48,6 +49,7 @@ export class ImportCommand {
     try {
       summary = await this.importer.importDirs(targets, {
         resolution: await this.ratingResolution(),
+        retry,
         onWait: ({ pid }) => out.info(`Waiting for another import${pid ? ` (pid ${pid})` : ''} to finish`),
         onStart: total => { bar = new ProgressBar({ label: 'Importing', total }); },
         onFile: (file, outcome, done) => {

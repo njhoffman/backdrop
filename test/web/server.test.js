@@ -43,6 +43,7 @@ describe('WebServer', () => {
       dim: sinon.stub().resolves({ monitor, dim: 20, shown: 30 }),
       bounce: sinon.stub().rejects(new Error('Invalid bounce: maybe')),
       mode: sinon.stub().resolves({ mode: 'image', held: null }),
+      playlist: sinon.stub().callsFake(async options => ({ filter: options.clear ? null : options, monitors: { 'DP-1': { count: 2, fallback: false } } })),
       start: sinon.stub().resolves({ action: 'changed' }), stop: sinon.stub().resolves({ action: 'changed' }),
       setDurations: sinon.stub().resolves({ image: { seconds: 90, set: true }, video: { seconds: 600, set: false } })
     };
@@ -162,6 +163,12 @@ describe('WebServer', () => {
     expect(await (await post('/api/mode', {})).json()).to.deep.equal({ error: 'Missing mode' });
     expect(await (await post('/api/mode', { mode: 'image', monitor: 'DP-1' })).json()).to.deep.equal({ mode: 'image', held: null });
     expect(display.mode.firstCall.args).to.deep.equal(['image', { monitor: 'DP-1' }]);
+    // The playlist filter: lists of strings, or clear
+    expect(await (await post('/api/playlist', { tag: ['ocean', ' night '] })).json()).to.deep.equal({ filter: { tag: ['ocean', 'night'] }, monitors: { 'DP-1': { count: 2, fallback: false } } });
+    expect(await (await post('/api/playlist', { clear: true })).json()).to.deep.include({ filter: null });
+    expect(display.playlist.args.map(([options]) => options)).to.deep.equal([{ tag: ['ocean', 'night'] }, { clear: true }]);
+    expect(await (await post('/api/playlist', {})).json()).to.deep.equal({ error: 'Give a tag, query or keywords, or clear' });
+    expect((await post('/api/playlist', { tag: 'ocean' })).status).to.equal(400);
   });
 
   it('turns parts on and off, starting the daemon for parts turned on', async () => {
