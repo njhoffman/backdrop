@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-11-27
+
+### Changed
+
+- A notification for an item without a rating shows a dimmed `none` at the end of its title, and a skipped one
+  a dimmed `skip`, where a rated item shows its stars.
+
 ## [3.4.0] - 2026-11-27
 
 ### Changed

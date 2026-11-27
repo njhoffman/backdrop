@@ -46,9 +46,9 @@ describe('notify', () => {
     // An image has no time to show
     const image = { id: 7, kind: 'image', width: 1920, height: 1080, duration: null };
     expect(describeNotification({ monitor, media: image, rating: null }, { rich: true }))
-      .to.include({ body: '<span alpha="70%">DP-1</span>', titleEnd: '' });
-    // Neither unrated nor skipped items show a rating
-    expect(describeNotification({ monitor, media: image, rating: { rating: 0 } }, { rich: true }).titleEnd).to.equal('');
+      .to.include({ body: '<span alpha="70%">DP-1</span>', titleEnd: '<span alpha="70%">none</span>' });
+    expect(describeNotification({ monitor, media: image, rating: { rating: 0 } }, { rich: true }).titleEnd)
+      .to.equal('<span alpha="70%">skip</span>');
   });
 
   it('replaces the previous notification of the same monitor', async () => {
@@ -58,7 +58,7 @@ describe('notify', () => {
     expect(recorded).to.have.length(2);
     expect(recorded[0]).to.include(`--icon=${APP_ICON}`).and.include('--hint=string:x-dunst-stack-tag:backdrop-DP-1');
     expect(recorded[0].some(arg => arg.startsWith('--replace-id'))).to.be.false;
-    expect(recorded[0].some(arg => arg.includes('x-notifyd-title-end'))).to.be.false;
+    expect(recorded[0]).to.include('--hint=string:x-notifyd-title-end:<span alpha="70%">none</span>');
     expect(recorded[1]).to.include('--replace-id=1');
     await notifyPlaying(db, { monitor, media, rating: { rating: 3 } });
     expect(recorded[2]).to.include('--hint=string:x-notifyd-title-end:★★★');

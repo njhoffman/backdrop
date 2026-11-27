@@ -510,7 +510,7 @@ Reviewed: 2026-11-20
 ## 8. CLI experience and packaging
 
 - [ ] **The man page tests time out under load.** (p3) [test] Each spawns `node src/index.js man N` (about 1.7 s alone),
-      close to mocha's 2 s default, and both timed out in a full run on 2026-11-27 while passing on their own.
+      close to mocha's 2 s default, and both timed out in two full runs in a row on 2026-11-27 while passing on their own.
       `test/utils/manpage.test.js`: give the two `share/man has the current page` tests `this.timeout(10000)`, or
       build the pages in-process through `src/utils/manpage.js` instead of a child process.
 - [x] **Consistent output styling.** (p2) [feature] Commands print plain `console.log` lines with ad hoc chalk in a few places (`index.js`, `DisplayCommand`, `ImportCommand`).

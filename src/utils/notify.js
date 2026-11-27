@@ -29,9 +29,10 @@ export function escapeMarkup(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Only rated items get stars, for the title-end hint
-function ratingStars(rating) {
-  return rating?.rating > 0 ? `${'★'.repeat(rating.rating)}${'☆'.repeat(3 - rating.rating)}` : '';
+// The title-end hint's markup: stars for a rated item, a dimmed word for an unrated or skipped one
+function ratingEnd(rating) {
+  if (rating?.rating > 0) return `${'★'.repeat(rating.rating)}${'☆'.repeat(3 - rating.rating)}`;
+  return `<span alpha="70%">${rating ? 'skip' : 'none'}</span>`;
 }
 
 function ratingText(rating) {
@@ -47,7 +48,7 @@ function ratingText(rating) {
 // With bold (the menu), the summary is markup too and the resolution and duration are in bold. With rich (desktop
 // notifications), the running time stands out in bold, the rest of its line is dimmed, the tags are spaced apart,
 // each in a color of TAG_COLORS in turn, and the rating moves out of the body into titleEnd: stars for a rated item,
-// nothing otherwise, sent as notifyd's x-notifyd-title-end hint (drawn right of the title; other servers ignore it)
+// a dimmed none or skip otherwise, sent as notifyd's x-notifyd-title-end hint (drawn right of the title; other servers ignore it)
 export function describeNotification({ monitor, media, rating, tags = [] }, { bold = false, rich = false } = {}) {
   if (rich) return richNotification({ monitor, media, rating, tags });
   const strong = text => (bold ? `<b>${escapeMarkup(text)}</b>` : escapeMarkup(text));
@@ -83,7 +84,7 @@ function richNotification({ monitor, media, rating, tags }) {
   return {
     summary: `#${media.id}  ${media.kind}  ${formatResolution(media.width, media.height)}`,
     body: body.join('\n'),
-    titleEnd: ratingStars(rating)
+    titleEnd: ratingEnd(rating)
   };
 }
 
@@ -115,7 +116,7 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
   const args = [
     '--print-id', '--app-name=backdrop', '--urgency=low',
     `--hint=string:x-dunst-stack-tag:backdrop-${monitor.name}`,
-    ...(titleEnd ? [`--hint=string:x-notifyd-title-end:${titleEnd}`] : []),
+    `--hint=string:x-notifyd-title-end:${titleEnd}`,
     picture,
     ...(previous ? [`--replace-id=${previous}`] : []),
     summary, body
