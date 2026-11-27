@@ -36,15 +36,19 @@ describe('notify', () => {
   it('sets the time apart and colors the tags in desktop notifications', () => {
     const media = { ...video(), fps: 25 };
     const tags = ['sea', 'r&b', 'a', 'b', 'c', 'd', 'e', 'f', 'g'];
-    const { summary, body } = describeNotification({ monitor, media, rating: { rating: 2 }, tags }, { rich: true });
+    const { summary, body, titleEnd } = describeNotification({ monitor, media, rating: { rating: 2 }, tags }, { rich: true });
     expect(summary).to.equal(`#${media.id}  video  3840x2160`);
+    expect(titleEnd).to.equal('★★☆');
     const [first, second] = body.split('\n');
-    expect(first).to.equal('<span size="large" weight="bold">0:18</span>  <span alpha="70%">25 fps · ★★☆ · DP-1</span>');
+    expect(first).to.equal('<span weight="bold">0:18</span>  <span alpha="70%">25 fps · DP-1</span>');
     expect(second).to.equal(['sea', 'r&amp;b', 'a', 'b', 'c', 'd', 'e', 'f']
       .map((tag, index) => `<span foreground="${['#7aa2f7', '#9ece6a', '#e0af68', '#bb9af7', '#7dcfff'][index % 5]}">${tag}</span>`).join('  '));
     // An image has no time to show
     const image = { id: 7, kind: 'image', width: 1920, height: 1080, duration: null };
-    expect(describeNotification({ monitor, media: image, rating: null }, { rich: true }).body).to.equal('<span alpha="70%">unrated · DP-1</span>');
+    expect(describeNotification({ monitor, media: image, rating: null }, { rich: true }))
+      .to.include({ body: '<span alpha="70%">DP-1</span>', titleEnd: '' });
+    // Neither unrated nor skipped items show a rating
+    expect(describeNotification({ monitor, media: image, rating: { rating: 0 } }, { rich: true }).titleEnd).to.equal('');
   });
 
   it('replaces the previous notification of the same monitor', async () => {
@@ -54,8 +58,11 @@ describe('notify', () => {
     expect(recorded).to.have.length(2);
     expect(recorded[0]).to.include(`--icon=${APP_ICON}`).and.include('--hint=string:x-dunst-stack-tag:backdrop-DP-1');
     expect(recorded[0].some(arg => arg.startsWith('--replace-id'))).to.be.false;
+    expect(recorded[0].some(arg => arg.includes('x-notifyd-title-end'))).to.be.false;
     expect(recorded[1]).to.include('--replace-id=1');
-    expect(db.getSetting('notify_id:DP-1')).to.equal(2);
+    await notifyPlaying(db, { monitor, media, rating: { rating: 3 } });
+    expect(recorded[2]).to.include('--hint=string:x-notifyd-title-end:★★★');
+    expect(db.getSetting('notify_id:DP-1')).to.equal(3);
   });
 
   it('uses the image itself as the icon and skips files outside the library', async () => {

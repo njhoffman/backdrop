@@ -29,6 +29,11 @@ export function escapeMarkup(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Only rated items get stars, for the title-end hint
+function ratingStars(rating) {
+  return rating?.rating > 0 ? `${'★'.repeat(rating.rating)}${'☆'.repeat(3 - rating.rating)}` : '';
+}
+
 function ratingText(rating) {
   if (!rating) return 'unrated';
   if (rating.rating === 0) return 'skipped';
@@ -40,8 +45,9 @@ function ratingText(rating) {
 //   0:18 · 25 fps · ★★☆ · DP-1
 //   ocean, waves, aerial
 // With bold (the menu), the summary is markup too and the resolution and duration are in bold. With rich (desktop
-// notifications), the running time stands out, large and bold, the rest of its line is dimmed, and the tags are
-// spaced apart, each in a color of TAG_COLORS in turn
+// notifications), the running time stands out in bold, the rest of its line is dimmed, the tags are spaced apart,
+// each in a color of TAG_COLORS in turn, and the rating moves out of the body into titleEnd: stars for a rated item,
+// nothing otherwise, sent as notifyd's x-notifyd-title-end hint (drawn right of the title; other servers ignore it)
 export function describeNotification({ monitor, media, rating, tags = [] }, { bold = false, rich = false } = {}) {
   if (rich) return richNotification({ monitor, media, rating, tags });
   const strong = text => (bold ? `<b>${escapeMarkup(text)}</b>` : escapeMarkup(text));
@@ -66,15 +72,19 @@ const RICH_TAGS = 8;
 function richNotification({ monitor, media, rating, tags }) {
   const details = [];
   if (media.kind !== 'image' && media.fps) details.push(`${Math.round(media.fps * 100) / 100} fps`);
-  details.push(ratingText(rating), monitor.name);
+  details.push(monitor.name);
   const time = media.kind !== 'image' && Number.isFinite(media.duration)
-    ? `<span size="large" weight="bold">${escapeMarkup(formatClock(media.duration))}</span>  `
+    ? `<span weight="bold">${escapeMarkup(formatClock(media.duration))}</span>  `
     : '';
   const body = [`${time}<span alpha="70%">${escapeMarkup(details.join(' · '))}</span>`];
   if (tags.length) {
     body.push(tags.slice(0, RICH_TAGS).map((tag, index) => `<span foreground="${TAG_COLORS[index % TAG_COLORS.length]}">${escapeMarkup(tag)}</span>`).join('  '));
   }
-  return { summary: `#${media.id}  ${media.kind}  ${formatResolution(media.width, media.height)}`, body: body.join('\n') };
+  return {
+    summary: `#${media.id}  ${media.kind}  ${formatResolution(media.width, media.height)}`,
+    body: body.join('\n'),
+    titleEnd: ratingStars(rating)
+  };
 }
 
 // Failing only leaves the old one until it times out, and it may well have gone already
@@ -94,7 +104,7 @@ async function closeNotification(id) {
 export async function notifyPlaying(database, { monitor, media, rating }, { logger, thumbnails } = {}) {
   if (!media) return;
   const key = `notify_id:${monitor.name}`;
-  const { summary, body } = describeNotification({
+  const { summary, body, titleEnd } = describeNotification({
     monitor, media, rating, tags: database.getTags(media.id)
   }, { rich: true });
   const previous = database.getSetting(key);
@@ -105,6 +115,7 @@ export async function notifyPlaying(database, { monitor, media, rating }, { logg
   const args = [
     '--print-id', '--app-name=backdrop', '--urgency=low',
     `--hint=string:x-dunst-stack-tag:backdrop-${monitor.name}`,
+    ...(titleEnd ? [`--hint=string:x-notifyd-title-end:${titleEnd}`] : []),
     picture,
     ...(previous ? [`--replace-id=${previous}`] : []),
     summary, body

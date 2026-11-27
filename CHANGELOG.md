@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-27
+
+### Changed
+
+- Desktop notifications for what a monitor plays show the running time in bold at the normal size, no longer
+  larger than the rest.
+- The rating moves out of the notification's body to the right end of its title, through notifyd's
+  `x-notifyd-title-end` hint: stars for a rated item, nothing for an unrated or skipped one (no more "unrated").
+  Notification servers without that hint show no rating.
+
 ## [3.3.1] - 2026-11-22
 
 ### Fixed
