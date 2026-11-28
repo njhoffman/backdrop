@@ -4,9 +4,17 @@
 const WALLPAPER_COLORS = { source: 'wallpaper' };
 // The hue of the configured colors turning once every 90 seconds, a few times a song, the same for every instance with it
 const CYCLE_COLORS = { source: 'cycle', cycle: '90s' };
-// The veil looks' lyrics, in the left third under a strip holding a small now-playing panel (cover, title, artist,
+// The veil looks' lyrics, in the left third under a strip holding a now-playing card (cover, title, artist,
 // album, seek bar), so the two never overlap
-const VEIL_LYRICS = { now: 'full', now_position: 'top-left', now_area: '33%x11%+0+0', lyrics_area: '33%x89%+0+11%', background: 'auto' };
+const VEIL_LYRICS = {
+  now: 'full', now_position: 'top-left', now_area: '33%x18%+0+0', lyrics_area: '33%x82%+0+18%', background: 'auto', style: { '--now-scale': '1.8' }
+};
+// The now-playing panel at a size for a large screen (sleeve 0.49.0's --now-scale; an older sleeve draws it at its own,
+// laptop-sized one): minimal, a line with artist and title, or full, a card with the cover, title, artist, album and seek
+// bar; where it stands (in area, else the whole page) and how large. The lyrics keep clear of it inside their area.
+const nowPanel = (now, position, scale, area = null) => ({
+  now, now_position: position, ...(area ? { now_area: area } : {}), style: { '--now-scale': String(scale), '--now-margin': '48px' }
+});
 const RING = { radius: 150, bars: 180, width: 4, amplify: 250, colors: ['#33aacc', '#a0e0ff'] };
 // The veil looks' ring, larger and louder than the ring preset's
 const VEIL_RING = { ...RING, radius: 230, width: 5, amplify: 450 };
@@ -60,22 +68,22 @@ const PRESETS = {
   // The presets below use sleeve's synced lyrics (docs/specs/sleeve.md); list order is stacking order, first lowest.
   // Over the wallpaper, the text colored from what is behind it. Lyrics above bars along the bottom
   lyrics: {
-    description: 'Synced lyrics in the middle, colored from the wallpaper, above bars along the bottom',
+    description: 'Synced lyrics in the middle under a line naming the song, colored from the wallpaper, above bars along the bottom',
     instances: [
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } },
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '100%', height: '60%' } }
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '100%', height: '60%' }, sleeve: nowPanel('minimal', 'top-center', 3) }
     ]
   },
   // Only lyrics, with the wallpaper clear around them
   'lyrics-only': {
-    description: 'Only synced lyrics, with the wallpaper clear around them',
-    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '70%', height: '70%' } }]
+    description: 'Synced lyrics over a now-playing card, with the wallpaper clear around them',
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '70%', height: '70%' }, sleeve: nowPanel('full', 'bottom-center', 2) }]
   },
   // Lyrics down the left third, bars along the bottom of the rest
   'lyrics-side': {
-    description: 'Lyrics down the left third, bars along the bottom of the rest',
+    description: 'Lyrics down the left third over a now-playing card, bars along the bottom of the rest',
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'left', width: '33%', height: '100%' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'left', width: '33%', height: '100%' }, sleeve: nowPanel('full', 'bottom-left', 2) },
       { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars }
     ]
   },
@@ -86,9 +94,9 @@ const PRESETS = {
   },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
   'lyrics-blend': {
-    description: 'The track\'s cover blended over the wallpaper, lyrics in the middle, bars along the bottom',
+    description: 'The track\'s cover blended over the wallpaper, a line naming the song above lyrics in the middle, bars along the bottom',
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6', ...nowPanel('minimal', 'top-center', 3) } },
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
     ]
   },
@@ -125,10 +133,10 @@ const PRESETS = {
   },
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
-    description: 'The track\'s cover, sharp, as the whole background, lyrics on the left, a ring and bars on the right',
+    description: 'The track\'s cover, sharp, as the whole background, lyrics over a now-playing card on the left, a ring and bars on the right',
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover', cover: 'sharp' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover', cover: 'sharp', ...nowPanel('full', 'bottom-left', 2, '33%x100%+0+0') } },
       { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars },
       { name: 'ring', module: 'radial', rect: SIDE_RECTS.ring, radial: RING }
     ]
@@ -136,28 +144,33 @@ const PRESETS = {
   // Lyrics on the left, the whole cover sharp beside them (sleeve 0.48.0's --art-fit), over whichever cover look is
   // picked (the user's own until one is), since style lays over the cover's variables
   'lyrics-cover': {
-    description: 'The whole track\'s cover, sharp, beside lyrics on the left, over its colors as the background',
+    description: 'The whole track\'s cover, sharp, with the song named under it, beside lyrics on the left, over its colors as the background',
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '40%x100%+0+0', background: 'cover', style: { '--art-fit': 'contain' } } }
+      // No card: the cover already stands beside the lyrics, so only its caption
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
+        lyrics_area: '40%x100%+0+0', background: 'cover', ...nowPanel('minimal', 'bottom-center', 3, '60%x100%+40%+0'),
+        style: { '--art-fit': 'contain', ...nowPanel('minimal', 'bottom-center', 3).style }
+      } }
     ]
   },
   // Sunamu's moving background across the window, lyrics in the middle, a wave along the bottom
   'lyrics-swirl': {
-    description: 'Two copies of the track\'s cover turning and blending as the whole background, lyrics in the middle, a wave along the bottom',
+    description: 'Two copies of the track\'s cover turning and blending as the whole background, a line naming the song above lyrics in the middle, a wave along the bottom',
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl' } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3) } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {
-    description: 'The track\'s cover as the whole background, the full now-playing panel on the left, lyrics on the right, a wave along the bottom',
+    description: 'The track\'s cover as the whole background, a large now-playing card on the left, lyrics on the right, a wave along the bottom',
     wallpaper: false,
     instances: [
+      // The card as the centrepiece, filling most of its third
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
-        now: 'full', now_area: '33%x75%+0+0', now_position: 'center-left', lyrics_area: '67%x75%+33%+0', background: 'cover'
+        lyrics_area: '60%x75%+40%+0', background: 'cover', ...nowPanel('full', 'center-left', 3, '40%x75%+0+0')
       } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '25%' }, wave: { color: '#33aacc' } }
     ]

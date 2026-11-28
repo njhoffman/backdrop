@@ -10,9 +10,9 @@ export const SLEEVE_NOW = ['lyrics', 'minimal', 'full'];
 export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
 export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
 // The stylesheet variables sleeve (0.46.0) takes from `--style`, by its own rules (docs/specs/sleeve.md, Style): the
-// cover and its animation, and the scrim behind the lyrics, all but the two it works out itself; values that cannot
+// cover and its animation, the scrim behind the lyrics, the now-playing panel's size and margin (0.49.0), all but the two it works out itself; values that cannot
 // leave a CSS declaration or load anything
-const SLEEVE_STYLE_NAME = /^--(?:art|flow|swirl)-[a-z][a-z0-9-]*$|^--lyrics-scrim(?:-[a-z][a-z0-9-]*)?$/;
+const SLEEVE_STYLE_NAME = /^--(?:art|flow|swirl)-[a-z][a-z0-9-]*$|^--lyrics-scrim(?:-[a-z][a-z0-9-]*)?$|^--now-(?:scale|margin)$/;
 const SLEEVE_STYLE_COMPUTED = ['--art-layer-opacity', '--lyrics-scrim-alpha'];
 const SLEEVE_STYLE_VALUE = /^[a-z0-9 .,%()#+-]{0,100}$/i;
 // sleeve's cover looks by name (`sleeve.cover`): each sets every variable that makes the look, so a switch from one

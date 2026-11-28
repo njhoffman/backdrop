@@ -105,6 +105,18 @@ describe('SleeveVisualizer', () => {
       expect(old.display(monitor, { look: { style } }).args.join(' ')).to.not.include('--style');
     });
 
+    // Before 0.49.0 sleeve refuses the panel's names, and a refused --style keeps the page from starting
+    it('passes the panel\'s --now-scale and --now-margin only to sleeve 0.49.0 or later, keeping the rest of the style', async () => {
+      const style = { '--art-size': '160', '--now-scale': '2.5', '--now-margin': '48px' };
+      const current = adapterFor({ style }, version('0.49.0'));
+      await current.prepare();
+      expect(current.command(monitor, geometry).args.slice(8)).to.deep.equal(['--style=--art-size=160', '--style=--now-scale=2.5', '--style=--now-margin=48px']);
+      const old = adapterFor({ style }, version('0.48.2'));
+      await old.prepare();
+      expect(old.command(monitor, geometry).args.slice(8)).to.deep.equal(['--style=--art-size=160']);
+      expect(old.display(monitor, { look: { style } }).args.slice(4)).to.deep.equal(['--style=--art-size=160']);
+    });
+
     it('reports an older sleeve by name rather than letting it exit 2 on the option', async () => {
       for (const sleeve of [{ lyrics_area: '33%x100%+0+0' }, { now_area: '33%x100%+0+0' }, { background: 'cover' }, { map_below: true }]) {
         const failure = await adapterFor(sleeve, version('0.35.9')).prepare().catch(error => error.message);

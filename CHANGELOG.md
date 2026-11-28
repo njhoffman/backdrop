@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-11-28
+
+### Added
+
+- Every lyrics preset shows what is playing, laid out for what it already shows: a line naming the song above the
+  lyrics in `lyrics`, `lyrics-blend` and `lyrics-swirl`, and under the cover in `lyrics-cover`; a now-playing card
+  (cover, title, artist, album, seek bar) at the foot of the lyrics in `lyrics-only`, `lyrics-side` and
+  `lyrics-stage`; and a large card beside the lyrics in `lyrics-now`. The panels are sized for a large screen,
+  which needs sleeve 0.49.0; an older sleeve shows them at its own, much smaller size.
+- `visualizer.instances[].sleeve.style` takes `--now-scale` and `--now-margin`, sent to sleeve 0.49.0 or later.
+
+### Changed
+
+- The veil looks (`lyrics-veil` and the screensaver's) give their now-playing card a taller strip above the lyrics
+  and draw it larger.
+
 ## [3.6.2] - 2026-11-28
 
 ### Changed

@@ -993,6 +993,13 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       choice of looks per sleeve instance, laid over the preset's style, would do.
       Done (v3.2.0): `sleeve.cover` names a whole look (blurred, flow, swirl, sharp) with `style` laid over it; the
       menu's `b` and the web page's Cover pick it live, only where the background is the cover.
+- [x] **The swirl cover look was a still wash.** (p2) [bug] lyrics-swirl showed an even, nearly still tint of the cover's
+      colors at Sunamu's sizes (layers twice the window, the cover drawn at 64 and blurred, a turn a minute).
+      Done in 3.6.2: layers of 1.2, the cover at 160 with blur 2, a turn in 35 s, tuned live with sleeve ctl at the same cost.
+- [x] **Now-playing panels in the lyrics presets.** (p2) [feature] Only lyrics-now and the veil looks showed the panel,
+      at sleeve's laptop size, so lyrics-now looked like the rest on 1440p. Done in 3.7.0 with sleeve 0.49.0's
+      `--now-scale`: a caption, a card or a large card per preset (`nowPanel` in `presets.js`), each placed by its layout
+      and checked by screenshot. New panel forms (a large-cover card, a bottom strip) are in sleeve's TODO.
 
 ## 11. Two machines
 

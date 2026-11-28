@@ -5,6 +5,10 @@ import { DEFAULT_VEIL, scaleVeil, veilStrength } from './palette.js';
 const LAYER_VERSION = [0, 36];
 // The first sleeve with --style; an older one is not sent it, since it only changes how the page looks
 const STYLE_VERSION = [0, 46];
+// The first sleeve that takes the now-playing panel's --now-scale and --now-margin in --style; an older one refuses
+// them, and the page would not start, so they are left out for it (the panel shows at its own size)
+const NOW_STYLE_VERSION = [0, 49];
+const NOW_STYLE_NAME = /^--now-/;
 
 const atLeast = (version, [major, minor]) => {
   const [a, b] = version.split('.').map(Number);
@@ -34,6 +38,7 @@ export class SleeveVisualizer {
     const version = await Promise.resolve().then(() => this.exec(this.file, ['--version'])).then(text => text.trim(), () => null);
     this.layer = Boolean(version) && atLeast(version, LAYER_VERSION);
     this.styled = Boolean(version) && atLeast(version, STYLE_VERSION);
+    this.nowStyled = Boolean(version) && atLeast(version, NOW_STYLE_VERSION);
     const { lyricsArea, nowArea, background, mapBelow } = this.instance.sleeve;
     if (version && !this.layer && (lyricsArea || nowArea || background || mapBelow)) {
       throw new Error(`visualizer.sleeve areas, background and map_below need sleeve ${LAYER_VERSION.join('.')}.0 or later (found ${version})`);
@@ -71,7 +76,7 @@ export class SleeveVisualizer {
         ...(lyricsArea ? ['--lyrics-area', lyricsArea] : []),
         ...(nowArea ? ['--now-area', nowArea] : []),
         ...(background ? ['--background', background] : []),
-        ...(this.styled ? styleArgs(style) : []),
+        ...(this.styled ? styleArgs(style, this.nowStyled) : []),
         ...(this.mapsBelow(monitor, { width, height }) ? ['--map-below'] : []),
         ...(noSandbox ? ['--no-sandbox'] : [])
       ]
@@ -97,14 +102,15 @@ export class SleeveVisualizer {
         ...(look?.lyricsArea ? ['--lyrics-area', look.lyricsArea] : []),
         ...(look?.nowArea ? ['--now-area', look.nowArea] : []),
         ...(look?.background ? ['--background', look.background] : []),
-        ...(this.styled ? styleArgs(look?.style) : []),
+        ...(this.styled ? styleArgs(look?.style, this.nowStyled) : []),
         ...(visible === undefined ? [] : [visible ? '--show' : '--hide'])
       ]
     };
   }
 }
 
-// sleeve's --style NAME=VALUE, once for each name; an empty value drops a name an earlier change set
-function styleArgs(style) {
-  return Object.entries(style ?? {}).flatMap(([name, value]) => [`--style=${name}=${value}`]);
+// sleeve's --style NAME=VALUE, once for each name; an empty value drops a name an earlier change set. now: whether this
+// sleeve takes the panel's names (NOW_STYLE_VERSION)
+function styleArgs(style, now = true) {
+  return Object.entries(style ?? {}).filter(([name]) => now || !NOW_STYLE_NAME.test(name)).flatMap(([name, value]) => [`--style=${name}=${value}`]);
 }

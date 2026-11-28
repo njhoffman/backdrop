@@ -375,9 +375,9 @@ describe('visualizer settings', () => {
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
         const sides = ['lyrics-veil', 'screensaver', 'lyrics-stage'];
         expect(lyrics('lyrics-stage').sleeve.sleeve.lyricsArea).to.equal('33%x100%+0+0');
-        // The veil looks hold a now-playing strip above their lyrics, in the same third
+        // The veil looks hold a now-playing card above their lyrics, in the same third
         for (const name of ['lyrics-veil', 'screensaver', 'screensaver-instrumental']) {
-          expect(lyrics(name).sleeve.sleeve, name).to.include({ now: 'full', nowArea: '33%x11%+0+0', lyricsArea: '33%x89%+0+11%' });
+          expect(lyrics(name).sleeve.sleeve, name).to.include({ now: 'full', nowArea: '33%x18%+0+0', lyricsArea: '33%x82%+0+18%' });
         }
         // With no text to read over it, the instrumental look's veil is half as strong
         expect(lyrics('screensaver').sleeve.sleeve.background).to.equal('auto');
@@ -396,7 +396,7 @@ describe('visualizer settings', () => {
         expect(lyrics('lyrics-stage').sleeve.sleeve.style).to.include({ '--art-animation': 'none', '--art-size': '512', '--art-blur': '0' });
         // The whole cover beside the lyrics, over the user's look until one is picked, and kept over a picked one
         expect(lyrics('lyrics-cover').sleeve.sleeve).to.include({ background: 'cover', lyricsArea: '40%x100%+0+0', cover: null });
-        expect(lyrics('lyrics-cover').sleeve.sleeve.style).to.deep.equal({ '--art-fit': 'contain' });
+        expect(lyrics('lyrics-cover').sleeve.sleeve.style).to.include({ '--art-fit': 'contain' });
         const picked = visualizerSettings({}, { preset: 'lyrics-cover', live: { lyrics: { sleeve: { cover: 'swirl' } } } }).instances.find(item => item.engine === 'sleeve');
         expect(picked.sleeve.style).to.include({ '--art-animation': 'sleeve-art-swirl', '--art-fit': 'contain' });
         expect(lyrics('lyrics-cover').instances).to.have.length(1);
@@ -405,6 +405,25 @@ describe('visualizer settings', () => {
         expect(lyrics('lyrics-swirl').sleeve.sleeve.style).to.include({ '--art-animation': 'sleeve-art-swirl' });
         expect(lyrics('lyrics-swirl').instances.map(item => item.name)).to.deep.equal(['lyrics', 'wave']);
         for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl']) expect(visualizerSettings({ preset: name }).wallpaper, name).to.equal(false);
+      });
+
+      // A line naming the song where the lyrics fill the middle or the cover stands beside them, a card where a corner
+      // or column has room, the largest in lyrics-now; sized for a large screen by sleeve 0.49.0's --now-scale
+      it('show a now-playing panel fitted to each layout', () => {
+        const panels = {
+          lyrics: ['minimal', 'top-center', '3'], 'lyrics-only': ['full', 'bottom-center', '2'], 'lyrics-side': ['full', 'bottom-left', '2'],
+          'lyrics-veil': ['full', 'top-left', '1.8'], 'lyrics-blend': ['minimal', 'top-center', '3'], 'lyrics-stage': ['full', 'bottom-left', '2'],
+          'lyrics-cover': ['minimal', 'bottom-center', '3'], 'lyrics-swirl': ['minimal', 'top-center', '3'], 'lyrics-now': ['full', 'center-left', '3']
+        };
+        for (const [name, [now, position, scale]] of Object.entries(panels)) {
+          const { sleeve } = lyrics(name).sleeve;
+          expect(sleeve, name).to.include({ now });
+          if (name !== 'lyrics-veil') expect(sleeve.nowPosition, name).to.equal(position);
+          expect(sleeve.style['--now-scale'], name).to.equal(scale);
+        }
+        // The caption stands under the cover, in the free space beside the lyrics; lyrics-now's card takes 40%
+        expect(lyrics('lyrics-cover').sleeve.sleeve).to.include({ nowArea: '60%x100%+40%+0' });
+        expect(lyrics('lyrics-now').sleeve.sleeve).to.include({ nowArea: '40%x75%+0+0', lyricsArea: '60%x75%+40%+0' });
       });
 
       it('give the screensaver the veil look with only its colors turning', () => {
@@ -506,7 +525,9 @@ describe('visualizer settings', () => {
       expect(sleeve({ style: { '--art-size': 512, '--swirl-timing': 'cubic-bezier(0.4, 0, 0.6, 1)', '--lyrics-scrim': 'auto' } }).style)
         .to.deep.equal({ '--art-size': '512', '--swirl-timing': 'cubic-bezier(0.4, 0, 0.6, 1)', '--lyrics-scrim': 'auto' });
       expect(() => sleeve({ style: 'big' })).to.throw('visualizer.sleeve.style must be a mapping');
-      for (const name of ['--now-preset', '--lyrics-scrim-alpha', '--art-layer-opacity', 'art-size']) {
+      // The panel's size and margin (sleeve 0.49.0), and no other --now-* name
+      expect(sleeve({ style: { '--now-scale': 2.5, '--now-margin': '48px' } }).style).to.deep.equal({ '--now-scale': '2.5', '--now-margin': '48px' });
+      for (const name of ['--now-preset', '--now-area', '--lyrics-scrim-alpha', '--art-layer-opacity', 'art-size']) {
         expect(() => sleeve({ style: { [name]: '1' } }), name).to.throw(`visualizer.sleeve.style.${name} must be a variable sleeve takes`);
       }
       for (const value of ['url(x)', '0; color: red', '"0"', 'a/b', true, null]) {
