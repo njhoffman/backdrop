@@ -1,6 +1,7 @@
 import { seconds } from '../config/schema.js';
 import { CHANNELS } from './channels.js';
 import { BUILTIN_PRESETS } from './presets.js';
+import { ruleProblem } from './autoRules.js';
 
 // The visualizer config section, checked and normalized. Errors name the key, since the daemon only logs
 // them and `backdrop visualizer reload` prints them.
@@ -52,11 +53,11 @@ export const PALETTE_PICKS = ['vivid', 'dominant', 'complement'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Settings shared by every instance, which an instance cannot set for itself
-const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms', 'screenshots'];
+const SHARED_KEYS = ['enabled', 'wallpaper', 'reference_height', 'audio', 'source', 'glava', 'preset', 'presets', 'instances', 'only_while_playing', 'silence_grace', 'wallpaper_dim', 'latency_ms', 'screenshots', 'auto'];
 // Settings of one visualizer; at the top of the section they are the defaults every instance inherits
 const INSTANCE_KEYS = ['name', 'engine', 'visible', 'sleeve', 'projectm', 'module', 'monitors', 'placement', 'rect', 'opacity', 'palette', 'channel', 'defines', 'requests', ...MODULES];
 // What a preset cannot change
-const PRESET_EXCLUDED = ['enabled', 'preset', 'presets', 'screenshots'];
+const PRESET_EXCLUDED = ['enabled', 'preset', 'presets', 'screenshots', 'auto'];
 
 // Objects merge recursively; lists and scalars from the override replace the base
 export function deepMerge(base, override) {
@@ -525,6 +526,19 @@ function instance(raw, prefix) {
   };
 }
 
+// visualizer.auto: { rules }, the automatic preset's own rules (autoRules.js), each { when, preset, reason }, checked
+// against the presets there are; tried before the built-in rules
+function autoRules(auto, presets) {
+  if (auto === undefined || auto === null) return;
+  knownKeys('auto', auto, ['rules'], 'automatic preset settings');
+  const rules = auto.rules ?? [];
+  if (!Array.isArray(rules)) fail('auto.rules', 'a list of rules', rules);
+  rules.forEach((rule, index) => {
+    const problem = ruleProblem(rule, presets);
+    if (problem) throw new Error(`visualizer.auto.rules.${index}: ${problem}`);
+  });
+}
+
 // The section with any preset laid over it, normalized; prefix leads every key in an error
 function normalize(raw, prefix) {
   knownKeys(prefix.replace(/\.$/, ''), raw, [...SHARED_KEYS, ...INSTANCE_KEYS.filter(key => key !== 'name')], 'visualizer settings');
@@ -786,6 +800,7 @@ export function visualizerSettings(section = {}, { preset, live } = {}) {
     for (const key of PRESET_EXCLUDED) if (value[key] !== undefined) fail(`presets.${name}.${key}`, 'left out of a preset', value[key]);
     normalize(deepMerge(base, presets[name]), `presets.${name}.`);
   }
+  autoRules(section.auto, Object.keys(presets));
   const active = preset !== undefined ? preset : section.preset ?? null;
   if (active === null) {
     const current = live && Object.keys(live).length ? normalize(applyLive(base, live), '') : settings;

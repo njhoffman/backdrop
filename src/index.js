@@ -391,9 +391,9 @@ class BackdropApp {
       .action(this.action(options => worker.run(options)));
     program.command('complete-values', { hidden: true }).argument('<kind>', 'queries or tags')
       .action(this.action(kind => completion.printValues(kind)));
-    program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), or try every instance and preset briefly (check)')
+    program.command('visualizer').description('Apply the visualizer section to the running daemon (reload), list and switch presets (preset), try every instance and preset briefly (check), or pick the preset automatically (auto, and prefer for the image it follows)')
       .argument('<action>', VISUALIZER_ACTIONS.join(' or '))
-      .argument('[name]', 'Preset to switch to, until the daemon restarts')
+      .argument('[name]', 'Preset to switch to, until the daemon restarts; with auto, on, off or toggle; with prefer, cover, wallpaper or toggle')
       .option('--next', 'Switch to the preset after the active one')
       .option('--clear', 'Go back to visualizer.preset')
       .option('--check', 'With reload: check every instance and preset first, and reload only if all run')

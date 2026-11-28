@@ -150,6 +150,29 @@ To build a preset live, add one to `visualizer.presets`, pick it (`backdrop visu
 keeps the running look and raises a notification naming the key. Opacity and sleeve's look change in place, and anything else restarts the instances that use it. A save that changes the look in use drops the menu's
 changes, so the file wins; other saves leave them, including a preset saved from the menu under a new name. A preset can name any instances, and its place in the list is its stacking order.
 
+## Automatic preset
+
+`backdrop visualizer auto on|off|toggle` (off by default; the menu has the same toggle) has the daemon pick the preset
+itself (`daemon/AutoPreset.js`, rules in `src/visualizer/autoRules.js`), deciding in this order, as asked on
+2026-11-28: whether it is full screen (the screensaver, or no window on any monitor's visible workspace, i3's tree
+read on its window and workspace events by `workspaceWatcher.js`; docks such as polybar do not count) or behind
+windows; whether the song has timed lyrics (sleeved, as the screensaver follows them); the image preferred, the cover
+or the wallpaper (`backdrop visualizer prefer cover|wallpaper|toggle`, the wallpaper by default); and what that image
+is like. Behind windows it never shows lyrics: the wallpaper with bars (`bars`; `graph` is the other look meant for
+it). Full screen with lyrics: the cover's look for the image (a black and white cover gets `lyrics-sharp-duotone`,
+others `lyrics-blurred-soft-tinted`), or `lyrics-veil` over the wallpaper. Without lyrics: `cover-radials` or
+`radials`, a ring for each speaker and bars.
+
+An image is tagged by brightness (`dark` below 0.25 mean luma, `bright` above 0.6, else `mid`) and color, from chroma
+(the brightest channel less the darkest) rather than HSL saturation, which rates a pale cream as colorful: `grayscale`
+when under 2% of its pixels have chroma over 0.12 (a black and white photo with one red band is 7%, and so not black
+and white), `colorful` when over 35% have chroma over 0.3, else `muted`. The cover is sampled from the player's art URL
+(`playerctl metadata mpris:artUrl`, `sampleCover` in `palette.js`) when sleeved names a new song; the wallpaper from
+the daemon's sample of each load. Rules are first match wins: `visualizer.auto.rules` in the config, checked like the
+rest of the section, then the built-in ones. The daemon switches only when the pick changes, and a preset kept in the
+menu's load (`keep`, sent as a `hold` control request; presets only tried there, or set by `backdrop visualizer
+preset`, are not recorded) holds until the next song or a change between full screen and behind windows. While on, the screensaver leaves its looks to it. `state.json`'s `auto` says what it picked and why.
+
 ## Audio-only display
 
 Every built-in preset with a sleeve instance sets `only_while_playing` (`presets.js`; none with `audio: fifo`, which
@@ -246,7 +269,8 @@ refuses the request), so the plain desktop shows only what the section or its ow
 ## Menu
 
 `backdrop menu visualizer`, or `z` in the main menu, changes the visualizer live (`MenuCommand.visualizerMenu`):
-on/off, the wallpaper, load (a preset), reset and save for the whole look, and with one instance its settings in the
+on/off, the wallpaper, load (a preset), the automatic preset (`u`, on or off, its caption naming the pick) and the image
+it follows (`f`, the cover or the wallpaper), reset and save for the whole look, and with one instance its settings in the
 same menu. With several, each instance has an entry opening its own menu (`instanceMenu`), where Escape comes back:
 show or hide that instance alone (its `visible`, false stopping it while the others run), and its module, opacity,
 amplify, position (anchor) and colors (palette source and pick, or a fixed swatch for the module's color option),

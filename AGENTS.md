@@ -131,6 +131,9 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `VisualizerManager.setRelaySource` puts its monitor in place of `source: auto`. Roles go to `audio.json` in the
   runtime dir for `backdrop audio status`, polybar and the i3 audio keys.
 - **Screensaver** (`src/display/daemon/Screensaver.js`) - the daemon's mode, asked for through a control request by `ScreensaverCommand`; see `docs/specs/main.md`.
+- **Automatic preset** (`src/display/daemon/AutoPreset.js`, `src/visualizer/autoRules.js`, `src/display/workspaceWatcher.js`) - picks the visualizer
+  preset from full screen or behind windows, timed lyrics, the cover or wallpaper preferred and what it is like, through
+  ordered rules (`visualizer.auto.rules` first); on/off and the preference are database settings (`visualizer auto|prefer`); see `docs/specs/visualizer.md`.
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
   adapters (`index.js`, `GlavaVisualizer`, `SleeveVisualizer`, `ProjectmVisualizer`, one per instance, `engine` per instance) with `prepare()` and `command(monitor, geometry)`, sleeve's also `display()` (`sleeve ctl display`) and `colorLines()`;

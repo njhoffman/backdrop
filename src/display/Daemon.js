@@ -28,6 +28,7 @@ import { cpuPercent } from './cpu.js';
 import { readGpuMemory } from './gpu.js';
 import { statePath, nextFiltersPath } from './runtimeFiles.js';
 import { Screensaver, IDLE_CHECK_MS } from './daemon/Screensaver.js';
+import { AutoPreset } from './daemon/AutoPreset.js';
 import { ControlRequests } from './daemon/ControlRequests.js';
 import { ConfigChanges } from './daemon/ConfigChanges.js';
 import { WallpaperColors } from './daemon/WallpaperColors.js';
@@ -177,6 +178,8 @@ export class Daemon {
     audioRelay = {},
     // i3's output events (src/display/outputWatcher.js); null leaves the timer alone to find layout changes
     watchOutputs = options => new OutputWatcher(options),
+    // The automatic preset's inputs (src/display/daemon/AutoPreset.js), for tests: { watchWorkspaces, followLyrics, coverUrl, sampleArt }
+    autoPresetOptions = {},
     monitorFallback = MONITOR_FALLBACK_MS,
     // Runs a function with an X connection (src/display/x11.js), for the wallpaper window's placement
     x11 = withX11
@@ -250,6 +253,7 @@ export class Daemon {
     this.bounce = new Bounce(this, { loadavg, cpus });
     this.smoothing = new Smooth(this, { loadavg, cpus });
     this.screensaver = new Screensaver(this);
+    this.autoPreset = new AutoPreset(this, autoPresetOptions);
     this.audioRelay = new AudioRelay(this, audioRelay);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
@@ -333,6 +337,9 @@ export class Daemon {
     }
     await this.writeState();
     this.logger.info('Daemon started', { version, pid: process.pid, monitors: monitors.map(m => m.name) });
+    // The automatic preset, when on, once the visualizers and wallpapers are up
+    this.autoPreset.begin();
+    this.enqueue(() => this.autoPreset.decide());
     if (this.config.warnings?.length) this.logger.warn('Unknown config keys', { warnings: this.config.warnings });
 
     // Playback starts from the existing library; new imports are appended as they finish
@@ -835,6 +842,8 @@ export class Daemon {
     }
     await this.notify(screen, media);
     if (this.visualizers.wantsWallpaperColors?.(screen.monitor.name)) this.sampleScreen(screen.monitor.name);
+    // Sampled and picked again in the background, so a load never waits on it
+    this.autoPreset.wallpaperLoaded(screen.monitor.name).catch(error => this.logger.warn('Automatic preset failed', { error: error.message }));
     this.prefetchThumbnails(screen, media);
     await this.bounce.onLoaded(screen, media);
     await this.smoothing.onLoaded(screen, media, filename);
@@ -1050,7 +1059,7 @@ export class Daemon {
     // control requests on SIGUSR1, rather than dying from either signal; handled that it reads one file per request
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
-      visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary(),
+      visualizer: this.visualizers.summary(), auto: this.autoPreset.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary(),
       offload: this.offload.summary(), audio: this.audioRelay.summary(), dropped: [...this.dropped]
     });
     await fs.rename(temporary, file);
@@ -1071,6 +1080,7 @@ export class Daemon {
     await this.reconciling;
 
     await this.screensaver.leave();
+    this.autoPreset.end();
     await this.audioRelay.stop().catch(error => this.logger.warn('Failed to stop the audio relay', { error: error.message }));
     await this.bounce.stop();
     await this.smoothing.stop();

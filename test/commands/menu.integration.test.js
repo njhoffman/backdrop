@@ -266,17 +266,17 @@ async function startXvfb(attempts = 3) {
         }
       };
       const config = makeConfig({ 'paths.runtime': runtime, 'paths.thumbnails': thumbs, 'menu.workspace': false, 'visualizer.enabled': true });
-      // p opens load, Right Right i inspects ring (none, subtle, ring), Escape goes back to the pictures, Escape leaves
-      // load, Escape closes
-      const view = driven(panelView, ['p', 'Right Right i', 'Escape', 'Escape', 'Escape']);
+      // p opens load, five Rights and i inspect ring (none, subtle, bars, graph, radials, ring), Escape goes back to the
+      // pictures, Escape leaves load, Escape closes
+      const view = driven(panelView, ['p', 'Right Right Right Right Right i', 'Escape', 'Escape', 'Escape']);
       const command = new MenuCommand(config, db, silentLogger, {
         display, rating: {}, view, thumbnail: async () => null, workspace: async () => async () => {}, control: async () => ({ monitors, visualizer })
       });
       await command.open({ page: 'visualizer' });
-      // Visualizer keys: e w m o a l c p r s, then q, from 10; load's: q, i
+      // Visualizer keys: e w m o a l c p u f r s, then q, from 10; load's: q, i
       expect(runs.map(run => run.code)).to.deep.equal([17, 11, 1, 1, 1]);
       expect(runs[1].args).to.include('-show-icons');
-      expect(runs[2].args).to.include.members(['-selected-row', '2', 'preview { padding: 205px 0px; }']);
+      expect(runs[2].args).to.include.members(['-selected-row', '5', 'preview { padding: 205px 0px; }']);
       expect(runs[3].args).to.include('-show-icons');
       cleanStderr();
     } finally {

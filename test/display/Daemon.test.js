@@ -1384,6 +1384,20 @@ describe('Daemon', () => {
       expect(calls.at(-1)).to.equal('stop');
     });
 
+    // Only the menu's keep holds a preset against the automatic preset; a preset request alone (a try, the CLI) does not
+    it('holds a preset for the automatic preset only on a hold request', async () => {
+      const daemon = makeDaemon({ visualizers });
+      await daemon.start();
+      const held = [];
+      daemon.autoPreset.pickedByHand = preset => held.push(preset);
+      await control(daemon, { preset: 'ring' });
+      expect(held).to.deep.equal([]);
+      await control(daemon, { hold: 'ring' });
+      expect(held).to.deep.equal(['ring']);
+      expect(calls.filter(call => call[0] === 'preset')).to.deep.equal([['preset', 'ring']]);
+      await daemon.stop();
+    });
+
     it('refuses the screensaver\'s preset on request while the screensaver is off, and takes it while on', async () => {
       const daemon = makeDaemon({ visualizers });
       await daemon.start();

@@ -560,7 +560,7 @@ describe('MenuCommand', () => {
       const menu = shown[1];
       expect(menu.prompt).to.equal('visualizer');
       expect(menu.entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
-        ['on', 'wallpaper', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'load', 'reset', 'save']);
+        ['on', 'wallpaper', 'bars', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors', 'load', 'auto off', 'follows wallpaper', 'reset', 'save']);
       expect(menu.entries.find(entry => entry.label === 'reset').disabled).to.equal(true);
       expect(menu.status).to.deep.equal(['preset  <b>none</b>', 'colors  <b>#33aacc</b>']);
       expect(shown[2].prompt).to.equal('backdrop');
@@ -612,7 +612,17 @@ describe('MenuCommand', () => {
     it('turns it off and on, and switches presets', async () => {
       picks = ['turn off', 'turn on', 'load ▸', 'ring', 'ring', 'load ▸', 'none', 'keep', null];
       await open().open({ page: 'visualizer' });
-      expect(requests).to.deep.equal([{ visualizer: false }, { visualizer: true }, { preset: 'ring' }, { preset: null }]);
+      // Picking ring again keeps it, the one request that holds it against the automatic preset; tries do not
+      expect(requests).to.deep.equal([{ visualizer: false }, { visualizer: true }, { preset: 'ring' }, { hold: 'ring' }, { preset: null }]);
+    });
+
+    // The automatic preset, off by default, and the image it follows (wallpaper by default)
+    it('turns the automatic preset on and switches the image it follows', async () => {
+      picks = ['auto on', 'follow cover', null];
+      await open().open({ page: 'visualizer' });
+      expect(requests).to.deep.equal([{ auto: true }, { prefer: 'cover' }]);
+      const labels = shown.find(menu => menu.prompt === 'visualizer').entries.map(entry => entry.label);
+      expect(labels).to.include.members(['auto on', 'follow cover']);
     });
 
     it('tries presets live in load, going back to the one in force on Escape', async () => {
@@ -741,7 +751,7 @@ describe('MenuCommand', () => {
       picks = ['fps ▸', '24', null, null];
       await open().open({ page: 'visualizer' });
       expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(
-        ['on', 'wallpaper', 'fps 30', '30s each', 'opacity 1', 'bottom', 'load', 'reset', 'save']);
+        ['on', 'wallpaper', 'fps 30', '30s each', 'opacity 1', 'bottom', 'load', 'auto off', 'follows wallpaper', 'reset', 'save']);
       expect(shown[0].status).to.deep.equal(['preset  <b>none</b>']);
       expect(requests[0]).to.deep.equal({ visualizer_set: { instance: 'main', changes: { projectm: { fps: 24 } } } });
     });
@@ -751,7 +761,7 @@ describe('MenuCommand', () => {
       config.set('visualizer.instances', [{ name: 'low' }, { name: 'ring', module: 'radial' }]);
       picks = ['ring ▸', 'module ▸', 'wave', null, 'low ▸', null, null];
       await open().open({ page: 'visualizer' });
-      expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(['on', 'wallpaper', 'low', 'ring', 'load', 'reset', 'save']);
+      expect(shown[0].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(['on', 'wallpaper', 'low', 'ring', 'load', 'auto off', 'follows wallpaper', 'reset', 'save']);
       expect(shown[0].status).to.deep.equal(['preset  <b>none</b>']);
       expect(shown[1].title).to.equal('visualizer  ·  ring');
       expect(shown[1].entries.map(entry => entry.caption ?? entry.label)).to.deep.equal(['shown', 'radial', 'opacity 0.8', 'amplify 300', 'bottom', 'fixed colors']);

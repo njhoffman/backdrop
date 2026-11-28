@@ -67,7 +67,45 @@ describe('VisualizerCommand', () => {
 
     await state({ enabled: true, error: null, generation: 4 });
     expect(await fails()).to.include('The daemon did not reload the visualizer');
-    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload, preset, check');
+    expect(await command().run('restart').catch(error => error.message)).to.equal('Unknown action restart; use reload, preset, check, auto, prefer');
+  });
+
+  describe('auto and prefer', () => {
+    const settings = new Map();
+    const database = { getSetting: (key, fallback) => (settings.has(key) ? settings.get(key) : fallback), setSetting: (key, value) => settings.set(key, value) };
+    const commandWithDb = () => new VisualizerCommand(config, database, silentLogger, {
+      kill: (pid, signal) => { signals.push([pid, signal]); return answer?.(); }, timeout: 200, pollInterval: 5
+    });
+    beforeEach(() => settings.clear());
+
+    it('keeps the setting for the next start without a daemon, and says it is off by default', async () => {
+      await commandWithDb().run('auto');
+      expect(lines.at(-1)).to.equal('Automatic preset off  following the wallpaper');
+      await commandWithDb().run('auto', 'on');
+      expect(settings.get('visualizer_auto')).to.equal(true);
+      await commandWithDb().run('prefer', 'toggle');
+      expect(settings.get('visualizer_prefer')).to.equal('cover');
+      await commandWithDb().run('auto', 'toggle');
+      expect(settings.get('visualizer_auto')).to.equal(false);
+    });
+
+    it('asks a running daemon, and reports what it picked and why', async () => {
+      await state({ enabled: true, error: null, generation: 1, preset: null }, { control: 0, auto: { enabled: false, prefer: 'wallpaper' } });
+      answer = async () => {
+        const request = await fs.readJson(controlPath(dir));
+        expect(request).to.include({ auto: true });
+        setTimeout(() => state({ enabled: true, error: null, generation: 1, preset: 'bars' }, {
+          control: signals.length, auto: { enabled: true, prefer: 'wallpaper', preset: 'bars', reason: 'behind windows: the wallpaper with bars, never lyrics', held: null }
+        }), 5);
+      };
+      await commandWithDb().run('auto', 'on');
+      expect(lines.slice(-2)).to.deep.equal(['Automatic preset on  following the wallpaper', '  bars (behind windows: the wallpaper with bars, never lyrics)']);
+    });
+
+    it('refuses values it does not take', async () => {
+      expect(await commandWithDb().run('auto', 'maybe').catch(error => error.message)).to.equal('auto takes on, off, toggle, not maybe');
+      expect(await commandWithDb().run('prefer', 'both').catch(error => error.message)).to.equal('prefer takes cover, wallpaper, toggle, not both');
+    });
   });
 
   describe('preset', () => {
@@ -88,9 +126,9 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 29)).to.deep.equal([
-        '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver  (screensaver only)',
-        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-blurred-swirl', '  lyrics-blurred-swirl-tinted', '  lyrics-blurred-slow', '  lyrics-blurred-sunamu', '  lyrics-blurred-tinted', '  lyrics-blurred-soft', '  lyrics-blurred-soft-tinted', '  lyrics-blurred-offset', '  lyrics-blurred-vivid', '  lyrics-sharp-tinted', '  lyrics-sharp-bright', '  lyrics-sharp-bright-tinted', '  lyrics-sharp-duotone', '  lyrics-now', '  calm'
+      expect(lines.slice(0, 33)).to.deep.equal([
+        '  subtle', '  bars', '  graph', '  radials', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver  (screensaver only)',
+        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-blurred-swirl', '  lyrics-blurred-swirl-tinted', '  lyrics-blurred-slow', '  lyrics-blurred-sunamu', '  lyrics-blurred-tinted', '  lyrics-blurred-soft', '  lyrics-blurred-soft-tinted', '  lyrics-blurred-offset', '  lyrics-blurred-vivid', '  lyrics-sharp-tinted', '  lyrics-sharp-bright', '  lyrics-sharp-bright-tinted', '  lyrics-sharp-duotone', '  cover-radials', '  lyrics-now', '  calm'
       ]);
     });
 

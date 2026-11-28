@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-11-28
+
+### Added
+
+- The automatic preset: `backdrop visualizer auto on|off|toggle` (or `u` in the visualizer menu; off by default) has
+  the daemon pick the visualizer preset itself. It decides by whether the screen is full (the screensaver, or no
+  window on any monitor) or behind windows, whether the song has timed lyrics, whether it follows the album art or
+  the wallpaper (`backdrop visualizer prefer cover|wallpaper|toggle`, or `f` in the menu; the wallpaper by default),
+  and what that image is like: black and white, colorful or muted, dark, bright or in between. Behind windows it never
+  shows lyrics, only the wallpaper with bars; a black and white cover gets `lyrics-sharp-duotone`. A preset you keep
+  in the menu's load holds until the next song or until the screen changes between full and behind windows; presets
+  you only try there, or set with `backdrop visualizer preset`, are not held. Your own rules go
+  under `visualizer.auto.rules`, tried before the built-in ones, and `backdrop visualizer auto` says what it picked and why.
+- Presets for it: `bars` and `graph` (the wallpaper with bars or a graph along the bottom, for behind windows),
+  `radials` (the wallpaper under a light veil with a ring for each speaker and bars) and `cover-radials` (the soft
+  tinted cover with the now-playing card, rings and bars), both for songs without lyrics.
+
+### Changed
+
+- While the automatic preset is on, the screensaver leaves its looks to it.
+
 ## [3.13.3] - 2026-11-28
 
 ### Fixed

@@ -63,12 +63,12 @@ describe('visualizer check', () => {
   it('runs every instance of the section and each preset at 1x1, then stops them', async () => {
     const results = await checkVisualizer({ enabled: true }, { spawn, create, kill, hasSleeve: async () => false, runMs: 20, stopGrace: 20 });
     expect(results.map(result => [result.preset, result.instance, result.ok])).to.deep.equal([
-      [null, 'main', true], ['subtle', 'main', true], ['ring', 'ring', true], ['wave', 'wave', true], ['party', 'base', true], ['party', 'ring', true]
+      [null, 'main', true], ['subtle', 'main', true], ['bars', 'bars', true], ['graph', 'graph', true], ['ring', 'ring', true], ['wave', 'wave', true], ['party', 'base', true], ['party', 'ring', true]
     ]);
     expect(spawned.every(item => item.args[2] === '1x1' && item.options.detached)).to.equal(true);
     // Each target prepares in its own directory, so instances of the same name do not share one
-    expect(new Set(prepared.map(([, dir]) => dir)).size).to.equal(5);
-    expect(kills.filter(([, signal]) => signal === 'SIGTERM')).to.have.length(6);
+    expect(new Set(prepared.map(([, dir]) => dir)).size).to.equal(7);
+    expect(kills.filter(([, signal]) => signal === 'SIGTERM')).to.have.length(8);
   });
 
   it('reports instances that exit with their output, and presets that do not check out', async () => {
@@ -81,7 +81,7 @@ describe('visualizer check', () => {
     expect(broken.output).to.deep.equal(['Shader compilation failed', '"1.frag":84(31): error: syntax error']);
     expect(results.find(result => result.preset === 'bad')).to.deep.include({ instance: null, ok: false });
     expect(results.find(result => result.preset === 'bad').error).to.include('visualizer.presets.bad.module must be');
-    expect(results.filter(result => result.ok)).to.have.length(6);
+    expect(results.filter(result => result.ok)).to.have.length(8);
   });
 
   it('sends piped colors, so GLava draws, and cleans up its directory', async () => {

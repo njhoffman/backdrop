@@ -121,7 +121,7 @@ export class Screensaver {
 
   // Switches between the two looks as the song's lyrics come and go; a lookup still out changes nothing
   async lyricsChanged(lyrics) {
-    if (!this.active || this.daemon.stopping) return;
+    if (!this.active || this.daemon.stopping || this.automatic) return;
     this.lyrics = lyrics;
     const look = this.lookFor(lyrics);
     if (!look || look === this.shown) return;
@@ -234,9 +234,10 @@ export class Screensaver {
     await this.hide();
     await this.startHints();
     this.followSongs();
-    // The first look is the one for the song playing, when sleeved says in time
-    if (preset && this.settings.preset_without_lyrics) await this.startLyrics();
-    this.shown = preset ? this.lookFor(this.lyrics) : null;
+    // The first look is the one for the song playing, when sleeved says in time; with the automatic preset on, its
+    // pick for full screen instead
+    if (preset && this.settings.preset_without_lyrics && !this.automatic) await this.startLyrics();
+    this.shown = preset && !this.automatic ? this.lookFor(this.lyrics) : null;
     try {
       if (!visualizers.active) await visualizers.setEnabled(true);
       // Each screensaver starts at the looks' own colors
@@ -245,6 +246,12 @@ export class Screensaver {
     } catch (error) {
       logger.error('Screensaver visualizer failed', { preset: this.shown, error: error.message });
     }
+    await this.daemon.autoPreset?.screensaverChanged();
+  }
+
+  // Whether the automatic preset picks the looks (visualizer auto on): the screensaver then leaves them to it
+  get automatic() {
+    return Boolean(this.daemon.autoPreset?.enabled);
   }
 
   async leave() {
@@ -266,11 +273,12 @@ export class Screensaver {
     // A daemon on its way out stops them anyway
     if (stopping) return;
     try {
-      if (this.settings.preset) await visualizers.setPreset(preset);
+      if (this.settings.preset && !this.automatic) await visualizers.setPreset(preset);
       if (!wasOn) await visualizers.setEnabled(false);
     } catch (error) {
       logger.error('Screensaver visualizer failed', { error: error.message });
     }
+    await this.daemon.autoPreset?.screensaverChanged();
   }
 
   // Follows songs for as long as it runs; next_on_song is read on each song, so turning it off or on applies at once

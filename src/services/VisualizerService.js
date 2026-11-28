@@ -164,6 +164,11 @@ export class VisualizerService {
     return this.send(state, { preset: name });
   }
 
+  // The menu's keep: the automatic preset leaves this preset until the next song or change of view
+  async holdPreset(name) {
+    return this.send(await this.state(), { hold: name });
+  }
+
   // Drops every live change
   async reset() {
     return this.send(await this.state(), { visualizer_reset: true });

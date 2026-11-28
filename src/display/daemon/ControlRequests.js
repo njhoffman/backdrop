@@ -100,6 +100,12 @@ export class ControlRequests {
       await this.daemon.visualizers.setPreset(request.preset);
       this.daemon.logger.info('Visualizer preset', this.daemon.visualizers.summary());
     }
+    // Kept in the menu's load (only there, not a preset tried or one from the CLI): the automatic preset leaves it
+    // until the next song or change of view
+    if (typeof request.hold === 'string') this.daemon.autoPreset.pickedByHand(request.hold);
+    // `backdrop visualizer auto` and `prefer`: the automatic preset on or off, and the image it follows
+    if (request.auto !== undefined) await this.daemon.autoPreset.setEnabled(request.auto);
+    if (request.prefer !== undefined) await this.daemon.autoPreset.setPrefer(request.prefer);
     if (request.screensaver) await this.daemon.screensaver.apply(request.screensaver);
     if (typeof request.visualizer === 'boolean') {
       await this.daemon.visualizers.setEnabled(request.visualizer);

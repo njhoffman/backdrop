@@ -1005,7 +1005,7 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
       3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
-- [ ] **Pick the visualizer preset automatically.** (p2) [feature] Asked for on 2026-11-28. Decide, in this order:
+- [x] **Pick the visualizer preset automatically.** (p2) [feature] Asked for on 2026-11-28. Decide, in this order:
       (1) full screen or screensaver, or a background behind other windows: behind windows, never lyrics, and only the few
       looks that suit it; (2) whether the song has timed lyrics: none, never a lyrics preset (a non-lyrics look such as
       two radials with bars along the bottom); (3) a preference for the album art or the wallpaper as the background: the
@@ -1014,6 +1014,14 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       wallpapers come up. Rules so far: a black and white cover with the album art preferred: lyrics-sharp-duotone over
       every other preset. Design questions are in the conversation of 2026-11-28 (what counts as full screen, where rules
       live, how a manual pick interacts, which looks suit a background).
+      Done in 3.14.0 (`daemon/AutoPreset.js`, `autoRules.js`, `workspaceWatcher.js`): off by default (`visualizer auto`,
+      menu `u`), the wallpaper followed by default (`visualizer prefer`, menu `f`, `$mod+Ctrl+Shift+Left`); full screen is
+      the screensaver or no window on any monitor's visible workspace; behind windows only `bars`; only a preset kept in
+      the menu's load holds, until the next song or change of view; the user's rules go in `visualizer.auto.rules`.
+- [ ] **The wallpaper's brightness and colors set the veil.** (p2) [feature] The rest of step (3) of the automatic
+      preset: with the wallpaper followed it picks `lyrics-veil` but keeps the preset's veil; the wallpaper's sample
+      (`daemon.samples`, `imageStats`) should set the veil's opacity (more over a bright one) and tint, as a live change
+      the next pick drops.
 - [ ] **A restart's preset can time out while sleeved restarts.** (p3) [bug] `backdrop restart` starts the daemon, then
       sends the preset that was in force (`DisplayService.restart`, `sendRequest`). On 2026-11-28 sleeved was restarted a
       moment before, the switch to a sleeve look waited on it, and the request timed out ("The daemon did not answer"),

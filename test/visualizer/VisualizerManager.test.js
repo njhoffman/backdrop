@@ -100,7 +100,7 @@ describe('VisualizerManager', () => {
     expect(spawned).to.have.length(0);
     expect(prepared).to.deep.equal([]);
     expect(manager.summary()).to.deep.equal({
-      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
+      enabled: false, error: null, generation: 1, preset: null, presets: ['subtle', 'bars', 'graph', 'radials', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'cover-radials', 'lyrics-now'], instances: ['main'], silenced: false, suspended: false, hidesWallpaper: false, compositor: null, musicDim: 0, live: {}
     });
 
     config.set('visualizer.enabled', true);

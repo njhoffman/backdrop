@@ -42,6 +42,20 @@ export async function sampleMedia(media, monitor, { exec = decode } = {}) {
   return { width, height, pixels, dim: media.dim ?? 0 };
 }
 
+// The playing song's cover as a COVER_SAMPLE square of RGB pixels, for the automatic preset (autoRules.js): from the
+// player's art URL (https, or file:// for a local file), which ffmpeg reads either way; null without one
+export const COVER_SAMPLE = 48;
+export async function sampleCover(url, { exec = decode } = {}) {
+  if (typeof url !== 'string' || !url.trim()) return null;
+  const input = url.startsWith('file://') ? decodeURIComponent(url.slice('file://'.length)) : url;
+  const pixels = await exec('nice', [
+    '-n', '19', 'ffmpeg', '-v', 'error', '-i', input, '-frames:v', '1',
+    '-vf', `scale=${COVER_SAMPLE}:${COVER_SAMPLE}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'
+  ]);
+  if (pixels.length < COVER_SAMPLE * COVER_SAMPLE * 3) throw new Error(`ffmpeg returned ${pixels.length} bytes for the cover`);
+  return pixels;
+}
+
 // The sample's pixels under a window ({ x, y, width, height } in root coordinates) on monitor, as [r, g, b]
 export function stripPixels(sample, monitor, geometry) {
   const scaleX = sample.width / monitor.width;

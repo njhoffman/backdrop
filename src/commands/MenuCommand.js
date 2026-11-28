@@ -77,7 +77,8 @@ const INSPECT_KEY = 'i';
 // Font Awesome glyphs for the visualizer menu: power, image, list, cube, adjust, volume, arrows, brush, undo, save
 const VISUALIZER_ICONS = {
   power: '\uf011', wallpaper: '\uf03e', preset: '\uf03a', module: '\uf1b2', opacity: '\uf042', amplify: '\uf028',
-  position: '\uf047', colors: '\uf1fc', reset: '\uf0e2', save: '\uf0c7', instance: '\uf001', fps: '\uf0e4', duration: '\uf017'
+  position: '\uf047', colors: '\uf1fc', reset: '\uf0e2', save: '\uf0c7', instance: '\uf001', fps: '\uf0e4', duration: '\uf017',
+  auto: '\uf0d0', prefer: '\uf0ec'
 };
 const OPACITIES = ['0.2', '0.4', '0.6', '0.8', '1', '-0.1', '+0.1'];
 const AMPLIFIES = ['100', '150', '200', '300', '400', '500', '-50', '+50'];
@@ -547,6 +548,9 @@ export class MenuCommand {
       const item = await this.describe(monitor);
       const single = names.length === 1;
       const look = single ? instanceLook(section, options, names[0]) : null;
+      // The automatic preset (backdrop visualizer auto), off by default, and the image it follows
+      const auto = state.auto ?? { enabled: false, prefer: 'wallpaper' };
+      const follows = auto.prefer === 'cover' ? 'cover' : 'wallpaper';
       const entries = [
         { icon: VISUALIZER_ICONS.power, label: on ? 'turn off' : 'turn on', caption: on ? 'on' : 'off', key: 'e', active: on,
           run: () => this.sendVisualizer(state, { visualizer: !on }) },
@@ -560,6 +564,10 @@ export class MenuCommand {
         })),
         { icon: VISUALIZER_ICONS.preset, label: 'load ▸', caption: options.preset ?? 'load', key: 'p', active: Boolean(options.preset),
           run: () => this.presetMenu(state, section, options.preset) },
+        { icon: VISUALIZER_ICONS.auto, label: auto.enabled ? 'auto off' : 'auto on', caption: auto.enabled ? `auto · ${auto.preset ?? '...'}` : 'auto off',
+          key: 'u', active: Boolean(auto.enabled), run: () => this.sendVisualizer(state, { auto: !auto.enabled }) },
+        { icon: VISUALIZER_ICONS.prefer, label: follows === 'cover' ? 'follow wallpaper' : 'follow cover', caption: `follows ${follows}`, key: 'f',
+          run: () => this.sendVisualizer(state, { prefer: follows === 'cover' ? 'wallpaper' : 'cover' }) },
         { icon: VISUALIZER_ICONS.reset, label: 'reset', key: 'r', disabled: !Object.keys(options.live).length,
           run: () => this.sendVisualizer(state, { visualizer_reset: true }) },
         { icon: VISUALIZER_ICONS.save, label: 'save as preset', caption: 'save', key: 's', run: () => this.savePreset(state, section, options) }
@@ -790,7 +798,11 @@ export class MenuCommand {
       }
       const index = picked - offset;
       const name = tried && picked === 0 ? current : values[index];
-      if (name === current) return {};
+      if (name === current) {
+        // Kept: only now does the automatic preset hold it (a try is not a choice)
+        if (tried && name !== null) await this.visualizer.holdPreset(name);
+        return {};
+      }
       await this.visualizer.setPreset(name);
       current = name;
       // An inspection follows the pick, so what is tried is what is described

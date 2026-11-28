@@ -24,6 +24,17 @@ const SIDE_RECTS = { bars: { x: '33%', y: '75%', width: '67%', height: '25%' }, 
 const CYCLE_BARS = { colors: ['#000000', '#33aacc'] };
 // The veil looks' instances: the wallpaper darkened under a see-through layer tinted from it, solid lyrics on it,
 // a ring beside them with bars below it. With cycle, the ring and bars turn through the hues together.
+// The looks for a song without lyrics: the wallpaper under a lighter veil (tinted from it, as auto works out), bars
+// across the width and a ring for each speaker; the screensaver's, and radials for the automatic preset
+function radials() {
+  return [
+    { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { ...VEIL_LYRICS, background: 'auto@0.5' } },
+    { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: CYCLE_BARS },
+    { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING },
+    { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING }
+  ];
+}
+
 function veil({ cycle = false } = {}) {
   const palette = cycle ? { palette: CYCLE_COLORS } : {};
   return [
@@ -62,6 +73,21 @@ const PRESETS = {
     opacity: 0.5,
     placement: { anchor: 'bottom', width: '100%', height: '15%' },
     instances: [{ name: 'main', module: 'bars', bars: { width: 8, gap: 2, amplify: 150 } }]
+  },
+  // Behind other windows, the automatic preset's looks (2026-11-28: only the wallpaper with bars or a graph there):
+  // bars across the bottom, and a graph in their place
+  bars: {
+    description: 'The wallpaper with bars along the bottom; the automatic preset\'s look behind other windows',
+    instances: [{ name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '20%' } }]
+  },
+  graph: {
+    description: 'The wallpaper with a graph of the sound along the bottom',
+    instances: [{ name: 'graph', module: 'graph', placement: { anchor: 'bottom', width: '100%', height: '20%' } }]
+  },
+  // Full screen without lyrics, for the automatic preset: the wallpaper's look, and the cover's
+  radials: {
+    description: 'The wallpaper under a light veil tinted from it, a ring for each speaker and bars across the width; for a song without lyrics',
+    instances: radials()
   },
   // A radial ring in the middle of the screen
   ring: {
@@ -150,12 +176,7 @@ const PRESETS = {
   // strong, darkening the wallpaper somewhat
   'screensaver-instrumental': {
     description: 'The screensaver\'s look for a song without lyrics: a lighter veil, bars across the width and a ring for each speaker',
-    instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { ...VEIL_LYRICS, background: 'auto@0.5' } },
-      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: 0, y: '75%', width: '100%', height: '25%' }, bars: CYCLE_BARS },
-      { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: 0, y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING },
-      { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '50%', y: '11%', width: '50%', height: '64%' }, radial: VEIL_RING }
-    ]
+    instances: radials()
   },
   // projectM as the whole background, with lyrics and bars over it. Very demanding, so at 30 frames a second, and it
   // gives way at the load section's image level
@@ -354,6 +375,19 @@ const PRESETS = {
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: '#4a6a9a' }) }]
+  },
+  // The soft tinted cover with no lyrics: the now-playing card on the left, a ring for each speaker and bars on the right
+  'cover-radials': {
+    description: 'The track\'s cover as soft tinted swirls, the now-playing card on the left, a ring for each speaker and bars on the right; for a song without lyrics',
+    wallpaper: false,
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({
+        tint: true, style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' }
+      }) },
+      { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: '40%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },
+      { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '70%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },
+      { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: '40%', y: '75%', width: '60%', height: '25%' }, bars: CYCLE_BARS }
+    ]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {

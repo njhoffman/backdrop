@@ -121,12 +121,19 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   wallpaper_dim: 0         # dim the wallpaper at least this far (0-100) while the visualizer has sound; 0 is off
   screenshots: true        # a screenshot of each preset after 30 s of it with sound, on a monitor no window covers (menu, web page)
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
+  auto:
+    rules: []              # the automatic preset's own rules, tried before the built-in ones (src/visualizer/autoRules.js):
+                           #   - when: { view: fullscreen, lyrics: true, prefer: cover, image: [grayscale] }
+                           #     preset: lyrics-sharp-duotone
+                           #     reason: a black and white cover
+                           #   view fullscreen|background, lyrics true|false, prefer cover|wallpaper, image any of
+                           #   grayscale, colorful, muted, dark, bright, mid; on/off and prefer are `backdrop visualizer auto|prefer`
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
-                           #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-cover,
-                           #   lyrics-blurred-swirl, -swirl-tinted, -slow, -sunamu, -tinted, -soft, -soft-tinted, -offset, -vivid,
-                           #   lyrics-sharp-tinted, -bright, -bright-tinted, -duotone, lyrics-now
-                           #   (src/visualizer/presets.js); cannot set enabled, preset, presets or screenshots;
+                           #   bars, graph, radials, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend,
+                           #   lyrics-stage, lyrics-cover, lyrics-blurred-swirl, -swirl-tinted, -slow, -sunamu, -tinted, -soft,
+                           #   -soft-tinted, -offset, -vivid, lyrics-sharp-tinted, -bright, -bright-tinted, -duotone, cover-radials,
+                           #   lyrics-now (src/visualizer/presets.js); cannot set enabled, preset, presets, screenshots or auto;
                            #   description: a line the menu and web page show
   instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];
                            #   the section's own instance settings are their defaults; list order = stacking order;

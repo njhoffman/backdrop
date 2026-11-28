@@ -1,11 +1,14 @@
 import { readState } from '../display/Daemon.js';
+import { AUTO_SETTING, DEFAULT_PREFER, PREFER_SETTING } from '../display/daemon/AutoPreset.js';
 import { reservedMessage, reservedPresets } from '../display/daemon/Screensaver.js';
 import { sendControl } from '../display/control.js';
 import { presetsOf, visualizerSettings } from '../visualizer/settings.js';
 import { checkVisualizer, compositorRuns } from '../visualizer/check.js';
 import { out, fmt } from '../utils/output.js';
 
-export const VISUALIZER_ACTIONS = ['reload', 'preset', 'check'];
+export const VISUALIZER_ACTIONS = ['reload', 'preset', 'check', 'auto', 'prefer'];
+const AUTO_VALUES = ['on', 'off', 'toggle'];
+const PREFER_VALUES = ['cover', 'wallpaper', 'toggle'];
 const RELOAD_TIMEOUT_MS = 5000;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -15,6 +18,7 @@ export class VisualizerCommand {
     kill = process.kill, timeout = RELOAD_TIMEOUT_MS, pollInterval = 100, check = checkVisualizer, compositor = compositorRuns
   } = {}) {
     this.config = config;
+    this.database = database;
     this.checker = check;
     this.compositor = compositor;
     this.logger = logger;
@@ -31,6 +35,8 @@ export class VisualizerCommand {
     if (!VISUALIZER_ACTIONS.includes(action)) throw new Error(`Unknown action ${action}; use ${VISUALIZER_ACTIONS.join(', ')}`);
     if (action === 'check') return this.check();
     if (action === 'preset') return this.preset(name, options);
+    if (action === 'auto') return this.auto(name);
+    if (action === 'prefer') return this.prefer(name);
     if (options.check && !await this.check()) throw new Error('Not reloaded: fix the visualizers that exited first');
     return this.reload();
   }
@@ -119,6 +125,56 @@ export class VisualizerCommand {
       kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile
     });
     this.report(current, target ? `Preset ${target}` : 'Preset cleared');
+  }
+
+  // `backdrop visualizer auto [on|off|toggle]`: the automatic preset (src/display/daemon/AutoPreset.js) on or off, kept
+  // across restarts; without a value, whether it is on and what it picked. With no daemon running the setting is kept for
+  // the next start.
+  async auto(value) {
+    if (value !== undefined && !AUTO_VALUES.includes(value)) throw new Error(`auto takes ${AUTO_VALUES.join(', ')}, not ${value}`);
+    const state = await readState(this.runtimeDir);
+    if (value === undefined) return this.autoStatus(state);
+    if (!state) {
+      const on = value === 'toggle' ? !this.database.getSetting(AUTO_SETTING, false) : value === 'on';
+      this.database.setSetting(AUTO_SETTING, on);
+      out.info(`Automatic preset ${on ? 'on' : 'off'} from the daemon's next start (not running)`);
+      return;
+    }
+    const current = await this.send(state, { auto: value === 'toggle' ? 'toggle' : value === 'on' });
+    this.autoStatus(current);
+  }
+
+  // `backdrop visualizer prefer [cover|wallpaper|toggle]`: the image the automatic preset follows
+  async prefer(value) {
+    if (value !== undefined && !PREFER_VALUES.includes(value)) throw new Error(`prefer takes ${PREFER_VALUES.join(', ')}, not ${value}`);
+    const state = await readState(this.runtimeDir);
+    if (value === undefined) return this.autoStatus(state);
+    if (!state) {
+      const now = this.database.getSetting(PREFER_SETTING, DEFAULT_PREFER);
+      const prefer = value === 'toggle' ? (now === 'cover' ? 'wallpaper' : 'cover') : value;
+      this.database.setSetting(PREFER_SETTING, prefer);
+      out.info(`The automatic preset follows the ${prefer} from the daemon's next start (not running)`);
+      return;
+    }
+    this.autoStatus(await this.send(state, { prefer: value }));
+  }
+
+  send(state, request) {
+    return sendControl(this.runtimeDir, state, request, { kill: this.kill, timeout: this.timeout, logfile: this.config.get().paths.logfile });
+  }
+
+  autoStatus(state) {
+    const auto = state?.auto ?? {
+      enabled: this.database.getSetting(AUTO_SETTING, false) === true, prefer: this.database.getSetting(PREFER_SETTING, DEFAULT_PREFER)
+    };
+    const follows = fmt.dim(`  following the ${auto.prefer === 'cover' ? 'cover' : 'wallpaper'}`);
+    if (!auto.enabled) {
+      out.print(`Automatic preset ${fmt.bold('off')}${follows}`);
+      return;
+    }
+    const picked = auto.held ? `${auto.held} ${fmt.dim('(picked by hand, until the next song or view)')}` : auto.preset ? `${auto.preset} ${fmt.dim(`(${auto.reason})`)}` : fmt.dim('nothing yet');
+    out.print(`Automatic preset ${fmt.bold('on')}${follows}`);
+    out.print(`  ${picked}`);
   }
 
   report(state, title) {
