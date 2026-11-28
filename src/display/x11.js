@@ -1,7 +1,7 @@
 import x11 from 'x11';
 
 // The few X requests backdrop makes itself, over its own connection to $DISPLAY: finding a window's
-// top-level ancestor, stacking one window directly above another, finding windows marked as overlays,
+// top-level ancestor, where a window is parented and moving it to the root, stacking one window directly above another, finding windows marked as overlays,
 // setting the window opacity that compositors such as picom honor, and telling whether a compositor runs.
 // Other X work goes through xrandr and xdotool.
 
@@ -57,6 +57,42 @@ export class X11 {
       current = parent;
     }
     throw new Error(`Window ${id} is nested too deeply`);
+  }
+
+  // Where a window sits: 'root' as a child of the root window, 'desktop' inside a desktop window (one an ancestor
+  // below the root marks _NET_WM_WINDOW_TYPE_DESKTOP or __SWM_VROOT, as a file manager's desktop), else 'client',
+  // inside some other program's window. As { placement, parent }, parent the window's direct parent.
+  async windowPlacement(id) {
+    const { root, parent } = await call(this.client, 'QueryTree', id);
+    if (parent === root) return { placement: 'root', parent };
+    const type = await call(this.client, 'InternAtom', true, '_NET_WM_WINDOW_TYPE');
+    const desktop = await call(this.client, 'InternAtom', true, '_NET_WM_WINDOW_TYPE_DESKTOP');
+    const vroot = await call(this.client, 'InternAtom', true, '__SWM_VROOT');
+    let current = parent;
+    for (let depth = 0; depth < 16 && current !== root; depth++) {
+      if (vroot && (await this.property(current, vroot))?.length) return { placement: 'desktop', parent };
+      if (type && desktop) {
+        const data = await this.property(current, type);
+        for (let offset = 0; data && offset + 4 <= data.length; offset += 4) {
+          if (data.readUInt32LE(offset) === desktop) return { placement: 'desktop', parent };
+        }
+      }
+      current = (await call(this.client, 'QueryTree', current)).parent;
+    }
+    return { placement: 'client', parent };
+  }
+
+  // Makes window a child of the root at x, y (root coordinates), at the bottom of the stack
+  async reparentToRoot(id, x, y) {
+    this.client.ReparentWindow(id, this.root, x, y);
+    this.client.ConfigureWindow(id, { stackMode: STACK_BELOW });
+    await this.check('reparent');
+  }
+
+  // A property's data, or null when the window has none or has vanished
+  async property(id, atom) {
+    const result = await call(this.client, 'GetProperty', 0, id, atom, ANY_PROPERTY_TYPE, 0, 16).catch(() => null);
+    return result?.data?.length ? result.data : null;
   }
 
   // Whether window is above sibling among the root's children (QueryTree lists them bottom to top)

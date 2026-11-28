@@ -358,6 +358,15 @@ Reviewed: 2026-11-20
       would make copies portable; needed before any offloading to a second host.
       Done in 2.87.0: copies are `<sha256>...`, readiness no longer compares file times, and the daemon renames
       id-named copies on start (`renameIdCopies`, `src/library/copies.js`).
+- [x] **The wallpaper played inside a maximized terminal.** (p1) [bug] On minerva (one 2560x1440 monitor, i3)
+      xwinwrap, finding no virtual root, parented its window into the maximized Alacritty, the one viewable window
+      the size of the screen; `-fdt` only sets the window type. Done in 3.3.2: after each screen start
+      `Daemon.placeWallpaper` asks X where mpv's `wid` sits (`X11.windowPlacement`) and reparents it to the root
+      (`X11.reparentToRoot`) when it is inside a client window.
+- [ ] **Try the desktop placement under a real desktop window.** (p3) [test] `X11.windowPlacement` leaves a wallpaper
+      whose ancestor is marked `_NET_WM_WINDOW_TYPE_DESKTOP` or `__SWM_VROOT` where it is, tested only with a fake tree.
+      Run the daemon under xfdesktop or pcmanfm's desktop (an Xvfb integration test like `stacking.integration.test.js`)
+      to confirm such a window is kept rather than moved to the root.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;

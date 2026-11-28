@@ -36,6 +36,7 @@ import { DIM_FADE_MS, Dims } from './daemon/Dims.js';
 import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
 import { LoadShedding } from './daemon/LoadShedding.js';
 import { OutputWatcher } from './outputWatcher.js';
+import { withX11 } from './x11.js';
 
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS = 5;
@@ -172,8 +173,11 @@ export class Daemon {
     createVisualizer,
     // i3's output events (src/display/outputWatcher.js); null leaves the timer alone to find layout changes
     watchOutputs = options => new OutputWatcher(options),
-    monitorFallback = MONITOR_FALLBACK_MS
+    monitorFallback = MONITOR_FALLBACK_MS,
+    // Runs a function with an X connection (src/display/x11.js), for the wallpaper window's placement
+    x11 = withX11
   }) {
+    this.x11 = x11;
     this.watchOutputs = watchOutputs;
     this.monitorFallback = monitorFallback;
     this.outputWatcher = null;
@@ -631,9 +635,34 @@ export class Daemon {
     await screen.client.observeProperty(2, 'container-fps');
     await screen.client.observeProperty(3, 'contrast');
     await screen.client.observeProperty(4, 'speed');
+    await this.placeWallpaper(screen);
 
     const count = await this.loadScreenPlaylist(screen);
     if (count) this.watchFirstFile(screen);
+  }
+
+  // Moves a screen's window back to the root when xwinwrap put it inside another program's window. xwinwrap
+  // parents its window into a screen-sized viewable window when the desktop has no virtual root (-fdt only sets the
+  // window type): on a single monitor under i3, a maximized terminal, which then showed the video over its text
+  // (minerva, 3.3.1). mpv's wid is xwinwrap's window, known while idle. The window is override-redirect, so the
+  // window manager leaves the move alone; the visualizers restack above it after every wallpaper start.
+  async placeWallpaper(screen) {
+    const { monitor } = screen;
+    try {
+      const wid = await screen.client.getProperty('wid').catch(() => null);
+      if (!wid) return;
+      const { placement, parent } = await this.x11(async x => {
+        const found = await x.windowPlacement(wid);
+        if (found.placement === 'client') await x.reparentToRoot(wid, monitor.x ?? 0, monitor.y ?? 0);
+        return found;
+      });
+      if (placement !== 'client') return;
+      this.logger.warn('xwinwrap put the wallpaper inside another window, moved it back to the root', {
+        monitor: monitor.name, window: wid, parent
+      });
+    } catch (error) {
+      this.logger.warn('Failed to check where the wallpaper window is', { monitor: monitor.name, error: error.message });
+    }
   }
 
   // Kills a screen's mpv when it has media but opens no file in time (no `path` from mpv), so handleExit

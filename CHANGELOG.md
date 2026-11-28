@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-11-27
+
+### Fixed
+
+- On a single monitor, the wallpaper video could play inside a maximized window (a terminal, say)
+  instead of behind everything: when the desktop has no desktop window, as under i3, xwinwrap places its
+  window inside any window that covers the whole screen. The daemon now checks where the wallpaper window
+  landed and moves it back behind everything.
+- The systemd unit tests no longer fail on a machine where another installed user unit has a mistake
+  that `systemd-analyze verify` warns about.
+
 ## [3.3.1] - 2026-11-22
 
 ### Fixed
