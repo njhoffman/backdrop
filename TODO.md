@@ -1005,6 +1005,12 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
       3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
+- [ ] **A restart's preset can time out while sleeved restarts.** (p3) [bug] `backdrop restart` starts the daemon, then
+      sends the preset that was in force (`DisplayService.restart`, `sendRequest`). On 2026-11-28 sleeved was restarted a
+      moment before, the switch to a sleeve look waited on it, and the request timed out ("The daemon did not answer"),
+      leaving no preset; the same switch a moment later took 1 s. Wait for the daemon to report the preset applied for
+      longer, or retry the request once, or have the daemon restore the preset itself at start (it knows it from its last
+      state) so the CLI sends nothing.
 - [x] **The cover's tint turns dark covers black.** (p2) [bug] A second, 100 s look at every swirl preset (2026-11-28)
       found `lyrics-blurred-tinted` nearly black on a dark, grey cover (Joey Fehrenbach, Indigo Road: brightness 0.02,
       1% change), while the tinted looks shone on colorful ones (the tinted swirl deep red, soft-tinted deep blue). The
