@@ -125,3 +125,66 @@ describe('X11 uncoveredArea', () => {
     expect(await area({ 10: {} }, [10], [99])).to.equal(null);
   });
 });
+
+describe('X11 windowPlacement', () => {
+  const TYPE = 300;
+  const DESKTOP = 301;
+  const VROOT = 302;
+  // windows: { id: { parent, desktop, vroot } }; the root is 1
+  function placement(windows, id, { atoms = true } = {}) {
+    const fake = new EventEmitter();
+    fake.InternAtom = (onlyIfExists, name, done) => done(null, !atoms ? 0 : { _NET_WM_WINDOW_TYPE: TYPE, _NET_WM_WINDOW_TYPE_DESKTOP: DESKTOP, __SWM_VROOT: VROOT }[name] ?? 0);
+    fake.QueryTree = (window, done) => done(null, { root: 1, parent: windows[window].parent, children: [] });
+    fake.GetProperty = (del, window, property, type, offset, length, done) => {
+      const data = Buffer.alloc(8);
+      if (property === TYPE && windows[window].desktop) {
+        data.writeUInt32LE(999, 0);
+        data.writeUInt32LE(DESKTOP, 4);
+        return done(null, { data });
+      }
+      if (property === VROOT && windows[window].vroot) return done(null, { data: data.subarray(0, 4) });
+      return done(null, { data: Buffer.alloc(0) });
+    };
+    return new X11(fake, 1).windowPlacement(id);
+  }
+
+  it('is root for a child of the root window', async () => {
+    expect(await placement({ 10: { parent: 1 } }, 10)).to.deep.equal({ placement: 'root', parent: 1 });
+  });
+
+  // A terminal in an i3 frame, as -fdt picked on minerva
+  it('is client inside a window that is no desktop', async () => {
+    const windows = { 10: { parent: 20 }, 20: { parent: 30 }, 30: { parent: 1 } };
+    expect(await placement(windows, 10)).to.deep.equal({ placement: 'client', parent: 20 });
+    expect(await placement(windows, 10, { atoms: false })).to.deep.equal({ placement: 'client', parent: 20 });
+  });
+
+  it('is desktop inside a window an ancestor marks as the desktop or a virtual root', async () => {
+    expect(await placement({ 10: { parent: 20 }, 20: { parent: 30 }, 30: { parent: 1, desktop: true } }, 10))
+      .to.deep.equal({ placement: 'desktop', parent: 20 });
+    expect(await placement({ 10: { parent: 20 }, 20: { parent: 1, vroot: true } }, 10))
+      .to.deep.equal({ placement: 'desktop', parent: 20 });
+  });
+});
+
+describe('X11 reparentToRoot', () => {
+  it('reparents the window to the root at the given place and lowers it', async () => {
+    const fake = new EventEmitter();
+    const calls = [];
+    fake.ReparentWindow = (...args) => calls.push(['reparent', ...args]);
+    fake.ConfigureWindow = (...args) => calls.push(['configure', ...args]);
+    fake.sync = async () => {};
+    await new X11(fake, 1).reparentToRoot(10, 2560, 0);
+    expect(calls).to.deep.equal([['reparent', 10, 1, 2560, 0], ['configure', 10, { stackMode: 1 }]]);
+  });
+
+  it('throws when X reports an error', async () => {
+    const fake = new EventEmitter();
+    fake.ReparentWindow = () => fake.emit('error', new Error('BadWindow'));
+    fake.ConfigureWindow = () => {};
+    fake.sync = async () => {};
+    let error;
+    await new X11(fake, 1).reparentToRoot(10, 0, 0).catch(e => { error = e; });
+    expect(error.message).to.equal('X reparent failed: BadWindow');
+  });
+});

@@ -7,6 +7,10 @@ import { SystemdCommand } from '../../src/commands/SystemdCommand.js';
 
 const hasVerify = spawnSync('systemd-analyze', ['--version']).status === 0;
 
+// systemd-analyze's complaints about file; it also loads the installed user units and warns about their mistakes
+// (a distro's spice-vdagent.service on minerva), which are none of backdrop's
+const complaintsAbout = (stderr, file) => stderr.split('\n').filter(line => line.includes(file));
+
 describe('SystemdCommand', () => {
   let dir, bin;
   beforeEach(async () => {
@@ -38,7 +42,7 @@ describe('SystemdCommand', () => {
     const file = path.join(dir, 'backdrop.service');
     await fs.writeFile(file, new SystemdCommand(null, null, null, { env: { PATH: process.env.PATH } }).generate('9.9.9'));
     const result = spawnSync('systemd-analyze', ['--user', 'verify', file], { encoding: 'utf8' });
-    expect(result.stderr).to.equal('');
+    expect(complaintsAbout(result.stderr, file)).to.deep.equal([]);
     expect(result.status).to.equal(0);
   });
 
@@ -54,7 +58,7 @@ describe('SystemdCommand', () => {
     const file = path.join(dir, 'backdrop-web.service');
     await fs.writeFile(file, new SystemdCommand(null, null, null, { env: { PATH: process.env.PATH } }).generate('9.9.9', { web: true }));
     const result = spawnSync('systemd-analyze', ['--user', 'verify', file], { encoding: 'utf8' });
-    expect(result.stderr).to.equal('');
+    expect(complaintsAbout(result.stderr, file)).to.deep.equal([]);
     expect(result.status).to.equal(0);
   });
 });

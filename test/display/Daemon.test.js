@@ -171,6 +171,59 @@ describe('Daemon', () => {
     });
   });
 
+  describe('wallpaper placement', () => {
+    // Each mpv's wid is 7000 plus its launch number; placements answers windowPlacement per wid
+    function placed(placements, { fail = false, wid = true } = {}) {
+      const asked = [];
+      const moved = [];
+      const daemon = makeDaemon({
+        connect: async socketPath => {
+          const client = new FakeMpvClient(wid ? { wid: 7000 + clients.length } : {});
+          clients.push({ socketPath, client });
+          return client;
+        },
+        x11: async fn => fn({
+          windowPlacement: async id => {
+            asked.push(id);
+            if (fail) throw new Error('no X');
+            return { placement: placements[id] ?? 'root', parent: 1 };
+          },
+          reparentToRoot: async (id, x, y) => { moved.push([id, x, y]); }
+        })
+      });
+      return { daemon, asked, moved };
+    }
+
+    // 3.3.1 on minerva: one monitor, and xwinwrap took the maximized terminal for its parent
+    it('moves a wallpaper put inside a client window back to the root at its monitor, without a restart', async () => {
+      const { daemon, asked, moved } = placed({ 7001: 'client' });
+      await daemon.start();
+      expect(asked).to.deep.equal([7000, 7001]);
+      // HDMI-1 is the second monitor of LISTMONITORS_TWO, at 2560,0
+      expect(moved).to.deep.equal([[7001, 2560, 0]]);
+      expect(spawned).to.have.length(2);
+      await daemon.stop();
+    });
+
+    it('leaves a window on the root or in a desktop window where it is', async () => {
+      const { daemon, moved } = placed({ 7000: 'desktop', 7001: 'root' });
+      await daemon.start();
+      expect(moved).to.deep.equal([]);
+      await daemon.stop();
+    });
+
+    it('keeps the wallpaper running when X cannot be asked or mpv gives no wid', async () => {
+      for (const options of [{ fail: true }, { wid: false }]) {
+        spawned.length = 0;
+        const { daemon, moved } = placed({}, options);
+        await daemon.start();
+        expect(spawned).to.have.length(2);
+        expect(moved).to.deep.equal([]);
+        await daemon.stop();
+      }
+    });
+  });
+
   describe('start', () => {
     it('launches one detached xwinwrap per monitor and records sockets', async () => {
       const daemon = makeDaemon();
