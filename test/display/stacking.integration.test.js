@@ -55,6 +55,15 @@ const standIn = (settings, instance) => ({
   })
 });
 
+// The daemon's warnings and errors, which a timeout reports: a restart that ran past its wait once could not say which
+// path it took (mpv's exit, the first-frame check, a failed start), since the daemon logged nothing (2026-11-27)
+const logged = [];
+const recordingLogger = {
+  ...silentLogger,
+  warn: (message, meta) => logged.push({ level: 'warn', message, meta, at: Date.now() }),
+  error: (message, meta) => logged.push({ level: 'error', message, meta, at: Date.now() })
+};
+
 async function waitFor(check, timeout = 10000, what = 'condition') {
   const deadline = Date.now() + timeout;
   let last;
@@ -63,7 +72,8 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
     if (last === true) return;
     await sleep(100);
   }
-  throw new Error(`Timed out waiting for ${what}: ${JSON.stringify(last)}`);
+  const said = logged.slice(-10).map(({ level, message, meta, at }) => `${new Date(at).toISOString().slice(11, 23)} ${level} ${message} ${JSON.stringify(meta ?? {})}`);
+  throw new Error(`Timed out waiting for ${what}: ${JSON.stringify(last)}${said.length ? `\nthe daemon logged:\n${said.join('\n')}` : '; the daemon logged no warnings'}`);
 }
 
 (available ? describe : describe.skip)('visualizer stacking on a virtual X server', function () {
@@ -117,7 +127,7 @@ async function waitFor(check, timeout = 10000, what = 'condition') {
       'display.mpv_args': ['--vo=x11'], 'visualizer.enabled': true
     });
     daemon = new Daemon({
-      config, database: db, logger: silentLogger, createVisualizer: standIn,
+      config, database: db, logger: recordingLogger, createVisualizer: standIn,
       importer: { importDirs: async () => ({ imported: [] }) }, purge: async () => {}, thumbnail: async () => null,
       // No health checks: mpv's restarts here come from killing it, and a check every 0.5 s with its 5 s wait killed a
       // healthy mpv during a slow load on a busy machine, whose new wallpaper then went below the other window

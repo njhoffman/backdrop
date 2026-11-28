@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-11-27
+
+### Changed
+
+- The stacking integration test prints the daemon's recent warnings when it times out, so a rare failure there
+  shows what the daemon was doing.
+
 ## [3.5.1] - 2026-11-27
 
 ### Added

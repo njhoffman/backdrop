@@ -175,6 +175,8 @@ Reviewed: 2026-11-27
       `checkFirstFrame` kills an mpv that has opened its file but not set up its output 15 s after a start, so a restart
       slow enough for that costs another 16 s. Next time, log the daemon's warnings in that test (it runs with
       `silentLogger`) to see which restart path ran.
+      3.5.2: the test keeps the daemon's warnings and errors, and a timeout prints the last ten with their times, so
+      the next failure says which restart path ran. Open until it fails again.
 - [x] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
       the wait is over, so the restart path tries again` failed once in a full run on 2026-11-22 (expected no kill, got
       `[-1001, 'SIGKILL']`) and passed three runs of `test/display/Daemon.test.js` alone. Likely a fixed wait racing the
