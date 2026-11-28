@@ -301,4 +301,32 @@ describe('DoctorCommand', () => {
       expect(checks).to.deep.include({ group: 'tools', name: 'sleeve', status: 'warn', detail: 'not installed; the sleeve visualizer instances (docs/specs/sleeve.md)', hint: 'install sleeve' });
     });
   });
+
+  describe('encoder', () => {
+    const DRIVER = '/proc/driver/nvidia/version';
+    const encoder = async answer => {
+      files.add(DRIVER);
+      const exec = async (file, args) => {
+        if (file === 'nvidia-smi') return answer();
+        if (file === 'i3-msg' && args.includes('get_binding_modes')) return JSON.stringify(modes);
+        throw new Error(`unexpected ${file}`);
+      };
+      return byName(await doctor({ exec }).run(), 'encoder');
+    };
+
+    it('says nothing without NVIDIA\'s driver', async () => {
+      expect(byName(await doctor().run(), 'encoder')).to.equal(undefined);
+    });
+
+    it('is ok with persistence mode on, and warns with the fix when it is off or unknown', async () => {
+      expect((await encoder(() => 'Enabled\n')).status).to.equal('ok');
+      const off = await encoder(() => 'Disabled\n');
+      expect(off.status).to.equal('warn');
+      expect(off.detail).to.include('libx264');
+      expect(off.hint).to.include('nvidia-smi -pm 1');
+      const unknown = await encoder(() => { throw new Error('nvidia-smi: not found'); });
+      expect(unknown.status).to.equal('warn');
+      expect(unknown.hint).to.include('install nvidia-smi');
+    });
+  });
 });

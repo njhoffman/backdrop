@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-11-27
+
+### Added
+
+- `backdrop doctor` checks NVIDIA's persistence mode on a machine with an NVIDIA card, and tells how to turn it
+  on and keep it on after a reboot.
+
+### Changed
+
+- While NVIDIA's persistence mode is off, reversed and smoothed copies are encoded with libx264 alone, since
+  NVENC would spend many seconds starting for every encode.
+
 ## [3.5.0] - 2026-11-27
 
 ### Changed

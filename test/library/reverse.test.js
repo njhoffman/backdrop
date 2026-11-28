@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  ENCODERS, NVIDIA_DRIVER, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeBrokenCopies, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, NVIDIA_DRIVER, SEEK, nvidiaPersistence, parsePersistence, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeBrokenCopies, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -278,8 +278,26 @@ describe('reverse', () => {
 
   describe('encoders', () => {
     it('tries NVENC, then libx264, where NVIDIA\'s driver is loaded, and VAAPI first elsewhere', () => {
-      expect(defaultEncoders({ exists: file => file === '/proc/driver/nvidia/version' })).to.deep.equal(['nvenc', 'x264']);
-      expect(defaultEncoders({ exists: () => false })).to.deep.equal(['vaapi', 'x264']);
+      const nvidia = file => file === '/proc/driver/nvidia/version';
+      expect(defaultEncoders({ exists: nvidia, persistence: () => true })).to.deep.equal(['nvenc', 'x264']);
+      // Unknown (no nvidia-smi): NVENC still, as the driver is there
+      expect(defaultEncoders({ exists: nvidia, persistence: () => null })).to.deep.equal(['nvenc', 'x264']);
+      expect(defaultEncoders({ exists: () => false, persistence: () => { throw new Error('not asked'); } })).to.deep.equal(['vaapi', 'x264']);
+    });
+
+    it('uses libx264 alone where NVIDIA\'s persistence mode is off, since each NVENC encode would start CUDA slowly', () => {
+      expect(defaultEncoders({ exists: () => true, persistence: () => false })).to.deep.equal(['x264']);
+    });
+
+    it('reads persistence mode for every GPU from nvidia-smi', () => {
+      expect(parsePersistence('Enabled\n')).to.equal(true);
+      expect(parsePersistence('Enabled\nDisabled\n')).to.equal(false);
+      expect(parsePersistence('')).to.equal(null);
+      expect(parsePersistence('[N/A]\n')).to.equal(null);
+      const calls = [];
+      expect(nvidiaPersistence({ exec: (file, args) => { calls.push([file, ...args]); return 'Disabled\n'; } })).to.equal(false);
+      expect(calls).to.deep.equal([['nvidia-smi', '--query-gpu=persistence_mode', '--format=csv,noheader']]);
+      expect(nvidiaPersistence({ exec: () => { throw new Error('nvidia-smi: not found'); } })).to.equal(null);
     });
 
     it('encodes NVENC from 8-bit 4:2:0 frames, which a smoothed chunk keeps once the reverse is dropped', () => {
@@ -367,7 +385,7 @@ describe('reverse', () => {
     // Where NVIDIA's encoder is there (minerva), the default order makes the copy with it, not with libx264 after a failure
     it('makes the copy with NVENC where it is available', async function () {
       const encoders = await run('ffmpeg', ['-hide_banner', '-encoders']).catch(() => '');
-      if (!fs.existsSync(NVIDIA_DRIVER) || !encoders.includes('h264_nvenc')) this.skip();
+      if (!fs.existsSync(NVIDIA_DRIVER) || !encoders.includes('h264_nvenc') || nvidiaPersistence() === false) this.skip();
       const file = path.join(dir, 'clip.mp4');
       execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10:duration=2.3',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);

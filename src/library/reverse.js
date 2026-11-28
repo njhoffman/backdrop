@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { promisify } from 'util';
@@ -58,10 +58,31 @@ export const NVIDIA_DRIVER = '/proc/driver/nvidia/version';
 // (GTX 960, 12 cores, 2026-11-27) a 2 s 1440p chunk takes 1.6 s with NVENC and 1.1 s with libx264 on an idle machine,
 // but NVENC uses a third of the CPU (1.9 s against 5.2 s) and keeps its pace under load. It needs the driver's
 // persistence mode: without it each ffmpeg spent about 19 s starting CUDA (2026-11-15). VAAPI first elsewhere.
+// While persistence mode is off there, libx264 alone (nvidiaPersistence; checked per job, nvidia-smi answers in ~30 ms).
 export const NVIDIA_ENCODER_ORDER = ['nvenc', 'x264'];
 
-export function defaultEncoders({ exists = fs.existsSync } = {}) {
-  return exists(NVIDIA_DRIVER) ? NVIDIA_ENCODER_ORDER : ENCODER_ORDER;
+export function defaultEncoders({ exists = fs.existsSync, persistence = nvidiaPersistence } = {}) {
+  if (!exists(NVIDIA_DRIVER)) return ENCODER_ORDER;
+  return persistence() === false ? ['x264'] : NVIDIA_ENCODER_ORDER;
+}
+
+export const PERSISTENCE_QUERY = ['--query-gpu=persistence_mode', '--format=csv,noheader'];
+
+// Whether `nvidia-smi --query-gpu=persistence_mode` output has persistence mode on for every GPU: true or false, or
+// null without an answer (no GPU listed, or something else than Enabled and Disabled)
+export function parsePersistence(output) {
+  const modes = String(output ?? '').split('\n').map(line => line.trim()).filter(Boolean);
+  if (!modes.length || modes.some(mode => mode !== 'Enabled' && mode !== 'Disabled')) return null;
+  return modes.every(mode => mode === 'Enabled');
+}
+
+// NVIDIA's persistence mode on this machine (parsePersistence), null when nvidia-smi is missing or fails
+export function nvidiaPersistence({ exec = execFileSync } = {}) {
+  try {
+    return parsePersistence(exec('nvidia-smi', PERSISTENCE_QUERY, { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }));
+  } catch {
+    return null;
+  }
 }
 
 // Copies are named for the item's content (media.sha256), not its id, so a copy means the same video in any library

@@ -8,7 +8,7 @@ import { run } from '../display/Monitors.js';
 import { checkVisualizer } from '../visualizer/check.js';
 import { enginesOf, followsOneSpeaker, visualizerSettings } from '../visualizer/settings.js';
 import { ANIMATED_WEBP } from '../library/probe.js';
-import { encodeCounts, listReversed } from '../library/reverse.js';
+import { NVIDIA_DRIVER, PERSISTENCE_QUERY, encodeCounts, listReversed, parsePersistence } from '../library/reverse.js';
 import { neededSize } from '../display/bounce.js';
 import { canReadKernelLog } from '../display/kernelLog.js';
 import { SMOOTH_BELOW, SMOOTH_FPS, SMOOTH_GPU, listSmoothed, rifeModel, smoothedReady, stutters, wantsSmoothing } from '../library/smooth.js';
@@ -184,6 +184,7 @@ export class DoctorCommand {
     }
     await this.checkAnimatedWebp(add);
     await this.checkBounceCache(add);
+    await this.checkEncoder(add);
     await this.checkSmooth(add);
     const items = this.database.findMedia({ downloaded: true }).filter(item => item.path);
     const missing = [];
@@ -195,6 +196,22 @@ export class DoctorCommand {
     const shown = missing.slice(0, MISSING_SHOWN).map(item => `#${item.id}`).join(', ');
     add('library', 'files', 'warn', `${missing.length} of ${items.length} items have no file (${shown}${missing.length > MISSING_SHOWN ? ', ...' : ''})`,
       'backdrop rescan --all lists them; backdrop remove <id> drops one');
+  }
+
+  // Where NVIDIA's driver is loaded, reversed and smoothed copies try NVENC first (defaultEncoders), which needs the
+  // driver's persistence mode: without it each encode spent about 19 s starting CUDA, so the daemon uses libx264
+  async checkEncoder(add) {
+    if (!await this.pathExists(NVIDIA_DRIVER)) return;
+    const persistence = parsePersistence(await this.exec('nvidia-smi', PERSISTENCE_QUERY).catch(() => ''));
+    if (persistence) {
+      add('library', 'encoder', 'ok', 'NVENC first for reversed and smoothed copies, with persistence mode on');
+    } else if (persistence === false) {
+      add('library', 'encoder', 'warn', 'NVIDIA persistence mode is off, so copies are encoded with libx264 (NVENC would spend many seconds starting CUDA each time)',
+        'sudo nvidia-smi -pm 1; to keep it after a reboot, drop --no-persistence-mode from nvidia-persistenced.service with an override');
+    } else {
+      add('library', 'encoder', 'warn', 'nvidia-smi gives no persistence mode, so copies try NVENC first, which starts slowly without it',
+        'install nvidia-smi (NVIDIA\'s utilities package)');
+    }
   }
 
   // How much of display.bounce_cache_gb the reversed copies use; nothing to show when there are none

@@ -374,10 +374,13 @@ Reviewed: 2026-11-27
       with NVENC and 1.1 s with libx264 on an idle machine, but NVENC uses 1.9 s of CPU against 5.2 s and keeps its
       pace under load, so `defaultEncoders` puts it first on NVIDIA. `-cq 28` (was 20) matches libx264's crf 20 in size
       and SSIM; cq 20 made files twice the size.
-- [ ] **Tell when NVIDIA's persistence mode is off.** (p3) [feature] NVENC first (3.5.0) assumes it: without it each
+- [x] **Tell when NVIDIA's persistence mode is off.** (p3) [feature] NVENC first (3.5.0) assumes it: without it each
       ffmpeg spends about 19 s starting CUDA, so a reversal of many chunks takes minutes, and `nvidia-smi -pm 1` does
       not survive a reboot. `backdrop doctor` could read `nvidia-smi --query-gpu=persistence_mode` and warn, and
       `defaultEncoders` could put libx264 first while it is off.
+      Done in 3.5.1: `defaultEncoders` asks `nvidiaPersistence` (nvidia-smi, about 30 ms, once per job) and uses
+      libx264 alone while it is off; `backdrop doctor` has an `encoder` check with the fix. minerva keeps it on
+      through a drop-in for `nvidia-persistenced.service` in `/etc/systemd/system` (2026-11-27).
 - [x] **Derived copies are keyed by the local media id.** (p3) [refactor] `reversedPath` and `smoothedPath`
       (`src/library/reverse.js`, `smooth.js`) name copies `<media.id>.mp4` / `<id>@<speed>.mp4`, and staleness compares
       mtimes with the item's file. Both are meaningful only in one database, so a copy made on another machine (or

@@ -104,7 +104,8 @@ IPC socket) would break a wallpaper.
   for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
   in chunks of about 256 MiB of raw frames each, cut by frame count and holding the video stream alone, with VAAPI or else libx264, or NVENC and else libx264 where NVIDIA's
   driver is loaded, whose VAAPI cannot encode (`defaultEncoders`; NVENC needs the driver's persistence mode, without
-  which each ffmpeg spends about 19 s starting CUDA), and the chunks are joined without
+  which each ffmpeg spends about 19 s starting CUDA, so libx264 goes alone while `nvidia-smi` reports it off, and
+  `backdrop doctor` warns), and the chunks are joined without
   encoding again; the joined copy is probed and kept only if it holds every frame joined. Once a copy is ready the item's entries are swapped for the URL. The playing one switches about
   100 ms before the end of its pass, where mpv would loop anyway (`loadfile <url> insert-next`, `playlist-next`,
   then the old entry removed), carrying its play time into the video duration; when the duration leaves no room for
