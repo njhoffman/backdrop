@@ -97,6 +97,11 @@ export class ConfigChanges {
         if (JSON.stringify(settings[section]?.[key]) !== JSON.stringify(next[section]?.[key])) changed.push(`${section}.${key}`);
       }
     }
+    if (JSON.stringify(settings.audio_relay) !== JSON.stringify(next.audio_relay)) {
+      settings.audio_relay = next.audio_relay;
+      this.daemon.logger.info('Audio relay settings changed', next.audio_relay);
+      await this.daemon.audioRelay.reconfigure();
+    }
     if (JSON.stringify(settings.load) !== JSON.stringify(next.load)) {
       const wasEnabled = Boolean(settings.load?.enabled);
       settings.load = next.load;

@@ -38,3 +38,8 @@ export function nextFiltersLockPath(runtimeDir) {
 export function webPath(runtimeDir) {
   return path.join(runtimeDir, 'web.json');
 }
+
+// The audio relay's roles (src/display/daemon/AudioRelay.js), for `backdrop audio status`, polybar and the i3 keys
+export function audioPath(runtimeDir) {
+  return path.join(runtimeDir, 'audio.json');
+}

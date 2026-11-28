@@ -1035,6 +1035,24 @@ ratings with it. Media is not synced: either machine can fetch and encode again.
       trashes it. Status must come from the latest rating by `created_at`, not row id.
 - [ ] **Reach minerva off the LAN.** (p3) [chore] Tailscale is installed on charon but tailscaled was not running
       (2026-11-15). Bring up both machines on the tailnet so `ssh minerva` works anywhere; nothing in backdrop changes.
+- [x] **Share the music between the two machines.** (p2) [feature] `audio_relay` (3.13.0, `docs/specs/audio-relay.md`):
+      the machine playing spotify, mpd or musicman alone is the server; the other relays its music over SSH into a null
+      sink for its visualizer, shows the role in polybar (`audio-role` module) and sends its audio keys there
+      (`~/.config/i3/bin/audio_route.sh`). Both playing, or neither, keeps each local.
+- [ ] **Try the audio relay both ways on the real desktop.** (p2) [test] Unit tests fake pactl and ssh. Check on charon
+      and minerva: roles switching on play and pause, the grace between tracks, the relay lag against the speakers,
+      a dropped link (charon off the LAN) falling back to local, and the keys from the client.
+- [ ] **A paused Spotify can keep the server role.** (p3) [bug] `src/audio/streams.js` counts an uncorked stream as
+      playing; Spotify can leave its stream uncorked while paused, so the roles may stay for a while after a pause.
+      If it shows on the desktop, sample the level of the player's stream (`parec --monitor-stream`) before
+      counting it.
+- [ ] **Saved offload settings may never reach the daemon.** (p3) [bug] `LIVE_SETTINGS` lists `offload.*` as
+      taken, but `ConfigChanges.applySettings` compares only `display`, `library` and `paths` and copies `sources`,
+      `menu`, `output`, `screensaver` and `web`, so a saved `offload.hosts` change seems to stay unread until a
+      restart. Check, and copy `offload` with the other sections read when used.
+- [ ] **projectM ignores the visualizer source.** (p3) [bug] `ProjectmVisualizer` starts projectM on SDL's
+      PulseAudio default, so neither `visualizer.source` nor the audio relay reaches it. Pass the source through
+      `PULSE_SOURCE` in its environment.
 
 ## Completed
 

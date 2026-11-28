@@ -1399,4 +1399,36 @@ describe('VisualizerManager', () => {
       expect(logs.find(log => log[1] === 'Failed to look for overlay windows')[2]).to.deep.equal({ monitor: 'DP-3', error: 'BadWindow' });
     });
   });
+
+  it('reads the audio relay in place of source: auto, restarting GLava but not a look without it', async () => {
+    await manager.configure();
+    await manager.sync();
+    await tick();
+    const started = spawned.length;
+    await manager.setRelaySource('backdrop_relay.monitor');
+    await tick();
+    expect(manager.settings.source).to.equal('backdrop_relay.monitor');
+    expect(spawned.length).to.be.above(started);
+    expect(logs).to.deep.include(['info', 'Visualizer audio source', { source: 'backdrop_relay.monitor' }]);
+
+    // The same source again changes nothing
+    const restarted = spawned.length;
+    await manager.setRelaySource('backdrop_relay.monitor');
+    expect(spawned).to.have.length(restarted);
+
+    // A source the section names wins over the relay
+    config.set('visualizer.source', 'alsa_output.usb.monitor');
+    await manager.reload();
+    expect(manager.settings.source).to.equal('alsa_output.usb.monitor');
+    config.set('visualizer.source', 'auto');
+
+    // sleeve reads no source: only the setting moves, nothing restarts
+    config.set('visualizer.engine', 'sleeve');
+    await manager.setRelaySource(null);
+    await tick();
+    const sleeveStarted = spawned.length;
+    await manager.setRelaySource('backdrop_relay.monitor');
+    expect(manager.settings.source).to.equal('backdrop_relay.monitor');
+    expect(spawned).to.have.length(sleeveStarted);
+  });
 });

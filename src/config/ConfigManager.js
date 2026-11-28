@@ -309,6 +309,14 @@ export class ConfigManager {
         worker_command: 'backdrop worker',
         memory_max: '4G'
       },
+      // Music shared between two machines (docs/specs/audio-relay.md, src/display/daemon/AudioRelay.js)
+      audio_relay: {
+        enabled: false,
+        peer: null,
+        players: ['spotify', 'mpd', 'musicman'],
+        grace: 10,
+        watch_command: 'backdrop audio watch'
+      },
       // `backdrop web` (docs/specs/web.md); a taken port falls back to a free one
       web: {
         port: 7737

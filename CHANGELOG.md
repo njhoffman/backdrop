@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-11-28
+
+### Added
+
+- Audio relay between two machines (`audio_relay`, `docs/specs/audio-relay.md`). With
+  `audio_relay.enabled` and each machine naming the other as `peer`, the machine playing
+  Spotify, mpd or musicman becomes the audio server. The quiet one relays that music over SSH
+  into a null sink and shows it in its GLava visualizer. Both playing, or neither, keeps each
+  machine on its own audio. Music stopping counts after `audio_relay.grace` seconds, so a gap
+  between tracks does not swap the roles.
+- `backdrop audio status [--json] [--follow]` prints the role (`client of charon: spotify
+  54%`) from `audio.json` in the runtime dir, which polybar modules and key scripts can read.
+  `backdrop audio watch` is what the other machine runs over SSH.
+- `backdrop status --json` carries the relay's role under `audio`.
+
 ## [3.12.0] - 2026-11-28
 
 ### Added

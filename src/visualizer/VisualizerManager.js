@@ -117,6 +117,8 @@ export class VisualizerManager {
     // The system is busy but not enough to stop: sleeve's moving covers give way to a color
     this.lightened = false;
     this.presetOverride = undefined;
+    // The relay's sink monitor while this machine is an audio client, over source: auto (setRelaySource)
+    this.relaySource = null;
     // Changes from the visualizer menu by instance name, over the preset until the daemon exits or a reset
     this.live = {};
     this.prepared = false;
@@ -136,7 +138,7 @@ export class VisualizerManager {
     this.generation++;
     this.look = fileLook(this.config.get().visualizer, this.settingsOptions());
     try {
-      const settings = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
+      const settings = this.relayed(visualizerSettings(this.config.get().visualizer, this.settingsOptions()));
       const runtimeDir = this.config.get().paths.runtime;
       const adapters = new Map(settings.instances.map(instance => [instance.name, this.create(settings, instance, { runtimeDir, exec: this.exec })]));
       const prepared = this.override ?? settings.enabled;
@@ -258,7 +260,7 @@ export class VisualizerManager {
   // Opacity and the wallpaper color pick apply to the running instances; any other change restarts them.
   async setLive(change, { reload = true } = {}) {
     const live = change ? { ...this.live, [change.instance]: deepMerge(this.live[change.instance] ?? {}, change.changes) } : {};
-    const next = visualizerSettings(this.config.get().visualizer, this.settingsOptions(live));
+    const next = this.relayed(visualizerSettings(this.config.get().visualizer, this.settingsOptions(live)));
     this.live = live;
     if (!reload) return;
     if (this.runsWith(next)) await this.takeLive(next);
@@ -325,13 +327,36 @@ export class VisualizerManager {
     this.look = look;
     let next = null;
     try {
-      next = visualizerSettings(this.config.get().visualizer, this.settingsOptions());
+      next = this.relayed(visualizerSettings(this.config.get().visualizer, this.settingsOptions()));
     } catch {
       // The reload reports it and turns the visualizer off
     }
     if (next && this.runsWith(next)) {
       this.generation++;
       await this.takeLive(next);
+      return;
+    }
+    await this.reload();
+  }
+
+  // The section's settings with the relay's source in place of source: auto while this machine is an audio client
+  // (daemon/AudioRelay.js); a source the section names stays
+  relayed(settings) {
+    if (!this.relaySource || settings.audio !== 'pulseaudio' || settings.source !== 'auto') return settings;
+    return { ...settings, source: this.relaySource };
+  }
+
+  // Reads the relay's sink monitor (null: the section's own source again). GLava instances restart on their new
+  // source; a look without one (sleeve, projectM, which read no source setting) only moves the audio watch.
+  async setRelaySource(source) {
+    if (source === this.relaySource) return;
+    this.relaySource = source;
+    if (this.stopping) return;
+    this.logger.info('Visualizer audio source', { source: source ?? 'the section\'s' });
+    const engines = (this.settings?.instances ?? []).map(instance => instance.engine ?? this.settings.engine);
+    if (this.settings && !engines.includes('glava')) {
+      this.settings = this.relayed(visualizerSettings(this.config.get().visualizer, this.settingsOptions()));
+      await this.watchAudio();
       return;
     }
     await this.reload();

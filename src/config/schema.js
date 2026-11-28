@@ -42,6 +42,9 @@ const nonEmpty = value => (typeof value === 'string' && value.trim() ? value : f
 const sshHosts = value => (Array.isArray(value) && value.every(host => typeof host === 'string' && /^[A-Za-z0-9_.@][A-Za-z0-9_.@:-]*$/.test(host))
   ? value
   : fail('a list of SSH destinations such as minerva or user@host'));
+const sshHost = value => (value === null || (typeof value === 'string' && /^[A-Za-z0-9_.@][A-Za-z0-9_.@:-]*$/.test(value))
+  ? value
+  : fail('an SSH destination such as minerva or user@host, or null for none'));
 const memoryLimit = value => (value === null || (typeof value === 'string' && /^\d+[KMGT]?$/.test(value)) ? value : fail('a size such as 4G, or null for none'));
 const integer = (min, max = Infinity) => value => (Number.isInteger(value) && value >= min && value <= max
   ? value
@@ -134,6 +137,17 @@ const SECTIONS = {
     hosts: field(sshHosts, { kind: 'strings', help: 'SSH destinations that make reversed and smoothed copies for this machine, tried in order; empty to encode here' }),
     worker_command: field(nonEmpty, { kind: 'text', help: 'The command a host runs for a job, in a login shell there' }),
     memory_max: field(memoryLimit, { kind: 'text', nullable: true, help: 'Memory a job may use on the host (systemd-run MemoryMax, e.g. 4G); empty for no limit' })
+  },
+  audio_relay: {
+    enabled: field(boolean, { kind: 'boolean', help: 'Share the music playing here or on audio_relay.peer: the quiet machine relays it to its visualizer and sends its audio keys there' }),
+    peer: field(sshHost, { kind: 'text', nullable: true, help: 'The other machine, an SSH destination (passwordless); empty for none' }),
+    players: field(value => (Array.isArray(value) && value.length && value.every(item => typeof item === 'string' && item.trim())
+      ? value
+      : fail('a list of player names such as spotify')), { kind: 'strings', help: 'Players whose streams count as music, matched against the stream\'s application name or program' }),
+    grace: field(value => (typeof value === 'number' && value >= 0 ? value : fail('a number of seconds from 0')), {
+      kind: 'number', min: 0, step: 1, help: 'Seconds of silence before a machine stops counting as playing'
+    }),
+    watch_command: field(nonEmpty, { kind: 'text', help: 'The command the peer runs to report what it plays, in a login shell there' })
   },
   web: {
     port: field(integer(1, 65535), { kind: 'integer', min: 1, max: 65535, help: 'Port `backdrop web` listens on; a taken one falls back to a free port' })

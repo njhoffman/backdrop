@@ -35,6 +35,7 @@ import { Health } from './daemon/Health.js';
 import { DIM_FADE_MS, Dims } from './daemon/Dims.js';
 import { ImportWatcher, IMPORT_SETTLE_MS } from './daemon/ImportWatcher.js';
 import { LoadShedding } from './daemon/LoadShedding.js';
+import { AudioRelay } from './daemon/AudioRelay.js';
 import { OutputWatcher } from './outputWatcher.js';
 import { withX11 } from './x11.js';
 
@@ -172,6 +173,8 @@ export class Daemon {
     loadInterval = LOAD_INTERVAL_MS,
     // The visualizer adapter factory, for a test's stand-in engine (see test/display/stacking.integration.test.js)
     createVisualizer,
+    // Options for the audio relay (daemon/AudioRelay.js): its watcher, peer link and pipe factories
+    audioRelay = {},
     // i3's output events (src/display/outputWatcher.js); null leaves the timer alone to find layout changes
     watchOutputs = options => new OutputWatcher(options),
     monitorFallback = MONITOR_FALLBACK_MS,
@@ -247,6 +250,7 @@ export class Daemon {
     this.bounce = new Bounce(this, { loadavg, cpus });
     this.smoothing = new Smooth(this, { loadavg, cpus });
     this.screensaver = new Screensaver(this);
+    this.audioRelay = new AudioRelay(this, audioRelay);
     this.loadInterval = loadInterval;
     this.queue = Promise.resolve();
     this.visualizers = visualizers ?? new VisualizerManager({
@@ -322,6 +326,7 @@ export class Daemon {
     this.every(this.offloadInterval, () => this.checkOffload());
 
     await this.visualizers.sync();
+    await this.audioRelay.begin().catch(error => this.logger.warn('Failed to start the audio relay', { error: error.message }));
     if (!this.wallpaper && !this.visualizers.active) {
       await this.stop();
       throw new Error(`Nothing to show: the wallpaper is off and the visualizer did not start${this.visualizers.error ? ` (${this.visualizers.error})` : ''}`);
@@ -1046,7 +1051,7 @@ export class Daemon {
     await fs.writeJson(temporary, {
       pid: process.pid, version, wallpaper: this.wallpaper, load: this.load.summary(), control: this.controlGeneration, handled: this.handledRequests, monitors,
       visualizer: this.visualizers.summary(), screensaver: this.screensaver.summary(), smoothing: this.smoothing.summary(), bounce: this.bounce.summary(),
-      offload: this.offload.summary(), dropped: [...this.dropped]
+      offload: this.offload.summary(), audio: this.audioRelay.summary(), dropped: [...this.dropped]
     });
     await fs.rename(temporary, file);
   }
@@ -1066,6 +1071,7 @@ export class Daemon {
     await this.reconciling;
 
     await this.screensaver.leave();
+    await this.audioRelay.stop().catch(error => this.logger.warn('Failed to stop the audio relay', { error: error.message }));
     await this.bounce.stop();
     await this.smoothing.stop();
     await this.visualizers.stop();

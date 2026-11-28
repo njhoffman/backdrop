@@ -14,6 +14,7 @@ import { RemoveCommand } from './commands/RemoveCommand.js';
 import { PurgeCommand } from './commands/PurgeCommand.js';
 import { CopiesCommand } from './commands/CopiesCommand.js';
 import { WorkerCommand } from './commands/WorkerCommand.js';
+import { AUDIO_ACTIONS, AudioCommand } from './commands/AudioCommand.js';
 import { RescanCommand } from './commands/RescanCommand.js';
 import { MenuCommand } from './commands/MenuCommand.js';
 import { RatingCommand } from './commands/RatingCommand.js';
@@ -127,6 +128,7 @@ class BackdropApp {
     const visualizer = new VisualizerCommand(this.config, this.database, this.logger);
     const screensaver = new ScreensaverCommand(this.config, this.database, this.logger);
     const web = new WebCommand(this.config, this.database, this.logger, { version });
+    const audio = new AudioCommand(this.config, this.database, this.logger);
     const monitorOption = ['-m, --monitor <name>', 'Target monitor (default: the one under the pointer)'];
     const randomOption = ['-r, --random', 'With filters, pick any matching item still ahead instead of the next one (default: display.order)'];
     const noRandomOption = ['--no-random', 'With filters, play the next matching item in the shuffled order'];
@@ -399,6 +401,11 @@ class BackdropApp {
     program.command('screensaver').description('Show nothing but the wallpaper and visualizers on an empty workspace, until asked to stop: on, off, toggle (the default) or status')
       .addArgument(new Argument('[action]', 'What to do').choices(SCREENSAVER_ACTIONS).default('toggle'))
       .action(this.action(action => screensaver.run(action)));
+    program.command('audio').description('Show which machine plays the music (audio_relay): status (the default) or, run by the other machine over SSH, watch')
+      .addArgument(new Argument('[action]', 'What to do').choices(AUDIO_ACTIONS).default('status'))
+      .option('--follow', 'With status: print it again on each change')
+      .option(...jsonOption)
+      .action(this.action((action, options) => audio.run(action, options)));
     program.command('doctor').description('Check tools, the X display, the config, the daemon and the library, naming the fix for each problem')
       .option('--visualizer', 'Also start every visualizer and preset briefly (visualizer check)')
       .option(...jsonOption)

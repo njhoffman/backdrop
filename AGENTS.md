@@ -124,6 +124,12 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   SSH as JSON with a heartbeat, and the worker stops when its stdin closes or goes quiet. `Daemon.reverseAnywhere`
   picks the host or here; with a host the queues skip this machine's load and idle gates. A host gone puts the job
   back for this machine to do.
+- **Audio relay** (`src/audio/`, `src/display/daemon/AudioRelay.js`, `docs/specs/audio-relay.md`) - with
+  `audio_relay.peer`, `MusicWatcher` follows the players here (`streams.js`, `pactl -f json`) and `PeerLink` runs
+  `backdrop audio watch` on the peer over SSH; `roles.js` makes the machine playing alone the server. The client's
+  `RelayPipe` (`ssh peer parec | pacat`) plays into the null sink `backdrop_relay`, and
+  `VisualizerManager.setRelaySource` puts its monitor in place of `source: auto`. Roles go to `audio.json` in the
+  runtime dir for `backdrop audio status`, polybar and the i3 audio keys.
 - **Screensaver** (`src/display/daemon/Screensaver.js`) - the daemon's mode, asked for through a control request by `ScreensaverCommand`; see `docs/specs/main.md`.
 - **Visualizer** (`src/visualizer/`) - an optional GLava music visualizer per monitor, above the wallpaper; see
   `docs/specs/visualizer.md`. `settings.js` checks the `visualizer` section and resolves placement; engines are
