@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.2] - 2026-11-28
+
+### Changed
+
+- The `swirl` cover look shows more of the cover and moves visibly: smaller turning layers (`--swirl-size: 1.2`), the
+  cover drawn sharper (`--art-size: 160`, `--art-blur: 2`) and a turn every 35 s instead of a minute. Sunamu's own
+  sizes left an even, still wash of a pale cover's colors. It costs the same. Every cover look now also sets
+  `--swirl-period` and `--swirl-size`, so switching away from the swirl leaves nothing of it behind.
+
 ## [3.6.1] - 2026-11-27
 
 ### Changed

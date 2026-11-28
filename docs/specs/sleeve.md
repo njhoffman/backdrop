@@ -177,8 +177,8 @@ Since 0.46.0, `--style NAME=VALUE` on `sleeve shell` and `sleeve ctl display`, o
 backdrop sends `style` (`visualizer.instances[].sleeve.style`) only to sleeve 0.46.0 or later; an older sleeve shows the page without it.
 
 backdrop names whole cover looks with `sleeve.cover` (`blurred`, `flow`, `swirl`, `sharp`; `SLEEVE_COVERS` in `settings.js`), each
-setting the same seven names (`--art-animation`, `--art-size`, `--art-blur`, `--art-scale`, `--art-opacity`, `--art-dim`,
-`--art-saturation`) so a switch from one to another leaves nothing of the first; `style` lays over the cover's. `blurred` is sleeve's
+setting the same nine names (`--art-animation`, `--art-size`, `--art-blur`, `--art-scale`, `--art-opacity`, `--art-dim`,
+`--art-saturation`, `--swirl-period`, `--swirl-size`) so a switch from one to another leaves nothing of the first; `style` lays over the cover's. `blurred` is sleeve's
 own defaults, so it overrides those names in the user's `style.css`. sleeve sees only the resulting `--style` names: nothing new on
 its side.
 

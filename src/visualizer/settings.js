@@ -16,15 +16,24 @@ const SLEEVE_STYLE_NAME = /^--(?:art|flow|swirl)-[a-z][a-z0-9-]*$|^--lyrics-scri
 const SLEEVE_STYLE_COMPUTED = ['--art-layer-opacity', '--lyrics-scrim-alpha'];
 const SLEEVE_STYLE_VALUE = /^[a-z0-9 .,%()#+-]{0,100}$/i;
 // sleeve's cover looks by name (`sleeve.cover`): each sets every variable that makes the look, so a switch from one
-// to another leaves nothing of the first, and `style` lays over it. blurred is sleeve's own default.
-const BLURRED_COVER = { '--art-animation': 'none', '--art-size': '64', '--art-blur': '6', '--art-scale': '1.6', '--art-opacity': '0.6', '--art-dim': '0.45', '--art-saturation': '1.3' };
+// to another leaves nothing of the first, and `style` lays over it. blurred is sleeve's own default, its swirl
+// variables too (used by the swirl alone).
+const BLURRED_COVER = {
+  '--art-animation': 'none', '--art-size': '64', '--art-blur': '6', '--art-scale': '1.6', '--art-opacity': '0.6', '--art-dim': '0.45', '--art-saturation': '1.3',
+  '--swirl-period': '60', '--swirl-size': '2'
+};
 export const SLEEVE_COVERS = {
   blurred: BLURRED_COVER,
   // The blurred cover warping slowly (WebGL)
   flow: { ...BLURRED_COVER, '--art-animation': 'sleeve-art-flow' },
-  // Sunamu's background: two copies of the cover turning opposite ways, blended so their colors keep mixing, at
-  // Sunamu's own strength (no extra veil, its saturation)
-  swirl: { ...BLURRED_COVER, '--art-animation': 'sleeve-art-swirl', '--art-opacity': '1', '--art-dim': '0', '--art-saturation': '1.5' },
+  // Sunamu's background: two copies of the cover turning opposite ways, blended so their colors keep mixing, with no
+  // extra veil. Sunamu's own sizes (layers twice the window, the cover drawn at 64 and blurred, a turn a minute) left
+  // a still, even wash of a pale cover's colors (2026-11-27): smaller layers and a sharper cover show its shapes, and a
+  // turn in 35 s moves visibly without hurry, at the same cost
+  swirl: {
+    ...BLURRED_COVER, '--art-animation': 'sleeve-art-swirl', '--art-opacity': '1', '--art-dim': '0', '--art-saturation': '1.5',
+    '--art-size': '160', '--art-blur': '2', '--swirl-period': '35', '--swirl-size': '1.2'
+  },
   // The cover itself, sharp and still across the window; sleeve lays a scrim behind the lyrics over a busy one
   sharp: { ...BLURRED_COVER, '--art-size': '512', '--art-blur': '0', '--art-scale': '1', '--art-opacity': '1', '--art-dim': '0.25' }
 };
