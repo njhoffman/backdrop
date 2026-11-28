@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-11-28
+
+### Added
+
+- `lyrics-sunamu-tinted` and `lyrics-new-sunamu-tinted`: the two Sunamu presets with each turning copy of the cover
+  tinted by its dark vibrant color, as Sunamu itself does, to compare with the untinted ones. The tint needs sleeve
+  0.50.0; an older sleeve shows them untinted.
+
 ## [3.8.0] - 2026-11-28
 
 ### Added

@@ -1004,7 +1004,7 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       `ui/sunamu/Background.css` through sleeve's `sleeve-art-swirl-css`; `lyrics-new-sunamu` is that with charon's custom
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
-      sleeve's CSS swirl does not multiply the copies with the cover's dominant color as Sunamu does.
+      3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
 
 ## 11. Two machines
 

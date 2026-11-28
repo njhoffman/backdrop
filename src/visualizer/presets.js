@@ -34,14 +34,16 @@ function veil({ cycle = false } = {}) {
 }
 
 // The Sunamu presets' sleeve settings: Sunamu's layout, and its background through sleeve's CSS swirl. sharp drops
-// the layers' filter (no blur, brightness or saturation) and halves the whole background's opacity
-function sunamu({ sharp = false } = {}) {
+// the layers' filter (no blur, brightness or saturation) and halves the whole background's opacity; tint multiplies
+// each copy with the cover's dark vibrant color, as Sunamu does with its --color-bg (sleeve 0.50.0's --swirl-tint; an
+// older sleeve takes the name and draws no tint)
+function sunamu({ sharp = false, tint = false } = {}) {
   const panel = nowPanel('full', 'center-left', 3, '40%x100%+0+0');
   return {
     lyrics_area: '60%x100%+40%+0', background: 'cover', cover: 'swirl', ...panel,
     style: {
       ...panel.style, '--art-animation': 'sleeve-art-swirl-css', '--swirl-size': '2', '--swirl-period': '60', '--swirl-delay': '10',
-      '--swirl-timing': 'ease-in-out', '--art-dim': '0',
+      '--swirl-timing': 'ease-in-out', '--art-dim': '0', '--swirl-tint': tint ? 'cover' : 'none',
       ...(sharp
         ? { '--swirl-blur': '0px', '--swirl-brightness': '1', '--art-saturation': '1', '--art-opacity': '0.5' }
         : { '--swirl-blur': '180px', '--swirl-brightness': '0.5', '--art-saturation': '1.5', '--art-opacity': '1' })
@@ -195,6 +197,17 @@ const PRESETS = {
     description: 'Sunamu\'s background with the copies of the cover sharp and the whole of it at half strength, card on the left, lyrics on the right',
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true }) }]
+  },
+  // Each with Sunamu's tint too: the turning copies multiplied with the cover's dark vibrant color, to compare
+  'lyrics-sunamu-tinted': {
+    description: 'lyrics-sunamu with each turning copy tinted by the cover\'s dark vibrant color, as Sunamu does',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ tint: true }) }]
+  },
+  'lyrics-new-sunamu-tinted': {
+    description: 'lyrics-new-sunamu with each sharp turning copy tinted by the cover\'s dark vibrant color, as Sunamu does',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: true }) }]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {

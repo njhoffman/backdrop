@@ -159,7 +159,7 @@ Since 0.46.0, `--style NAME=VALUE` on `sleeve shell` and `sleeve ctl display`, o
 | --- | --- |
 | `--art-*` | the cover: `--art-animation` (`none`, `sleeve-art-flow`, `sleeve-art-swirl`, `sleeve-art-swirl-css`, `sleeve-art-drift`, `sleeve-art-breathe`), `--art-size` (the side it is drawn at, 16 to 1024), `--art-blur`, `--art-scale`, `--art-opacity`, `--art-dim`, `--art-saturation`, `--art-fade`; since 0.48.0 `--art-fit: contain` (the whole cover, sharp, over the background, in the larger free side beside the lyrics area) with `--art-fit-position` (`auto`, `left`, `center`, `right`), `--art-fit-margin`, `--art-fit-radius`, `--art-fit-shadow` |
 | `--flow-*` | `sleeve-art-flow`'s and the swirl's speed, resolution and frame rate, and the flow's bend |
-| `--swirl-*` | `sleeve-art-swirl`: `--swirl-period`, `--swirl-delay`, `--swirl-size`, `--swirl-brightness`, `--swirl-timing`, and `--swirl-blur` for the CSS version |
+| `--swirl-*` | `sleeve-art-swirl`: `--swirl-period`, `--swirl-delay`, `--swirl-size`, `--swirl-brightness`, `--swirl-timing`, and `--swirl-blur` and (since 0.50.0) `--swirl-tint` (`none`, `cover` or `#rrggbb`) for the CSS version |
 | `--now-scale`, `--now-margin` | since 0.49.0: the now-playing panel's size and its distance from the window's edge |
 | `--lyrics-scrim*` | the scrim behind the lyrics over a busy cover: `--lyrics-scrim` (`auto` or 0 to 1), `--lyrics-scrim-blur`, `--lyrics-scrim-edge` |
 
