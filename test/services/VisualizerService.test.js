@@ -41,7 +41,7 @@ describe('VisualizerService', () => {
     expect(view.instances[0].look).to.include({ module: 'bars', opacity: 0.8 });
     expect(view.instances[0].sent).to.deep.equal({ fg: '#112233ff', fg2: '#445566ff' });
     expect(view.presets.find(preset => preset.name === 'ring')).to.deep.equal({
-      name: 'ring', source: 'built in', description: 'A radial ring in the middle of the screen', summary: 'radial center', screenshot: null
+      name: 'ring', source: 'built in', description: 'A radial ring in the middle of the screen', details: [], summary: 'radial center', animation: null, screenshot: null
     });
     expect(view.none).to.deep.equal({ summary: 'bars bottom' });
     expect(view.choices.modules).to.include('radial');
@@ -196,7 +196,7 @@ describe('VisualizerService', () => {
       const service = make(config, { reload: true });
       await fs.appendFile(file, '  presets:\n    dusk:\n      opacity: 0.3\n');
       const view = await service.describe();
-      expect(view.presets.find(preset => preset.name === 'dusk')).to.deep.equal({ name: 'dusk', source: 'config', description: null, summary: 'bars bottom', screenshot: null });
+      expect(view.presets.find(preset => preset.name === 'dusk')).to.deep.equal({ name: 'dusk', source: 'config', description: null, details: [], summary: 'bars bottom', animation: null, screenshot: null });
     });
   });
 });

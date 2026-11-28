@@ -798,11 +798,13 @@ export class MenuCommand {
     }
   }
 
-  // The preset menu's inspection of one preset: its name, description and summary as the message, its screenshot
-  // as a banner tall enough for all of it
+  // The preset menu's inspection of one preset: its name, description and summary as the message, then how its moving
+  // cover is drawn and its notes, and its screenshot as a banner tall enough for all of it
   inspection(name, info, hint) {
     const lines = [`<b>${escapeMarkup(name ?? 'none')}</b>  ${escapeMarkup(info.description ?? info.summary ?? '')}`];
     if (info.description && info.summary) lines.push(`<span alpha="70%">${escapeMarkup(info.summary)}</span>`);
+    if (info.animation) lines.push(`<span alpha="70%">${escapeMarkup(info.animation)}</span>`);
+    for (const line of info.details ?? []) lines.push(escapeMarkup(line));
     if (!info.shot) lines.push(`<span alpha="70%">${escapeMarkup(name === null ? 'No screenshot of no preset' : 'No screenshot yet: one is taken after 30 s of it with sound, on a monitor no window covers')}</span>`);
     lines.push(escapeMarkup(`${hint}  (${INSPECT_KEY} or Escape for the pictures)`));
     return { title: `visualizer  ·  ${name ?? 'none'}`, message: lines.join('\n'), ...(info.shot ? { preview: info.shot.path, banner: 'tall' } : {}) };

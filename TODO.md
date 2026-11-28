@@ -1005,7 +1005,7 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
       3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
-- [ ] **Pick the swirl variations to keep.** (p3) [chore] 3.10.0 added seven to try (soft, steady, offset, vivid, bright,
+- [x] **Pick the swirl variations to keep.** (p3) [chore] 3.10.0 added seven to try (soft, steady, offset, vivid, bright,
       duotone, swirl-slow). Keep the ones that earn it and drop the rest; if steady wins, make linear turns the default in
       every swirl preset rather than a preset of its own. A saturation boost only for pale covers would beat a fixed vivid
       preset (sleeve would measure the cover's colorfulness, as it does its detail).
@@ -1015,6 +1015,9 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
 minerva (the always-on desktop, NVIDIA) is the source of truth; charon (the laptop) offloads encodes to it and syncs
 ratings with it. Media is not synced: either machine can fetch and encode again. Agreed 2026-11-15.
 
+      Done in 3.11.0 after an 80 s look at each: steady and the untinted sharp look dropped, the tinted pair renamed
+      lyrics-blurred and lyrics-sharp, the rest without "sunamu", linear turns for the sharp looks only; the notes went
+      into each preset's details.
 - [x] **Encode worker over SSH.** (p2) [feature] `backdrop worker`: a stateless JSON-over-stdio process, reached as
       `ssh minerva backdrop worker`. The shared encode slot (`daemon/Bounce.js`, `daemon/Smooth.js`) gets a host list
       (e.g. `offload.hosts: [minerva, local]`) and falls back to the local slot when minerva cannot be reached. A job

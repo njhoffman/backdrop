@@ -594,11 +594,11 @@ function describedPresets(section = {}) {
   return { ...builtin, ...own };
 }
 
-// The section's presets as they lay over it: without their descriptions, which only the menu and web page show
+// The section's presets as they lay over it: without their descriptions and details, which only the menu and web page show
 export function presetsOf(section = {}) {
   return Object.fromEntries(Object.entries(describedPresets(section)).map(([name, preset]) => {
-    if (!isObject(preset) || preset.description === undefined) return [name, preset];
-    const { description: _, ...settings } = preset;
+    if (!isObject(preset) || (preset.description === undefined && preset.details === undefined)) return [name, preset];
+    const { description: _, details: __, ...settings } = preset;
     return [name, settings];
   }));
 }
@@ -636,11 +636,47 @@ export function presetSummary(section = {}, name) {
   }
 }
 
-// Each preset's description and summary, by name: { description (its own, or null), summary }
+// How a preset's moving cover is drawn, as a line, from the style its sleeve instance is sent (cover look and style laid
+// over each other): the renderer, the copies' size, blur, brightness, saturation and opacity, the turn and the tint; null
+// for a look without a moving cover. Names left unset take sleeve's own defaults (its style.css), as sleeve would.
+export function animationInfo(section = {}, name) {
+  let style;
+  try {
+    const settings = visualizerSettings(section, { preset: name });
+    style = settings.instances.find(item => item.engine === 'sleeve')?.sleeve?.style ?? null;
+  } catch {
+    return null;
+  }
+  const value = (key, fallback) => style?.[key] ?? fallback;
+  const animation = value('--art-animation', 'none');
+  const turn = () => {
+    const timing = value('--swirl-timing', 'ease-in-out');
+    const pace = timing === 'linear' ? 'at a constant speed' : timing === 'ease-in-out' ? 'eased, slowing at each end' : timing;
+    return `a turn every ${value('--swirl-period', '60')} s ${pace}, the second copy ${value('--swirl-delay', '10')} s behind`;
+  };
+  const tint = () => {
+    const tinted = value('--swirl-tint', 'none');
+    return tinted === 'none' ? 'no tint' : tinted === 'cover' ? 'tinted by the cover\'s dark vibrant' : `tinted ${tinted}`;
+  };
+  const common = () => `layers ${value('--swirl-size', '2')}x the screen, brightness ${value('--swirl-brightness', '0.5')}, saturation ${value('--art-saturation', '1.3')}, opacity ${value('--art-opacity', '0.6')}`;
+  if (animation === 'sleeve-art-swirl-css') {
+    return `CSS swirl (Sunamu's, full-resolution cover): ${common()}, blur ${value('--swirl-blur', '180px')}, ${turn()}, ${tint()}`;
+  }
+  if (animation === 'sleeve-art-swirl') {
+    return `Shader swirl (cover drawn at ${value('--art-size', '64')} px, blurred ${value('--art-blur', '6')}, at a quarter resolution and 30 fps): ${common()}, ${turn()}`;
+  }
+  if (animation === 'sleeve-art-flow') return `Flow: the cover drawn at ${value('--art-size', '64')} px, blurred ${value('--art-blur', '6')}, slowly warping`;
+  return null;
+}
+
+// Each preset's description, details, summary and animation, by name: { description (its own, or null), details (lines,
+// maybe none), summary, animation (animationInfo, or null) }
 export function presetInfo(section = {}) {
   return Object.fromEntries(Object.entries(describedPresets(section)).map(([name, preset]) => [name, {
     description: isObject(preset) && typeof preset.description === 'string' ? preset.description.trim() || null : null,
-    summary: presetSummary(section, name)
+    details: isObject(preset) && Array.isArray(preset.details) ? preset.details.filter(line => typeof line === 'string' && line.trim()) : [],
+    summary: presetSummary(section, name),
+    animation: animationInfo(section, name)
   }]));
 }
 
@@ -744,6 +780,9 @@ export function visualizerSettings(section = {}, { preset, live } = {}) {
   for (const [name, value] of Object.entries(describedPresets(section))) {
     if (!isObject(value)) fail(`presets.${name}`, 'a mapping of visualizer settings', value);
     if (value.description !== undefined && typeof value.description !== 'string') fail(`presets.${name}.description`, 'a line of text', value.description);
+    if (value.details !== undefined && !(Array.isArray(value.details) && value.details.every(line => typeof line === 'string'))) {
+      fail(`presets.${name}.details`, 'a list of lines of text', value.details);
+    }
     for (const key of PRESET_EXCLUDED) if (value[key] !== undefined) fail(`presets.${name}.${key}`, 'left out of a preset', value[key]);
     normalize(deepMerge(base, presets[name]), `presets.${name}.`);
   }

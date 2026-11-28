@@ -139,7 +139,7 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `SleevePages.js` (the manager's `sleeve`) holds sleeve's page handling: `sleeve ctl display`, the veil, the still
   cover under load and showing the lyrics in silence. `PresetShots.js` (the manager's `shots`) keeps a screenshot of each preset after 30 s of it with sound, grabbing only a
   monitor nothing but backdrop's windows covers (`X11.uncoveredArea`, docks cropped); presets carry an optional
-  `description` (`presetInfo`, taken out by `presetsOf`), and the menu's load grid and the web page show both.
+  `description` and `details` (`presetInfo`, taken out by `presetsOf`, with `animationInfo` for a moving cover), and the menu's load grid, its `i` and the web page show them.
   With `palette.source: wallpaper` (`palette.js`) the daemon samples each load and the manager pipes `fg`/`fg2` colors to
   GLava's stdin, one line per 100 ms (`colorsFor`, `recolor`).
 - **Library** (`src/library/`) - `Importer` copies local media in as `local-<n>.<ext>`, tracking each source

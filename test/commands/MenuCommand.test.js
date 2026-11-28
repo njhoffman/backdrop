@@ -657,6 +657,17 @@ describe('MenuCommand', () => {
       expect(entry(back, 'ring').image).to.equal(path.join(thumbs, 'visualizer-ring.jpg'));
     });
 
+    // A swirl look's i also says how its cover moves and what the long look at it showed
+    it('shows how a look\'s cover moves and its notes with i', async () => {
+      config.set('paths.thumbnails', path.join(runtime, 'empty'));
+      picks = ['load ▸', { inspect: 'lyrics-soft' }, null, null, null];
+      await open().open({ page: 'visualizer' });
+      const soft = shown.filter(menu => menu.prompt === 'load')[1];
+      expect(soft.title).to.equal('visualizer  ·  lyrics-soft');
+      expect(soft.message).to.include('CSS swirl (Sunamu\'s, full-resolution cover): layers 2x the screen, brightness 0.75')
+        .and.include('blur 50px').and.include('Seen over 80 s on 1440p').and.include('The top pick.');
+    });
+
     it('keeps the load buttons without pictures while no preset has a screenshot', async () => {
       config.set('paths.thumbnails', path.join(runtime, 'empty'));
       picks = ['load ▸', null, null];

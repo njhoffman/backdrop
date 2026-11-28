@@ -34,7 +34,9 @@ function veil({ cycle = false } = {}) {
 }
 
 // The Sunamu presets' sleeve settings: Sunamu's layout, and its background through sleeve's CSS swirl. sharp drops
-// the layers' filter (no blur, brightness or saturation) and halves the whole background's opacity; tint multiplies
+// the layers' filter (no blur, brightness or saturation), halves the whole background's opacity and turns the copies at
+// a constant speed, since sharp copies easing to a near stop at each turn's end read as a stall (seen over 80 s,
+// 2026-11-28); tint multiplies
 // each copy with the cover's dark vibrant color, as Sunamu does with its --color-bg (sleeve 0.50.0's --swirl-tint; an
 // older sleeve takes the name and draws no tint)
 // style lays further values over these, for the variations below
@@ -46,7 +48,7 @@ function sunamu({ sharp = false, tint = false, style = {} } = {}) {
       ...panel.style, '--art-animation': 'sleeve-art-swirl-css', '--swirl-size': '2', '--swirl-period': '60', '--swirl-delay': '10',
       '--swirl-timing': 'ease-in-out', '--art-dim': '0', '--swirl-tint': tint === true ? 'cover' : tint || 'none',
       ...(sharp
-        ? { '--swirl-blur': '0px', '--swirl-brightness': '1', '--art-saturation': '1', '--art-opacity': '0.5' }
+        ? { '--swirl-blur': '0px', '--swirl-brightness': '1', '--art-saturation': '1', '--art-opacity': '0.5', '--swirl-timing': 'linear' }
         : { '--swirl-blur': '180px', '--swirl-brightness': '0.5', '--art-saturation': '1.5', '--art-opacity': '1' }),
       ...style
     }
@@ -177,76 +179,100 @@ const PRESETS = {
   // Sunamu's moving background across the window, lyrics in the middle, a wave along the bottom
   'lyrics-swirl': {
     description: 'Two copies of the track\'s cover turning and blending as the whole background, a line naming the song above lyrics in the middle, a wave along the bottom',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: lively patches of the cover\'s colors, best on colorful covers; 8 to 12% changed every 5 s. Lyrics: fair, as they can sit over pale parts of the cover.'
+    ],
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3) } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
   },
+  // Sunamu's background and its variations. details are what an 80 s look at each on 1440p showed (2026-11-28; the change
+  // is the share of the picture that changed in each 5 s), shown with the animation in the menu's i and the web page.
   // Sunamu's background as Sunamu drew it (its ui/sunamu/Background.css): two copies of the cover twice the window's
   // longer side, blurred 180px, at half brightness and 1.5 saturation, exclusion blended, turning opposite ways once a
   // minute, the second 10 s behind; sleeve's CSS port of it (sleeve-art-swirl-css) rather than its shader. Laid out as
-  // Sunamu is: the now-playing card on the left, lyrics on the right
+  // Sunamu is: the now-playing card on the left, lyrics on the right. Kept as the reference for the rest.
   'lyrics-sunamu': {
     description: 'Sunamu\'s background as Sunamu drew it, two blurred copies of the cover turning, with its card on the left and lyrics on the right',
+    details: [
+      'The reference: Sunamu\'s own background, untinted, which the other Sunamu looks vary.',
+      'Seen over 80 s on 1440p, 2026-11-28: an even, slowly drifting wash, dull grey on most covers; 6 to 9% of it changed every 5 s. Lyrics: very good.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu() }]
   },
-  // The same as the custom Sunamu theme on charon draws it (~/.config/sunamu/themes/custom/background.css, overrides laid
-  // over Background.css, in its electron scene's widget mode): there Sunamu's own rule for the two copies does not
-  // apply, so they turn sharp and full size with no filter, and the whole background is at half opacity
-  'lyrics-new-sunamu': {
-    description: 'Sunamu\'s background with the copies of the cover sharp and the whole of it at half strength, card on the left, lyrics on the right',
-    wallpaper: false,
-    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true }) }]
-  },
-  // Each with Sunamu's tint too: the turning copies multiplied with the cover's dark vibrant color, to compare
-  'lyrics-sunamu-tinted': {
-    description: 'lyrics-sunamu with each turning copy tinted by the cover\'s dark vibrant color, as Sunamu does',
+  // Sunamu's background with Sunamu's tint: each copy multiplied with the cover's dark vibrant color
+  'lyrics-blurred': {
+    description: 'Sunamu\'s background tinted as Sunamu tints it: two blurred copies of the cover turning in one rich tone of its dark accent',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: one rich tone of the cover fills the screen (amber, deep blue), soft and slowly shifting; 3 to 8% changed every 5 s. Lyrics: very good. A top pick.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ tint: true }) }]
   },
-  'lyrics-new-sunamu-tinted': {
-    description: 'lyrics-new-sunamu with each sharp turning copy tinted by the cover\'s dark vibrant color, as Sunamu does',
+  // The custom Sunamu theme on charon (~/.config/sunamu/themes/custom/background.css, overrides laid over
+  // Background.css, in its electron scene's widget mode, where Sunamu's own rule for the two copies does not apply):
+  // the copies sharp and unfiltered, the whole at half opacity, with Sunamu's tint
+  'lyrics-sharp': {
+    description: 'Sharp copies of the cover turning at half strength, tinted by its dark accent, as a custom Sunamu theme draws them',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: deep fields of the cover\'s accent with faint sharp shapes; 6 to 10% changed every 5 s (turning eased then, constant since). Lyrics: good. A top pick.',
+      'Untinted, the same copies were striking on bright covers and nearly black on dark ones.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: true }) }]
   },
-  // Variations on Sunamu's background, tried live on 2026-11-28 (sleeve ctl display) to compare
-  'lyrics-sunamu-soft': {
-    description: 'Between lyrics-sunamu and lyrics-new-sunamu: a lighter blur, so the turning copies show soft shapes with edges',
+  // Variations on it, each changing one thing, tried live on 2026-11-28 (sleeve ctl display) to compare
+  'lyrics-soft': {
+    description: 'Between lyrics-blurred and lyrics-sharp, untinted: a lighter blur, so the turning copies show soft shapes with edges',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: soft patches of color with edges that keep forming; 10 to 21% changed every 5 s, the most of the blurred looks. Lyrics: very good. The top pick.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({
       style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' }
     }) }]
   },
-  'lyrics-sunamu-steady': {
-    description: 'lyrics-sunamu turning at a constant speed, with no pause at the end of each turn',
-    wallpaper: false,
-    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--swirl-timing': 'linear' } }) }]
-  },
-  'lyrics-sunamu-offset': {
+  'lyrics-offset': {
     description: 'lyrics-sunamu with the second copy half a turn behind, so the two blend at opposite angles for stronger colors',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: much like lyrics-sunamu, now and then a stronger patch of color where the copies meet; 5 to 11% changed every 5 s. Lyrics: very good.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--swirl-delay': '30' } }) }]
   },
-  'lyrics-sunamu-bright': {
-    description: 'lyrics-new-sunamu brightened, so the sharp copies invert each other hard; busy, more for watching than reading',
-    wallpaper: false,
-    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, style: { '--swirl-brightness': '1.4' } }) }]
-  },
-  'lyrics-sunamu-vivid': {
+  'lyrics-vivid': {
     description: 'lyrics-sunamu with the colors pushed much richer, for pale covers',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: barely richer than lyrics-sunamu on the covers that played, none of them pale; 7 to 12% changed every 5 s. Lyrics: very good.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--art-saturation': '2.5' } }) }]
   },
-  'lyrics-sunamu-duotone': {
-    description: 'lyrics-new-sunamu tinted one fixed blue, a duotone that stays the same from track to track',
+  'lyrics-bright': {
+    description: 'Sharp, untinted copies of the cover brightened, so they invert each other hard; busy, more for watching than reading',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: a black and white collage, the busiest look by far: 18 to 27% changed every 5 s, twice the others. Lyrics: poor. Better as a screensaver.'
+    ],
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, style: { '--swirl-brightness': '1.4' } }) }]
+  },
+  'lyrics-duotone': {
+    description: 'Sharp copies of the cover tinted one fixed blue, a duotone that stays the same from track to track',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: calm blue-grey sharp shapes; 5 to 13% changed every 5 s (turning eased then, constant since). Lyrics: good. lyrics-sharp does the same with each cover\'s own color.'
+    ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: '#4a6a9a' }) }]
   },
   // lyrics-swirl at Sunamu's pace, a turn a minute: calmer
   'lyrics-swirl-slow': {
     description: 'lyrics-swirl turning once a minute, as Sunamu does, for a calmer background',
+    details: [
+      'Seen over 80 s on 1440p, 2026-11-28: almost the same as lyrics-swirl, 7 to 12% changed every 5 s against its 8 to 12%, slowing a little at the end of each turn. Lyrics: fair.'
+    ],
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {

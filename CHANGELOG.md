@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-11-28
+
+### Added
+
+- The visualizer menu's `i` and the web Visualizer page's preset cards (on hover) show how a look's moving cover is
+  drawn (the renderer, the copies' size, blur, brightness, saturation and opacity, the turn and the tint) and a preset's
+  notes. Presets in the config can carry their own notes as `details`, a list of lines. The swirl presets' notes are
+  what a long look at each showed: how it looks, how much it moves, and how readable the lyrics are.
+
+### Changed
+
+- The swirl presets are renamed and trimmed after a long look at each: `lyrics-sunamu-tinted` is now `lyrics-blurred`,
+  `lyrics-new-sunamu-tinted` is `lyrics-sharp`, the variations lose "sunamu" (`lyrics-soft`, `lyrics-offset`,
+  `lyrics-vivid`, `lyrics-bright`, `lyrics-duotone`), and the sharp looks turn at a constant speed instead of easing
+  to a near stop at the end of each turn. `lyrics-sunamu` stays as the reference.
+
+### Removed
+
+- `lyrics-new-sunamu` (`lyrics-sharp` is it, tinted) and `lyrics-sunamu-steady` (the pause it removed is mild on the
+  blurred looks).
+
 ## [3.10.0] - 2026-11-28
 
 ### Added

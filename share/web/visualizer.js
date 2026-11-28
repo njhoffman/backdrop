@@ -196,7 +196,7 @@ function bindCard(card) {
 
 // One card per preset (and none): its screenshot or a stand-in, name, and description or summary; the one in force is
 // pressed, and a click switches to another
-function presetCard({ name, description, summary, screenshot }, next) {
+function presetCard({ name, description, details = [], summary, animation = null, screenshot }, next) {
   const card = document.createElement('button');
   card.type = 'button';
   card.className = 'preset-card';
@@ -220,7 +220,9 @@ function presetCard({ name, description, summary, screenshot }, next) {
   text.className = 'muted small';
   text.textContent = description ?? summary ?? '';
   card.append(picture, title, text);
-  if (description && summary) card.title = summary;
+  // The rest on hover: the summary when the description shows, how its cover moves, and its notes
+  const more = [description ? summary : null, animation, ...details].filter(Boolean);
+  if (more.length) card.title = more.join('\n\n');
   return card;
 }
 

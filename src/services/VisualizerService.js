@@ -72,11 +72,13 @@ export class VisualizerService {
       wallpaper: state ? state.wallpaper !== false : null,
       preset: options.preset,
       // The screensaver's own look only while it is on (or still in force)
-      // Each with its description (or null), a summary made from its instances, and when its screenshot was taken
-      // (ms, or null: none yet), which /visualizer-shots/<name>.jpg serves
+      // Each with its description (or null), details (notes, maybe none), a summary made from its instances, how its
+      // moving cover is drawn (or null), and when its screenshot was taken (ms, or null: none yet), which
+      // /visualizer-shots/<name>.jpg serves
       presets: Object.keys(presetsOf(section)).filter(name => !this.reserved(state).includes(name) || name === options.preset).map(name => ({
         name, source: own[name] ? (BUILTIN_PRESETS[name] ? 'config, over the built-in one' : 'config') : 'built in',
-        description: details[name].description, summary: details[name].summary, screenshot: details[name].shot?.mtime ?? null
+        description: details[name].description, details: details[name].details, summary: details[name].summary,
+        animation: details[name].animation, screenshot: details[name].shot?.mtime ?? null
       })),
       // What no preset looks like: the section's own settings
       none: { summary: presetSummary(section, null) },
@@ -93,7 +95,7 @@ export class VisualizerService {
     };
   }
 
-  // Every preset's description (or null), summary and screenshot ({ path, mtime } or null), by name, for the menu
+  // Every preset's description (or null), details, summary, animation and screenshot ({ path, mtime } or null), by name, for the menu
   // and the page
   async presetDetails() {
     const dir = this.config.get().paths.thumbnails;
