@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-11-28
+
+### Added
+
+- Seven variations on the swirling backgrounds to try: `lyrics-sunamu-soft` (a lighter blur, soft shapes with edges,
+  between `lyrics-sunamu` and `lyrics-new-sunamu`), `lyrics-sunamu-steady` (turning at a constant speed, no pause at
+  the end of each turn), `lyrics-sunamu-offset` (the second copy half a turn behind, for stronger colors),
+  `lyrics-sunamu-vivid` (much richer colors, for pale covers), `lyrics-sunamu-bright` (the sharp copies brightened, busy),
+  `lyrics-sunamu-duotone` (the sharp copies tinted one fixed blue on every track) and `lyrics-swirl-slow`
+  (`lyrics-swirl` turning once a minute).
+
 ## [3.9.0] - 2026-11-28
 
 ### Added

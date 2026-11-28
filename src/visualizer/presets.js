@@ -37,16 +37,18 @@ function veil({ cycle = false } = {}) {
 // the layers' filter (no blur, brightness or saturation) and halves the whole background's opacity; tint multiplies
 // each copy with the cover's dark vibrant color, as Sunamu does with its --color-bg (sleeve 0.50.0's --swirl-tint; an
 // older sleeve takes the name and draws no tint)
-function sunamu({ sharp = false, tint = false } = {}) {
+// style lays further values over these, for the variations below
+function sunamu({ sharp = false, tint = false, style = {} } = {}) {
   const panel = nowPanel('full', 'center-left', 3, '40%x100%+0+0');
   return {
     lyrics_area: '60%x100%+40%+0', background: 'cover', cover: 'swirl', ...panel,
     style: {
       ...panel.style, '--art-animation': 'sleeve-art-swirl-css', '--swirl-size': '2', '--swirl-period': '60', '--swirl-delay': '10',
-      '--swirl-timing': 'ease-in-out', '--art-dim': '0', '--swirl-tint': tint ? 'cover' : 'none',
+      '--swirl-timing': 'ease-in-out', '--art-dim': '0', '--swirl-tint': tint === true ? 'cover' : tint || 'none',
       ...(sharp
         ? { '--swirl-blur': '0px', '--swirl-brightness': '1', '--art-saturation': '1', '--art-opacity': '0.5' }
-        : { '--swirl-blur': '180px', '--swirl-brightness': '0.5', '--art-saturation': '1.5', '--art-opacity': '1' })
+        : { '--swirl-blur': '180px', '--swirl-brightness': '0.5', '--art-saturation': '1.5', '--art-opacity': '1' }),
+      ...style
     }
   };
 }
@@ -208,6 +210,51 @@ const PRESETS = {
     description: 'lyrics-new-sunamu with each sharp turning copy tinted by the cover\'s dark vibrant color, as Sunamu does',
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: true }) }]
+  },
+  // Variations on Sunamu's background, tried live on 2026-11-28 (sleeve ctl display) to compare
+  'lyrics-sunamu-soft': {
+    description: 'Between lyrics-sunamu and lyrics-new-sunamu: a lighter blur, so the turning copies show soft shapes with edges',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({
+      style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' }
+    }) }]
+  },
+  'lyrics-sunamu-steady': {
+    description: 'lyrics-sunamu turning at a constant speed, with no pause at the end of each turn',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--swirl-timing': 'linear' } }) }]
+  },
+  'lyrics-sunamu-offset': {
+    description: 'lyrics-sunamu with the second copy half a turn behind, so the two blend at opposite angles for stronger colors',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--swirl-delay': '30' } }) }]
+  },
+  'lyrics-sunamu-bright': {
+    description: 'lyrics-new-sunamu brightened, so the sharp copies invert each other hard; busy, more for watching than reading',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, style: { '--swirl-brightness': '1.4' } }) }]
+  },
+  'lyrics-sunamu-vivid': {
+    description: 'lyrics-sunamu with the colors pushed much richer, for pale covers',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ style: { '--art-saturation': '2.5' } }) }]
+  },
+  'lyrics-sunamu-duotone': {
+    description: 'lyrics-new-sunamu tinted one fixed blue, a duotone that stays the same from track to track',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: '#4a6a9a' }) }]
+  },
+  // lyrics-swirl at Sunamu's pace, a turn a minute: calmer
+  'lyrics-swirl-slow': {
+    description: 'lyrics-swirl turning once a minute, as Sunamu does, for a calmer background',
+    wallpaper: false,
+    instances: [
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
+        lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3),
+        style: { ...nowPanel('minimal', 'top-center', 3).style, '--swirl-period': '60' }
+      } },
+      { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
+    ]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {

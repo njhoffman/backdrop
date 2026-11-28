@@ -1005,6 +1005,10 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
       3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
+- [ ] **Pick the swirl variations to keep.** (p3) [chore] 3.10.0 added seven to try (soft, steady, offset, vivid, bright,
+      duotone, swirl-slow). Keep the ones that earn it and drop the rest; if steady wins, make linear turns the default in
+      every swirl preset rather than a preset of its own. A saturation boost only for pale covers would beat a fixed vivid
+      preset (sleeve would measure the cover's colorfulness, as it does its detail).
 
 ## 11. Two machines
 

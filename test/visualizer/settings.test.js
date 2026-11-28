@@ -106,7 +106,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-now', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-sunamu-soft', 'lyrics-sunamu-steady', 'lyrics-sunamu-offset', 'lyrics-sunamu-bright', 'lyrics-sunamu-vivid', 'lyrics-sunamu-duotone', 'lyrics-swirl-slow', 'lyrics-now', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -114,7 +114,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-cover, lyrics-swirl, lyrics-sunamu, lyrics-new-sunamu, lyrics-sunamu-tinted, lyrics-new-sunamu-tinted, lyrics-now, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-cover, lyrics-swirl, lyrics-sunamu, lyrics-new-sunamu, lyrics-sunamu-tinted, lyrics-new-sunamu-tinted, lyrics-sunamu-soft, lyrics-sunamu-steady, lyrics-sunamu-offset, lyrics-sunamu-bright, lyrics-sunamu-vivid, lyrics-sunamu-duotone, lyrics-swirl-slow, lyrics-now, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -354,13 +354,13 @@ describe('visualizer settings', () => {
       };
 
       it('all run sleeve, solid, checking out', () => {
-        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-now']) {
+        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-sunamu-soft', 'lyrics-sunamu-steady', 'lyrics-sunamu-offset', 'lyrics-sunamu-bright', 'lyrics-sunamu-vivid', 'lyrics-sunamu-duotone', 'lyrics-swirl-slow', 'lyrics-now']) {
           expect(lyrics(name).sleeve, name).to.include({ engine: 'sleeve', opacity: 1 });
         }
       });
 
       it('put sleeve lowest when it covers the monitor, so the visualizers show above it', () => {
-        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-now']) {
+        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-sunamu-soft', 'lyrics-sunamu-steady', 'lyrics-sunamu-offset', 'lyrics-sunamu-bright', 'lyrics-sunamu-vivid', 'lyrics-sunamu-duotone', 'lyrics-swirl-slow', 'lyrics-now']) {
           const { instances, sleeve } = lyrics(name);
           expect(instances[0], name).to.equal(sleeve);
           expect(sleeve.layout.placement.anchor, name).to.equal('fill');
@@ -369,7 +369,7 @@ describe('visualizer settings', () => {
 
       it('take wallpaper colors only where the wallpaper shows through', () => {
         for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend']) expect(lyrics(name).sleeve.palette.source, name).to.equal('wallpaper');
-        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
+        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-swirl', 'lyrics-sunamu', 'lyrics-new-sunamu', 'lyrics-sunamu-tinted', 'lyrics-new-sunamu-tinted', 'lyrics-sunamu-soft', 'lyrics-sunamu-steady', 'lyrics-sunamu-offset', 'lyrics-sunamu-bright', 'lyrics-sunamu-vivid', 'lyrics-sunamu-duotone', 'lyrics-swirl-slow', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
       });
 
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
@@ -447,6 +447,21 @@ describe('visualizer settings', () => {
           expect(visualizerSettings({ preset: name }).wallpaper, name).to.equal(false);
           expect(lyrics(name).instances, name).to.have.length(1);
         }
+      });
+
+      // Each variation is its base look changed only where it says
+      it('vary Sunamu\'s background one setting at a time, and lyrics-swirl\'s pace', () => {
+        const style = name => lyrics(name).sleeve.sleeve.style;
+        const original = style('lyrics-sunamu');
+        const sharp = style('lyrics-new-sunamu');
+        expect(style('lyrics-sunamu-soft')).to.deep.equal({ ...original, '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' });
+        expect(style('lyrics-sunamu-steady')).to.deep.equal({ ...original, '--swirl-timing': 'linear' });
+        expect(style('lyrics-sunamu-offset')).to.deep.equal({ ...original, '--swirl-delay': '30' });
+        expect(style('lyrics-sunamu-vivid')).to.deep.equal({ ...original, '--art-saturation': '2.5' });
+        expect(style('lyrics-sunamu-bright')).to.deep.equal({ ...sharp, '--swirl-brightness': '1.4' });
+        expect(style('lyrics-sunamu-duotone')).to.deep.equal({ ...sharp, '--swirl-tint': '#4a6a9a' });
+        expect(style('lyrics-swirl-slow')).to.deep.equal({ ...style('lyrics-swirl'), '--swirl-period': '60' });
+        expect(lyrics('lyrics-swirl-slow').instances.map(item => item.name)).to.deep.equal(['lyrics', 'wave']);
       });
 
       it('give the screensaver the veil look with only its colors turning', () => {
