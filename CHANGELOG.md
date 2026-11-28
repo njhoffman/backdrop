@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.1] - 2026-11-28
+
+### Fixed
+
+- The automatic preset, following the wallpaper, knows what it is like as soon as it is turned on, rather than after
+  the next wallpaper loads.
+
 ## [3.14.0] - 2026-11-28
 
 ### Added

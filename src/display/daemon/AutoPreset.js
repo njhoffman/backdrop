@@ -178,6 +178,11 @@ export class AutoPreset {
   async decide() {
     const { daemon } = this;
     if (!this.running || daemon.stopping) return;
+    // Following the wallpaper with none sampled yet (just turned on, or the cover followed until now): sample what
+    // shows, once per item, rather than wait for the next load
+    if (this.prefer === 'wallpaper' && !this.wallpaper) {
+      for (const name of daemon.monitors.keys()) await daemon.sampleScreen(name);
+    }
     const moment = this.moment;
     if (this.held) {
       if (this.held.track === this.track && this.held.view === moment.view) return;

@@ -125,6 +125,18 @@ describe('AutoPreset', () => {
     expect(failure.message).to.equal('prefer must be cover, wallpaper or toggle, not both');
   });
 
+  it('samples the wallpaper when it follows one and none is sampled yet', async () => {
+    const { daemon } = fakeDaemon({ settings: { [AUTO_SETTING]: true } });
+    const sampled = [];
+    daemon.sampleScreen = async name => { sampled.push(name); daemon.samples.set(name, { mediaId: 1, sample: { pixels: GREY } }); };
+    const { preset } = auto(daemon);
+    preset.begin();
+    await preset.decide();
+    await preset.decide();
+    expect(sampled).to.deep.equal(['DP-1']);
+    expect(preset.summary().moment.image).to.deep.equal(['grayscale', 'mid']);
+  });
+
   it('stops following when turned off, keeping the preset showing', async () => {
     const { daemon, stored } = fakeDaemon({ settings: { [AUTO_SETTING]: true } });
     const { preset } = auto(daemon);
