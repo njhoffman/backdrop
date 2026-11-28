@@ -559,6 +559,13 @@ Reviewed: 2026-11-27
 
 ## 8. CLI experience and packaging
 
+- [ ] **Man page tests time out on a busy machine** (p3) [test]
+  "share/man has the current page 1/5 (npm run man writes it)" fail with mocha's 2000 ms timeout at
+  load 34 (2026-11-27, other suites running): they render the pages, which takes longer than that
+  under load. Every other test that timed out in that run (CLI registration, CompletionCommand,
+  the rofi menus) passed when rerun alone. Give these two a longer timeout (`this.timeout()`), as
+  the CLI tests have.
+
 - [ ] **The man page tests time out under load.** (p3) [test] Each spawns `node src/index.js man N` (about 1.7 s alone),
       close to mocha's 2 s default, and both timed out in two full runs in a row on 2026-11-27 while passing on their own.
       `test/utils/manpage.test.js`: give the two `share/man has the current page` tests `this.timeout(10000)`, or

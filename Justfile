@@ -35,6 +35,10 @@ install-check:
     [[ $(readlink -f "{{ bindir }}/backdrop") == "$(pwd -P)/src/index.js" ]]
     [[ -d node_modules ]]
 
+# ~/.shell's test-progress runs npm test with mocha's TAP reporter, shows the run live and keeps
+# it (~/.local/state/test-progress); without it, plain npm test
+tpnpm := if path_exists(env_var("HOME") / ".shell/scripts/test-progress") == "true" { env_var("HOME") / ".shell/scripts/test-progress -C " + quote(justfile_directory()) } else { "npm test" }
+
 # the test suite
 test:
-    npm test
+    {{ tpnpm }}
