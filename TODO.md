@@ -5,7 +5,7 @@ manager that displays everything through mpv IPC sockets. Section 1 covers bugs 
 surveying the current code; the remaining sections are the planned redesign, roughly in
 dependency order.
 
-Reviewed: 2026-11-20
+Reviewed: 2026-11-27
 
 ## 3. Display engine on mpv sockets
 
@@ -955,54 +955,6 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       Done (v3.2.0): `sleeve.cover` names a whole look (blurred, flow, swirl, sharp) with `style` laid over it; the
       menu's `b` and the web page's Cover pick it live, only where the background is the cover.
 
-## 10. Web interface
-
-A local HTML interface for what the CLI and the rofi menu do now: the library, what each monitor plays, visualizer
-presets and the config. It talks to the running daemon the way the CLI does (`DisplayControl`, control requests,
-`ConfigManager.setInFile`), so it adds a front end rather than a second control path.
-
-- [x] **Design the web interface.** (p2) [docs] Write `docs/specs/web.md` before any code: a `backdrop web` command serving on 127.0.0.1 only, the server (`node:http` with no framework, or a small one such as fastify),
-      the front end (plain HTML with a little vanilla JS or htmx, versus a bundled SPA, which the project has no build step for), live updates (server-sent events from `state.json` changes), and
-      authentication (a random token in the URL or a cookie, since any local program can reach a localhost port). List which commands it covers in its first version.
-      Done: `docs/specs/web.md`. Its own `backdrop web` process on `node:http`, vanilla JS with no build, server-sent events, a token with Host and Origin checks, port 7737 with a free-port fallback; no autostart, video previews or `remove` in the first version.
-- [x] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
-      parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
-      Done: `RatingService` and `DisplayService`; the commands print their results and the menu calls them directly. The existing tests passed unchanged, plus service tests of the returned data.
-- [x] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
-      Done (2.82.0): `done` passes `warnings` on and `attempt` notifies them, and those of `error.done` on a failure after the rating.
-- [x] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
-      speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
-      Done: `backdrop web` (2.54.0), with live updates; seen working against the daemon on 2026-11-07. Not yet: next's filters from the page, which come with the library browser.
-- [x] **The durations' Reset also drops next's filters.** (p3) [feature] `POST /api/durations { clear: true }` is `next --clear`, the only way `nextFilters.js` drops stored durations, so it clears `--query`/`--tag` too.
-      Add a way to drop only the durations (`resolveNextFilters` with a `clearDurations` option), and use it from the page.
-      Done (2.60.0): `resolveNextFilters` takes `clearDurations`, and the page's Reset sends `{ reset: true }`; `{ clear: true }` still does what `next --clear` does.
-- [x] **`status` and `doctor` do not know about `backdrop web`.** (p3) [feature] `web.json` records the running server, as the spec intends for them; `status` could print its address (without the token unless asked) and `doctor` find a stale `web.json` whose process is gone.
-      Done (2.59.0): `status` shows the address without the token, and `status --json` has `web`; `doctor` is left alone, since a stale `web.json` is ignored and replaced by the next `backdrop web` (`src/web/info.js`).
-- [x] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,
-      rating and per-item speed/dim/bounce, and "play next" (`queueMatching`). Thumbnails for items never played need making on demand (`thumbnailFor`), which is slow for a large page: page it.
-      Done (2.55.0): the Library page, 48 items a page, thumbnails made two at a time as they come into view, a dialog to rate, adjust and play an item on a monitor, and "play next matching" with the page's filters.
-- [x] **The library sorts only by id and size.** (p3) [feature] `LibraryService.list` sorts newest, oldest or largest in JavaScript after `findMedia`; sorting by rating, playback cost or last played needs those in the query (`findMedia` has no ORDER BY options or OFFSET), which also stops loading every match for each page once the library grows past a few thousand items.
-      Done (2.60.0): `findMedia` takes `order` (`MEDIA_ORDERS`: newest, oldest, largest, rating, played, cost) and `offset`, and `countMedia` counts, so a page reads only its rows; the page offers the new orders.
-- [x] **Visualizer presets editor.** (p2) [feature] The built-in and config presets (`src/visualizer/presets.js`, `presetsOf`), each instance's look with live changes (`visualizer_set` control requests),
-      reset, and save as a preset (`ConfigManager.setInFile`, which keeps comments), covering what the visualizer menu does plus the settings it has no room for.
-      Done (2.56.0): the Visualizer page, on `VisualizerService`, which the menu now shares: on/off, preset, reset, save as preset (409 and a confirm for an existing name), and per instance module or sleeve's now/panel/lyrics, amplify, opacity, position and colors with color pickers and swatches.
-- [x] **Presets cannot be deleted or renamed.** (p3) [feature] Neither the menu nor the Visualizer page can drop a saved preset; it takes an edit of the file. `ConfigManager.removeInFile` (2.58.0) can now remove the key: add a delete on the page and the menu (with a confirm, refusing the active preset or a built-in one).
-      Done for deleting (2.60.0): `VisualizerService.deletePreset` (refusing built-in presets and the one in use), a Delete on the page and `x` in the menu's preset list. Renaming is still a save under the new name and a delete.
-- [x] **The Visualizer page edits only the menu's settings.** (p3) [feature] Settings such as `placement.size`/`margin`, `palette.min_contrast`, the radial and circle shapes or sleeve's `veil` have no control yet; a generic field per instance key (from `INSTANCE_KEYS` and each module's options) would cover them without a hand-made control each.
-      Done (2.60.0): each instance has an Advanced box taking any change as YAML, checked like the controls (`changeYaml`), with its settings now shown beside it.
-- [x] **Config editor.** (p3) [feature] Forms for the display, library, load and screensaver sections, checked with `validateConfig` (`src/config/schema.js`) before `setInFile` writes them; the daemon's config watch applies them,
-      and settings that need a restart (`LIVE_SETTINGS` in `daemon/ConfigChanges.js`) are marked as such.
-      Done (2.58.0): the Config page on `ConfigService`, every setting but the visualizer's with its control from the checks' info, default, "set in the file" and when it applies; saved together, checked with the whole config; Reset removes the key (`removeInFile`); the API key is write-only.
-- [x] **The Config page edits only the settings the checks know.** (p3) [feature] `screensaver.streams` (a list of mappings) shows read-only, and sources other than Pexels or keys the checks lack are not listed. A YAML field for such values, checked by parsing, would cover them.
-      Done for lists of mappings (2.60.0): `screensaver.streams` is edited as YAML, parsed by the server. Sources other than Pexels are still not listed; none has an adapter yet.
-- [x] **Stats and status pages.** (p3) [feature] What `status`, `stats` and `doctor` print: playback cost by kind and decoder, load level, screensaver, and the bounce cache once it reports its size.
-      Done (2.59.0): the Status page, from `StatsService` (which also gives `stats --json`), `DoctorCommand.check()` on request, and the snapshot's daemon, load and screensaver state.
-- [x] **Run it as a service.** (p3) [chore] A `systemd` user unit for `backdrop web` (`SystemdCommand`), or the daemon serving it itself behind a config switch; decide in the design.
-      Done (2.59.0): `backdrop systemd --web` prints `backdrop-web.service`; `backdrop web --open` opens the running server's page.
-- [x] **Tests for the web interface.** (p3) [test] Request handlers driven with the fakes the command tests use (`test/helpers/fakes.js`), so routine runs stay offline, and one optional browser test skipped
-      when no headless browser is installed, like the rofi and Xvfb integration tests.
-      Done: route tests (`test/web/server.test.js`) and `test/web/pages.browser.test.js`, every page in headless Chrome through `playwright-core` (2.60.0), skipped without a browser.
-
 ## 11. Two machines
 
 minerva (the always-on desktop, NVIDIA) is the source of truth; charon (the laptop) offloads encodes to it and syncs
@@ -1176,3 +1128,47 @@ ratings with it. Media is not synced: either machine can fetch and encode again.
 - [x] **Upgrade downloads for larger monitors.** (p3) [feature] Downloads are sized for the largest monitor at download time and never refetched, so a later, larger monitor skips them.
       Add e.g. `backdrop download --upgrade`: for kept remote items below the current target, pick a larger stored variant, replace the file atomically and keep ratings, speed and history. Local imports cannot be upgraded.
       Done: `download --upgrade` sets the old file aside until the database commits, and refreshes playlists afterwards.
+
+### 10. Web interface (completed 2026-11-27)
+
+- [x] **Design the web interface.** (p2) [docs] Write `docs/specs/web.md` before any code: a `backdrop web` command serving on 127.0.0.1 only, the server (`node:http` with no framework, or a small one such as fastify),
+      the front end (plain HTML with a little vanilla JS or htmx, versus a bundled SPA, which the project has no build step for), live updates (server-sent events from `state.json` changes), and
+      authentication (a random token in the URL or a cookie, since any local program can reach a localhost port). List which commands it covers in its first version.
+      Done: `docs/specs/web.md`. Its own `backdrop web` process on `node:http`, vanilla JS with no build, server-sent events, a token with Host and Origin checks, port 7737 with a free-port fallback; no autostart, video previews or `remove` in the first version.
+- [x] **Move command logic into services.** (p2) [refactor] The first step of the web interface (`docs/specs/web.md`, D6): rating (rate, skip, undo, advance) and display (playing item, mode, durations,
+      parts on and off) move into `src/services/`, returning data; `RatingCommand`, `DisplayCommand` and `MenuCommand` call them and print. No behavior change: the existing tests pass unchanged.
+      Done: `RatingService` and `DisplayService`; the commands print their results and the menu calls them directly. The existing tests passed unchanged, plus service tests of the returned data.
+- [x] **The menu drops playlist warnings.** (p3) [bug] A rating from the menu whose playlist update fails returns the warning (`RatingService` `warnings`), which the menu discards, as it discarded the printed one before. Show it with `notifyError`, as the menu does for errors (`MenuCommand.attempt`).
+      Done (2.82.0): `done` passes `warnings` on and `attempt` notifies them, and those of `error.done` on a failure after the rating.
+- [x] **Now playing and monitor controls.** (p2) [feature] Per monitor: the playing item with its thumbnail (`paths.thumbnails`), next/prev, mode, wallpaper and visualizer on/off, keep 1-3/skip/undo,
+      speed, dim and bounce, and the image and video durations, through `DisplayControl` and `RatingCommand` as the menu does (`src/commands/MenuCommand.js`).
+      Done: `backdrop web` (2.54.0), with live updates; seen working against the daemon on 2026-11-07. Not yet: next's filters from the page, which come with the library browser.
+- [x] **The durations' Reset also drops next's filters.** (p3) [feature] `POST /api/durations { clear: true }` is `next --clear`, the only way `nextFilters.js` drops stored durations, so it clears `--query`/`--tag` too.
+      Add a way to drop only the durations (`resolveNextFilters` with a `clearDurations` option), and use it from the page.
+      Done (2.60.0): `resolveNextFilters` takes `clearDurations`, and the page's Reset sends `{ reset: true }`; `{ clear: true }` still does what `next --clear` does.
+- [x] **`status` and `doctor` do not know about `backdrop web`.** (p3) [feature] `web.json` records the running server, as the spec intends for them; `status` could print its address (without the token unless asked) and `doctor` find a stale `web.json` whose process is gone.
+      Done (2.59.0): `status` shows the address without the token, and `status --json` has `web`; `doctor` is left alone, since a stale `web.json` is ignored and replaced by the next `backdrop web` (`src/web/info.js`).
+- [x] **Library browser.** (p2) [feature] A grid of thumbnails with the list commands' filters (kind, status, rating, `--query`/`--tag`/`--keywords` through `src/library/match.js`), each item's details as in `docs/specs/json.md`,
+      rating and per-item speed/dim/bounce, and "play next" (`queueMatching`). Thumbnails for items never played need making on demand (`thumbnailFor`), which is slow for a large page: page it.
+      Done (2.55.0): the Library page, 48 items a page, thumbnails made two at a time as they come into view, a dialog to rate, adjust and play an item on a monitor, and "play next matching" with the page's filters.
+- [x] **The library sorts only by id and size.** (p3) [feature] `LibraryService.list` sorts newest, oldest or largest in JavaScript after `findMedia`; sorting by rating, playback cost or last played needs those in the query (`findMedia` has no ORDER BY options or OFFSET), which also stops loading every match for each page once the library grows past a few thousand items.
+      Done (2.60.0): `findMedia` takes `order` (`MEDIA_ORDERS`: newest, oldest, largest, rating, played, cost) and `offset`, and `countMedia` counts, so a page reads only its rows; the page offers the new orders.
+- [x] **Visualizer presets editor.** (p2) [feature] The built-in and config presets (`src/visualizer/presets.js`, `presetsOf`), each instance's look with live changes (`visualizer_set` control requests),
+      reset, and save as a preset (`ConfigManager.setInFile`, which keeps comments), covering what the visualizer menu does plus the settings it has no room for.
+      Done (2.56.0): the Visualizer page, on `VisualizerService`, which the menu now shares: on/off, preset, reset, save as preset (409 and a confirm for an existing name), and per instance module or sleeve's now/panel/lyrics, amplify, opacity, position and colors with color pickers and swatches.
+- [x] **Presets cannot be deleted or renamed.** (p3) [feature] Neither the menu nor the Visualizer page can drop a saved preset; it takes an edit of the file. `ConfigManager.removeInFile` (2.58.0) can now remove the key: add a delete on the page and the menu (with a confirm, refusing the active preset or a built-in one).
+      Done for deleting (2.60.0): `VisualizerService.deletePreset` (refusing built-in presets and the one in use), a Delete on the page and `x` in the menu's preset list. Renaming is still a save under the new name and a delete.
+- [x] **The Visualizer page edits only the menu's settings.** (p3) [feature] Settings such as `placement.size`/`margin`, `palette.min_contrast`, the radial and circle shapes or sleeve's `veil` have no control yet; a generic field per instance key (from `INSTANCE_KEYS` and each module's options) would cover them without a hand-made control each.
+      Done (2.60.0): each instance has an Advanced box taking any change as YAML, checked like the controls (`changeYaml`), with its settings now shown beside it.
+- [x] **Config editor.** (p3) [feature] Forms for the display, library, load and screensaver sections, checked with `validateConfig` (`src/config/schema.js`) before `setInFile` writes them; the daemon's config watch applies them,
+      and settings that need a restart (`LIVE_SETTINGS` in `daemon/ConfigChanges.js`) are marked as such.
+      Done (2.58.0): the Config page on `ConfigService`, every setting but the visualizer's with its control from the checks' info, default, "set in the file" and when it applies; saved together, checked with the whole config; Reset removes the key (`removeInFile`); the API key is write-only.
+- [x] **The Config page edits only the settings the checks know.** (p3) [feature] `screensaver.streams` (a list of mappings) shows read-only, and sources other than Pexels or keys the checks lack are not listed. A YAML field for such values, checked by parsing, would cover them.
+      Done for lists of mappings (2.60.0): `screensaver.streams` is edited as YAML, parsed by the server. Sources other than Pexels are still not listed; none has an adapter yet.
+- [x] **Stats and status pages.** (p3) [feature] What `status`, `stats` and `doctor` print: playback cost by kind and decoder, load level, screensaver, and the bounce cache once it reports its size.
+      Done (2.59.0): the Status page, from `StatsService` (which also gives `stats --json`), `DoctorCommand.check()` on request, and the snapshot's daemon, load and screensaver state.
+- [x] **Run it as a service.** (p3) [chore] A `systemd` user unit for `backdrop web` (`SystemdCommand`), or the daemon serving it itself behind a config switch; decide in the design.
+      Done (2.59.0): `backdrop systemd --web` prints `backdrop-web.service`; `backdrop web --open` opens the running server's page.
+- [x] **Tests for the web interface.** (p3) [test] Request handlers driven with the fakes the command tests use (`test/helpers/fakes.js`), so routine runs stay offline, and one optional browser test skipped
+      when no headless browser is installed, like the rofi and Xvfb integration tests.
+      Done: route tests (`test/web/server.test.js`) and `test/web/pages.browser.test.js`, every page in headless Chrome through `playwright-core` (2.60.0), skipped without a browser.
