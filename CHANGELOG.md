@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.2] - 2026-11-28
+
+### Changed
+
+- Every lyrics preset's notes (the menu's `i`, the web page's cards) now hold what was learned about it: how its panel
+  was placed, what the swirl costs, and for the tinted looks how the tint behaves. With sleeve 0.52.0 the tinted looks
+  no longer go black on dark covers: the tint keeps the cover accent's hue at full strength. With sleeve 0.52.1 the
+  text stays readable over a strongly tinted cover.
+
 ## [3.13.1] - 2026-11-28
 
 ### Changed

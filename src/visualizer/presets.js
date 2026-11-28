@@ -37,8 +37,8 @@ function veil({ cycle = false } = {}) {
 // the layers' filter (no blur, brightness or saturation), halves the whole background's opacity and turns the copies at
 // a constant speed, since sharp copies easing to a near stop at each turn's end read as a stall (seen over 80 s,
 // 2026-11-28); tint multiplies
-// each copy with the cover's dark vibrant color, as Sunamu does with its --color-bg (sleeve 0.50.0's --swirl-tint; an
-// older sleeve takes the name and draws no tint)
+// each copy with the hue of the cover's dark vibrant at full strength (sleeve 0.50.0's --swirl-tint, at full strength
+// since 0.52.0; an older sleeve takes the name and draws no tint)
 // style lays further values over these, for the variations below
 function sunamu({ sharp = false, tint = false, style = {} } = {}) {
   const panel = nowPanel('full', 'center-left', 3, '40%x100%+0+0');
@@ -91,6 +91,9 @@ const PRESETS = {
   // Over the wallpaper, the text colored from what is behind it. Lyrics above bars along the bottom
   lyrics: {
     description: 'Synced lyrics in the middle under a line naming the song, colored from the wallpaper, above bars along the bottom',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): a line naming the song above the lyrics band at --now-scale 3; at 2 it was too small beside the lyrics.'
+    ],
     instances: [
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } },
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '100%', height: '60%' }, sleeve: nowPanel('minimal', 'top-center', 3) }
@@ -99,11 +102,17 @@ const PRESETS = {
   // Only lyrics, with the wallpaper clear around them
   'lyrics-only': {
     description: 'Synced lyrics over a now-playing card, with the wallpaper clear around them',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): the now-playing card at the foot of the lyrics box at scale 2, clear of the lyrics.'
+    ],
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'center', width: '70%', height: '70%' }, sleeve: nowPanel('full', 'bottom-center', 2) }]
   },
   // Lyrics down the left third, bars along the bottom of the rest
   'lyrics-side': {
     description: 'Lyrics down the left third over a now-playing card, bars along the bottom of the rest',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): the card at the bottom of the left third at scale 2, the lyrics above it.'
+    ],
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'left', width: '33%', height: '100%' }, sleeve: nowPanel('full', 'bottom-left', 2) },
       { name: 'bars', module: 'bars', rect: SIDE_RECTS.bars }
@@ -112,11 +121,17 @@ const PRESETS = {
   // The wallpaper darkened under a see-through layer tinted from it, solid lyrics on it, a ring beside them with bars below it
   'lyrics-veil': {
     description: 'The wallpaper darkened under a tinted veil, a now-playing strip over lyrics on the left, a ring and bars beside them',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): the card in a strip 18% tall above the lyrics at scale 1.8; in the 11% strip it had been tiny. The screensaver\'s veil looks share it.'
+    ],
     instances: veil()
   },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
   'lyrics-blend': {
     description: 'The track\'s cover blended over the wallpaper, a line naming the song above lyrics in the middle, bars along the bottom',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): a line naming the song at the top at scale 3.'
+    ],
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6', ...nowPanel('minimal', 'top-center', 3) } },
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
@@ -156,6 +171,9 @@ const PRESETS = {
   // sleeve as the whole background, with its cover hiding the wallpaper: lyrics on the left, a ring and bars on the right
   'lyrics-stage': {
     description: 'The track\'s cover, sharp, as the whole background, lyrics over a now-playing card on the left, a ring and bars on the right',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): the card at the foot of the lyrics column at scale 2, over the sharp cover.'
+    ],
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '33%x100%+0+0', background: 'cover', cover: 'sharp', ...nowPanel('full', 'bottom-left', 2, '33%x100%+0+0') } },
@@ -167,6 +185,9 @@ const PRESETS = {
   // picked (the user's own until one is), since style lays over the cover's variables
   'lyrics-cover': {
     description: 'The whole track\'s cover, sharp, with the song named under it, beside lyrics on the left, over its colors as the background',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): a caption under the whole cover at scale 3, not a card, which would show the cover twice; long titles wrap to two lines.'
+    ],
     wallpaper: false,
     instances: [
       // No card: the cover already stands beside the lyrics, so only its caption
@@ -181,7 +202,9 @@ const PRESETS = {
     description: 'Two copies of the track\'s cover turning and blending as the whole background, a line naming the song above lyrics in the middle, a wave along the bottom',
     details: [
       'Seen over 80 s on 1440p, 2026-11-28: lively patches of the cover\'s colors, best on colorful covers; 8 to 12% changed every 5 s. Lyrics: fair, as they can sit over pale parts of the cover.',
-      'Second look, 100 s, no skipping, 2026-11-28: on a grey cover with an orange star, its shapes drift steadily and stay recognizable; 9 to 14% changed every 5 s, brightness 0.26.'
+      'Second look, 100 s, no skipping, 2026-11-28: on a grey cover with an orange star, its shapes drift steadily and stay recognizable; 9 to 14% changed every 5 s, brightness 0.26.',
+      'Cost on minerva (GTX 960, 2026-11-28): sleeve\'s processes took 60 to 78% of a core for the CSS swirl and the shader swirl alike, the GPU about 70%; the CSS port\'s 180px blur costs no more here, despite sleeve\'s note that it costs far more.',
+      'The swirl look\'s own sizes (layers 1.2x, the cover at 160 px with blur 2, a turn in 35 s) came from a live trial on 2026-11-27: Sunamu\'s (2x, 64 px blurred 6, a minute) left a pale cover a still, even wash.'
     ],
     wallpaper: false,
     instances: [
@@ -193,7 +216,8 @@ const PRESETS = {
   'lyrics-blurred-swirl-tinted': {
     description: 'lyrics-blurred-swirl tinted by the cover\'s dark accent, as Sunamu tints its copies',
     details: [
-      'Second look, 100 s, no skipping, 2026-11-28: deep red fields from the cover\'s accent with the lyrics clear on them; 6 to 12% changed every 5 s; dark (brightness 0.08) but rich (color 0.84). One of the best.'
+      'Second look, 100 s, no skipping, 2026-11-28: deep red fields from the cover\'s accent with the lyrics clear on them; 6 to 12% changed every 5 s; dark (brightness 0.08) but rich (color 0.84). One of the best.',
+      'Tint since sleeve 0.52.0: the hue of the cover\'s dark vibrant at full strength. On a dark cover that went black before (Indigo Road), the simulated brightness rose from 0.01 to 0.15; a light cover\'s whites take the tint\'s color (Channo, Blue: deep blue). Partial strength was tried and washed the blurred looks out and muddied the sharp ones, whose exclusion turns a blue tint green and a lighter one olive. sleeve 0.52.1 sets the text\'s colors against the tinted cover.'
     ],
     wallpaper: false,
     instances: [
@@ -231,7 +255,8 @@ const PRESETS = {
     details: [
       'The reference: Sunamu\'s own background, untinted, which the other Sunamu looks vary.',
       'Seen over 80 s on 1440p, 2026-11-28: an even, slowly drifting wash, dull grey on most covers; 6 to 9% of it changed every 5 s. Lyrics: very good.',
-      'Second look, 100 s, no skipping, 2026-11-28: a flat grey wash on a grey cover; the change pulses every 50 s (4 to 18%) as the two eased turns line up.'
+      'Second look, 100 s, no skipping, 2026-11-28: a flat grey wash on a grey cover; the change pulses every 50 s (4 to 18%) as the two eased turns line up.',
+      'Cost on minerva (GTX 960, 2026-11-28): sleeve\'s processes took 60 to 78% of a core for the CSS swirl and the shader swirl alike, the GPU about 70%; the CSS port\'s 180px blur costs no more here, despite sleeve\'s note that it costs far more.'
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu() }]
@@ -241,7 +266,8 @@ const PRESETS = {
     description: 'Sunamu\'s background tinted as Sunamu tints it: two blurred copies of the cover turning in one rich tone of its dark accent',
     details: [
       'Seen over 80 s on 1440p, 2026-11-28: one rich tone of the cover fills the screen (amber, deep blue), soft and slowly shifting; 3 to 8% changed every 5 s. Lyrics: very good. A top pick.',
-      'Second look, 100 s, no skipping, 2026-11-28: nearly black on a dark, grey cover (brightness 0.02, 1% change): the cover\'s dark accent times half brightness leaves almost nothing. Fine on colorful covers, unusable on dark ones.'
+      'Second look, 100 s, no skipping, 2026-11-28: nearly black on a dark, grey cover (brightness 0.02, 1% change): the cover\'s dark accent times half brightness leaves almost nothing. Fine on colorful covers, unusable on dark ones.',
+      'Tint since sleeve 0.52.0: the hue of the cover\'s dark vibrant at full strength. On a dark cover that went black before (Indigo Road), the simulated brightness rose from 0.01 to 0.15; a light cover\'s whites take the tint\'s color (Channo, Blue: deep blue). Partial strength was tried and washed the blurred looks out and muddied the sharp ones, whose exclusion turns a blue tint green and a lighter one olive. sleeve 0.52.1 sets the text\'s colors against the tinted cover.'
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ tint: true }) }]
@@ -261,7 +287,8 @@ const PRESETS = {
   'lyrics-blurred-soft-tinted': {
     description: 'lyrics-blurred-soft tinted by the cover\'s dark accent: soft shapes with edges in one rich tone',
     details: [
-      'Second look, 100 s, no skipping, 2026-11-28: deep blue (and red) fields with soft shapes, the lyrics clear; 4 to 10% changed every 5 s; brightness 0.13, color 0.38. One of the best.'
+      'Second look, 100 s, no skipping, 2026-11-28: deep blue (and red) fields with soft shapes, the lyrics clear; 4 to 10% changed every 5 s; brightness 0.13, color 0.38. One of the best.',
+      'Tint since sleeve 0.52.0: the hue of the cover\'s dark vibrant at full strength. On a dark cover that went black before (Indigo Road), the simulated brightness rose from 0.01 to 0.15; a light cover\'s whites take the tint\'s color (Channo, Blue: deep blue). Partial strength was tried and washed the blurred looks out and muddied the sharp ones, whose exclusion turns a blue tint green and a lighter one olive. sleeve 0.52.1 sets the text\'s colors against the tinted cover.'
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({
@@ -294,7 +321,8 @@ const PRESETS = {
     details: [
       'Seen over 80 s on 1440p, 2026-11-28: deep fields of the cover\'s accent with faint sharp shapes; 6 to 10% changed every 5 s (turning eased then, constant since). Lyrics: good. A top pick.',
       'Untinted, the same copies were striking on bright covers and nearly black on dark ones.',
-      'Second look, 100 s, no skipping, 2026-11-28: moody teal fields with the cover\'s sharp pattern, an even 3 to 4% every 5 s with no pauses since the turns went linear; brightness 0.10. Good.'
+      'Second look, 100 s, no skipping, 2026-11-28: moody teal fields with the cover\'s sharp pattern, an even 3 to 4% every 5 s with no pauses since the turns went linear; brightness 0.10. Good.',
+      'Tint since sleeve 0.52.0: the hue of the cover\'s dark vibrant at full strength. On a dark cover that went black before (Indigo Road), the simulated brightness rose from 0.01 to 0.15; a light cover\'s whites take the tint\'s color (Channo, Blue: deep blue). Partial strength was tried and washed the blurred looks out and muddied the sharp ones, whose exclusion turns a blue tint green and a lighter one olive. sleeve 0.52.1 sets the text\'s colors against the tinted cover.'
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: true }) }]
@@ -312,7 +340,8 @@ const PRESETS = {
   'lyrics-sharp-bright-tinted': {
     description: 'lyrics-sharp-bright tinted by the cover\'s dark accent, calming its hard inversions toward one tone',
     details: [
-      'Second look, 100 s, no skipping, 2026-11-28: the tint calms lyrics-sharp-bright to an even 6 to 11% every 5 s, dark grey on a black and white cover; the lyrics stay readable.'
+      'Second look, 100 s, no skipping, 2026-11-28: the tint calms lyrics-sharp-bright to an even 6 to 11% every 5 s, dark grey on a black and white cover; the lyrics stay readable.',
+      'Tint since sleeve 0.52.0: the hue of the cover\'s dark vibrant at full strength. On a dark cover that went black before (Indigo Road), the simulated brightness rose from 0.01 to 0.15; a light cover\'s whites take the tint\'s color (Channo, Blue: deep blue). Partial strength was tried and washed the blurred looks out and muddied the sharp ones, whose exclusion turns a blue tint green and a lighter one olive. sleeve 0.52.1 sets the text\'s colors against the tinted cover.'
     ],
     wallpaper: false,
     instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true, tint: true, style: { '--swirl-brightness': '1.4' } }) }]
@@ -329,6 +358,9 @@ const PRESETS = {
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {
     description: 'The track\'s cover as the whole background, a large now-playing card on the left, lyrics on the right, a wave along the bottom',
+    details: [
+      'Panel tuned by screenshot on 1440p (2026-11-28): the card\'s area widened to 40% at scale 3, since sleeve caps a card to its area and past about 2.2 only the text grew; it was the size of the other cards, so lyrics-now looked like the rest.'
+    ],
     wallpaper: false,
     instances: [
       // The card as the centrepiece, filling most of its third
