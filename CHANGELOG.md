@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.2] - 2026-11-28
+
+### Changed
+
+- The sleeve spec (`docs/specs/sleeve.md`) lists sleeve 0.53.0's now-playing layouts, `card` and `strip`, and its
+  `center` position, for `--now` and `--now-position`.
+
 ## [3.14.1] - 2026-11-28
 
 ### Fixed

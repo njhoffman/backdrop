@@ -11,7 +11,7 @@ stacks it. Use one or the other: an instance with this engine, or sleeve's own o
 
 ```sh
 sleeve shell --managed --geometry 2560x800+0+320 --title backdrop-visualizer-DP-3-lyrics --instance DP-3-lyrics \
-  [--now lyrics|minimal|full] [--now-position PLACE] [--lyrics-align left|center|right]
+  [--now lyrics|minimal|full|card|strip] [--now-position PLACE] [--lyrics-align left|center|right]
 ```
 
 | Option | Meaning |
@@ -20,8 +20,8 @@ sleeve shell --managed --geometry 2560x800+0+320 --title backdrop-visualizer-DP-
 | `--geometry` | required; the X form `WxH+X+Y`, absolute |
 | `--title` | the window's title, exactly and for good, to find it by (`xdotool search --name`) |
 | `--instance` | the name `sleeve ctl display --instance` knows this window by; use the backdrop instance's name with its monitor, unique across monitors |
-| `--now` | what shows besides the lyrics: `lyrics` (default here: nothing else), `minimal` (a line with artist and title), `full` (cover, title, artist, album, seek bar, times) |
-| `--now-position` | where that panel stands: `top-left` (default), `top-center`, `top-right`, `center-left`, `center-right`, `bottom-left`, `bottom-center`, `bottom-right`; the lyrics keep clear of it |
+| `--now` | what shows besides the lyrics: `lyrics` (default here: nothing else), `minimal` (a line with artist and title), `full` (cover, title, artist, album, seek bar, times); since 0.53.0 `card` (a large cover, the text and seek bar beneath it) and `strip` (title, artist, seek bar and times on one line across the area, along its top edge for a `top-*` position, else its bottom), all sized by `--now-scale` |
+| `--now-position` | where that panel stands: `top-left` (default), `top-center`, `top-right`, `center-left`, `center` (since 0.53.0), `center-right`, `bottom-left`, `bottom-center`, `bottom-right`; the lyrics keep clear of it, except in the `center`, where `--now-area` and `--lyrics-area` keep them apart |
 | `--lyrics-align` | the lyrics' alignment; `left` by default |
 | `--lyrics-area`, `--now-area` | since 0.34.0: where each goes inside the window; see The wallpaper layer |
 | `--background` | since 0.35.0: what fills the window; see The wallpaper layer |
