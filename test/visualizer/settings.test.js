@@ -321,6 +321,9 @@ describe('visualizer settings', () => {
     it('rejects sleeve settings that make no sense, naming the key', () => {
       expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { now: 'huge' } })).to.throw('visualizer.sleeve.now must be');
       expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { now_position: 'middle' } })).to.throw('visualizer.sleeve.now_position must be');
+      // sleeve 0.53.0's card and strip layouts, and its center position
+      expect(visualizerSettings({ engine: 'sleeve', sleeve: { now: 'card', now_position: 'center' } }).instances[0].sleeve).to.include({ now: 'card', nowPosition: 'center' });
+      expect(visualizerSettings({ engine: 'sleeve', sleeve: { now: 'strip' } }).instances[0].sleeve.now).to.equal('strip');
       expect(() => visualizerSettings({ engine: 'sleeve', sleeve: { color: 'red' } })).to.throw('visualizer.sleeve');
     });
 

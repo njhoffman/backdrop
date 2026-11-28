@@ -7,8 +7,8 @@ import { ruleProblem } from './autoRules.js';
 // them and `backdrop visualizer reload` prints them.
 
 export const ENGINES = ['glava', 'sleeve', 'projectm'];
-export const SLEEVE_NOW = ['lyrics', 'minimal', 'full'];
-export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+export const SLEEVE_NOW = ['lyrics', 'minimal', 'full', 'card', 'strip'];
+export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
 export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
 // The stylesheet variables sleeve (0.46.0) takes from `--style`, by its own rules (docs/specs/sleeve.md, Style): the
 // cover and its animation, the scrim behind the lyrics, the now-playing panel's size and margin (0.49.0), all but the two it works out itself; values that cannot

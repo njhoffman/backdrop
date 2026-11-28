@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.3] - 2026-11-28
+
+### Fixed
+
+- The visualizer's sleeve settings, the menu's `now` and `panel` pickers and live changes accept sleeve 0.53.0's
+  now-playing layouts `card` and `strip` and its `center` position, which were refused as unknown.
+
 ## [3.14.2] - 2026-11-28
 
 ### Changed
