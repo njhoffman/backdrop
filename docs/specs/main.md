@@ -102,9 +102,9 @@ IPC socket) would break a wallpaper.
   with the library's reads them through `entryPath`. The copy (`src/library/reverse.js`, in `paths.bounce`,
   `~/.cache/backdrop/bounce/<sha256>.mp4`, named for the item's content) is made by the daemon (`daemon/Bounce.js`) when the item first plays and
   for the next playlist entry, one at a time at nice 19 and only at the normal load level: the video is reversed
-  in chunks of about 256 MiB of raw frames each, cut by frame count and holding the video stream alone, with VAAPI or else libx264, or libx264 alone where NVIDIA's
-  driver is loaded, whose VAAPI cannot encode (`defaultEncoders`; an NVENC encoder exists but waits on CUDA's start
-  time, TODO.md), and the chunks are joined without
+  in chunks of about 256 MiB of raw frames each, cut by frame count and holding the video stream alone, with VAAPI or else libx264, or NVENC and else libx264 where NVIDIA's
+  driver is loaded, whose VAAPI cannot encode (`defaultEncoders`; NVENC needs the driver's persistence mode, without
+  which each ffmpeg spends about 19 s starting CUDA), and the chunks are joined without
   encoding again; the joined copy is probed and kept only if it holds every frame joined. Once a copy is ready the item's entries are swapped for the URL. The playing one switches about
   100 ms before the end of its pass, where mpv would loop anyway (`loadfile <url> insert-next`, `playlist-next`,
   then the old entry removed), carrying its play time into the video duration; when the duration leaves no room for

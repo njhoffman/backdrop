@@ -33,7 +33,9 @@ export const ENCODERS = {
   nvenc: {
     input: [],
     filter: 'reverse,format=yuv420p',
-    output: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '20', '-b:v', '0']
+    // cq 28 matches libx264's crf 20 in size and SSIM (a 1080p chunk: 1.66 MB both, 0.9964 against 0.9967); cq 20
+    // made files twice the size
+    output: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '28', '-b:v', '0']
   },
   vaapi: {
     input: ['-init_hw_device', 'vaapi=va', '-filter_hw_device', 'va'],
@@ -52,11 +54,14 @@ export const ENCODER_ORDER = ['vaapi', 'x264'];
 export const NVIDIA_DRIVER = '/proc/driver/nvidia/version';
 
 // The encoders to try on this machine. Where NVIDIA's driver is loaded, VAAPI goes through nvidia-vaapi-driver, which
-// cannot encode, so every job failed with it before falling back; libx264 goes first there. NVENC is not tried yet:
-// each ffmpeg spent about 19 s starting CUDA on minerva (GTX 960, persistence mode off, 2026-11-15) against about 1 s
-// for a libx264 chunk on its 12 cores, and a reversal starts one ffmpeg per chunk. VAAPI first elsewhere.
+// cannot encode, so every job failed with it before falling back: NVENC goes first there, then libx264. On minerva
+// (GTX 960, 12 cores, 2026-11-27) a 2 s 1440p chunk takes 1.6 s with NVENC and 1.1 s with libx264 on an idle machine,
+// but NVENC uses a third of the CPU (1.9 s against 5.2 s) and keeps its pace under load. It needs the driver's
+// persistence mode: without it each ffmpeg spent about 19 s starting CUDA (2026-11-15). VAAPI first elsewhere.
+export const NVIDIA_ENCODER_ORDER = ['nvenc', 'x264'];
+
 export function defaultEncoders({ exists = fs.existsSync } = {}) {
-  return exists(NVIDIA_DRIVER) ? ['x264'] : ENCODER_ORDER;
+  return exists(NVIDIA_DRIVER) ? NVIDIA_ENCODER_ORDER : ENCODER_ORDER;
 }
 
 // Copies are named for the item's content (media.sha256), not its id, so a copy means the same video in any library

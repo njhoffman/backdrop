@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-11-27
+
+### Changed
+
+- On a machine with an NVIDIA card, reversed and smoothed copies are encoded with NVENC first, falling back to
+  libx264. This takes about a third of the CPU that libx264 does and keeps its pace when the machine is busy,
+  though an idle machine finishes a little sooner with libx264. It needs the driver's persistence mode
+  (`nvidia-smi -pm 1`); without it each encode spends many seconds starting CUDA.
+- NVENC copies are encoded at `-cq 28` (was 20), which matches libx264's quality setting in size and quality;
+  before, they came out about twice as large.
+
 ## [3.4.7] - 2026-11-27
 
 ### Fixed

@@ -168,6 +168,13 @@ Reviewed: 2026-11-27
   Done in 3.4.5: `writeDaemonState(dir, state)` in `test/helpers/fakes.js` (a temporary file per write, renamed into
   place) replaces every `fs.writeJson(statePath(...))` in the tests: 13 files, among them the concurrent stand-ins in
   `control.test.js` and `VisualizerCommand.test.js` the item did not list.
+- [ ] **The stacking test's mpv restart timed out once.** (p3) [test] `visualizer stacking on a virtual X server keeps
+      it above the wallpaper the daemon starts after mpv dies` failed in a full run on 2026-11-27 (3.5.0, which changes
+      only the encoders): no new `window-id` within 30 s of killing mpv. That run took 2:02 against the usual 1:32, and
+      the file passed 3 runs alone and 3 more beside 24 busy CPU loops. A suspect to rule out: since 3.4.7
+      `checkFirstFrame` kills an mpv that has opened its file but not set up its output 15 s after a start, so a restart
+      slow enough for that costs another 16 s. Next time, log the daemon's warnings in that test (it runs with
+      `silentLogger`) to see which restart path ran.
 - [x] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
       the wait is over, so the restart path tries again` failed once in a full run on 2026-11-22 (expected no kill, got
       `[-1001, 'SIGKILL']`) and passed three runs of `test/display/Daemon.test.js` alone. Likely a fixed wait racing the
@@ -260,7 +267,9 @@ Reviewed: 2026-11-27
       Done (2.69.1): counted against the monitors in `state.json`; copies too small are named; without a daemon sizes stay unchecked.
 - [x] **npm audit flags mocha's glob and minimatch.** (p3) [chore] Three moderate advisories (GHSA-g3hv-75wg-m249 and others) in `glob` 13 and `minimatch` 10 under `mocha` 12, dev dependencies only; `npm audit fix --force` would move mocha across a major version. Check for a mocha release that takes the fixed versions, or pin them with `overrides`, and run the suite.
       Done (2.80.0): mocha 12.0.3, the latest, still asks for glob ^13 and minimatch ^10; `overrides` pin glob ^14.0.6 and minimatch ^11.0.8 under it. `npm audit` is clean and the suite passes. Drop the override once mocha takes them.
-- [ ] **Why CUDA's probe became slow.** (p3) [test] Split from the decoder order item: mpv's CUDA probe stalled its start past the IPC timeout on the NVIDIA desktop on 2026-11-05, having been fine earlier that day, so 2.50.7 put VAAPI first. Unexplained, and VAAPI first is untried on another NVIDIA machine; time `mpv --hwdec=cuda` starts there and check the driver's state (`nvidia-smi`) when it is slow.
+- [x] **Why CUDA's probe became slow.** (p3) [test] Split from the decoder order item: mpv's CUDA probe stalled its start past the IPC timeout on the NVIDIA desktop on 2026-11-05, having been fine earlier that day, so 2.50.7 put VAAPI first. Unexplained, and VAAPI first is untried on another NVIDIA machine; time `mpv --hwdec=cuda` starts there and check the driver's state (`nvidia-smi`) when it is slow.
+      Done 2026-11-27: persistence mode was off. With `nvidia-smi -pm 1` an mpv with `--hwdec=cuda` or `nvdec` starts
+      in 1.25 s against 1.18 s for software decoding; the 19 s CUDA start of ffmpeg had the same cause.
 - [x] **A reversal fails when its item is rated mid-job.** (p3) [bug] On 2026-11-10 at 15:46 item 299 was skipped (moved
       to `trash/`) while `reverseVideo` (`src/library/reverse.js`, run by `daemon/Bounce.js`) worked on it; ffmpeg failed
       on the missing file with VAAPI and again with x264, logging two `Reverse encode failed` warnings. Harmless, but
@@ -356,11 +365,19 @@ Reviewed: 2026-11-27
       Done (2.90.0), at start rather than before each play: the bounce and smoothing queues probe every copy before
       the playlists load (`removeBrokenCopies`, four at a time) and remove those `copyProblem` faults, with a smoothed
       copy's recorded size. A copy ffprobe cannot read at all is kept, so a missing ffprobe cannot empty the cache.
-- [ ] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
+- [x] **Turn NVENC on once CUDA starts fast.** (p2) [perf] minerva's GTX 960 has persistence mode off
       (`nvidia-smi -q`, though `nvidia-persistenced` is active), and each ffmpeg spent about 19 s starting CUDA, against
       about 1 s for a 1080p libx264 chunk on 12 cores (2026-11-15). Enable it (`sudo nvidia-smi -pm 1`, or drop
       `--no-persistence-mode` from the unit), time a finite `testsrc=...:duration=2` encode again under `timeout` and a
       `systemd-run --scope -p MemoryMax=2G`, and put `nvenc` ahead of `x264` in `defaultEncoders` if it beats libx264.
+      Done in 3.5.0, with persistence mode on (2026-11-27): CUDA starts in about 1.2 s. A 2 s 1440p chunk takes 1.6 s
+      with NVENC and 1.1 s with libx264 on an idle machine, but NVENC uses 1.9 s of CPU against 5.2 s and keeps its
+      pace under load, so `defaultEncoders` puts it first on NVIDIA. `-cq 28` (was 20) matches libx264's crf 20 in size
+      and SSIM; cq 20 made files twice the size.
+- [ ] **Tell when NVIDIA's persistence mode is off.** (p3) [feature] NVENC first (3.5.0) assumes it: without it each
+      ffmpeg spends about 19 s starting CUDA, so a reversal of many chunks takes minutes, and `nvidia-smi -pm 1` does
+      not survive a reboot. `backdrop doctor` could read `nvidia-smi --query-gpu=persistence_mode` and warn, and
+      `defaultEncoders` could put libx264 first while it is off.
 - [x] **Derived copies are keyed by the local media id.** (p3) [refactor] `reversedPath` and `smoothedPath`
       (`src/library/reverse.js`, `smooth.js`) name copies `<media.id>.mp4` / `<id>@<speed>.mp4`, and staleness compares
       mtimes with the item's file. Both are meaningful only in one database, so a copy made on another machine (or

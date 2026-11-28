@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import {
-  ENCODERS, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeBrokenCopies, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
+  ENCODERS, NVIDIA_DRIVER, SEEK, chunkFrames, chunkSeconds, chunkStarts, seekTime, defaultEncoders, encodeCounts, listReverseWork, listReversed, recordEncode, copyProblem, probeVideo, removeBrokenCopies, removeReversed, removeStaleWork, reverseVideo, reverseWorkPath, reversedPath, reversedReady, run
 } from '../../src/library/reverse.js';
 import { fakeSha, silentLogger } from '../helpers/fakes.js';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
@@ -277,8 +277,8 @@ describe('reverse', () => {
   });
 
   describe('encoders', () => {
-    it('skips VAAPI where NVIDIA\'s driver is loaded, and tries it first elsewhere', () => {
-      expect(defaultEncoders({ exists: file => file === '/proc/driver/nvidia/version' })).to.deep.equal(['x264']);
+    it('tries NVENC, then libx264, where NVIDIA\'s driver is loaded, and VAAPI first elsewhere', () => {
+      expect(defaultEncoders({ exists: file => file === '/proc/driver/nvidia/version' })).to.deep.equal(['nvenc', 'x264']);
       expect(defaultEncoders({ exists: () => false })).to.deep.equal(['vaapi', 'x264']);
     });
 
@@ -362,6 +362,20 @@ describe('reverse', () => {
         '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', video])).trim());
       expect(target).to.not.equal(null);
       expect(await frames(target)).to.equal(await frames(file));
+    });
+
+    // Where NVIDIA's encoder is there (minerva), the default order makes the copy with it, not with libx264 after a failure
+    it('makes the copy with NVENC where it is available', async function () {
+      const encoders = await run('ffmpeg', ['-hide_banner', '-encoders']).catch(() => '');
+      if (!fs.existsSync(NVIDIA_DRIVER) || !encoders.includes('h264_nvenc')) this.skip();
+      const file = path.join(dir, 'clip.mp4');
+      execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10:duration=2.3',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+      const media = { id: 1, sha256: fakeSha(1), kind: 'video', path: file, duration: 2.3, width: 320, height: 180, fps: 10 };
+      const target = await reverseVideo(media, path.join(dir, 'bounce'), { encoders: defaultEncoders(), nice: false });
+      expect(target).to.not.equal(null);
+      const tags = await run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream_tags=encoder', '-of', 'csv=p=0', target]);
+      expect(tags).to.match(/nvenc|NVIDIA/i);
     });
 
     // A copy is the video's frames in reverse, each once: no frame repeated or lost at a seam (24000/1001 at 2 s
