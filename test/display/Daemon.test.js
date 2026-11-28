@@ -8,7 +8,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { childrenPath } from '../../src/display/children.js';
 import { Daemon, buildCommand, defaultHwdec, readState, statePath, nextFiltersPath, controlPath, controlRequestPath, isProcessRunning } from '../../src/display/Daemon.js';
 import { lastMediaKey, setMode } from '../../src/display/Playlist.js';
-import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO } from '../helpers/fakes.js';
+import { FakeMpvClient, FakeChild, makeConfig, silentLogger, LISTMONITORS_TWO, writeDaemonState } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
 
 // Above Linux's maximum pid_max, so it can never be a live process
@@ -160,13 +160,13 @@ describe('Daemon', () => {
     });
 
     it('returns null when the recorded process is gone', async () => {
-      await fs.writeJson(statePath(tempDir), { pid: DEAD_PID, monitors: [] });
+      await writeDaemonState(tempDir, { pid: DEAD_PID, monitors: [] });
       expect(isProcessRunning(DEAD_PID)).to.be.false;
       expect(await readState(tempDir)).to.be.null;
     });
 
     it('returns the state of a live process', async () => {
-      await fs.writeJson(statePath(tempDir), { pid: process.pid, monitors: [] });
+      await writeDaemonState(tempDir, { pid: process.pid, monitors: [] });
       expect((await readState(tempDir)).pid).to.equal(process.pid);
     });
   });
@@ -266,7 +266,7 @@ describe('Daemon', () => {
     });
 
     it('refuses to start twice', async () => {
-      await fs.writeJson(statePath(tempDir), { pid: process.pid, monitors: [] });
+      await writeDaemonState(tempDir, { pid: process.pid, monitors: [] });
       try {
         await makeDaemon().start();
         expect.fail('should have thrown');

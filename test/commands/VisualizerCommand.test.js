@@ -5,11 +5,11 @@ import path from 'path';
 import sinon from 'sinon';
 import { VisualizerCommand } from '../../src/commands/VisualizerCommand.js';
 import { controlPath, statePath } from '../../src/display/Daemon.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 describe('VisualizerCommand', () => {
   let dir, config, lines, signals, answer;
-  const state = (visualizer, extra = {}) => fs.writeJson(statePath(dir), {
+  const state = (visualizer, extra = {}) => writeDaemonState(dir, {
     pid: process.pid, version: '2.20.0', visualizer,
     monitors: [{ name: 'DP-3', visualizer: { module: 'bars', geometry: '2560x360+0+1080' } }, { name: 'HDMI-1', visualizer: null }],
     ...extra

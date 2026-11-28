@@ -6,7 +6,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DisplayControl, parseSpeed, parseDim, parseBounce } from '../../src/display/DisplayControl.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { getMode, getChosenMode, setMode, setModeHold } from '../../src/display/Playlist.js';
-import { FakeMpvClient, makeConfig } from '../helpers/fakes.js';
+import { FakeMpvClient, makeConfig, writeDaemonState } from '../helpers/fakes.js';
 
 const MONITORS = [
   { name: 'DP-1', width: 2560, height: 1440, x: 0, y: 0, primary: true },
@@ -81,7 +81,7 @@ describe('DisplayControl', () => {
       pointer = 'X=10\nY=10\n';
 
       const monitors = MONITORS.map(m => ({ ...m, socket: path.join(tempDir, `${m.name}.sock`) }));
-      await fs.writeJson(statePath(tempDir), { pid: process.pid, monitors });
+      await writeDaemonState(tempDir, { pid: process.pid, monitors });
 
       control = new DisplayControl({
         config: makeConfig({ 'paths.runtime': tempDir }),
@@ -289,7 +289,7 @@ describe('DisplayControl', () => {
         const image = db.addMedia({ kind: 'image', source: 'local', source_id: 1, path: '/m/i.png' });
         clientFor('DP-1').properties.path = '/m/i.png';
         const state = await fs.readJson(statePath(tempDir));
-        await fs.writeJson(statePath(tempDir), { ...state, visualizer: { musicDim: 30 } });
+        await writeDaemonState(tempDir, { ...state, visualizer: { musicDim: 30 } });
 
         expect(await control.dim('10')).to.include({ dim: 10, shown: 30 });
         expect(db.getMedia(image).dim).to.equal(10);

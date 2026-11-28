@@ -6,13 +6,13 @@ import sinon from 'sinon';
 import { ScreensaverCommand } from '../../src/commands/ScreensaverCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { screensaverPath } from '../../src/display/runtimeFiles.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 import { notifications } from '../helpers/setup.js';
 
 describe('ScreensaverCommand', () => {
   let dir, config, lines, signals, runs, daemon;
 
-  const writeState = extra => fs.writeJson(statePath(dir), {
+  const writeState = extra => writeDaemonState(dir, {
     pid: process.pid, version: '2.89.2', control: 0, handled: [], monitors: [], screensaver: { active: false }, ...extra
   });
   // Stands in for the daemon on SIGUSR1: takes each control request in the runtime dir, hands it to answer(request),
@@ -26,7 +26,7 @@ describe('ScreensaverCommand', () => {
       state.screensaver = answer(request);
       state.handled = [...state.handled, name.slice('control-'.length, -'.json'.length)];
     }
-    await fs.writeJson(statePath(dir), state);
+    await writeDaemonState(dir, state);
   };
   const command = (options = {}) => new ScreensaverCommand(config, null, silentLogger, {
     run: async (file, args) => { runs.push([file, ...args]); return ''; },

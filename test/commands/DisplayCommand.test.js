@@ -7,7 +7,7 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { DisplayCommand } from '../../src/commands/DisplayCommand.js';
 import { statePath } from '../../src/display/Daemon.js';
 import { getMode, setMode, setModeHold } from '../../src/display/Playlist.js';
-import { fakeSha, makeConfig, silentLogger } from '../helpers/fakes.js';
+import { fakeSha, makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 describe('DisplayCommand', () => {
   let dir, db, config, command, lines;
@@ -22,7 +22,7 @@ describe('DisplayCommand', () => {
     db = new DatabaseManager();
     db.initialize(':memory:');
     // readState treats the state as live because this test process's pid is running
-    await fs.writeJson(statePath(dir), { pid: process.pid, monitors });
+    await writeDaemonState(dir, { pid: process.pid, monitors });
     command = new DisplayCommand(config, db, silentLogger);
     lines = [];
     sinon.stub(console, 'log').callsFake(line => lines.push(line));
@@ -82,25 +82,25 @@ describe('DisplayCommand', () => {
 
     it('shows whether the screensaver is on, what started it and since when', async () => {
       const since = new Date(2026, 10, 10, 14, 46).getTime();
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, screensaver: { active: true, trigger: 'idle', since } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, screensaver: { active: true, trigger: 'idle', since } });
       command.control = { current: async () => ({ path: null }) };
       await command.status();
       expect(lines.join('\n')).to.include('Screensaver: on (after idle, since 14:46; backdrop screensaver off)');
 
       lines.length = 0;
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, screensaver: { active: false } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, screensaver: { active: false } });
       await command.status();
       expect(lines.join('\n')).to.include('Screensaver: off');
     });
 
     it('says when the daemon moved smoothing from the GPU to the CPU, and nothing otherwise', async () => {
       command.control = { current: async () => ({ path: null }) };
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: 0, fallback: null } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: 0, fallback: null } });
       await command.status();
       expect(lines.join('\n')).to.not.include('Smoothing');
       lines.length = 0;
       const at = new Date(2026, 10, 13, 21, 47).getTime();
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: -1, fallback: { reason: 'the GPU hung under RIFE', at } } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, smoothing: { gpu: 0, device: -1, fallback: { reason: 'the GPU hung under RIFE', at } } });
       await command.status();
       expect(lines.join('\n')).to.include('Smoothing: on the CPU since 21:47 (the GPU hung under RIFE; restart the daemon to try GPU 0 again)');
     });
@@ -108,11 +108,11 @@ describe('DisplayCommand', () => {
     it('says when smoothing waits for an idle machine', async () => {
       command.control = { current: async () => ({ path: null }) };
       const gate = { open: false, low_since: new Date(2026, 10, 13, 23, 30).getTime(), load: { one: 0.1, five: 0.2 }, cpus: 8, idle_load: 0.25, idle_minutes: 10, stop_load: 0.75 };
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, gpu: -1, device: -1, fallback: null, waiting: 3, gate } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, gpu: -1, device: -1, fallback: null, waiting: 3, gate } });
       await command.status();
       expect(lines.join('\n')).to.include('Smoothing: waiting for an idle machine (3 videos wait; load 0.20 a CPU, under it since 23:30; starts after 10 min under 0.25)');
       lines.length = 0;
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, waiting: 3, gate: { ...gate, open: true } } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, smoothing: { enabled: true, waiting: 3, gate: { ...gate, open: true } } });
       await command.status();
       expect(lines.join('\n')).to.not.include('Smoothing');
     });
@@ -120,11 +120,11 @@ describe('DisplayCommand', () => {
     it('says when reversing for bounce waits for an idle machine, and nothing without its gate', async () => {
       command.control = { current: async () => ({ path: null }) };
       const gate = { open: false, low_since: null, load: { one: 0.4, five: 0.3 }, cpus: 8, idle_load: 0.25, idle_minutes: 120, stop_load: 0.75 };
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate } });
       await command.status();
       expect(lines.join('\n')).to.include('Bounce: waiting for an idle machine (1 video waits; load 0.30 a CPU; starts after 120 min under 0.25)');
       lines.length = 0;
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate: { ...gate, idle_load: null } } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors, bounce: { waiting: 1, encoding: null, gate: { ...gate, idle_load: null } } });
       await command.status();
       expect(lines.join('\n')).to.not.include('Bounce');
     });
@@ -132,7 +132,7 @@ describe('DisplayCommand', () => {
     it('shows the load and the mode it holds back', async () => {
       setMode(db, 'video');
       setModeHold(db, 'image');
-      await fs.writeJson(statePath(dir), {
+      await writeDaemonState(dir, {
         pid: process.pid, wallpaper: true, monitors, load: { level: 'image', value: 1.91, cpus: 8, window: 1, limit: 1.5, resume_below: 1.13 }
       });
       command.control = { current: async () => ({ path: null }) };
@@ -153,21 +153,21 @@ describe('DisplayCommand', () => {
     it('explains a wallpaper the load has off, apart from one turned off by hand', async () => {
       const off = monitors.map(monitor => ({ ...monitor, socket: null }));
       const load = { level: 'off', value: 3.75, cpus: 8, window: 1, limit: 3, resume_below: 2.25 };
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors: off, load });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors: off, load });
       await command.status();
       expect(lines.join('\n')).to.include('wallpaper off until the system load falls')
         .and.include('wallpaper off (held by load), visualizer off')
         .and.include('Load: off at 3.75 a CPU, back under 2.25');
 
       lines.length = 0;
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: false, monitors: off, load });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: false, monitors: off, load });
       await command.status();
       expect(lines.join('\n')).to.include('wallpaper off (backdrop start --wallpaper)');
     });
 
     it('explains a wallpaper the preset hides, and does not ask mpv for a mode then', async () => {
       const off = monitors.map(monitor => ({ ...monitor, socket: null }));
-      await fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: true, monitors: off, visualizer: { enabled: true, error: null, hidesWallpaper: true } });
+      await writeDaemonState(dir, { pid: process.pid, wallpaper: true, monitors: off, visualizer: { enabled: true, error: null, hidesWallpaper: true } });
       await command.status();
       expect(lines.join('\n')).to.include('wallpaper off (the preset hides it), visualizer on').and.include('wallpaper off while the preset hides it');
       lines.length = 0;
@@ -179,7 +179,7 @@ describe('DisplayCommand', () => {
     });
 
     it('records a mode during off without asking mpv', async () => {
-      await fs.writeJson(statePath(dir), {
+      await writeDaemonState(dir, {
         pid: process.pid, wallpaper: true, monitors: monitors.map(monitor => ({ ...monitor, socket: null })),
         load: { level: 'off', value: 3.75, cpus: 8, window: 1, limit: 3, resume_below: 2.25 }
       });
@@ -192,7 +192,7 @@ describe('DisplayCommand', () => {
     });
 
     it('shows each monitor\'s visualizer, one given up on, and why the visualizer is off', async () => {
-      await fs.writeJson(statePath(dir), {
+      await writeDaemonState(dir, {
         pid: process.pid, version: '2.20.0', visualizer: { enabled: true, error: null, generation: 1 },
         monitors: [{ ...monitors[0], visualizers: [{ module: 'bars', geometry: '1920x270+0+810', running: true },
           { instance: 'glow', module: 'radial', geometry: '1920x270+0+810', running: true, colors: { fg: '#e67814ff', fg2: '#1a2b3c80' } }] },
@@ -206,12 +206,12 @@ describe('DisplayCommand', () => {
       expect(text).to.not.include('no compositor');
       expect(text).to.include('visualizer bars at 3840x540+1920+1620 (gave up after repeated exits; backdrop visualizer reload)');
 
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: false, error: 'visualizer.module must be bars', generation: 1 } });
+      await writeDaemonState(dir, { pid: process.pid, monitors, visualizer: { enabled: false, error: 'visualizer.module must be bars', generation: 1 } });
       lines.length = 0;
       await command.status();
       expect(lines).to.include('Visualizer: off: visualizer.module must be bars');
 
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors, visualizer: { enabled: true, error: null, compositor: false, generation: 1 } });
+      await writeDaemonState(dir, { pid: process.pid, monitors, visualizer: { enabled: true, error: null, compositor: false, generation: 1 } });
       lines.length = 0;
       await command.status();
       expect(lines).to.include('Visualizer: no compositor runs: the area around the bars shows black (start picom or another compositor)');
@@ -230,7 +230,7 @@ describe('DisplayCommand', () => {
 
     it('shows each monitor\'s recent mpv CPU and decoder, and the item\'s average in current', async () => {
       const id = addVideo(1, 1920, 1080);
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 3.25, hwdec: 'vaapi', gpuMemory: 1.5 * 1024 ** 3 }] });
+      await writeDaemonState(dir, { pid: process.pid, monitors: [{ ...monitors[0], cpu: 3.25, hwdec: 'vaapi', gpuMemory: 1.5 * 1024 ** 3 }] });
       db.addPlaybackSample(id, 750, 30);
       db.setDecoder(id, 'no');
       const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: null };
@@ -248,7 +248,7 @@ describe('DisplayCommand', () => {
       const id = addVideo(1, 1920, 1080, { duration: 12, fps: 30 });
       db.addRating(id, 3, '1920x1080');
       db.addPlaybackSample(id, 100, 5); db.setDecoder(id, 'vaapi');
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitors[0], cpu: 2.345, hwdec: 'vaapi', gpuMemory: 4096 }] });
+      await writeDaemonState(dir, { pid: process.pid, monitors: [{ ...monitors[0], cpu: 2.345, hwdec: 'vaapi', gpuMemory: 4096 }] });
       const playing = { monitor: monitors[0], path: '/m/1.mp4', media: db.getMedia(id), rating: db.getLatestRating(id) };
       command.control = { current: async () => playing };
 
@@ -284,7 +284,7 @@ describe('DisplayCommand', () => {
     });
 
     it('says the daemon waits when none of its configured monitors is active', async () => {
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [] });
+      await writeDaemonState(dir, { pid: process.pid, monitors: [] });
       await command.status();
       expect(lines.join('\n')).to.include('waiting for the monitors in display.monitors');
       let caught;
@@ -313,7 +313,7 @@ describe('DisplayCommand', () => {
         kill: (pid, signal) => { signals.push([pid, signal]); return answer?.(); },
         spawnProcess: (file, args) => {
           spawnedArgs.push(args.slice(1));
-          setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, wallpaper: !args.includes('--no-wallpaper'), control: 0, monitors }), 10);
+          setTimeout(() => writeDaemonState(dir, { pid: process.pid, wallpaper: !args.includes('--no-wallpaper'), control: 0, monitors }), 10);
           return { unref() {}, exitCode: null };
         }
       });

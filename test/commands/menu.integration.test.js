@@ -6,8 +6,7 @@ import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MenuCommand, minimalView, panelView } from '../../src/commands/MenuCommand.js';
-import { statePath } from '../../src/display/Daemon.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 // The menus drawn by real rofi on a virtual X server: rofi's theme parser and key bindings, which the unit
 // tests (fake views) cannot see. rofi reports a bad -theme-str on stderr ("Failed to parse -theme-str"),
@@ -215,7 +214,7 @@ async function startXvfb(attempts = 3) {
   it('draws the real main and step menus through the panel theme', async () => {
     const runtime = path.join(dir, 'run');
     await fs.ensureDir(runtime);
-    await fs.writeJson(statePath(runtime), { pid: process.pid, monitors: [{ name: 'DP-1' }, { name: 'HDMI-1' }] });
+    await writeDaemonState(runtime, { pid: process.pid, monitors: [{ name: 'DP-1' }, { name: 'HDMI-1' }] });
     const db = new DatabaseManager();
     db.initialize(':memory:');
     try {

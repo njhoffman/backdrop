@@ -5,13 +5,14 @@ import path from 'path';
 import { nextFiltersPath, statePath } from '../../src/display/Daemon.js';
 import { processStart } from '../../src/display/children.js';
 import { clearNextFilters, hasNextFilters, parseDuration, readNextFilters, resolveNextFilters } from '../../src/display/nextFilters.js';
+import { writeDaemonState } from '../helpers/fakes.js';
 
 describe('nextFilters', () => {
   let dir;
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-filters-'));
     // readState treats the state as live because this test process's pid is running
-    await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [] });
+    await writeDaemonState(dir, { pid: process.pid, monitors: [] });
   });
   afterEach(async () => { await fs.remove(dir); });
 
@@ -61,7 +62,7 @@ describe('nextFilters', () => {
       const temporary = `${statePath(dir)}.${signals.length}.tmp`;
       setTimeout(() => fs.writeJson(temporary, state).then(() => fs.rename(temporary, statePath(dir))), 5);
     };
-    await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [], control: 0 });
+    await writeDaemonState(dir, { pid: process.pid, monitors: [], control: 0 });
     const persist = options => resolveNextFilters(dir, options, { persist: true, kill, timeout: 1000 });
 
     const resolved = await persist({ videoDuration: '2m', query: ['clouds'] });

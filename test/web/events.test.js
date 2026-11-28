@@ -3,9 +3,8 @@ import { EventEmitter } from 'events';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { statePath } from '../../src/display/Daemon.js';
 import { EventHub } from '../../src/web/events.js';
-import { FakeMpvClient, silentLogger } from '../helpers/fakes.js';
+import { FakeMpvClient, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -65,7 +64,7 @@ describe('EventHub', () => {
     await fs.remove(dir);
   });
 
-  const writeState = sockets => fs.writeJson(statePath(dir), { pid: process.pid, monitors: sockets.map((socket, index) => ({ name: `M${index}`, socket })) });
+  const writeState = sockets => writeDaemonState(dir, { pid: process.pid, monitors: sockets.map((socket, index) => ({ name: `M${index}`, socket })) });
 
   it('sends the snapshot when a page connects, then once per burst of changes', async () => {
     await hub.start();

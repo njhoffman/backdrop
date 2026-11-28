@@ -6,8 +6,7 @@ import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { ListCommand } from '../../src/commands/ListCommand.js';
 import { StatsCommand, directoryUsage } from '../../src/commands/StatsCommand.js';
-import { statePath } from '../../src/display/Daemon.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 describe('ListCommand and StatsCommand', () => {
   let dir, db, config, command, rating;
@@ -139,7 +138,7 @@ describe('ListCommand and StatsCommand', () => {
     db.addRating(video, 1, '1080x1920');
     db.addMedia({ kind: 'video', source: 'pexels', source_id: 3, width: 3840, height: 2160 });
     const search = db.addSearch('pexels', 'Ocean'); db.addSearchResult(search, image, 1);
-    await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ name: 'DP-1', width: 1920, height: 1080 }] });
+    await writeDaemonState(dir, { pid: process.pid, monitors: [{ name: 'DP-1', width: 1920, height: 1080 }] });
 
     const stats = await new StatsCommand(config, db, silentLogger).showStats();
 

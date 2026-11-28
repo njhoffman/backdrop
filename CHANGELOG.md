@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.5] - 2026-11-27
+
+### Fixed
+
+- Tests that stand in for a running daemon write its state file the way the daemon does, so a command waiting
+  on it can no longer catch the file half written and fail now and then.
+
 ## [3.4.4] - 2026-11-27
 
 ### Fixed

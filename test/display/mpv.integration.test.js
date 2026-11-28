@@ -8,9 +8,9 @@ import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MpvClient } from '../../src/display/MpvClient.js';
 import { DisplayControl } from '../../src/display/DisplayControl.js';
 import { RatingCommand } from '../../src/commands/RatingCommand.js';
-import { Daemon, statePath } from '../../src/display/Daemon.js';
+import { Daemon } from '../../src/display/Daemon.js';
 import { loadPlaylist, syncPlaylist, lastMediaKey, removeFailedEntry, queueMatching, reshuffleOnWrap } from '../../src/display/Playlist.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 import { startMpv } from '../helpers/mpv.js';
 
 function hasCommand(name) {
@@ -258,7 +258,7 @@ describe('mpv integration', function () {
     const monitor = { name: 'TEST-1', width: 640, height: 360, socket: path.join(tempDir, 'mpv.sock') };
     const config = makeConfig({ 'paths.runtime': tempDir, 'paths.media': mediaDir,
       'paths.inbox': inbox, 'paths.trash': path.join(tempDir, 'trash') });
-    await fs.writeJson(statePath(tempDir), { pid: process.pid, monitors: [monitor] });
+    await writeDaemonState(tempDir, { pid: process.pid, monitors: [monitor] });
     await loadPlaylist(client, { database: db, config: config.get(), mode: 'video', monitor, runtimeDir: tempDir, lastMediaId: id });
     await waitFor(async () => (await client.getProperty('path')) === first);
     const control = new DisplayControl({ config, database: db });

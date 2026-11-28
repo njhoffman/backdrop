@@ -4,11 +4,12 @@ import os from 'os';
 import path from 'path';
 import { CONTROL_REQUEST, controlPath, controlRequestPath, statePath } from '../../src/display/runtimeFiles.js';
 import { requestId, sendControl } from '../../src/display/control.js';
+import { writeDaemonState } from '../helpers/fakes.js';
 
 describe('sendControl', () => {
   let dir, signals;
   // The daemon's state; readState treats it as live because this test process's pid is running
-  const writeState = state => fs.writeJson(statePath(dir), { pid: process.pid, control: 0, monitors: [], ...state });
+  const writeState = state => writeDaemonState(dir, { pid: process.pid, control: 0, monitors: [], ...state });
   const pendingIds = async () => (await fs.readdir(dir)).map(name => CONTROL_REQUEST.exec(name)?.[1]).filter(Boolean).sort();
 
   // A daemon that, a moment after each signal, takes every pending request and lists its id as handled,

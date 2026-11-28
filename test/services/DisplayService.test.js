@@ -4,9 +4,8 @@ import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
-import { statePath } from '../../src/display/Daemon.js';
 import { DisplayService } from '../../src/services/DisplayService.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 // The service returns what changed and never prints; DisplayCommand.test.js covers the same steps through the CLI
 describe('DisplayService', () => {
@@ -45,7 +44,7 @@ describe('DisplayService', () => {
     function daemonAfter(ms) {
       const child = { pid: 4321, exitCode: null, signalCode: null, unref() {} };
       const spawnProcess = () => {
-        if (ms !== null) setTimeout(() => fs.writeJson(statePath(dir), { pid: process.pid, control: 0, monitors: [monitor] }), ms);
+        if (ms !== null) setTimeout(() => writeDaemonState(dir, { pid: process.pid, control: 0, monitors: [monitor] }), ms);
         return child;
       };
       return { child, spawnProcess };
@@ -82,7 +81,7 @@ describe('DisplayService', () => {
 
   it('reports a running daemon on start without spawning another', async () => {
     const state = { pid: process.pid, control: 0, monitors: [monitor] };
-    await fs.writeJson(statePath(dir), state);
+    await writeDaemonState(dir, state);
     const spawnProcess = sinon.stub();
     expect(await make({ spawnProcess }).start()).to.deep.equal({ action: 'running', state });
     expect(spawnProcess.called).to.be.false;
@@ -130,7 +129,7 @@ describe('DisplayService', () => {
       service.start = sinon.stub().callsFake(async options => { calls.push(['start', options]); return { action: 'started', state: { pid: 78 } }; });
       const spawned = [];
       service.spawnProcess = (file, args) => { spawned.push(args.slice(1)); return { unref() {}, on() {} }; };
-      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.0', wallpaper: false, visualizer: { enabled: true, preset: 'ring' } });
+      await writeDaemonState(dir, { pid: process.pid, version: '2.94.0', wallpaper: false, visualizer: { enabled: true, preset: 'ring' } });
       // A web.json from before versions were recorded counts as another version
       await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't' });
 
@@ -149,7 +148,7 @@ describe('DisplayService', () => {
       const service = make({ exec, kill: sinon.stub(), sendRequest: sinon.stub() });
       service.stop = sinon.stub().resolves({ action: 'stopped' });
       service.start = sinon.stub().resolves({ action: 'started', state: { pid: 78 } });
-      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.0', wallpaper: true, visualizer: { enabled: false, preset: null } });
+      await writeDaemonState(dir, { pid: process.pid, version: '2.94.0', wallpaper: true, visualizer: { enabled: false, preset: null } });
       await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't', version: '2.94.0' });
       await service.restart({ version: '2.94.3' });
       expect(service.start.firstCall.args[0]).to.deep.equal({});
@@ -162,7 +161,7 @@ describe('DisplayService', () => {
       const service = make({ kill: sinon.stub() });
       service.stop = sinon.stub();
       expect(await service.restart({ ifStale: true, version: '2.94.3' })).to.deep.equal({ daemon: 'not-running', web: 'not-running' });
-      await fs.writeJson(statePath(dir), { pid: process.pid, version: '2.94.3' });
+      await writeDaemonState(dir, { pid: process.pid, version: '2.94.3' });
       await fs.writeJson(path.join(dir, 'web.json'), { pid: process.ppid, port: 7737, token: 't', version: '2.94.3' });
       expect(await service.restart({ ifStale: true, version: '2.94.3' })).to.deep.equal({ daemon: 'current', web: 'current' });
       expect(service.stop.called).to.be.false;
@@ -211,7 +210,7 @@ describe('DisplayService', () => {
       add(1, 'ocean.mp4');
       add(2, 'forest.mp4');
       db.setSetting('playlist_filter', { tag: ['ocean'] });
-      await fs.writeJson(statePath(dir), { pid: process.pid, monitors: [{ ...monitor, socket: null }] });
+      await writeDaemonState(dir, { pid: process.pid, monitors: [{ ...monitor, socket: null }] });
       const service = make();
       service.control.current = async () => ({});
       const status = await service.status();

@@ -1,7 +1,9 @@
 import { EventEmitter } from 'events';
+import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { ConfigManager } from '../../src/config/ConfigManager.js';
+import { statePath } from '../../src/display/runtimeFiles.js';
 
 // Stands in for MpvClient: records commands and answers get_property from `properties`
 export class FakeMpvClient extends EventEmitter {
@@ -86,3 +88,14 @@ export const LISTMONITORS_TWO =
   'Monitors: 2\n' +
   ' 0: +*DP-1 2560/597x1440/336+0+0  DP-1\n' +
   ' 1: +HDMI-1 1080/344x1920/193+2560+0  HDMI-1\n';
+
+let stateWrites = 0;
+
+// Writes a stand-in daemon's state.json as the daemon does: a temporary file renamed into place, so a command polling
+// it never reads a truncated file as no daemon. Each write has its own temporary file, so concurrent ones cannot collide.
+export async function writeDaemonState(runtimeDir, state) {
+  const file = statePath(runtimeDir);
+  const temporary = `${file}.${process.pid}.${++stateWrites}.tmp`;
+  await fs.writeJson(temporary, state);
+  await fs.rename(temporary, file);
+}

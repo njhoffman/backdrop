@@ -6,12 +6,11 @@ import path from 'path';
 import sinon from 'sinon';
 import { DatabaseManager } from '../../src/database/DatabaseManager.js';
 import { MenuCommand, minimalView, NO_SCREENSHOT, panelView, PANEL_THEME } from '../../src/commands/MenuCommand.js';
-import { statePath } from '../../src/display/Daemon.js';
 import { setMode, setModeHold } from '../../src/display/Playlist.js';
 import { readNextFilters } from '../../src/display/nextFilters.js';
 import { stillFor, thumbnailFor } from '../../src/library/thumbnail.js';
 import { notifications } from '../helpers/setup.js';
-import { makeConfig, silentLogger } from '../helpers/fakes.js';
+import { makeConfig, silentLogger, writeDaemonState } from '../helpers/fakes.js';
 
 describe('MenuCommand', () => {
   const monitors = [{ name: 'DP-1', width: 1920, height: 1080 }, { name: 'HDMI-1', width: 1920, height: 1080 }];
@@ -20,7 +19,7 @@ describe('MenuCommand', () => {
   beforeEach(async () => {
     runtime = await fs.mkdtemp(path.join(os.tmpdir(), 'bd-menu-'));
     // readState treats the state as live because this test process's pid is running
-    await fs.writeJson(statePath(runtime), { pid: process.pid, monitors });
+    await writeDaemonState(runtime, { pid: process.pid, monitors });
     db = new DatabaseManager(); db.initialize(':memory:');
     const id = db.addMedia({ kind: 'video', source: 'local', source_id: 1, path: '/m/local-1.mp4', original_name: 'ocean-waves.mp4',
       width: 3840, height: 2160, duration: 18, fps: 25, speed: 0.8 });
