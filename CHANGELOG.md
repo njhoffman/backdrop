@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.3] - 2026-11-27
+
+### Added
+
+- An integration test on a virtual X server that checks the wallpaper is moved out of a maximized window and
+  left inside a desktop window (it runs where Xvfb, xwinwrap, mpv and ffmpeg are installed).
+
 ## [3.4.2] - 2026-11-27
 
 ### Fixed

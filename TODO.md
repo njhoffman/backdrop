@@ -363,10 +363,13 @@ Reviewed: 2026-11-20
       the size of the screen; `-fdt` only sets the window type. Done in 3.4.2: after each screen start
       `Daemon.placeWallpaper` asks X where mpv's `wid` sits (`X11.windowPlacement`) and reparents it to the root
       (`X11.reparentToRoot`) when it is inside a client window.
-- [ ] **Try the desktop placement under a real desktop window.** (p3) [test] `X11.windowPlacement` leaves a wallpaper
+- [x] **Try the desktop placement under a real desktop window.** (p3) [test] `X11.windowPlacement` leaves a wallpaper
       whose ancestor is marked `_NET_WM_WINDOW_TYPE_DESKTOP` or `__SWM_VROOT` where it is, tested only with a fake tree.
       Run the daemon under xfdesktop or pcmanfm's desktop (an Xvfb integration test like `stacking.integration.test.js`)
       to confirm such a window is kept rather than moved to the root.
+      Done in 3.4.3 with a stand-in rather than a file manager (neither is installed here):
+      `test/display/placement.integration.test.js` runs a real xwinwrap over a screen-sized window, plain and marked as
+      the desktop (`test/fixtures/standin-client.mjs`); it fails without `placeWallpaper`.
 
 ## 4. Media sources
       Since 2.24.0 `Daemon.applyLimits(screen, media, { elapsed })` recomputes limits mid-play for duration changes;
