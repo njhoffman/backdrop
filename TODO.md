@@ -1018,11 +1018,14 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       menu `u`), the wallpaper followed by default (`visualizer prefer`, menu `f`, `$mod+Ctrl+Shift+Left`); full screen is
       the screensaver or no window on any monitor's visible workspace; behind windows only `bars`; only a preset kept in
       the menu's load holds, until the next song or change of view; the user's rules go in `visualizer.auto.rules`.
-- [ ] **cover-radials draws a song's lyrics through its left ring.** (p2) [bug] Meant for songs without lyrics (the
+- [x] **cover-radials draws a song's lyrics through its left ring.** (p2) [bug] Meant for songs without lyrics (the
       automatic preset picks it only then), but picked by hand, or with lyrics found late, sleeve shows them in the
       middle, over the ring (seen live 2026-11-28 with card). Hide the lyrics in this preset or give them room.
       sleeve has no way to leave the lyrics out (an area must have a size; no `now` mode drops them): asked for in
       sleeve's TODO ("Leave the lyrics out"); then set it in cover-radials, rather than an off-screen lyrics area.
+
+      Done in 3.16.0: `lyrics_area: none` (sleeve 0.54.0) in cover-radials; an older sleeve is not sent it and still
+      shows the lyrics. Also sends a sleeve before 0.53.0 the nearest panel it has for `card`, `strip` and `center`.
 - [ ] **The wallpaper's brightness and colors set the veil.** (p2) [feature] The rest of step (3) of the automatic
       preset: with the wallpaper followed it picks `lyrics-veil` but keeps the preset's veil; the wallpaper's sample
       (`daemon.samples`, `imageStats`) should set the veil's opacity (more over a bright one) and tint, as a live change

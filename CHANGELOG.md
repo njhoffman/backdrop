@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-11-28
+
+### Added
+
+- `visualizer.sleeve.lyrics_area: none` leaves sleeve's lyrics out (sleeve 0.54.0 or later), for a look that shows only
+  the now-playing panel or the cover.
+
+### Fixed
+
+- `cover-radials` no longer draws a song's lyrics across its left ring: it leaves them out, as a preset for songs
+  without lyrics should. An older sleeve still shows them.
+- An older sleeve is no longer handed values it refuses, which kept its page from starting: before 0.53.0 it gets
+  `full`, `minimal` and `center-left` for `card`, `strip` and `center`, and before 0.54.0 no `lyrics_area: none`.
+
 ## [3.15.0] - 2026-11-28
 
 ### Added

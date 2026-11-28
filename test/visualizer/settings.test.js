@@ -592,6 +592,9 @@ describe('visualizer settings', () => {
         expect(() => sleeve({ lyrics_area: value }), String(value)).to.throw('visualizer.sleeve.lyrics_area must be an area');
       }
       expect(() => sleeve({ now_area: 'left' })).to.throw('visualizer.sleeve.now_area must be an area');
+      // none leaves the lyrics out (sleeve 0.54.0); a panel always has an area
+      expect(sleeve({ lyrics_area: ' none ' }).lyricsArea).to.equal('none');
+      expect(() => sleeve({ now_area: 'none' })).to.throw('visualizer.sleeve.now_area must be an area');
     });
 
     it('takes sleeve\'s stylesheet variables, numbers as their text, and refuses what sleeve would', () => {
@@ -632,6 +635,7 @@ describe('visualizer settings', () => {
       expect(resolveArea('33%x100%+0+0', window)).to.deep.equal({ x: 2560, y: 100, width: 330, height: 500 });
       expect(resolveArea('67%x100%+33%+0', window)).to.deep.equal({ x: 2890, y: 100, width: 670, height: 500 });
       expect(resolveArea('200x100+10+20', window)).to.deep.equal({ x: 2570, y: 120, width: 200, height: 100 });
+      expect(resolveArea('none', window)).to.deep.equal(window);
     });
 
     it('clips an area partly outside the window, as sleeve does', () => {

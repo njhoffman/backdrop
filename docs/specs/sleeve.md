@@ -23,7 +23,11 @@ sleeve shell --managed --geometry 2560x800+0+320 --title backdrop-visualizer-DP-
 | `--now` | what shows besides the lyrics: `lyrics` (default here: nothing else), `minimal` (a line with artist and title), `full` (cover, title, artist, album, seek bar, times); since 0.53.0 `card` (a large cover, the text and seek bar beneath it) and `strip` (title, artist, seek bar and times on one line across the area, along its top edge for a `top-*` position, else its bottom), all sized by `--now-scale` |
 | `--now-position` | where that panel stands: `top-left` (default), `top-center`, `top-right`, `center-left`, `center` (since 0.53.0), `center-right`, `bottom-left`, `bottom-center`, `bottom-right`; the lyrics keep clear of it, except in the `center`, where `--now-area` and `--lyrics-area` keep them apart |
 | `--lyrics-align` | the lyrics' alignment; `left` by default |
-| `--lyrics-area`, `--now-area` | since 0.34.0: where each goes inside the window; see The wallpaper layer |
+| `--lyrics-area`, `--now-area` | since 0.34.0: where each goes inside the window; see The wallpaper layer. Since 0.54.0 `--lyrics-area none` (and `ctl display --lyrics-area none`) leaves the lyrics out, with their messages, for a page showing only the panel or the cover; `--now-area` never takes it |
+
+backdrop sends an older sleeve only what it takes, since one refuses an unknown value and the page would not start: before
+0.53.0, `full`, `minimal` and `center-left` for `card`, `strip` and `center`; before 0.54.0, no `--lyrics-area none`, so the
+lyrics fill the window (`fitted` in `SleeveVisualizer.js`).
 | `--background` | since 0.35.0: what fills the window; see The wallpaper layer |
 | `--style NAME=VALUE` | since 0.46.0: one of sleeve's stylesheet variables, once for each; see Style |
 | `--map-below` | since 0.36.0: map the window at the bottom of the stack; see The wallpaper layer |

@@ -117,6 +117,30 @@ describe('SleeveVisualizer', () => {
       expect(old.display(monitor, { look: { style } }).args.slice(4)).to.deep.equal(['--style=--art-size=160']);
     });
 
+    // Before 0.53.0 sleeve refuses card, strip and center, and the page would not start: it gets the nearest it has
+    it('gives an older sleeve the nearest panel it has for card, strip and center', async () => {
+      const current = adapterFor({ now: 'card', now_position: 'center' }, version('0.53.0'));
+      await current.prepare();
+      expect(current.command(monitor, geometry).args.slice(8)).to.deep.equal(['--now', 'card', '--now-position', 'center']);
+      const old = adapterFor({ now: 'card', now_position: 'center' }, version('0.52.1'));
+      await old.prepare();
+      expect(old.command(monitor, geometry).args.slice(8)).to.deep.equal(['--now', 'full', '--now-position', 'center-left']);
+      expect(old.display(monitor, { look: { now: 'strip', nowPosition: 'bottom-left' } }).args.slice(4)).to.deep.equal(['--preset', 'minimal', '--position', 'bottom-left']);
+    });
+
+    // Before 0.54.0 sleeve refuses a lyrics area of none; without it, its lyrics fill the window
+    it('leaves the lyrics out only on sleeve 0.54.0 or later', async () => {
+      const current = adapterFor({ lyrics_area: 'none' }, version('0.54.0'));
+      await current.prepare();
+      expect(current.command(monitor, geometry).args.slice(8)).to.deep.equal(['--lyrics-area', 'none']);
+      expect(current.display(monitor, { look: { lyricsArea: 'none' } }).args.slice(4)).to.deep.equal(['--lyrics-area', 'none']);
+      const old = adapterFor({ lyrics_area: 'none' }, version('0.53.0'));
+      await old.prepare();
+      expect(old.command(monitor, geometry).args.slice(8)).to.deep.equal([]);
+      expect(old.display(monitor, { look: { lyricsArea: 'none' } }).args.slice(4)).to.deep.equal([]);
+      expect(old.display(monitor, { look: { lyricsArea: '33%x100%+0+0' } }).args.slice(4)).to.deep.equal(['--lyrics-area', '33%x100%+0+0']);
+    });
+
     it('reports an older sleeve by name rather than letting it exit 2 on the option', async () => {
       for (const sleeve of [{ lyrics_area: '33%x100%+0+0' }, { now_area: '33%x100%+0+0' }, { background: 'cover' }, { map_below: true }]) {
         const failure = await adapterFor(sleeve, version('0.35.9')).prepare().catch(error => error.message);

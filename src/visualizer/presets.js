@@ -380,13 +380,13 @@ const PRESETS = {
   'cover-radials': {
     description: 'The track\'s cover as soft tinted swirls, the now-playing card on the left, a ring for each speaker and bars on the right; for a song without lyrics',
     details: [
-      'A card since sleeve 0.53.0 (seen live 2026-11-28). A song with lyrics draws them across the left ring: sleeve has no way yet to leave them out.'
+      'A card since sleeve 0.53.0 (seen live 2026-11-28). No lyrics since sleeve 0.54.0 (lyrics_area: none), which a song with lyrics drew across the left ring; an older sleeve still draws them.'
     ],
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
         ...sunamu({ tint: true, style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' } }),
-        now: 'card'
+        now: 'card', lyrics_area: 'none'
       } },
       { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: '40%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },
       { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '70%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },

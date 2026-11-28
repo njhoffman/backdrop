@@ -10,6 +10,8 @@ export const ENGINES = ['glava', 'sleeve', 'projectm'];
 export const SLEEVE_NOW = ['lyrics', 'minimal', 'full', 'card', 'strip'];
 export const SLEEVE_POSITIONS = ['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'];
 export const SLEEVE_ALIGNS = ['left', 'center', 'right'];
+// A lyrics area of none leaves the lyrics out (sleeve 0.54.0), for a preset showing only the panel or the cover
+export const SLEEVE_NO_LYRICS = 'none';
 // The stylesheet variables sleeve (0.46.0) takes from `--style`, by its own rules (docs/specs/sleeve.md, Style): the
 // cover and its animation, the scrim behind the lyrics, the now-playing panel's size and margin (0.49.0), all but the two it works out itself; values that cannot
 // leave a CSS declaration or load anything
@@ -359,12 +361,13 @@ function typedDefines(module, section, prefix) {
 const AREA_PART = '(\\d+(?:\\.\\d+)?%?)';
 const AREA = new RegExp(`^${AREA_PART}x${AREA_PART}\\+${AREA_PART}\\+${AREA_PART}$`);
 
-function area(key, value) {
+function area(key, value, none = false) {
+  if (none && typeof value === 'string' && value.trim() === SLEEVE_NO_LYRICS) return SLEEVE_NO_LYRICS;
   const match = typeof value === 'string' ? AREA.exec(value.trim()) : null;
   const parts = match?.slice(1) ?? [];
   const sized = parts.length && parseFloat(parts[0]) > 0 && parseFloat(parts[1]) > 0;
   if (!sized || parts.some(part => part.endsWith('%') && parseFloat(part) > 100)) {
-    fail(key, 'an area such as 33%x100%+0+0 (WxH+X+Y, pixels or percent of the window)', value);
+    fail(key, `an area such as 33%x100%+0+0 (WxH+X+Y, pixels or percent of the window)${none ? ', or none' : ''}`, value);
   }
   return value.trim();
 }
@@ -377,7 +380,9 @@ function sleeveBackground(key, value) {
 }
 
 // Absolute root-window geometry of an area inside a window ({ x, y, width, height }), clipped to it as sleeve does
+// none (no lyrics) is the whole window, which is what the panel stands over then
 export function resolveArea(value, window) {
+  if (value.trim() === SLEEVE_NO_LYRICS) return { x: window.x, y: window.y, width: window.width, height: window.height };
   const [width, height, x, y] = AREA.exec(value).slice(1);
   const length = (part, total) => (part.endsWith('%') ? Math.round(total * parseFloat(part) / 100) : Number(part));
   const left = Math.min(length(x, window.width), window.width - 1);
@@ -412,7 +417,7 @@ function sleeveSettings(raw, prefix) {
   const cover = raw.cover === undefined || raw.cover === null ? null : oneOf(`${key}.cover`, raw.cover, Object.keys(SLEEVE_COVERS));
   const style = raw.style === undefined ? null : sleeveStyle(`${key}.style`, raw.style);
   return {
-    lyricsArea: raw.lyrics_area === undefined ? null : area(`${key}.lyrics_area`, raw.lyrics_area),
+    lyricsArea: raw.lyrics_area === undefined ? null : area(`${key}.lyrics_area`, raw.lyrics_area, true),
     nowArea: raw.now_area === undefined ? null : area(`${key}.now_area`, raw.now_area),
     background: raw.background === undefined ? null : sleeveBackground(`${key}.background`, raw.background),
     cover,
