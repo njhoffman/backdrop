@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
+import YAML from 'yaml';
 import { ConfigManager } from '../../src/config/ConfigManager.js';
 import { ConfigService, appliesWhen } from '../../src/services/ConfigService.js';
 import { silentLogger } from '../helpers/fakes.js';
@@ -36,6 +37,33 @@ describe('ConfigService', () => {
   });
 
   const field = (view, key) => view.fields.find(item => item.key === key);
+
+  describe('with a section for this machine', () => {
+    beforeEach(async () => {
+      await fs.appendFile(file, 'hosts:\n  minerva:\n    display:\n      order: random\n  charon:\n    display:\n      image_duration: 1m\n');
+      config = new ConfigManager(file);
+      config.hostname = () => 'minerva';
+      await config.loadConfig();
+      service = new ConfigService({ config, logger: silentLogger });
+    });
+
+    it('shows this machine\'s values, naming it where its section sets one', async () => {
+      const view = await service.describe();
+      expect(view.host).to.equal('minerva');
+      expect(field(view, 'display.order')).to.include({ value: 'random', inFile: true, host: 'minerva' });
+      // charon's section changes nothing here
+      expect(field(view, 'display.image_duration')).to.include({ value: '5m', inFile: true, host: null });
+    });
+
+    it('writes a change to a value this machine sets in its own section', async () => {
+      await service.update({ 'display.order': 'shuffle', 'display.image_duration': '10m' });
+      const written = YAML.parse(await fs.readFile(file, 'utf8'));
+      expect(written.hosts.minerva.display.order).to.equal('shuffle');
+      expect(written.display.order).to.equal('shuffle');
+      expect(written.display.image_duration).to.equal('10m');
+      expect(written.hosts.charon.display.image_duration).to.equal('1m');
+    });
+  });
 
   it('lists every setting with its value in the file\'s form, its default and when it applies', async () => {
     const view = await service.describe();

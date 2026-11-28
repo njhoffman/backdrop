@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import YAML from 'yaml';
-import { ConfigManager, legacyInboxPath, removeYaml, spliceYaml } from '../../src/config/ConfigManager.js';
+import { ConfigManager, hostKey, legacyInboxPath, removeYaml, spliceYaml } from '../../src/config/ConfigManager.js';
 
 const ENV_KEYS = ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'PEXELS_API'];
 
@@ -405,6 +405,113 @@ describe('ConfigManager', () => {
       await writeConfig({ displya: { image_duration: 60 }, visualizer: { module: 'radial' } });
       await configManager.reloadSection('visualizer');
       expect(configManager.warnings).to.deep.equal(['Unknown config key "displya"; closest: "display"']);
+    });
+  });
+
+  describe('per-machine settings', () => {
+    // One tracked file for two machines: the desktop smooths on its GPU, the laptop offloads to the desktop
+    const file = [
+      'display:',
+      '  image_duration: 300',
+      '  smooth_gpu: -1',
+      'hosts:',
+      '  minerva:',
+      '    display:',
+      '      smooth_gpu: 0',
+      '  charon:',
+      '    offload:',
+      '      hosts: [minerva]',
+      ''
+    ].join('\n');
+    const on = async (hostname, text = file) => {
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeFile(configPath, text);
+      const manager = new ConfigManager(configPath);
+      manager.hostname = () => hostname;
+      await manager.loadConfig();
+      return manager;
+    };
+
+    it('lays the section named for this machine over the shared settings, and no other', async () => {
+      const minerva = await on('minerva');
+      expect(minerva.host).to.equal('minerva');
+      expect(minerva.get().display.smooth_gpu).to.equal(0);
+      expect(minerva.get().display.image_duration).to.equal(300);
+      expect(minerva.get().offload.hosts).to.deep.equal([]);
+      expect(minerva.get()).to.not.have.property('hosts');
+      const charon = await on('charon');
+      expect(charon.get().display.smooth_gpu).to.equal(-1);
+      expect(charon.get().offload.hosts).to.deep.equal(['minerva']);
+      const other = await on('vesta');
+      expect(other.host).to.equal(null);
+      expect(other.get().display.smooth_gpu).to.equal(-1);
+      expect(other.warnings).to.deep.equal([]);
+    });
+
+    it('matches a machine by its short name too', () => {
+      expect(hostKey({ minerva: {} }, 'minerva.lan')).to.equal('minerva');
+      expect(hostKey({ 'minerva.lan': {}, minerva: {} }, 'minerva.lan')).to.equal('minerva.lan');
+      expect(hostKey({ charon: {} }, 'minerva')).to.equal(null);
+    });
+
+    it('warns of unknown keys in any machine\'s section, and of its bad values when it is another machine\'s', async () => {
+      const text = `${file}  vesta:\n    display:\n      smooth_gpux: 1\n      image_duration: -5\n`;
+      const minerva = await on('minerva', text);
+      expect(minerva.warnings.some(warning => warning.startsWith('Unknown config key "hosts.vesta.display.smooth_gpux"'))).to.equal(true);
+      expect(minerva.warnings.some(warning => warning.startsWith('On vesta (hosts.vesta): display.image_duration'))).to.equal(true);
+      expect(minerva.errors).to.deep.equal([]);
+      // On that machine the bad value fails the load, as any other would
+      let failed;
+      await on('vesta', text).catch(error => { failed = error; });
+      expect(failed.message).to.include('display.image_duration');
+    });
+
+    it('refuses a hosts section that is not a mapping of machines to settings', async () => {
+      let failed;
+      await on('minerva', 'hosts: [minerva]\n').catch(error => { failed = error; });
+      expect(failed.message).to.include('hosts must be a mapping of hostnames to settings');
+      failed = null;
+      await on('minerva', 'hosts:\n  minerva: 3\n').catch(error => { failed = error; });
+      expect(failed.message).to.include('hosts.minerva must be a mapping of settings');
+    });
+
+    it('writes a change to a key this machine sets in its section there, and any other to the shared settings', async () => {
+      const minerva = await on('minerva');
+      await minerva.setInFile(['display', 'smooth_gpu'], 1);
+      await minerva.setInFile(['display', 'image_duration'], 60);
+      const written = YAML.parse(await fs.readFile(configPath, 'utf8'));
+      expect(written.hosts.minerva.display.smooth_gpu).to.equal(1);
+      expect(written.display.smooth_gpu).to.equal(-1);
+      expect(written.display.image_duration).to.equal(60);
+      expect(written.hosts.minerva.display).to.not.have.property('image_duration');
+      // On charon the same change goes to the shared settings
+      const charon = await on('charon');
+      await charon.setInFile(['display', 'smooth_gpu'], 2);
+      expect(YAML.parse(await fs.readFile(configPath, 'utf8')).display.smooth_gpu).to.equal(2);
+    });
+
+    // A value there replaces the shared mapping on this machine, so a change in the shared settings would do nothing
+    // here: the write goes to the section, which refuses it as it would any value in the way, and changes nothing
+    it('refuses a change under a value the section sets above the key, rather than write one that would not apply', async () => {
+      const text = 'menu:\n  style: panel\nhosts:\n  minerva:\n    menu: null\n';
+      const minerva = await on('minerva', text);
+      let failed;
+      await minerva.setInFile(['menu', 'style'], 'minimal').catch(error => { failed = error; });
+      expect(failed.message).to.equal('Failed to edit config: hosts.minerva.menu is not a block mapping');
+      expect(await fs.readFile(configPath, 'utf8')).to.equal(text);
+    });
+
+    it('resets a key from the shared settings and this machine\'s section, and tells it is set from either', async () => {
+      const minerva = await on('minerva');
+      expect(await minerva.fileHas(['display', 'smooth_gpu'])).to.equal(true);
+      expect(await minerva.fileHas(['offload', 'hosts'])).to.equal(false);
+      await minerva.removeInFile(['display', 'smooth_gpu']);
+      const written = YAML.parse(await fs.readFile(configPath, 'utf8'));
+      expect(written.display).to.deep.equal({ image_duration: 300 });
+      expect(written.hosts.minerva ?? {}).to.not.have.nested.property('display.smooth_gpu');
+      expect(written.hosts.charon.offload.hosts).to.deep.equal(['minerva']);
+      const charon = await on('charon');
+      expect(await charon.fileHas(['offload', 'hosts'])).to.equal(true);
     });
   });
 

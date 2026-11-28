@@ -70,7 +70,10 @@ Requires Node.js 22.13+ (built-in `node:sqlite`).
   `loadConfig()` collects `warnings` for keys the defaults do not have (`unknownKeys`), so every new config key
   needs a default in `getUserDefaults()` or it is reported as unknown, and a check with its form info in
   `src/config/schema.js` (`field(check, { kind, help, ... })`, listed by `configFields()` for the web Config page).
-  `removeInFile()` drops a key's lines (`removeYaml`), and a mapping it leaves empty.
+  `removeInFile()` drops a key's lines (`removeYaml`), and a mapping it leaves empty. The file's `hosts` section maps
+  hostnames to settings laid over the rest on that machine (`splitHosts`, `hostKey`, `this.hostname`, which tests and
+  every fresh load set): `userConfig` is what applies here, and `setInFile` writes to `hosts.<this machine>` when that
+  sets the key.
 - **DatabaseManager** (`src/database/DatabaseManager.js`) - synchronous `node:sqlite`. Tables: `media`,
   `media_tags` (derived by `src/library/tags.js`), `ratings`, `searches`, `search_results`, `sequences`. Schema version in `PRAGMA user_version`. Status
   (`new`/`kept`/`skipped`) is derived from the latest rating inside the same transaction.

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-11-27
+
+### Added
+
+- Per-machine settings: under `hosts` in the config file, a hostname maps to settings that apply on that machine
+  alone, laid over the rest of the file. One file kept in a dotfiles repository can then give the desktop
+  `display.smooth_gpu: 0` and the laptop `offload.hosts: [desktop]`. Changes from the menu or the web Config page
+  to a key a machine's section sets go there, and the Config page marks such values with the machine's name.
+  Unknown keys are reported in every section, and a bad value in another machine's section is a warning.
+
 ## [3.5.2] - 2026-11-27
 
 ### Changed

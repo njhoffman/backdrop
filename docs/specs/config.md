@@ -176,6 +176,30 @@ pipes. Nerd Font glyphs cannot be detected, so `nerd` must be chosen explicitly,
 
 Other sources go under `sources.<name>` with their own credentials; unknown keys are preserved.
 
+## Per-machine settings
+
+One file can serve several machines (a dotfiles repository tracks it): `hosts` maps a hostname to settings laid over
+the rest of the file on that machine alone, deep merged as the file is over the defaults. A machine matches its
+hostname, else its short name (`minerva` for `minerva.lan`); other machines' sections change nothing there.
+
+```yaml
+display:
+  smooth: true
+hosts:
+  minerva:              # the desktop smooths on its NVIDIA card
+    display:
+      smooth_gpu: 0
+  charon:               # the laptop has its copies made by the desktop
+    offload:
+      hosts: [minerva]
+```
+
+Unknown keys are reported in every section. A bad value fails the load only on the machine it applies to; the
+others warn of it (`On charon (hosts.charon): ...`). `hosts` is not allowed inside a machine's section. A change
+through `setInFile` (the menu, the web Config page) goes to this machine's section when that sets the key or a value
+above it, and to the shared settings otherwise; a reset removes the key from both. The web Config page marks a value
+from this machine's section with `<host> only`.
+
 ## Paths
 
 `paths` is not written to a new file; each entry defaults to an XDG location and can be overridden

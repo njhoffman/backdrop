@@ -156,6 +156,7 @@ export class Daemon {
     // The whole config file loaded and checked again, for a saved change; throws on a mistake in it
     readConfig = async () => {
       const fresh = new config.constructor(config.configPath);
+      fresh.hostname = config.hostname;
       await fresh.loadConfig();
       return fresh;
     },

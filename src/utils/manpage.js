@@ -180,6 +180,10 @@ file except to change single keys (the menu saving a visualizer preset, the web 
 Config page), keeping comments and layout.
 
 Durations take seconds or a unit: 90, "90s", "5m", "1h".
+
+One file can serve several machines: under hosts, a hostname (or its short name) maps to settings laid over the rest
+of the file on that machine alone, such as hosts: { minerva: { display: { smooth_gpu: 0 } } }. Changes backdrop
+makes to a key that this machine's section sets go there.
 `;
 
 const PATHS = [

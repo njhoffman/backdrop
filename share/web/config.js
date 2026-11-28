@@ -125,7 +125,13 @@ function row(field) {
   badges.className = 'config-badges';
   const applies = Object.assign(document.createElement('span'), { className: `badge applies-${field.applies}`, textContent: APPLIES[field.applies] });
   badges.append(applies);
-  if (field.inFile) badges.append(Object.assign(document.createElement('span'), { className: 'badge', textContent: 'set in the file' }));
+  if (field.host) {
+    badges.append(Object.assign(document.createElement('span'), {
+      className: 'badge', textContent: `${field.host} only`, title: `Set under hosts.${field.host} in the file: it applies on this machine alone, and a change here goes there too`
+    }));
+  } else if (field.inFile) {
+    badges.append(Object.assign(document.createElement('span'), { className: 'badge', textContent: 'set in the file' }));
+  }
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.textContent = 'Reset';

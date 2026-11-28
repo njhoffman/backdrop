@@ -216,6 +216,12 @@ Reviewed: 2026-11-27
 - [ ] **RIFE is slow on integrated graphics.** (p3) [perf] Now on the CPU by default (2.79.0), about five times slower again. About one 1080p frame a second on the Iris Xe, so a 20 s clip at 0.5 takes about 30 minutes and the 39 slowed videos about a day. Try `-j` thread counts (load:proc:save), RIFE's half-resolution flow for 4K-sourced copies (`-u` off, `-x`), or the smaller `rife-v4` model, timing each on the same clip.
       Tried `-j` on 2026-11-08 (6 frames of 2560x1440 to 16, factor 3, the daemon paused, three rounds): `1:2:2` (the default), `1:1:2`, `2:2:2`, `2:4:4` and `4:8:4` all took 23.6-25.6 s, the spread within a round. RIFE is bound by the GPU, so threads change nothing; left at the default. What remains is the work itself: the smaller model, or fewer pixels.
       Tried the models on 2026-11-08 (same frames, daemon paused): rife-v4.6 26.0 s, v4.6 with `-u` 24.6 s, rife-v4 23.1 s, within the noise; one frame alone takes 7.5 s, about 5 s of it loading the model. v2/v3 only double the frames, and the lite models of the TNTwise fork are trimmed newer models, no lighter than v4.6. What helped: a 30 fps target (2.65.0), half the frames for a 0.5 video; #153 (0.3x of 25 fps) took 13.2 min at 30 against about 26 at 60.
+      2026-11-27, the same 6 frames of 2560x1440 to 16 with rife-v4.6 on minerva (RIFE 20221029 installed at
+      `display.smooth_rife`, which was missing there): GTX 960 with `-j 1:1:1` 9.7-10.9 s, with the default `-j`
+      8.1-8.7 s, the 12-core CPU 74-78 s (beside an unrelated x265 encode). So minerva's GPU is about 2.4 times
+      Charon's iGPU and 7 times its own CPU. 3.6.0 adds per-machine settings (`hosts` in the config), which let the
+      shared file give minerva `smooth_gpu: 0` and charon `offload.hosts: [minerva]`; Charon's smoothing then runs on
+      minerva's GPU and never on its own. Open until a smoothed copy has come back to charon that way.
 - [x] **RIFE hung the iGPU and froze the machine.** (p1) [bug] On 2026-11-13 21:48 the kernel logged two
       "GPU HANG: ecode 12:1:8fddfff9, in rife-ncnn-vulka"; the rcs0 engine reset and then the full reset timed out, and
       Charon froze at 21:50 (no panic; the journal just stops). The i915 iGPU is the only GPU and Xorg runs on it, so a RIFE

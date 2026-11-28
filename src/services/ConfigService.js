@@ -42,6 +42,7 @@ export class ConfigService {
   // The file loaded again, tolerating mistakes so they can be shown
   async load() {
     const fresh = new this.config.constructor(this.config.configPath);
+    fresh.hostname = this.config.hostname;
     await fresh.loadConfig({ tolerant: true });
     return fresh;
   }
@@ -52,7 +53,8 @@ export class ConfigService {
     return field;
   }
 
-  // { path, errors, warnings, fields: [{ key, kind, choices, min, max, help, value, default, inFile, applies }] }; a
+  // { path, host, errors, warnings, fields: [{ key, kind, choices, min, max, help, value, default, inFile, host, applies }] }:
+  // host is this machine's name in the file's hosts section where that sets the value, and changes go there too; a
   // secret's value is never given, only whether it is set and whether it comes from the environment
   async describe() {
     const fresh = await this.load();
@@ -60,12 +62,14 @@ export class ConfigService {
     const current = fresh.get();
     return {
       path: fresh.configPath,
+      host: fresh.host ?? null,
       errors: fresh.errors ?? [],
       warnings: fresh.warnings ?? [],
       fields: this.fields.map(({ keys, ...field }) => {
         const inFile = getIn(fresh.userConfig, keys) !== undefined;
         const value = getIn(current, keys);
-        const base = { ...field, inFile, applies: appliesWhen(field.key) };
+        const host = fresh.host && getIn(fresh.hostSection, keys) !== undefined ? fresh.host : null;
+        const base = { ...field, inFile, host, applies: appliesWhen(field.key) };
         if (field.kind === 'secret') return { ...base, set: Boolean(value), fromEnvironment: Boolean(value) && !inFile };
         // The file's own form (5m rather than 300) where it sets one; a list of mappings also as YAML, for editing
         const shown = inFile ? getIn(fresh.userConfig, keys) : value;

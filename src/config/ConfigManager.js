@@ -28,6 +28,36 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// The file's per-machine section: { <hostname>: { section: { key: value } } }, each laid over the rest of the file on
+// the machine of that name, so one tracked file can hold, say, smooth_gpu for the desktop and offload.hosts for the laptop
+export const HOSTS_KEY = 'hosts';
+
+// The key of hosts that names this machine: its hostname, else its short name (minerva for minerva.lan); null for none
+export function hostKey(hosts, hostname) {
+  if (!isPlainObject(hosts) || !hostname) return null;
+  if (Object.hasOwn(hosts, hostname)) return hostname;
+  const short = hostname.split('.')[0];
+  return Object.hasOwn(hosts, short) ? short : null;
+}
+
+// The file split into the settings every machine shares and the per-machine sections, with what is wrong in the latter
+export function splitHosts(file) {
+  const { [HOSTS_KEY]: hosts = null, ...shared } = isPlainObject(file) ? file : {};
+  const errors = [];
+  const sections = {};
+  if (hosts !== null && !isPlainObject(hosts)) {
+    errors.push(`${HOSTS_KEY} must be a mapping of hostnames to settings`);
+  } else {
+    for (const [name, section] of Object.entries(hosts ?? {})) {
+      if (section === null) continue;
+      if (!isPlainObject(section)) errors.push(`${HOSTS_KEY}.${name} must be a mapping of settings`);
+      else if (Object.hasOwn(section, HOSTS_KEY)) errors.push(`${HOSTS_KEY}.${name} cannot hold ${HOSTS_KEY} itself`);
+      else sections[name] = section;
+    }
+  }
+  return { shared, sections, errors };
+}
+
 // A null over a mapping or list default is that type left empty, as YAML reads a section or list whose
 // entries are all commented out: the mapping keeps its defaults, the list is empty
 function emptied(value, base) {
@@ -181,8 +211,15 @@ export class ConfigManager {
     this.configPath = configPath || path.join(xdgDir('XDG_CONFIG_HOME', '.config'), 'config.yaml');
     // The CPU count loads are divided by (convertAbsoluteLoads); tests replace it
     this.cpus = () => os.availableParallelism();
+    // This machine's name, matched against the file's hosts section (hostKey); tests replace it
+    this.hostname = () => os.hostname();
     this.config = null;
+    // What the file sets for this machine: its shared settings with this machine's hosts section laid over them
     this.userConfig = null;
+    // The hosts key the file has for this machine, or null (hostKey)
+    this.host = null;
+    // What this machine's hosts section sets, or null
+    this.hostSection = null;
     // True after initialize() wrote a new default file; the CLI reports it
     this.created = false;
     // Keys in the file that no setting uses, most likely typos; the CLI and the daemon report them
@@ -345,11 +382,26 @@ export class ConfigManager {
   async loadConfig({ tolerant = false } = {}) {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf8');
-      this.userConfig = YAML.parse(configContent) || {};
+      const { shared, sections, errors: hostErrors } = splitHosts(YAML.parse(configContent) || {});
+      this.host = hostKey(sections, this.hostname());
+      this.hostSection = this.host ? sections[this.host] : null;
+      this.userConfig = this.host ? deepMerge(shared, sections[this.host]) : shared;
       const converted = await this.convertAbsoluteLoads();
-      this.warnings = [...unknownKeys(this.userConfig, this.getDefaultConfig()), ...converted];
-      const merged = deepMerge(this.getDefaultConfig(), this.userConfig);
-      this.errors = validateConfig(merged);
+      const defaults = this.getDefaultConfig();
+      this.warnings = [
+        ...unknownKeys(shared, defaults),
+        ...Object.entries(sections).flatMap(([name, section]) => unknownKeys(section, defaults, `${HOSTS_KEY}.${name}.`)),
+        ...converted
+      ];
+      const merged = deepMerge(defaults, this.userConfig);
+      this.errors = [...hostErrors, ...validateConfig(merged)];
+      // Another machine's section is checked as that machine would load it, but only warned about here
+      for (const [name, section] of Object.entries(sections)) {
+        if (name === this.host) continue;
+        for (const problem of validateConfig(deepMerge(defaults, deepMerge(shared, section)))) {
+          if (!this.errors.includes(problem)) this.warnings.push(`On ${name} (${HOSTS_KEY}.${name}): ${problem}`);
+        }
+      }
       this.visualizerError = visualizerProblem(merged.visualizer);
       if (this.errors.length && !tolerant) throw new Error(`invalid values in ${this.configPath}:\n  ${this.errors.join('\n  ')}`);
       this.config = this.normalize(merged);
@@ -380,6 +432,7 @@ export class ConfigManager {
   // without its paths or other settings changing underneath it. Warnings follow the whole file.
   async reloadSection(key) {
     const fresh = new ConfigManager(this.configPath);
+    fresh.hostname = this.hostname;
     await fresh.loadConfig();
     this.config[key] = fresh.config[key];
     this.userConfig[key] = fresh.userConfig[key];
@@ -422,27 +475,62 @@ export class ConfigManager {
   // Sets one value in the file itself (keys: ['visualizer', 'presets', 'calm']), leaving every other byte as
   // it was, comments and their alignment included (see spliceYaml); the only way backdrop writes an existing
   // config, so a hand-kept file never loses its comments or layout. Written to a temporary file and renamed, so a watching daemon never reads half of it.
+  // A value this machine's hosts section sets is written there, so the change applies here and nowhere else; any
+  // other goes to the shared settings.
   async setInFile(keys, value) {
-    const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
-    const temporary = `${this.configPath}.${process.pid}.tmp`;
-    await fs.writeFile(temporary, spliceYaml(text, keys, value));
-    await fs.rename(temporary, this.configPath);
+    const text = await this.readFile();
+    await this.writeFile(spliceYaml(text, this.writeKeys(text, keys), value));
   }
 
-  // Drops keys from the file itself, so their defaults apply again; the rest of the file stays as it was (see removeYaml)
+  // Drops keys from the file itself, so their defaults apply again: from the shared settings and from this machine's
+  // hosts section; the rest of the file stays as it was (see removeYaml)
   async removeInFile(keys) {
-    const text = await fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
-    const output = removeYaml(text, keys);
-    if (output === text) return;
-    const temporary = `${this.configPath}.${process.pid}.tmp`;
-    await fs.writeFile(temporary, output);
-    await fs.rename(temporary, this.configPath);
+    const text = await this.readFile();
+    let output = removeYaml(text, keys);
+    const own = this.ownKeys(output);
+    if (own && YAML.parseDocument(output).hasIn([...own, ...keys])) output = removeYaml(output, [...own, ...keys]);
+    if (output !== text) await this.writeFile(output);
   }
 
-  // Whether the file itself sets keys (['visualizer', 'presets', 'calm'])
+  // Whether the file itself sets keys (['visualizer', 'presets', 'calm']) for this machine: in the shared settings or
+  // in its hosts section
   async fileHas(keys) {
-    const text = await fs.readFile(this.configPath, 'utf8').catch(() => '');
-    return YAML.parseDocument(text).hasIn(keys);
+    const text = await this.readFile().catch(() => '');
+    const document = YAML.parseDocument(text);
+    const own = this.ownKeys(text);
+    return document.hasIn(keys) || Boolean(own && document.hasIn([...own, ...keys]));
+  }
+
+  // The path of this machine's hosts section in the file as it is now (['hosts', 'minerva']), or null
+  ownKeys(text) {
+    const { sections } = splitHosts(YAML.parse(text) || {});
+    const host = hostKey(sections, this.hostname());
+    return host ? [HOSTS_KEY, host] : null;
+  }
+
+  // Where a change of keys goes: under this machine's hosts section when that sets keys or replaces a mapping above them
+  // (a list or value there), else keys themselves
+  writeKeys(text, keys) {
+    const own = this.ownKeys(text);
+    if (!own) return keys;
+    const document = YAML.parseDocument(text);
+    for (let depth = 1; depth <= keys.length; depth++) {
+      const node = document.getIn([...own, ...keys.slice(0, depth)], true);
+      if (node === undefined) return keys;
+      if (depth === keys.length || !YAML.isMap(node)) return [...own, ...keys];
+    }
+    return keys;
+  }
+
+  async readFile() {
+    return fs.readFile(this.configPath, 'utf8').catch(error => (error.code === 'ENOENT' ? '' : Promise.reject(error)));
+  }
+
+  // Written to a temporary file and renamed, so a watching daemon never reads half of it
+  async writeFile(text) {
+    const temporary = `${this.configPath}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, text);
+    await fs.rename(temporary, this.configPath);
   }
 
   set(key, value) {
