@@ -106,7 +106,7 @@ describe('visualizer settings', () => {
     let settings = visualizerSettings(section);
     expect(settings.preset).to.equal('calm');
     expect(settings.instances[0]).to.include({ module: 'wave', opacity: 0.3 });
-    expect(settings.presets).to.deep.equal(['subtle', 'bars', 'graph', 'radials', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'cover-radials', 'lyrics-now', 'calm']);
+    expect(settings.presets).to.deep.equal(['subtle', 'bars', 'graph', 'radials', 'ring', 'wave', 'party', 'lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'screensaver', 'screensaver-instrumental', 'screensaver-projectm', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-soft-tinted-strip', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-blurred-vivid-strip', 'lyrics-sharp-tinted', 'lyrics-sharp-tinted-strip', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'lyrics-sharp-duotone-strip', 'cover-radials', 'lyrics-now', 'calm']);
     // Built-in presets bring their own instances; the section's ring replaces the built-in one
     settings = visualizerSettings(section, { preset: 'party' });
     expect(settings.instances.map(item => [item.name, item.module, item.opacity])).to.deep.equal([['base', 'bars', 0.7], ['ring', 'radial', 0.7]]);
@@ -114,7 +114,7 @@ describe('visualizer settings', () => {
     expect(visualizerSettings(section, { preset: null }).preset).to.be.null;
 
     const fails = (value, message, options) => expect(() => visualizerSettings(value, options)).to.throw(message);
-    fails(section, 'visualizer.preset must be one of the presets (subtle, bars, graph, radials, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-cover, lyrics-blurred-swirl, lyrics-blurred-swirl-tinted, lyrics-blurred-slow, lyrics-blurred-sunamu, lyrics-blurred-tinted, lyrics-blurred-soft, lyrics-blurred-soft-tinted, lyrics-blurred-offset, lyrics-blurred-vivid, lyrics-sharp-tinted, lyrics-sharp-bright, lyrics-sharp-bright-tinted, lyrics-sharp-duotone, cover-radials, lyrics-now, calm), not "loud"', { preset: 'loud' });
+    fails(section, 'visualizer.preset must be one of the presets (subtle, bars, graph, radials, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, screensaver, screensaver-instrumental, screensaver-projectm, lyrics-stage, lyrics-cover, lyrics-blurred-swirl, lyrics-blurred-swirl-tinted, lyrics-blurred-slow, lyrics-blurred-sunamu, lyrics-blurred-tinted, lyrics-blurred-soft, lyrics-blurred-soft-tinted, lyrics-blurred-soft-tinted-strip, lyrics-blurred-offset, lyrics-blurred-vivid, lyrics-blurred-vivid-strip, lyrics-sharp-tinted, lyrics-sharp-tinted-strip, lyrics-sharp-bright, lyrics-sharp-bright-tinted, lyrics-sharp-duotone, lyrics-sharp-duotone-strip, cover-radials, lyrics-now, calm), not "loud"', { preset: 'loud' });
     fails({ presets: { bad: { bars: { width: 0 } } } }, 'visualizer.presets.bad.bars.width must be an integer from 1');
     fails({ presets: { bad: { enabled: true } } }, 'visualizer.presets.bad.enabled must be left out of a preset');
   });
@@ -357,13 +357,13 @@ describe('visualizer settings', () => {
       };
 
       it('all run sleeve, solid, checking out', () => {
-        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'cover-radials', 'lyrics-now']) {
+        for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-soft-tinted-strip', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-blurred-vivid-strip', 'lyrics-sharp-tinted', 'lyrics-sharp-tinted-strip', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'lyrics-sharp-duotone-strip', 'cover-radials', 'lyrics-now']) {
           expect(lyrics(name).sleeve, name).to.include({ engine: 'sleeve', opacity: 1 });
         }
       });
 
       it('put sleeve lowest when it covers the monitor, so the visualizers show above it', () => {
-        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'cover-radials', 'lyrics-now']) {
+        for (const name of ['lyrics-veil', 'lyrics-blend', 'lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-soft-tinted-strip', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-blurred-vivid-strip', 'lyrics-sharp-tinted', 'lyrics-sharp-tinted-strip', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'lyrics-sharp-duotone-strip', 'cover-radials', 'lyrics-now']) {
           const { instances, sleeve } = lyrics(name);
           expect(instances[0], name).to.equal(sleeve);
           expect(sleeve.layout.placement.anchor, name).to.equal('fill');
@@ -372,7 +372,7 @@ describe('visualizer settings', () => {
 
       it('take wallpaper colors only where the wallpaper shows through', () => {
         for (const name of ['lyrics', 'lyrics-only', 'lyrics-side', 'lyrics-veil', 'lyrics-blend']) expect(lyrics(name).sleeve.palette.source, name).to.equal('wallpaper');
-        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'cover-radials', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
+        for (const name of ['lyrics-stage', 'lyrics-cover', 'lyrics-blurred-swirl', 'lyrics-blurred-swirl-tinted', 'lyrics-blurred-slow', 'lyrics-blurred-sunamu', 'lyrics-blurred-tinted', 'lyrics-blurred-soft', 'lyrics-blurred-soft-tinted', 'lyrics-blurred-soft-tinted-strip', 'lyrics-blurred-offset', 'lyrics-blurred-vivid', 'lyrics-blurred-vivid-strip', 'lyrics-sharp-tinted', 'lyrics-sharp-tinted-strip', 'lyrics-sharp-bright', 'lyrics-sharp-bright-tinted', 'lyrics-sharp-duotone', 'lyrics-sharp-duotone-strip', 'cover-radials', 'lyrics-now']) expect(lyrics(name).sleeve.palette.source, name).to.equal('config');
       });
 
       it('leave the left third to the lyrics where the visualizers sit beside them', () => {
@@ -415,8 +415,9 @@ describe('visualizer settings', () => {
       it('show a now-playing panel fitted to each layout', () => {
         const panels = {
           lyrics: ['minimal', 'top-center', '3'], 'lyrics-only': ['full', 'bottom-center', '2'], 'lyrics-side': ['full', 'bottom-left', '2'],
-          'lyrics-veil': ['full', 'top-left', '1.8'], 'lyrics-blend': ['minimal', 'top-center', '3'], 'lyrics-stage': ['full', 'bottom-left', '2'],
-          'lyrics-cover': ['minimal', 'bottom-center', '3'], 'lyrics-blurred-swirl': ['minimal', 'top-center', '3'], 'lyrics-now': ['full', 'center-left', '3']
+          'lyrics-veil': ['full', 'top-left', '1.8'], 'lyrics-blend': ['strip', 'top-center', '3'], 'lyrics-stage': ['full', 'bottom-left', '2'],
+          'lyrics-cover': ['strip', 'bottom-center', '3'], 'lyrics-blurred-swirl': ['strip', 'bottom-center', '3'], 'lyrics-now': ['card', 'center-left', '3'],
+          'lyrics-sharp-duotone': ['full', 'center-left', '3'], 'lyrics-sharp-duotone-strip': ['strip', 'bottom-center', '3']
         };
         for (const [name, [now, position, scale]] of Object.entries(panels)) {
           const { sleeve } = lyrics(name).sleeve;
@@ -427,6 +428,13 @@ describe('visualizer settings', () => {
         // The caption stands under the cover, in the free space beside the lyrics; lyrics-now's card takes 40%
         expect(lyrics('lyrics-cover').sleeve.sleeve).to.include({ nowArea: '60%x100%+40%+0' });
         expect(lyrics('lyrics-now').sleeve.sleeve).to.include({ nowArea: '40%x75%+0+0', lyricsArea: '60%x75%+40%+0' });
+        // A strip variant is its full preset with the strip across the whole bottom and the lyrics centered between
+        for (const base of ['lyrics-blurred-soft-tinted', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-duotone']) {
+          const full = lyrics(base).sleeve.sleeve;
+          const strip = lyrics(`${base}-strip`).sleeve.sleeve;
+          expect(strip, base).to.include({ nowArea: '100%x100%+0+0', lyricsArea: '60%x86%+20%+0', lyricsAlign: 'center' });
+          expect(strip.style, base).to.deep.equal(full.style);
+        }
       });
 
       // Sunamu's background through sleeve's CSS port of it, as Sunamu's Background.css draws it (lyrics-blurred-sunamu, the

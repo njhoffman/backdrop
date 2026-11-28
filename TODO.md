@@ -1021,6 +1021,8 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
 - [ ] **cover-radials draws a song's lyrics through its left ring.** (p2) [bug] Meant for songs without lyrics (the
       automatic preset picks it only then), but picked by hand, or with lyrics found late, sleeve shows them in the
       middle, over the ring (seen live 2026-11-28 with card). Hide the lyrics in this preset or give them room.
+      sleeve has no way to leave the lyrics out (an area must have a size; no `now` mode drops them): asked for in
+      sleeve's TODO ("Leave the lyrics out"); then set it in cover-radials, rather than an off-screen lyrics area.
 - [ ] **The wallpaper's brightness and colors set the veil.** (p2) [feature] The rest of step (3) of the automatic
       preset: with the wallpaper followed it picks `lyrics-veil` but keeps the preset's veil; the wallpaper's sample
       (`daemon.samples`, `imageStats`) should set the veil's opacity (more over a bright one) and tint, as a live change

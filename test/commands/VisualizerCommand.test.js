@@ -126,9 +126,9 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 33)).to.deep.equal([
+      expect(lines.slice(0, 37)).to.deep.equal([
         '  subtle', '  bars', '  graph', '  radials', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver  (screensaver only)',
-        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-blurred-swirl', '  lyrics-blurred-swirl-tinted', '  lyrics-blurred-slow', '  lyrics-blurred-sunamu', '  lyrics-blurred-tinted', '  lyrics-blurred-soft', '  lyrics-blurred-soft-tinted', '  lyrics-blurred-offset', '  lyrics-blurred-vivid', '  lyrics-sharp-tinted', '  lyrics-sharp-bright', '  lyrics-sharp-bright-tinted', '  lyrics-sharp-duotone', '  cover-radials', '  lyrics-now', '  calm'
+        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-blurred-swirl', '  lyrics-blurred-swirl-tinted', '  lyrics-blurred-slow', '  lyrics-blurred-sunamu', '  lyrics-blurred-tinted', '  lyrics-blurred-soft', '  lyrics-blurred-soft-tinted', '  lyrics-blurred-soft-tinted-strip', '  lyrics-blurred-offset', '  lyrics-blurred-vivid', '  lyrics-blurred-vivid-strip', '  lyrics-sharp-tinted', '  lyrics-sharp-tinted-strip', '  lyrics-sharp-bright', '  lyrics-sharp-bright-tinted', '  lyrics-sharp-duotone', '  lyrics-sharp-duotone-strip', '  cover-radials', '  lyrics-now', '  calm'
       ]);
     });
 

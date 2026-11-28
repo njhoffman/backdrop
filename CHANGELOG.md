@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-11-28
+
+### Added
+
+- Strip variants of four lyrics presets: `lyrics-blurred-soft-tinted-strip`, `lyrics-blurred-vivid-strip`,
+  `lyrics-sharp-tinted-strip` and `lyrics-sharp-duotone-strip` put the song and its seek bar on one line along the
+  bottom and center the lyrics, instead of the panel on the left; the full presets stay, to compare. Needs sleeve 0.53.0.
+
+### Changed
+
+- `lyrics-now` and `cover-radials` show sleeve 0.53.0's now-playing card: a large cover with the title, artist,
+  album and seek bar beneath it, so `lyrics-now` no longer looks like the other lyrics presets.
+- `lyrics-blurred-swirl`, `-swirl-tinted`, `-slow`, `lyrics-cover` and `lyrics-blend` show a strip with the seek bar
+  where they showed a line naming the song.
+
 ## [3.14.3] - 2026-11-28
 
 ### Fixed

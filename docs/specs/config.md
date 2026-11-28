@@ -132,8 +132,8 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
                            #   bars, graph, radials, ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend,
                            #   lyrics-stage, lyrics-cover, lyrics-blurred-swirl, -swirl-tinted, -slow, -sunamu, -tinted, -soft,
-                           #   -soft-tinted, -offset, -vivid, lyrics-sharp-tinted, -bright, -bright-tinted, -duotone, cover-radials,
-                           #   lyrics-now (src/visualizer/presets.js); cannot set enabled, preset, presets, screenshots or auto;
+                           #   -soft-tinted, -soft-tinted-strip, -offset, -vivid, -vivid-strip, lyrics-sharp-tinted, -tinted-strip,
+                           #   -bright, -bright-tinted, -duotone, -duotone-strip, cover-radials, lyrics-now (src/visualizer/presets.js); cannot set enabled, preset, presets, screenshots or auto;
                            #   description: a line the menu and web page show
   instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];
                            #   the section's own instance settings are their defaults; list order = stacking order;

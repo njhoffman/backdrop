@@ -154,12 +154,12 @@ const PRESETS = {
   },
   // The track's cover blended over the wallpaper, lyrics in the middle, bars along the bottom
   'lyrics-blend': {
-    description: 'The track\'s cover blended over the wallpaper, a line naming the song above lyrics in the middle, bars along the bottom',
+    description: 'The track\'s cover blended over the wallpaper, a strip with the song and its seek bar above lyrics in the middle, bars along the bottom',
     details: [
-      'Panel tuned by screenshot on 1440p (2026-11-28): a line naming the song at the top at scale 3.'
+      'Panel tuned by screenshot on 1440p (2026-11-28): a line naming the song at the top at scale 3; a strip since sleeve 0.53.0, along the top, as the bars hold the bottom.'
     ],
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6', ...nowPanel('minimal', 'top-center', 3) } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x70%+20%+5%', lyrics_align: 'center', background: 'cover@0.6', ...nowPanel('strip', 'top-center', 3) } },
       { name: 'bars', module: 'bars', placement: { anchor: 'bottom', width: '100%', height: '25%' } }
     ]
   },
@@ -205,22 +205,22 @@ const PRESETS = {
   // Lyrics on the left, the whole cover sharp beside them (sleeve 0.48.0's --art-fit), over whichever cover look is
   // picked (the user's own until one is), since style lays over the cover's variables
   'lyrics-cover': {
-    description: 'The whole track\'s cover, sharp, with the song named under it, beside lyrics on the left, over its colors as the background',
+    description: 'The whole track\'s cover, sharp, with the song and its seek bar on a strip under it, beside lyrics on the left, over its colors as the background',
     details: [
-      'Panel tuned by screenshot on 1440p (2026-11-28): a caption under the whole cover at scale 3, not a card, which would show the cover twice; long titles wrap to two lines.'
+      'Panel tuned by screenshot on 1440p (2026-11-28): a caption under the whole cover at scale 3, not a card, which would show the cover twice; long titles wrap to two lines. A strip since sleeve 0.53.0, which adds the seek bar.'
     ],
     wallpaper: false,
     instances: [
-      // No card: the cover already stands beside the lyrics, so only its caption
+      // No card: the cover already stands beside the lyrics, so only a strip under it
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
-        lyrics_area: '40%x100%+0+0', background: 'cover', ...nowPanel('minimal', 'bottom-center', 3, '60%x100%+40%+0'),
-        style: { '--art-fit': 'contain', ...nowPanel('minimal', 'bottom-center', 3).style }
+        lyrics_area: '40%x100%+0+0', background: 'cover', ...nowPanel('strip', 'bottom-center', 3, '60%x100%+40%+0'),
+        style: { '--art-fit': 'contain', ...nowPanel('strip', 'bottom-center', 3).style }
       } }
     ]
   },
   // Sunamu's moving background across the window, lyrics in the middle, a wave along the bottom
   'lyrics-blurred-swirl': {
-    description: 'Two copies of the track\'s cover turning and blending as the whole background, a line naming the song above lyrics in the middle, a wave along the bottom',
+    description: 'Two copies of the track\'s cover turning and blending as the whole background, lyrics in the middle, a wave along the bottom over a strip with the song and its seek bar',
     details: [
       'Seen over 80 s on 1440p, 2026-11-28: lively patches of the cover\'s colors, best on colorful covers; 8 to 12% changed every 5 s. Lyrics: fair, as they can sit over pale parts of the cover.',
       'Second look, 100 s, no skipping, 2026-11-28: on a grey cover with an orange star, its shapes drift steadily and stay recognizable; 9 to 14% changed every 5 s, brightness 0.26.',
@@ -229,7 +229,7 @@ const PRESETS = {
     ],
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3) } },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('strip', 'bottom-center', 3) } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
   },
@@ -243,8 +243,8 @@ const PRESETS = {
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
-        lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3),
-        style: { ...nowPanel('minimal', 'top-center', 3).style, '--swirl-tint': 'cover' }
+        lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('strip', 'bottom-center', 3),
+        style: { ...nowPanel('strip', 'bottom-center', 3).style, '--swirl-tint': 'cover' }
       } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
@@ -259,8 +259,8 @@ const PRESETS = {
     wallpaper: false,
     instances: [
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
-        lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3),
-        style: { ...nowPanel('minimal', 'top-center', 3).style, '--swirl-period': '60' }
+        lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('strip', 'bottom-center', 3),
+        style: { ...nowPanel('strip', 'bottom-center', 3).style, '--swirl-period': '60' }
       } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
@@ -379,11 +379,15 @@ const PRESETS = {
   // The soft tinted cover with no lyrics: the now-playing card on the left, a ring for each speaker and bars on the right
   'cover-radials': {
     description: 'The track\'s cover as soft tinted swirls, the now-playing card on the left, a ring for each speaker and bars on the right; for a song without lyrics',
+    details: [
+      'A card since sleeve 0.53.0 (seen live 2026-11-28). A song with lyrics draws them across the left ring: sleeve has no way yet to leave them out.'
+    ],
     wallpaper: false,
     instances: [
-      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({
-        tint: true, style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' }
-      }) },
+      { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
+        ...sunamu({ tint: true, style: { '--swirl-blur': '50px', '--swirl-brightness': '0.75', '--art-saturation': '1.25', '--art-opacity': '0.75' } }),
+        now: 'card'
+      } },
       { name: 'ring-left', module: 'radial', channel: 'left', palette: CYCLE_COLORS, rect: { x: '40%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },
       { name: 'ring-right', module: 'radial', channel: 'right', palette: CYCLE_COLORS, rect: { x: '70%', y: '8%', width: '30%', height: '64%' }, radial: VEIL_RING },
       { name: 'bars', module: 'bars', palette: CYCLE_COLORS, rect: { x: '40%', y: '75%', width: '60%', height: '25%' }, bars: CYCLE_BARS }
@@ -393,21 +397,37 @@ const PRESETS = {
   'lyrics-now': {
     description: 'The track\'s cover as the whole background, a large now-playing card on the left, lyrics on the right, a wave along the bottom',
     details: [
-      'Panel tuned by screenshot on 1440p (2026-11-28): the card\'s area widened to 40% at scale 3, since sleeve caps a card to its area and past about 2.2 only the text grew; it was the size of the other cards, so lyrics-now looked like the rest.'
+      'Panel tuned by screenshot on 1440p (2026-11-28): the card\'s area widened to 40% at scale 3, since sleeve caps a card to its area and past about 2.2 only the text grew; it was the size of the other cards, so lyrics-now looked like the rest.',
+      'A card since sleeve 0.53.0 (seen live 2026-11-28): a large cover with title, artist, album and the seek bar beneath it, unlike any other preset.'
     ],
     wallpaper: false,
     instances: [
       // The card as the centrepiece, filling most of its third
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: {
-        lyrics_area: '60%x75%+40%+0', background: 'cover', ...nowPanel('full', 'center-left', 3, '40%x75%+0+0')
+        lyrics_area: '60%x75%+40%+0', background: 'cover', ...nowPanel('card', 'center-left', 3, '40%x75%+0+0')
       } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '25%' }, wave: { color: '#33aacc' } }
     ]
   }
 };
 
+// The strip variants (2026-11-28): the song and its seek bar on a strip along the bottom of the whole window, lyrics
+// centered across the middle, in place of the panel on the left, as the cover already is the background. Seen live on
+// 1440p: with the panel's own 40% area the strip sat in its corner, so the areas change with it.
+const STRIP_LAYOUT = { lyrics_area: '60%x86%+20%+0', lyrics_align: 'center', now: 'strip', now_position: 'bottom-center', now_area: '100%x100%+0+0' };
+const STRIP_VARIANTS = ['lyrics-blurred-soft-tinted', 'lyrics-blurred-vivid', 'lyrics-sharp-tinted', 'lyrics-sharp-duotone'];
+const stripOf = (name, preset) => ({
+  description: `${name} with the song and its seek bar on a strip along the bottom, lyrics centered`,
+  details: ['Seen live on 1440p, 2026-11-28 (duotone and soft-tinted): lyrics centered with one seek bar across the bottom, and the cover not shown twice.'],
+  wallpaper: preset.wallpaper,
+  instances: preset.instances.map(instance => (instance.engine === 'sleeve' ? { ...instance, sleeve: { ...instance.sleeve, ...STRIP_LAYOUT } } : instance))
+});
+const WITH_STRIPS = Object.fromEntries(Object.entries(PRESETS).flatMap(([name, preset]) => (
+  STRIP_VARIANTS.includes(name) ? [[name, preset], [`${name}-strip`, stripOf(name, preset)]] : [[name, preset]]
+)));
+
 // Every look with lyrics runs only while sound plays here, so a song playing on another device (Spotify Connect)
 // shows its lyrics with no empty bars beside them: GLava stops in silence while sleeve stays up for a song
-export const BUILTIN_PRESETS = Object.fromEntries(Object.entries(PRESETS).map(([name, preset]) => [
+export const BUILTIN_PRESETS = Object.fromEntries(Object.entries(WITH_STRIPS).map(([name, preset]) => [
   name, preset.instances?.some(instance => instance.engine === 'sleeve') ? { only_while_playing: true, ...preset } : preset
 ]));
