@@ -298,6 +298,10 @@ Reviewed: 2026-11-27
       Update 2026-11-21: v2.74.0 (after this) keeps mpv's last output (`outputTail`) in the exit warnings and kills and
       restarts an mpv that opens no file within 15 s, so the next one says why it exited. Still open: the cause, which
       needs a hotplug to reproduce, and an mpv that opens a file but draws no frame.
+      Update 2026-11-27: 3.4.7 catches the second. 15 s after a start, an mpv that opened a file but reports
+      `vo-configured` false (its video output failed: under Xvfb a failing `--gpu-context` gives exactly that) is killed
+      for one more start, and a second blank start notifies instead of looping (`Daemon.checkFirstFrame`). Still open:
+      the cause, which needs a hotplug to reproduce.
 - [x] **The monitor poll makes X re-read every monitor's EDID every 5 s.** (p2) [perf] `reconcileMonitors` runs
       `xrandr --listactivemonitors` every `MONITOR_POLL_MS` (5000); without `--current` xrandr asks the server to re-probe
       every connector, a DDC read of each EDID that blocks the X server (about 140 ms a call here, 2 reads with a laptop

@@ -699,6 +699,72 @@ describe('Daemon', () => {
         await daemon.stop();
       });
 
+      describe('but draws no frame', () => {
+        // Every mpv opens its file as soon as the daemon observes the path; DP-1's answer vo-configured with drawn
+        // (false: its video output failed to start), the other monitor's with true
+        function opening(drawn) {
+          return makeDaemon({
+            firstFileTimeout: 20,
+            connect: async socketPath => {
+              const own = socketPath.endsWith('DP-1.sock');
+              const client = new FakeMpvClient(drawn === undefined && own ? {} : { 'vo-configured': own ? drawn : true });
+              clients.push({ socketPath, client });
+              const observe = client.observeProperty.bind(client);
+              client.observeProperty = async (id, name) => {
+                await observe(id, name);
+                if (name === 'path') client.emit('property-change', { name: 'path', data: '/m/1.mp4' });
+              };
+              return client;
+            }
+          });
+        }
+        const settled = async daemon => {
+          for (let waited = 0; waited < 2000; waited += 5) {
+            const screen = daemon.screens.get('DP-1');
+            if (screen?.firstFrame) return screen.firstFrame;
+            await new Promise(resolve => setTimeout(resolve, 5));
+          }
+          throw new Error('the first frame was never checked');
+        };
+
+        it('kills an mpv that opened a file but set up no video output, and not one that did', async () => {
+          const daemon = opening(false);
+          await daemon.start();
+          await settled(daemon);
+          expect(mpvKills(0)).to.have.length(1);
+          expect(mpvKills(1)).to.have.length(0);
+          await daemon.stop();
+        });
+
+        it('leaves the restarted one running with a notification when it draws nothing either', async () => {
+          notifications.length = 0;
+          const daemon = opening(false);
+          await daemon.start();
+          await settled(daemon);
+          const first = daemon.screens.get('DP-1');
+          spawned[0].child.exit(null, 'SIGKILL');
+          await launches(spawned, 3);
+          for (let waited = 0; daemon.screens.get('DP-1') === first && waited < 2000; waited += 5) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+          }
+          await settled(daemon);
+
+          // spawned[2] is DP-1's second mpv
+          expect(mpvKills(2)).to.have.length(0);
+          expect(notifications).to.have.length(1);
+          expect(notifications[0].at(-1)).to.equal("The wallpaper on DP-1 shows nothing: mpv opened a file but drew no frame, twice; see backdrop's log");
+          await daemon.stop();
+        });
+
+        it('leaves it alone when mpv cannot say whether it drew', async () => {
+          const daemon = opening(undefined);
+          await daemon.start();
+          await settled(daemon);
+          expect(mpvKills(0)).to.have.length(0);
+          await daemon.stop();
+        });
+      });
+
       it('waits for nothing without media to show', async () => {
         db.close();
         db = new DatabaseManager();

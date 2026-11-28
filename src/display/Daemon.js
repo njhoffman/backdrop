@@ -43,8 +43,8 @@ const MAX_RESTARTS = 5;
 // Hangs on one item (mpv no longer answering while it plays) before the item is dropped for the run
 export const HANGS_TO_DROP = 2;
 const RESTART_DELAY_MS = 1000;
-// A started mpv with media to show that has not opened a file by then is killed, so the restart path tries again;
-// after a hotplug one once came up with no picture and never left that state
+// A started mpv with media to show that has not opened a file by then, or opened one and drew no frame, is killed, so
+// the restart path tries again; after a hotplug one once came up with no picture and never left that state
 const FIRST_FILE_TIMEOUT_MS = 15_000;
 // mpv answers nothing while it sets up video, which a slow GPU or decoder probe can stretch to several seconds
 const MPV_COMMAND_TIMEOUT_MS = 15_000;
@@ -605,7 +605,9 @@ export class Daemon {
 
     const previous = this.screens.get(monitor.name);
     const screen = {
-      monitor, socketPath, child, output, client: null, restarts: previous?.restarts ?? [], failing: Promise.resolve()
+      monitor, socketPath, child, output, client: null, restarts: previous?.restarts ?? [], failing: Promise.resolve(),
+      // Starts in a row that opened a file and drew no frame (checkFirstFrame), carried across restarts
+      blankStarts: previous?.blankStarts ?? 0
     };
     this.screens.set(monitor.name, screen);
 
@@ -666,22 +668,52 @@ export class Daemon {
   }
 
   // Kills a screen's mpv when it has media but opens no file in time (no `path` from mpv), so handleExit
-  // restarts it within the usual budget instead of leaving the monitor black
+  // restarts it within the usual budget instead of leaving the monitor black; one that opened a file goes on to
+  // checkFirstFrame
   watchFirstFile(screen) {
     if (!this.firstFileTimeout) return;
     clearTimeout(screen.firstFileTimer);
     screen.firstFileTimer = setTimeout(() => {
-      const { child } = screen;
-      if (this.stopping || screen.filename || this.screens.get(screen.monitor.name) !== screen ||
-          child.exitCode !== null || child.signalCode !== null) {
+      if (!this.watching(screen)) return;
+      if (screen.filename) {
+        screen.firstFrame = this.checkFirstFrame(screen);
         return;
       }
       this.logger.error('mpv opened no file, restarting it', {
         monitor: screen.monitor.name, seconds: this.firstFileTimeout / 1000, output: screen.output?.lines()
       });
-      this.killGroup(child, 'SIGKILL');
+      this.killGroup(screen.child, 'SIGKILL');
     }, this.firstFileTimeout);
     screen.firstFileTimer.unref?.();
+  }
+
+  // Whether a screen is still the running one of its monitor, for a check that comes back later
+  watching(screen) {
+    const { child } = screen;
+    return !this.stopping && this.screens.get(screen.monitor.name) === screen && child.exitCode === null && child.signalCode === null;
+  }
+
+  // An mpv that opened a file but has no video output set up drew no frame: its output failed to start (after a
+  // hotplug, the monitor stayed black behind the visualizers, 2026-11-10) and mpv dropped the video. It is killed for
+  // the restart path once; when the next start draws nothing either, a notification says so and it is left running,
+  // rather than restarted in a loop. An unknown answer (IPC failing) is the health check's to judge.
+  async checkFirstFrame(screen) {
+    const drawn = await screen.client.getProperty('vo-configured').catch(() => null);
+    if (!this.watching(screen) || typeof drawn !== 'boolean') return;
+    const { name } = screen.monitor;
+    if (drawn) {
+      screen.blankStarts = 0;
+      return;
+    }
+    screen.blankStarts += 1;
+    const details = { monitor: name, file: screen.filename, output: screen.output?.lines() };
+    if (screen.blankStarts > 1) {
+      this.logger.error('mpv drew no frame again, leaving it', details);
+      await notifyError(`The wallpaper on ${name} shows nothing: mpv opened a file but drew no frame, twice; see backdrop's log`, { logger: this.logger });
+      return;
+    }
+    this.logger.error('mpv opened a file but drew no frame, restarting it', details);
+    this.killGroup(screen.child, 'SIGKILL');
   }
 
   // The monitor's eligible items as mpv's playlist, resuming the last one shown when it is still eligible

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.7] - 2026-11-27
+
+### Fixed
+
+- A wallpaper whose mpv opened a file but never drew a picture (its video output failed to start, as once after
+  a monitor was swapped) no longer stays black: the daemon restarts it once, and when the restarted one draws
+  nothing either, a notification says so instead of restarting it over and over.
+
 ## [3.4.6] - 2026-11-27
 
 ### Changed
