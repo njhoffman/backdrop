@@ -673,11 +673,26 @@ describe('Daemon', () => {
       });
 
       it('kills it once the wait is over, so the restart path tries again', async () => {
-        const daemon = makeDaemon({ firstFileTimeout: 20 });
+        // The second monitor opens its file as soon as the daemon observes the path, inside its own start: emitted
+        // after start() resolved, a start slower than the 20 ms wait under load had it killed too (2026-11-22)
+        const daemon = makeDaemon({
+          firstFileTimeout: 20,
+          connect: async socketPath => {
+            const client = new FakeMpvClient();
+            const opens = clients.length === 1;
+            clients.push({ socketPath, client });
+            const observe = client.observeProperty.bind(client);
+            client.observeProperty = async (id, name) => {
+              await observe(id, name);
+              if (opens && name === 'path') client.emit('property-change', { name: 'path', data: '/m/1.mp4' });
+            };
+            return client;
+          }
+        });
         await daemon.start();
-        // The second monitor opens its file in time
-        clients[1].client.emit('property-change', { name: 'path', data: '/m/1.mp4' });
-        await new Promise(resolve => setTimeout(resolve, 50));
+        for (let waited = 0; !mpvKills(0).length && waited < 2000; waited += 5) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
 
         expect(mpvKills(0)).to.have.length(1);
         expect(mpvKills(1)).to.have.length(0);

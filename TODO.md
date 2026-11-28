@@ -165,10 +165,13 @@ Reviewed: 2026-11-20
   `test/commands/DisplayCommand.test.js:316` answer with `fs.writeJson(statePath)`, which truncates first; a poll
   reading the empty file sees no daemon. Same race that failed `nextFilters` on CI (fixed in 3.3.1 with temp + rename).
   Suggested: a `writeStateAtomic(dir, state)` helper in `test/helpers/fakes.js`, used by all three.
-- [ ] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
+- [x] **The mpv no-file kill test is flaky under load.** (p3) [test] `Daemon restarts when mpv opens no file kills it once
       the wait is over, so the restart path tries again` failed once in a full run on 2026-11-22 (expected no kill, got
       `[-1001, 'SIGKILL']`) and passed three runs of `test/display/Daemon.test.js` alone. Likely a fixed wait racing the
       kill timer, as in the restart-limit test above; wait on the event instead.
+      Done in 3.4.4: the cause was the other monitor, whose path the test emitted only after `start()` resolved, past
+      its own 20 ms wait on a slow start. It now opens its file inside its start, and the test waits for the kill;
+      20 runs passed alongside 12 busy CPU loops.
 - [x] **rofi cannot open the test's Xvfb display.** (p3) [test] In a full run on 2026-11-07 (load about 5) three tests in `test/commands/menu.integration.test.js` failed with `Failed to open display: :1` from rofi, before any window,
       though Xvfb had reported `:1` through `-displayfd`; the file passed 2 of 2 alone right after. Wait until a client can connect (`xdpyinfo`, or retry rofi's first start) before the tests begin.
       Done in two steps. First `startXvfb` waited until `xdotool getdisplaygeometry` connects, which did not stop it: the next failure was one rofi run in the middle of the file, with the runs before and after it fine on the same display, so a single connection fails under load rather than the server being missing. `driven()` now starts a view again (up to three times) when its rofi exits with `Failed to open display` before opening a window, dropping the failed run from the checks.
