@@ -27,7 +27,8 @@ export function appliesWhen(key) {
   const [section] = key.split('.');
   if (['sources', 'menu', 'output'].includes(section)) return 'command';
   if (section === 'web') return 'web';
-  if (section === 'load' || LIVE_SETTINGS[key] !== undefined) return 'live';
+  // load and audio_relay start again with a saved change (ConfigChanges.applySettings)
+  if (section === 'load' || section === 'audio_relay' || LIVE_SETTINGS[key] !== undefined) return 'live';
   return 'daemon';
 }
 

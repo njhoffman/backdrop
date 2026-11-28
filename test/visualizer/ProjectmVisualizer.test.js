@@ -11,6 +11,17 @@ describe('ProjectmVisualizer', () => {
     expect(env).to.deep.equal({ HOME: '/h', SDL_X11_FORCE_OVERRIDE_REDIRECT: '1', SDL_AUDIODRIVER: 'pulseaudio', PULSE_SOURCE: '@DEFAULT_MONITOR@' });
   });
 
+  it('records the section source, the audio relay\'s or a one-speaker remap source, auto being the default output', () => {
+    const source = (settings, channelSource) => {
+      const visualizer = adapter({}, settings);
+      if (channelSource) visualizer.channelSource = channelSource;
+      return visualizer.command({ name: 'x' }, { x: 0, y: 0, width: 1, height: 1 }, {}).env.PULSE_SOURCE;
+    };
+    expect(source({ source: 'auto' })).to.equal('@DEFAULT_MONITOR@');
+    expect(source({ source: 'backdrop_relay.monitor' })).to.equal('backdrop_relay.monitor');
+    expect(source({ source: 'auto' }, 'backdrop_channel_left')).to.equal('backdrop_channel_left');
+  });
+
   it('asks for the capture latency visualizer.latency_ms gives, over one in the environment', () => {
     const latency = (settings, env = {}) => adapter({}, settings).command({ name: 'x' }, { x: 0, y: 0, width: 1, height: 1 }, env).env.PULSE_LATENCY_MSEC;
     expect(latency({ latencyMs: 30 }, { PULSE_LATENCY_MSEC: '10' })).to.equal('30');

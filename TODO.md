@@ -1064,13 +1064,15 @@ ratings with it. Media is not synced: either machine can fetch and encode again.
       playing; Spotify can leave its stream uncorked while paused, so the roles may stay for a while after a pause.
       If it shows on the desktop, sample the level of the player's stream (`parec --monitor-stream`) before
       counting it.
-- [ ] **Saved offload settings may never reach the daemon.** (p3) [bug] `LIVE_SETTINGS` lists `offload.*` as
+- [x] **Saved offload settings may never reach the daemon.** (p3) [bug] `LIVE_SETTINGS` lists `offload.*` as
       taken, but `ConfigChanges.applySettings` compares only `display`, `library` and `paths` and copies `sources`,
       `menu`, `output`, `screensaver` and `web`, so a saved `offload.hosts` change seems to stay unread until a
       restart. Check, and copy `offload` with the other sections read when used.
-- [ ] **projectM ignores the visualizer source.** (p3) [bug] `ProjectmVisualizer` starts projectM on SDL's
+      Fixed in 3.13.3: `offload` is copied with the sections read when used.
+- [x] **projectM ignores the visualizer source.** (p3) [bug] `ProjectmVisualizer` starts projectM on SDL's
       PulseAudio default, so neither `visualizer.source` nor the audio relay reaches it. Pass the source through
       `PULSE_SOURCE` in its environment.
+      Fixed in 3.13.3: `PULSE_SOURCE` follows the section's source and the relay.
 
 ## Completed
 

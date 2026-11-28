@@ -67,9 +67,9 @@ both snapshots have arrived.
 
 ## Visualizer
 
-As a client, GLava instances restart on `backdrop_relay.monitor`. A source the section names explicitly is kept.
-sleeve and projectM read no source setting, so they do not restart. sleeve follows the song through Spotify itself
-anyway. `only_while_playing` and `wallpaper_dim` keep working: the relay sink plays exactly while the server does,
+As a client, GLava and projectM instances restart on `backdrop_relay.monitor` (projectM through `PULSE_SOURCE`). A
+source the section names explicitly is kept. sleeve reads no audio, so it does not restart; it follows the song through
+Spotify itself. `only_while_playing` and `wallpaper_dim` keep working: the relay sink plays exactly while the server does,
 because the pipe stops once the server falls quiet.
 
 ## audio.json

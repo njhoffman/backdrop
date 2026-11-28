@@ -33,9 +33,10 @@ export class ProjectmVisualizer {
       env: {
         ...env,
         SDL_X11_FORCE_OVERRIDE_REDIRECT: '1',
-        // Otherwise it records from the default capture device, a microphone, rather than what is playing
+        // Otherwise it records from the default capture device, a microphone, rather than what is playing: the
+        // section's source (the audio relay's while this machine listens to another), or a one-speaker remap source
         SDL_AUDIODRIVER: 'pulseaudio',
-        PULSE_SOURCE: '@DEFAULT_MONITOR@',
+        PULSE_SOURCE: this.channelSource ?? (!this.settings.source || this.settings.source === 'auto' ? '@DEFAULT_MONITOR@' : this.settings.source),
         // Its own 480-frame capture pulls the PipeWire graph down to a 512 quantum (visualizer.latency_ms)
         ...(this.settings.latencyMs ? { PULSE_LATENCY_MSEC: String(this.settings.latencyMs) } : {})
       }

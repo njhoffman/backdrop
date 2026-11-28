@@ -1422,6 +1422,15 @@ describe('VisualizerManager', () => {
     expect(manager.settings.source).to.equal('alsa_output.usb.monitor');
     config.set('visualizer.source', 'auto');
 
+    // projectM records the source too: it restarts on the relay
+    config.set('visualizer.engine', 'projectm');
+    await manager.setRelaySource(null);
+    await tick();
+    const projectmStarted = spawned.length;
+    await manager.setRelaySource('backdrop_relay.monitor');
+    await tick();
+    expect(spawned.length).to.be.above(projectmStarted);
+
     // sleeve reads no source: only the setting moves, nothing restarts
     config.set('visualizer.engine', 'sleeve');
     await manager.setRelaySource(null);

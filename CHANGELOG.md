@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.3] - 2026-11-28
+
+### Fixed
+
+- A saved change to `offload` (`hosts`, `worker_command`, `memory_max`) reaches the running daemon
+  for its next job and host check, as the Config page said it would; before, it waited for a restart.
+- projectM records `visualizer.source` instead of always the default output, so a named source, a
+  one-speaker `channel` and the audio relay reach it too. It restarts when the relay starts or stops.
+- The Config page lists `audio_relay` settings as applying at once, which they do.
+
 ## [3.13.2] - 2026-11-28
 
 ### Changed

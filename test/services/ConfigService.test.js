@@ -138,6 +138,8 @@ describe('ConfigService', () => {
   it('knows when each kind of setting takes effect', () => {
     expect(appliesWhen('display.video_loop')).to.equal('live');
     expect(appliesWhen('load.sustain')).to.equal('live');
+    expect(appliesWhen('audio_relay.peer')).to.equal('live');
+    expect(appliesWhen('offload.hosts')).to.equal('live');
     expect(appliesWhen('display.xwinwrap_args')).to.equal('daemon');
     expect(appliesWhen('sources.pexels.per_page')).to.equal('command');
     expect(appliesWhen('web.port')).to.equal('web');

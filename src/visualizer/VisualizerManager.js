@@ -24,6 +24,9 @@ const SETTLE_MS = 500;
 // GLava takes one line from stdin per read and drops the rest of what arrived together, so piped colors are
 // written one line at a time this far apart (several frames)
 const PIPE_GAP_MS = 100;
+// The engines that record the visualizer's audio source
+const SOURCE_ENGINES = ['glava', 'projectm'];
+
 // How often palette.source: cycle sends the turned colors: a 90-second turn moves 1 degree a step, too little to
 // see, and GLava's two lines (PIPE_GAP_MS apart) are written well within it
 const CYCLE_STEP_MS = 250;
@@ -346,15 +349,15 @@ export class VisualizerManager {
     return { ...settings, source: this.relaySource };
   }
 
-  // Reads the relay's sink monitor (null: the section's own source again). GLava instances restart on their new
-  // source; a look without one (sleeve, projectM, which read no source setting) only moves the audio watch.
+  // Reads the relay's sink monitor (null: the section's own source again). GLava and projectM instances restart on
+  // their new source; a look without them (sleeve reads no audio) only moves the audio watch.
   async setRelaySource(source) {
     if (source === this.relaySource) return;
     this.relaySource = source;
     if (this.stopping) return;
     this.logger.info('Visualizer audio source', { source: source ?? 'the section\'s' });
     const engines = (this.settings?.instances ?? []).map(instance => instance.engine ?? this.settings.engine);
-    if (this.settings && !engines.includes('glava')) {
+    if (this.settings && !engines.some(engine => SOURCE_ENGINES.includes(engine))) {
       this.settings = this.relayed(visualizerSettings(this.config.get().visualizer, this.settingsOptions()));
       await this.watchAudio();
       return;
