@@ -227,8 +227,12 @@ describe('visualizer settings', () => {
       expect(() => main({ palette: { colour: 1 } })).to.throw('visualizer.palette.colour must be one of the palette settings');
       expect(() => main({ palette: { source: 'wallpaper' }, defines: { COLOR: '#ff0000' } }))
         .to.throw('visualizer.defines.COLOR must be left out with palette.source: wallpaper (set bars.colors instead)');
-      // Without the wallpaper source a raw COLOR stays allowed
+      // Without the wallpaper source a raw COLOR stays allowed, and in a preset whose instances take the wallpaper's
+      // colors (lyrics-veil) it wins there, rather than making the section an error
       expect(main({ defines: { COLOR: '#ff0000' } }).defines.COLOR).to.equal('#ff0000');
+      const veilBars = visualizerSettings({ defines: { COLOR: '#ff0000' }, preset: 'lyrics-veil' }).instances.find(item => item.name === 'bars');
+      expect(veilBars).to.include({ pipe: null });
+      expect(veilBars.defines.COLOR).to.equal('#ff0000');
     });
   });
 
@@ -495,7 +499,9 @@ describe('visualizer settings', () => {
         expect(uncolored('screensaver')).to.deep.equal(uncolored('lyrics-veil'));
         const ring = name => lyrics(name).instances.find(item => item.name === 'ring');
         expect(ring('screensaver').palette.source).to.equal('cycle');
-        expect(ring('lyrics-veil').palette.source).to.not.equal('cycle');
+        // lyrics-veil's ring and bars follow the wallpaper themselves, as its veil does, whatever the section's palette
+        expect(ring('lyrics-veil').palette.source).to.equal('wallpaper');
+        expect(lyrics('lyrics-veil').instances.find(item => item.name === 'bars').palette.source).to.equal('wallpaper');
         expect(ring('screensaver').defines).to.include({ C_RADIUS: ring('lyrics-veil').defines.C_RADIUS, AMPLIFY: ring('lyrics-veil').defines.AMPLIFY });
       });
     });

@@ -500,9 +500,13 @@ function instance(raw, prefix) {
   let pipe = null;
   let pipeDefine = null;
   // cycle turns the hue of the configured colors, which are piped like the wallpaper's; a raw #define of the color
-  // wins over it, so a preset that cycles never makes the user's own define an error
-  const cycles = palette.source === 'cycle' && raw.defines?.[PIPED_COLORS[module].define] === undefined;
-  if (palette.source === 'wallpaper' || cycles || pipesFixedColors(module, raw)) {
+  // wins over it, so a preset that cycles never makes the user's own define an error. The same for the wallpaper's
+  // colors inside a preset (lyrics-veil's ring and bars, 2026-11-28), where the section's define reaches its
+  // instances; with the wallpaper source set beside a define at one level the define is an error, as it says.
+  const rawColor = raw.defines?.[PIPED_COLORS[module].define] !== undefined;
+  const cycles = palette.source === 'cycle' && !rawColor;
+  const wallpaper = palette.source === 'wallpaper' && !(rawColor && /(^|\.)presets\./.test(prefix));
+  if (wallpaper || cycles || pipesFixedColors(module, raw)) {
     const piped = pipedColors(module, raw, prefix, palette.source);
     allDefines[piped.define[0]] = piped.define[1];
     pipe = piped.pipe;

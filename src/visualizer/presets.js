@@ -35,8 +35,11 @@ function radials() {
   ];
 }
 
+// cycle: the ring and bars turn through the hues (the screensaver's look); else they take their colors from the
+// wallpaper as the veil does, whatever the section's palette (2026-11-28: with the config's palette commented out
+// since 2026-11-14, lyrics-veil's GLava instances had stayed the fixed blue)
 function veil({ cycle = false } = {}) {
-  const palette = cycle ? { palette: CYCLE_COLORS } : {};
+  const palette = { palette: cycle ? CYCLE_COLORS : WALLPAPER_COLORS };
   return [
     { name: 'lyrics', engine: 'sleeve', opacity: 1, palette: WALLPAPER_COLORS, placement: { anchor: 'fill' }, sleeve: VEIL_LYRICS },
     { name: 'bars', module: 'bars', ...palette, rect: SIDE_RECTS.bars, ...(cycle ? { bars: CYCLE_BARS } : {}) },

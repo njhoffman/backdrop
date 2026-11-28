@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.1] - 2026-11-28
+
+### Fixed
+
+- `lyrics-veil`'s ring and bars take their colors from the wallpaper again, as its veil does, without the
+  visualizer section's `palette` set: with that commented out they had stayed the fixed blue.
+  A raw color `defines` in the section wins over it there (that instance keeps the fixed color) rather than being an
+  error, as it already did over the screensaver's turning colors.
+
 ## [3.16.0] - 2026-11-28
 
 ### Added
