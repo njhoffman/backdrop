@@ -33,6 +33,22 @@ function veil({ cycle = false } = {}) {
   ];
 }
 
+// The Sunamu presets' sleeve settings: Sunamu's layout, and its background through sleeve's CSS swirl. sharp drops
+// the layers' filter (no blur, brightness or saturation) and halves the whole background's opacity
+function sunamu({ sharp = false } = {}) {
+  const panel = nowPanel('full', 'center-left', 3, '40%x100%+0+0');
+  return {
+    lyrics_area: '60%x100%+40%+0', background: 'cover', cover: 'swirl', ...panel,
+    style: {
+      ...panel.style, '--art-animation': 'sleeve-art-swirl-css', '--swirl-size': '2', '--swirl-period': '60', '--swirl-delay': '10',
+      '--swirl-timing': 'ease-in-out', '--art-dim': '0',
+      ...(sharp
+        ? { '--swirl-blur': '0px', '--swirl-brightness': '1', '--art-saturation': '1', '--art-opacity': '0.5' }
+        : { '--swirl-blur': '180px', '--swirl-brightness': '0.5', '--art-saturation': '1.5', '--art-opacity': '1' })
+    }
+  };
+}
+
 const PRESETS = {
   // Short, thin bars along the bottom, mostly see-through
   subtle: {
@@ -162,6 +178,23 @@ const PRESETS = {
       { name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: { lyrics_area: '60%x80%+20%+0', lyrics_align: 'center', background: 'cover', cover: 'swirl', ...nowPanel('minimal', 'top-center', 3) } },
       { name: 'wave', module: 'wave', opacity: 0.6, placement: { anchor: 'bottom', width: '100%', height: '20%' }, wave: { color: '#33aacc' } }
     ]
+  },
+  // Sunamu's background as Sunamu drew it (its ui/sunamu/Background.css): two copies of the cover twice the window's
+  // longer side, blurred 180px, at half brightness and 1.5 saturation, exclusion blended, turning opposite ways once a
+  // minute, the second 10 s behind; sleeve's CSS port of it (sleeve-art-swirl-css) rather than its shader. Laid out as
+  // Sunamu is: the now-playing card on the left, lyrics on the right
+  'lyrics-sunamu': {
+    description: 'Sunamu\'s background as Sunamu drew it, two blurred copies of the cover turning, with its card on the left and lyrics on the right',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu() }]
+  },
+  // The same as the custom Sunamu theme on charon draws it (~/.config/sunamu/themes/custom/background.css, overrides laid
+  // over Background.css, in its electron scene's widget mode): there Sunamu's own rule for the two copies does not
+  // apply, so they turn sharp and full size with no filter, and the whole background is at half opacity
+  'lyrics-new-sunamu': {
+    description: 'Sunamu\'s background with the copies of the cover sharp and the whole of it at half strength, card on the left, lyrics on the right',
+    wallpaper: false,
+    instances: [{ name: 'lyrics', engine: 'sleeve', opacity: 1, placement: { anchor: 'fill' }, sleeve: sunamu({ sharp: true }) }]
   },
   // sleeve as the whole background: the full now-playing panel on the left, lyrics on the right, a wave along the bottom
   'lyrics-now': {

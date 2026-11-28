@@ -1000,6 +1000,11 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       at sleeve's laptop size, so lyrics-now looked like the rest on 1440p. Done in 3.7.0 with sleeve 0.49.0's
       `--now-scale`: a caption, a card or a large card per preset (`nowPanel` in `presets.js`), each placed by its layout
       and checked by screenshot. New panel forms (a large-cover card, a bottom strip) are in sleeve's TODO.
+- [x] **Sunamu's background as presets.** (p3) [feature] Done in 3.8.0: `lyrics-sunamu` is Sunamu's
+      `ui/sunamu/Background.css` through sleeve's `sleeve-art-swirl-css`; `lyrics-new-sunamu` is that with charon's custom
+      theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
+      Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
+      sleeve's CSS swirl does not multiply the copies with the cover's dominant color as Sunamu does.
 
 ## 11. Two machines
 

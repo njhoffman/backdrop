@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-28
+
+### Added
+
+- Two presets with Sunamu's background and layout (the now-playing card on the left, lyrics on the right):
+  `lyrics-sunamu` draws it as Sunamu does, two blurred, darkened copies of the cover turning against each other,
+  and `lyrics-new-sunamu` takes the blur and darkening off so the turning copies stay sharp, with the whole
+  background at half strength.
+
 ## [3.7.0] - 2026-11-28
 
 ### Added
