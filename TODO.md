@@ -1005,6 +1005,13 @@ desktop). Built in 2026-11-04 apart from the desktop check; tried against real s
       theme (`~/.config/sunamu/themes/custom/background.css`) laid over it in its electron scene's widget mode, where
       Sunamu's own rule for the turning copies does not apply, so they are sharp, and the whole is at half opacity.
       3.9.0 adds `-tinted` twins with sleeve 0.50.0's `--swirl-tint: cover`, Sunamu's multiply by the cover's dark vibrant.
+- [ ] **The cover's tint turns dark covers black.** (p2) [bug] A second, 100 s look at every swirl preset (2026-11-28)
+      found `lyrics-blurred-tinted` nearly black on a dark, grey cover (Joey Fehrenbach, Indigo Road: brightness 0.02,
+      1% change), while the tinted looks shone on colorful ones (the tinted swirl deep red, soft-tinted deep blue). The
+      tint multiplies each copy by the cover's dark vibrant, around lightness 0.26, and the blurred looks then halve the
+      brightness again. Options: in sleeve, scale `--swirl-tint: cover` so its brightest channel is 1 (keeping its hue,
+      losing Sunamu's darkening); or raise `--swirl-brightness` in the tinted presets (0.5 to about 0.9); or take
+      node-vibrant's plain Vibrant swatch, lighter, when the dark one is near black. Decide by trying each on a dark cover.
 - [x] **Pick the swirl variations to keep.** (p3) [chore] 3.10.0 added seven to try (soft, steady, offset, vivid, bright,
       duotone, swirl-slow). Keep the ones that earn it and drop the rest; if steady wins, make linear turns the default in
       every swirl preset rather than a preset of its own. A saturation boost only for pale covers would beat a fixed vivid

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.1] - 2026-11-28
+
+### Changed
+
+- The swirl presets' notes (the menu's `i`, the web page's cards) add what a second, longer look at each showed: the
+  tinted swirl and soft-tinted looks are among the best on colorful covers, the sharp looks now turn evenly, and
+  `lyrics-blurred-tinted` goes nearly black on dark covers.
+
 ## [3.13.0] - 2026-11-28
 
 ### Added
