@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-11-28
+
+### Added
+
+- Tinted twins of the looks that gain from it: `lyrics-blurred-swirl-tinted` (needs sleeve 0.51.0, which tints the
+  shader swirl), `lyrics-blurred-soft-tinted` and `lyrics-sharp-bright-tinted`.
+
+### Changed
+
+- The swirl presets are named by family: `lyrics-blurred-*` for the soft looks and `lyrics-sharp-*` for the sharp
+  ones, then what sets each apart, with `-tinted` last. `lyrics-swirl` is now `lyrics-blurred-swirl`,
+  `lyrics-swirl-slow` `lyrics-blurred-slow`, `lyrics-sunamu` `lyrics-blurred-sunamu`, `lyrics-blurred`
+  `lyrics-blurred-tinted`, `lyrics-soft` `lyrics-blurred-soft`, `lyrics-offset` `lyrics-blurred-offset`,
+  `lyrics-vivid` `lyrics-blurred-vivid`, `lyrics-sharp` `lyrics-sharp-tinted`, `lyrics-bright` `lyrics-sharp-bright`
+  and `lyrics-duotone` `lyrics-sharp-duotone`. They are listed by family, so `backdrop visualizer preset --next`
+  steps through each family in turn.
+
 ## [3.11.0] - 2026-11-28
 
 ### Added

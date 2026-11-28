@@ -123,8 +123,9 @@ visualizer:                # see docs/specs/visualizer.md; checked at daemon sta
   preset: null             # active preset at start; `backdrop visualizer preset` switches until the daemon restarts
   wallpaper: true          # false: stop mpv while this look is active, for a preset that hides it
   presets: {}              # name: settings laid over the section (objects merge, lists replace); built-in: subtle,
-                           #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-cover, lyrics-swirl, lyrics-sunamu, lyrics-blurred, lyrics-sharp,
-                           #   lyrics-soft, lyrics-offset, lyrics-vivid, lyrics-bright, lyrics-duotone, lyrics-swirl-slow, lyrics-now
+                           #   ring, wave, party, lyrics, lyrics-only, lyrics-side, lyrics-veil, lyrics-blend, lyrics-stage, lyrics-cover,
+                           #   lyrics-blurred-swirl, -swirl-tinted, -slow, -sunamu, -tinted, -soft, -soft-tinted, -offset, -vivid,
+                           #   lyrics-sharp-tinted, -bright, -bright-tinted, -duotone, lyrics-now
                            #   (src/visualizer/presets.js); cannot set enabled, preset, presets or screenshots;
                            #   description: a line the menu and web page show
   instances: null          # [{name, engine, visible, sleeve, module, monitors, placement, rect, opacity, <module>, defines, requests}];

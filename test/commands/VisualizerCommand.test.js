@@ -88,9 +88,9 @@ describe('VisualizerCommand', () => {
       config.set('visualizer.presets', { calm: { opacity: 0.3 } });
       await running({ preset: 'ring' });
       await command().run('preset');
-      expect(lines.slice(0, 26)).to.deep.equal([
+      expect(lines.slice(0, 29)).to.deep.equal([
         '  subtle', '* ring', '  wave', '  party', '  lyrics', '  lyrics-only', '  lyrics-side', '  lyrics-veil', '  lyrics-blend', '  screensaver  (screensaver only)',
-        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-swirl', '  lyrics-sunamu', '  lyrics-blurred', '  lyrics-sharp', '  lyrics-soft', '  lyrics-offset', '  lyrics-vivid', '  lyrics-bright', '  lyrics-duotone', '  lyrics-swirl-slow', '  lyrics-now', '  calm'
+        '  screensaver-instrumental  (screensaver only)', '  screensaver-projectm', '  lyrics-stage', '  lyrics-cover', '  lyrics-blurred-swirl', '  lyrics-blurred-swirl-tinted', '  lyrics-blurred-slow', '  lyrics-blurred-sunamu', '  lyrics-blurred-tinted', '  lyrics-blurred-soft', '  lyrics-blurred-soft-tinted', '  lyrics-blurred-offset', '  lyrics-blurred-vivid', '  lyrics-sharp-tinted', '  lyrics-sharp-bright', '  lyrics-sharp-bright-tinted', '  lyrics-sharp-duotone', '  lyrics-now', '  calm'
       ]);
     });
 
